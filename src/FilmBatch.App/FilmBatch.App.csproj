@@ -1,0 +1,57 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <AssemblyName>FilmBatch</AssemblyName>
+    <RootNamespace>FilmBatch.App</RootNamespace>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\icon.ico</ApplicationIcon>
+  </PropertyGroup>
+  <!-- 發佈設定（見計畫書 9.3）：self-contained 資料夾發佈 + ReadyToRun + partial trimming -->
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' != ''">
+    <SelfContained>true</SelfContained>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <PublishTrimmed>true</PublishTrimmed>
+    <TrimMode>partial</TrimMode>
+    <!-- 第三方組件的整體 trim 警告（IL2104）保留為警告；本專案程式碼的 trim 警告仍視為錯誤 -->
+    <WarningsNotAsErrors>$(WarningsNotAsErrors);IL2104</WarningsNotAsErrors>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(RuntimeIdentifier)' != ''">
+    <!-- Dock 的版面序列化與樣板以反射為主，整個組件保留不修剪（M0 冒煙建置發現） -->
+    <TrimmerRootAssembly Include="Dock.Avalonia" />
+    <TrimmerRootAssembly Include="Dock.Avalonia.Themes.Fluent" />
+    <TrimmerRootAssembly Include="Dock.MarkupExtension" />
+    <TrimmerRootAssembly Include="Dock.Model" />
+    <TrimmerRootAssembly Include="Dock.Model.Mvvm" />
+    <TrimmerRootAssembly Include="Dock.Serializer.SystemTextJson" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\FilmBatch.Core\FilmBatch.Core.csproj" />
+    <ProjectReference Include="..\FilmBatch.Engine\FilmBatch.Engine.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia" />
+    <PackageReference Include="Avalonia.Desktop" />
+    <PackageReference Include="Avalonia.Themes.Fluent" />
+    <PackageReference Include="Dock.Avalonia" />
+    <PackageReference Include="Dock.Avalonia.Themes.Fluent" />
+    <PackageReference Include="Dock.Model.Mvvm" />
+    <PackageReference Include="Dock.Serializer.SystemTextJson" />
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+  </ItemGroup>
+  <ItemGroup>
+    <AvaloniaResource Include="Assets\**" />
+  </ItemGroup>
+  <!-- 介面字串：強型別資源類別 FilmBatch.App.Localization.Strings -->
+  <ItemGroup>
+    <EmbeddedResource Update="Localization\Strings.resx">
+      <StronglyTypedLanguage>CSharp</StronglyTypedLanguage>
+      <StronglyTypedNamespace>FilmBatch.App.Localization</StronglyTypedNamespace>
+      <StronglyTypedClassName>Strings</StronglyTypedClassName>
+      <StronglyTypedFileName>$(IntermediateOutputPath)Strings.Designer.cs</StronglyTypedFileName>
+    </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="FilmBatch.App.Tests" />
+  </ItemGroup>
+</Project>

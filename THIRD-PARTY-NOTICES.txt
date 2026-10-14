@@ -1,0 +1,11 @@
+FilmBatch 使用下列第三方元件（M0 原型；正式發佈前於 M7 補齊完整授權全文）
+
+Avalonia UI 12              MIT          https://github.com/AvaloniaUI/Avalonia
+Dock.Avalonia 12            MIT          https://github.com/wieslawsoltes/Dock
+SkiaSharp / HarfBuzzSharp   MIT          https://github.com/mono/SkiaSharp
+CommunityToolkit.Mvvm       MIT          https://github.com/CommunityToolkit/dotnet
+WebGPUSharp                 MIT          https://github.com/EmilSV/WebGPUSharp
+Dawn (WebGPU)               BSD-3-Clause https://dawn.googlesource.com/dawn
+Magick.NET / ImageMagick    Apache-2.0 / ImageMagick License  https://github.com/dlemstra/Magick.NET
+System.CommandLine          MIT          https://github.com/dotnet/command-line-api
+.NET Runtime                MIT          https://github.com/dotnet/runtime

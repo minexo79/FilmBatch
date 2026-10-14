@@ -1,0 +1,17 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:FilmBatch.App.ViewModels"
+             xmlns:c="using:FilmBatch.App.Controls"
+             x:Class="FilmBatch.App.Views.PreviewView"
+             x:DataType="vm:PreviewViewModel">
+  <Panel DragDrop.AllowDrop="True" Name="Root">
+    <c:PreviewCanvas Name="Canvas"
+                     Image="{Binding Image}" Original="{Binding Original}"
+                     ShowOriginal="{Binding ShowOriginal}" IsSplit="{Binding IsSplit}"
+                     SplitPosition="{Binding SplitPosition}" Zoom="{Binding Zoom}"
+                     IsBusy="{Binding IsBusy}" OverlayText="{Binding OverlayText}"
+                     ControlPoint="{Binding ControlPoint}" CanvasBackground="{Binding Background}" />
+    <TextBlock Classes="secondary" Text="{Binding EmptyText}" HorizontalAlignment="Center" VerticalAlignment="Center"
+               IsVisible="{Binding Image, Converter={x:Static ObjectConverters.IsNull}}" IsHitTestVisible="False" />
+  </Panel>
+</UserControl>

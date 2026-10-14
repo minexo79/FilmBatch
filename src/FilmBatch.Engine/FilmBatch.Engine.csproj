@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- 引擎：不依賴 UI -->
+  <PropertyGroup>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\FilmBatch.Core\FilmBatch.Core.csproj" />
+    <ProjectReference Include="..\FilmBatch.Gpu\FilmBatch.Gpu.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Magick.NET-Q16-HDRI-AnyCPU" />
+  </ItemGroup>
+</Project>

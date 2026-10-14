@@ -1,0 +1,76 @@
+<!--
+  FilmBatch 配色（計畫書 2.2.2）。所有介面灰階 R = G = B；強調色只用於「選取」與「被覆寫」。
+  覆寫 Fluent 的系統資源，並定義本專案的色彩 token（FB.*）。
+-->
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <ResourceDictionary.ThemeDictionaries>
+    <ResourceDictionary x:Key="Dark">
+      <!-- ── 覆寫 Fluent 系統資源 ── -->
+      <Color x:Key="SystemAccentColor">#D98E2B</Color>
+      <Color x:Key="SystemAccentColorLight1">#E6A44A</Color>
+      <Color x:Key="SystemAccentColorLight2">#EDB96E</Color>
+      <Color x:Key="SystemAccentColorLight3">#F3CE94</Color>
+      <Color x:Key="SystemAccentColorDark1">#C07A20</Color>
+      <Color x:Key="SystemAccentColorDark2">#A26619</Color>
+      <Color x:Key="SystemAccentColorDark3">#845213</Color>
+      <Color x:Key="SystemRegionColor">#2D2D2D</Color>
+      <!-- Fluent 深色的 chrome 與清單灰階，統一改為中性灰 -->
+      <Color x:Key="SystemAltHighColor">#1E1E1E</Color>
+      <Color x:Key="SystemAltMediumHighColor">#1E1E1E</Color>
+      <Color x:Key="SystemChromeLowColor">#1E1E1E</Color>
+      <Color x:Key="SystemChromeMediumLowColor">#262626</Color>
+      <Color x:Key="SystemChromeMediumColor">#2D2D2D</Color>
+      <Color x:Key="SystemChromeHighColor">#4A4A4A</Color>
+      <Color x:Key="SystemChromeAltLowColor">#DCDCDC</Color>
+      <Color x:Key="SystemChromeDisabledLowColor">#6E6E6E</Color>
+      <Color x:Key="SystemChromeDisabledHighColor">#3E3E3E</Color>
+      <Color x:Key="SystemBaseHighColor">#DCDCDC</Color>
+      <Color x:Key="SystemBaseMediumHighColor">#BDBDBD</Color>
+      <Color x:Key="SystemBaseMediumColor">#9A9A9A</Color>
+      <Color x:Key="SystemBaseMediumLowColor">#6E6E6E</Color>
+      <Color x:Key="SystemBaseLowColor">#353535</Color>
+      <Color x:Key="SystemListLowColor">#2A2A2A</Color>
+      <Color x:Key="SystemListMediumColor">#353535</Color>
+
+      <!-- ── 本專案色彩 token ── -->
+      <SolidColorBrush x:Key="FB.WindowBrush" Color="#2D2D2D" />
+      <SolidColorBrush x:Key="FB.TextBrush" Color="#DCDCDC" />
+      <SolidColorBrush x:Key="FB.BaseBrush" Color="#1E1E1E" />
+      <SolidColorBrush x:Key="FB.AlternateBaseBrush" Color="#262626" />
+      <SolidColorBrush x:Key="FB.ButtonBrush" Color="#353535" />
+      <SolidColorBrush x:Key="FB.ButtonHoverBrush" Color="#3E3E3E" />
+      <SolidColorBrush x:Key="FB.ButtonPressedBrush" Color="#2A2A2A" />
+      <SolidColorBrush x:Key="FB.PlaceholderBrush" Color="#7A7A7A" />
+      <SolidColorBrush x:Key="FB.ToolTipBackgroundBrush" Color="#3A3A3A" />
+      <SolidColorBrush x:Key="FB.ToolTipTextBrush" Color="#EAEAEA" />
+      <SolidColorBrush x:Key="FB.BorderLightBrush" Color="#4A4A4A" />
+      <SolidColorBrush x:Key="FB.BorderBrush" Color="#3E3E3E" />
+      <SolidColorBrush x:Key="FB.ShadowBrush" Color="#1A1A1A" />
+      <SolidColorBrush x:Key="FB.ShadowDarkBrush" Color="#0F0F0F" />
+      <SolidColorBrush x:Key="FB.AccentBrush" Color="#D98E2B" />
+      <SolidColorBrush x:Key="FB.AccentTextBrush" Color="#111111" />
+      <SolidColorBrush x:Key="FB.WarningTextBrush" Color="#FF6B6B" />
+      <SolidColorBrush x:Key="FB.LinkBrush" Color="#E6A44A" />
+      <SolidColorBrush x:Key="FB.DisabledTextBrush" Color="#6E6E6E" />
+      <SolidColorBrush x:Key="FB.DisabledAccentBrush" Color="#505050" />
+
+      <!-- 語意色：只用於小面積標記 -->
+      <SolidColorBrush x:Key="FB.OverrideBrush" Color="#D98E2B" />
+      <SolidColorBrush x:Key="FB.PresetUpdatedBrush" Color="#5AA9E6" />
+      <SolidColorBrush x:Key="FB.ErrorBrush" Color="#E05555" />
+      <SolidColorBrush x:Key="FB.SuccessBrush" Color="#6BBF59" />
+
+      <!-- Tooltip 使用 FB 配色 -->
+      <SolidColorBrush x:Key="ToolTipBackground" Color="#3A3A3A" />
+      <SolidColorBrush x:Key="ToolTipForeground" Color="#EAEAEA" />
+      <SolidColorBrush x:Key="ToolTipBorderBrush" Color="#4A4A4A" />
+    </ResourceDictionary>
+  </ResourceDictionary.ThemeDictionaries>
+
+  <!-- 尺寸（計畫書 2.2.3）：基本字級 13px、以 4px 為基本單位 -->
+  <x:Double x:Key="ControlContentThemeFontSize">13</x:Double>
+  <x:Double x:Key="FB.ParamRowHeight">28</x:Double>
+  <x:Double x:Key="FB.FontSizeSmall">11</x:Double>
+  <x:Double x:Key="FB.FontSizeTitle">13</x:Double>
+</ResourceDictionary>

@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="App.Title" xml:space="preserve"><value>FilmBatch</value></data>
+  <data name="Menu.File" xml:space="preserve"><value>_File</value></data>
+  <data name="Menu.Edit" xml:space="preserve"><value>_Edit</value></data>
+  <data name="Menu.View" xml:space="preserve"><value>_View</value></data>
+  <data name="Menu.Presets" xml:space="preserve"><value>_Presets</value></data>
+  <data name="Menu.Help" xml:space="preserve"><value>_Help</value></data>
+  <data name="Cmd.OpenFolder" xml:space="preserve"><value>Open Folder…</value></data>
+  <data name="Cmd.OpenSamples" xml:space="preserve"><value>Open Sample Folder</value></data>
+  <data name="Cmd.Export" xml:space="preserve"><value>Export…</value></data>
+  <data name="Cmd.Preferences" xml:space="preserve"><value>Preferences…</value></data>
+  <data name="Cmd.Exit" xml:space="preserve"><value>Exit</value></data>
+  <data name="Cmd.Undo" xml:space="preserve"><value>Undo</value></data>
+  <data name="Cmd.Redo" xml:space="preserve"><value>Redo</value></data>
+  <data name="Cmd.Copy" xml:space="preserve"><value>Copy Settings</value></data>
+  <data name="Cmd.Paste" xml:space="preserve"><value>Paste</value></data>
+  <data name="Cmd.PastePresetOnly" xml:space="preserve"><value>Paste Preset Only</value></data>
+  <data name="Cmd.PasteSpecial" xml:space="preserve"><value>Paste Special…</value></data>
+  <data name="Cmd.SelectAll" xml:space="preserve"><value>Select All</value></data>
+  <data name="Cmd.Compare" xml:space="preserve"><value>Compare with Original (hold Space)</value></data>
+  <data name="Cmd.SplitCompare" xml:space="preserve"><value>Split Compare</value></data>
+  <data name="Cmd.ZoomFit" xml:space="preserve"><value>Fit to Window</value></data>
+  <data name="Cmd.Zoom100" xml:space="preserve"><value>100%</value></data>
+  <data name="Cmd.TogglePanels" xml:space="preserve"><value>Hide / Show Panels</value></data>
+  <data name="Cmd.FullScreen" xml:space="preserve"><value>Full Screen Preview</value></data>
+  <data name="Cmd.ResetLayout" xml:space="preserve"><value>Reset Layout</value></data>
+  <data name="Cmd.Gallery" xml:space="preserve"><value>Widget Gallery</value></data>
+  <data name="Cmd.ManagePresets" xml:space="preserve"><value>Manage Presets…</value></data>
+  <data name="Cmd.CreatePreset" xml:space="preserve"><value>New Preset from Photo…</value></data>
+  <data name="Cmd.Language" xml:space="preserve"><value>Language</value></data>
+  <data name="Panel.Presets" xml:space="preserve"><value>Presets</value></data>
+  <data name="Panel.Preview" xml:space="preserve"><value>Preview</value></data>
+  <data name="Panel.Inspector" xml:space="preserve"><value>Photo &amp; Modules</value></data>
+  <data name="Panel.Filmstrip" xml:space="preserve"><value>Filmstrip</value></data>
+  <data name="Inspector.NoPhoto" xml:space="preserve"><value>No photo selected</value></data>
+  <data name="Inspector.Preset" xml:space="preserve"><value>Preset</value></data>
+  <data name="Inspector.ResetPhoto" xml:space="preserve"><value>Reset Photo</value></data>
+  <data name="Inspector.CreatePreset" xml:space="preserve"><value>New Preset</value></data>
+  <data name="Inspector.UpdatePreset" xml:space="preserve"><value>Update Preset</value></data>
+  <data name="Inspector.HideDisabled" xml:space="preserve"><value>Hide disabled modules</value></data>
+  <data name="Inspector.ResetModule" xml:space="preserve"><value>Reset Module</value></data>
+  <data name="Inspector.CopyModule" xml:space="preserve"><value>Copy This Module Only</value></data>
+  <data name="Filmstrip.All" xml:space="preserve"><value>All</value></data>
+  <data name="Filmstrip.OverridesOnly" xml:space="preserve"><value>With overrides</value></data>
+  <data name="Filmstrip.Unassigned" xml:space="preserve"><value>Unassigned</value></data>
+  <data name="Filmstrip.ByPreset" xml:space="preserve"><value>By preset:</value></data>
+  <data name="Presets.Apply" xml:space="preserve"><value>Apply to Selection</value></data>
+  <data name="Presets.Rename" xml:space="preserve"><value>Rename…</value></data>
+  <data name="Presets.Color" xml:space="preserve"><value>Change Color Label</value></data>
+  <data name="Presets.Duplicate" xml:space="preserve"><value>Duplicate</value></data>
+  <data name="Presets.Delete" xml:space="preserve"><value>Delete</value></data>
+  <data name="Presets.Reveal" xml:space="preserve"><value>Show in Explorer</value></data>
+  <data name="Presets.Pin" xml:space="preserve"><value>Pin (keys 1–9)</value></data>
+  <data name="Presets.Manage" xml:space="preserve"><value>Manage…</value></data>
+  <data name="Status.NoProject" xml:space="preserve"><value>No folder open</value></data>
+  <data name="Status.Selected" xml:space="preserve"><value>{0} selected</value></data>
+  <data name="Status.Background" xml:space="preserve"><value>Background: {0}</value></data>
+  <data name="Status.Idle" xml:space="preserve"><value>Ready</value></data>
+  <data name="Status.SoftwareGpu" xml:space="preserve"><value>(software adapter, slower)</value></data>
+  <data name="Preview.MultiOverlay" xml:space="preserve"><value>{0} selected — changes apply to all</value></data>
+  <data name="Preview.Empty" xml:space="preserve"><value>Open a photo folder to begin (Ctrl+O)</value></data>
+  <data name="Toast.Undo" xml:space="preserve"><value>Undo</value></data>
+  <data name="Dialog.OK" xml:space="preserve"><value>OK</value></data>
+  <data name="Dialog.Cancel" xml:space="preserve"><value>Cancel</value></data>
+  <data name="Dialog.Close" xml:space="preserve"><value>Close</value></data>
+  <data name="Dialog.SelectAll" xml:space="preserve"><value>Select All</value></data>
+  <data name="Dialog.SelectNone" xml:space="preserve"><value>Select None</value></data>
+  <data name="Dialog.ColorOnly" xml:space="preserve"><value>Color Only</value></data>
+  <data name="Dialog.IncludeSeeds" xml:space="preserve"><value>Include random seeds</value></data>
+  <data name="Dialog.MirrorPositions" xml:space="preserve"><value>Mirror positions</value></data>
+  <data name="Dialog.Paste" xml:space="preserve"><value>Paste</value></data>
+  <data name="Dialog.SelectivePaste" xml:space="preserve"><value>Paste Special</value></data>
+  <data name="Dialog.Export" xml:space="preserve"><value>Export</value></data>
+  <data name="Dialog.PresetManager" xml:space="preserve"><value>Preset Manager</value></data>
+  <data name="Dialog.Preferences" xml:space="preserve"><value>Preferences</value></data>
+  <data name="Dialog.KeepOverrides" xml:space="preserve"><value>Keep Overrides</value></data>
+  <data name="Dialog.ClearOverrides" xml:space="preserve"><value>Clear Overrides</value></data>
+  <data name="Dialog.Remember" xml:space="preserve"><value>Remember my choice</value></data>
+  <data name="Dialog.AssignTitle" xml:space="preserve"><value>Assign Preset</value></data>
+</root>

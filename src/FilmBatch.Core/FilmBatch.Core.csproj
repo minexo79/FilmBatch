@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- 核心資料：不依賴 Avalonia 與 GPU -->
+  <PropertyGroup>
+    <IsTrimmable>true</IsTrimmable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="System.IO.Hashing" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="FilmBatch.Core.Tests" />
+  </ItemGroup>
+</Project>

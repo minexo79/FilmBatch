@@ -1,0 +1,113 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:FilmBatch.App.ViewModels"
+             xmlns:c="using:FilmBatch.App.Controls"
+             xmlns:l="using:FilmBatch.App.Localization"
+             xmlns:p="using:FilmBatch.Core.Params"
+             x:Class="FilmBatch.App.Views.InspectorView"
+             x:DataType="vm:InspectorViewModel">
+  <!-- 照片資訊（固定在頂部）＋ 模組捲動區（計畫書 2.4.5） -->
+  <DockPanel>
+    <Border DockPanel.Dock="Top" Classes="panel-header" Padding="8">
+      <Panel>
+        <TextBlock Classes="secondary" Text="{l:Tr Inspector.NoPhoto}" IsVisible="{Binding !HasPhoto}" />
+        <StackPanel Spacing="6" IsVisible="{Binding HasPhoto}">
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBlock Text="{Binding FileName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+            <TextBlock Grid.Column="1" Classes="secondary small numeric" Text="{Binding Dimensions}" VerticalAlignment="Center" />
+          </Grid>
+          <Grid ColumnDefinitions="Auto,*">
+            <TextBlock Text="{l:Tr Inspector.Preset}" VerticalAlignment="Center" Margin="0,0,8,0" />
+            <ComboBox Grid.Column="1" HorizontalAlignment="Stretch" ItemsSource="{Binding PresetOptions}" SelectedItem="{Binding SelectedPreset}">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:PresetItemViewModel">
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Border Classes="color-label" Background="{Binding ColorBrush}" />
+                    <TextBlock Text="{Binding Name}" />
+                  </StackPanel>
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+          </Grid>
+          <WrapPanel Orientation="Horizontal">
+            <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,0,8,0" VerticalAlignment="Center">
+              <Ellipse Classes="override-dot" IsVisible="{Binding HasOverrides}" />
+              <TextBlock Classes="small" Text="{Binding OverrideText}" VerticalAlignment="Center" />
+            </StackPanel>
+            <Button Name="ResetButton" Content="{l:Tr Inspector.ResetPhoto}" Margin="0,2,4,2" Padding="6,2" />
+            <Button Name="CreateButton" Content="{l:Tr Inspector.CreatePreset}" Margin="0,2,4,2" Padding="6,2" />
+            <Button Name="UpdateButton" Content="{l:Tr Inspector.UpdatePreset}" Margin="0,2,4,2" Padding="6,2" IsEnabled="{Binding HasOverrides}" />
+          </WrapPanel>
+        </StackPanel>
+      </Panel>
+    </Border>
+    <CheckBox DockPanel.Dock="Bottom" Margin="8,2" Content="{l:Tr Inspector.HideDisabled}" IsChecked="{Binding HideDisabledModules}" />
+
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled" IsEnabled="{Binding HasPhoto}">
+      <ItemsControl ItemsSource="{Binding Groups}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:ModuleGroupViewModel">
+            <StackPanel>
+              <!-- 分組標題可整組折疊 -->
+              <ToggleButton Classes="chevron" IsChecked="{Binding IsExpanded}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Padding="6,6,6,4">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <Panel>
+                    <PathIcon Classes="collapsed" Data="{StaticResource Icon.ChevronRight}" />
+                    <PathIcon Classes="expanded" Data="{StaticResource Icon.ChevronDown}" />
+                  </Panel>
+                  <TextBlock Classes="group-title" Text="{Binding Label}" />
+                </StackPanel>
+              </ToggleButton>
+              <ItemsControl ItemsSource="{Binding Modules}" IsVisible="{Binding IsExpanded}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:ModuleSectionViewModel">
+                    <c:ModuleSection Header="{Binding Label}" IsVisible="{Binding IsVisible}"
+                                     IsExpanded="{Binding IsExpanded}" IsModuleEnabled="{Binding IsModuleEnabled}"
+                                     OverrideCount="{Binding OverrideCount}">
+                      <c:ModuleSection.HeaderFlyout>
+                        <MenuFlyout>
+                          <MenuItem Header="{l:Tr Inspector.ResetModule}" Command="{Binding ResetModuleCommand}" />
+                          <MenuItem Header="{l:Tr Inspector.CopyModule}" Command="{Binding CopyModuleOnlyCommand}" />
+                        </MenuFlyout>
+                      </c:ModuleSection.HeaderFlyout>
+                      <ItemsControl ItemsSource="{Binding Params}">
+                        <ItemsControl.DataTemplates>
+                          <DataTemplate DataType="vm:SliderParamViewModel">
+                            <c:ParamRow />
+                          </DataTemplate>
+                          <DataTemplate DataType="vm:ChoiceParamViewModel">
+                            <Grid ColumnDefinitions="10,96,*" Height="28">
+                              <Ellipse Classes="override-dot" IsVisible="{Binding IsOverridden}" HorizontalAlignment="Left" />
+                              <TextBlock Grid.Column="1" Classes="param-name" Classes.overridden="{Binding IsOverridden}" Text="{Binding Label}" VerticalAlignment="Center" />
+                              <ComboBox Grid.Column="2" HorizontalAlignment="Stretch" Margin="4,0,0,0" VerticalAlignment="Center"
+                                        ItemsSource="{Binding Options}" SelectedItem="{Binding Selected}"
+                                        DisplayMemberBinding="{Binding Label, x:DataType=p:ChoiceOption}" />
+                            </Grid>
+                          </DataTemplate>
+                          <DataTemplate DataType="vm:ToggleParamViewModel">
+                            <Grid ColumnDefinitions="10,96,*" Height="28">
+                              <Ellipse Classes="override-dot" IsVisible="{Binding IsOverridden}" HorizontalAlignment="Left" />
+                              <TextBlock Grid.Column="1" Classes="param-name" Classes.overridden="{Binding IsOverridden}" Text="{Binding Label}" VerticalAlignment="Center" />
+                              <CheckBox Grid.Column="2" IsChecked="{Binding Value}" Margin="4,0,0,0" />
+                            </Grid>
+                          </DataTemplate>
+                          <DataTemplate DataType="vm:TextParamViewModel">
+                            <Grid ColumnDefinitions="10,96,*" Height="28">
+                              <Ellipse Classes="override-dot" IsVisible="{Binding IsOverridden}" HorizontalAlignment="Left" />
+                              <TextBlock Grid.Column="1" Classes="param-name" Classes.overridden="{Binding IsOverridden}" Text="{Binding Label}" VerticalAlignment="Center" />
+                              <TextBox Grid.Column="2" Text="{Binding Value}" Margin="4,0,0,0" VerticalAlignment="Center" PlaceholderText="相對路徑" />
+                            </Grid>
+                          </DataTemplate>
+                        </ItemsControl.DataTemplates>
+                      </ItemsControl>
+                    </c:ModuleSection>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </ScrollViewer>
+  </DockPanel>
+</UserControl>

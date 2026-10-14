@@ -1,0 +1,136 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:FilmBatch.App.ViewModels"
+        xmlns:v="using:FilmBatch.App.Views"
+        xmlns:l="using:FilmBatch.App.Localization"
+        xmlns:dock="using:Dock.Avalonia.Controls"
+        x:Class="FilmBatch.App.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Title="{Binding WindowTitle}"
+        MinWidth="1280" MinHeight="800" Width="1440" Height="900"
+        WindowStartupLocation="CenterScreen"
+        Icon="avares://FilmBatch/Assets/icon.ico"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaTitleBarHeightHint="36">
+  <!-- 主視窗（計畫書 2.3）：標題列＋選單｜工具列｜Dock（左預設庫、中預覽、右模組、下縮圖列）｜狀態列 -->
+  <DockPanel>
+    <!-- ───── 標題列與選單列合一：圖示｜選單｜標題（拖曳區）｜系統按鈕保留區 ───── -->
+    <Grid DockPanel.Dock="Top" Name="TitleBar" Height="36" ColumnDefinitions="Auto,Auto,*,Auto"
+          Background="{DynamicResource FB.WindowBrush}" IsVisible="{Binding !IsFullScreen}">
+      <Image Grid.Column="0" Name="TitleIcon" Source="avares://FilmBatch/Assets/icon.ico" Width="18" Height="18" Margin="10,0,4,0"
+             VerticalAlignment="Center" IsHitTestVisible="False" />
+      <!-- 空白處為原生標題列拖曳區（拖曳移動、雙擊最大化、Windows 貼齊版面） -->
+      <Border Grid.Column="2" Name="TitleDragArea" Background="Transparent" WindowDecorationProperties.ElementRole="TitleBar">
+        <TextBlock Text="{Binding WindowTitle}" Classes="secondary" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center"
+                   TextTrimming="CharacterEllipsis" Margin="12,0" IsHitTestVisible="False" />
+      </Border>
+      <!-- 系統的最小化／最大化／關閉按鈕所在位置（由程式依平台設定寬度） -->
+      <Border Grid.Column="3" Name="CaptionButtonsSpace" Width="138" Background="Transparent" WindowDecorationProperties.ElementRole="TitleBar" />
+    <Menu Grid.Column="1" Name="MainMenu" VerticalAlignment="Center" Background="Transparent">
+      <MenuItem Header="{l:Tr Menu.File}">
+        <MenuItem Header="{l:Tr Cmd.OpenFolder}" Command="{Binding OpenFolderCommand}" InputGesture="Ctrl+O" />
+        <MenuItem Header="{l:Tr Cmd.OpenSamples}" Command="{Binding OpenSamplesCommand}" />
+        <Separator />
+        <MenuItem Header="{l:Tr Cmd.Export}" Command="{Binding ExportCommand}" InputGesture="Ctrl+E" />
+        <Separator />
+        <MenuItem Header="{l:Tr Cmd.Preferences}" Command="{Binding PreferencesCommand}" />
+        <Separator />
+        <MenuItem Header="{l:Tr Cmd.Exit}" Name="ExitItem" />
+      </MenuItem>
+      <MenuItem Header="{l:Tr Menu.Edit}">
+        <MenuItem Header="{l:Tr Cmd.Undo}" Command="{Binding UndoCommand}" InputGesture="Ctrl+Z" />
+        <MenuItem Header="{l:Tr Cmd.Redo}" Command="{Binding RedoCommand}" InputGesture="Ctrl+Shift+Z" />
+        <Separator />
+        <MenuItem Header="{l:Tr Cmd.Copy}" Command="{Binding CopyCommand}" InputGesture="Ctrl+C" />
+        <MenuItem Header="{l:Tr Cmd.Paste}" Command="{Binding PasteCommand}" InputGesture="Ctrl+V" />
+        <MenuItem Header="{l:Tr Cmd.PastePresetOnly}" Command="{Binding PastePresetOnlyCommand}" />
+        <MenuItem Header="{l:Tr Cmd.PasteSpecial}" Command="{Binding PasteSpecialCommand}" InputGesture="Ctrl+Shift+V" />
+        <Separator />
+        <MenuItem Header="{l:Tr Cmd.SelectAll}" Command="{Binding SelectAllCommand}" InputGesture="Ctrl+A" />
+      </MenuItem>
+      <MenuItem Header="{l:Tr Menu.View}">
+        <MenuItem Header="{l:Tr Cmd.SplitCompare}" Command="{Binding ToggleSplitCommand}" InputGesture="Y" />
+        <MenuItem Header="{l:Tr Cmd.ZoomFit}" Command="{Binding ZoomFitCommand}" InputGesture="Ctrl+D0" />
+        <MenuItem Header="{l:Tr Cmd.Zoom100}" Command="{Binding Zoom100Command}" InputGesture="Ctrl+D1" />
+        <Separator />
+        <MenuItem Header="{l:Tr Cmd.TogglePanels}" Command="{Binding TogglePanelsCommand}" InputGesture="Tab" />
+        <MenuItem Header="{l:Tr Cmd.FullScreen}" Command="{Binding ToggleFullScreenCommand}" InputGesture="F" />
+        <MenuItem Header="{l:Tr Cmd.ResetLayout}" Command="{Binding ResetLayoutCommand}" />
+        <Separator />
+        <MenuItem Header="{l:Tr Cmd.Gallery}" Command="{Binding ShowGalleryCommand}" />
+      </MenuItem>
+      <MenuItem Header="{l:Tr Menu.Presets}">
+        <MenuItem Header="{l:Tr Cmd.CreatePreset}" Command="{Binding CreatePresetCommand}" />
+        <MenuItem Header="{l:Tr Cmd.ManagePresets}" Command="{Binding ManagePresetsCommand}" />
+      </MenuItem>
+    </Menu>
+    </Grid>
+
+    <!-- ───── 工具列 ───── -->
+    <Border DockPanel.Dock="Top" Classes="toolbar" IsVisible="{Binding !IsFullScreen}">
+      <StackPanel Orientation="Horizontal">
+        <Button Classes="tool" Command="{Binding OpenFolderCommand}" ToolTip.Tip="開啟資料夾（Ctrl+O）"><PathIcon Data="{StaticResource Icon.Open}" /></Button>
+        <Separator Classes="vertical" />
+        <Button Classes="tool" Command="{Binding UndoCommand}" ToolTip.Tip="復原（Ctrl+Z）"><PathIcon Data="{StaticResource Icon.Undo}" /></Button>
+        <Button Classes="tool" Command="{Binding RedoCommand}" ToolTip.Tip="重做（Ctrl+Shift+Z）"><PathIcon Data="{StaticResource Icon.Redo}" /></Button>
+        <Separator Classes="vertical" />
+        <Button Classes="tool" Command="{Binding CopyCommand}" ToolTip.Tip="複製設定（Ctrl+C）"><PathIcon Data="{StaticResource Icon.Copy}" /></Button>
+        <Button Classes="tool" Command="{Binding PasteCommand}" ToolTip.Tip="貼上（Ctrl+V）"><PathIcon Data="{StaticResource Icon.Paste}" /></Button>
+        <Button Classes="tool" Command="{Binding PasteSpecialCommand}" ToolTip.Tip="選擇性貼上（Ctrl+Shift+V）"><PathIcon Data="{StaticResource Icon.PasteSpecial}" /></Button>
+        <Separator Classes="vertical" />
+        <ToggleButton Classes="tool" IsChecked="{Binding Preview.IsSplit}" ToolTip.Tip="原圖對比：按住空白鍵；Y 切換左右分割"><PathIcon Data="{StaticResource Icon.Compare}" /></ToggleButton>
+        <Button Classes="tool" Command="{Binding ZoomFitCommand}" ToolTip.Tip="符合視窗（Ctrl+0）"><PathIcon Data="{StaticResource Icon.ZoomFit}" /></Button>
+        <Button Classes="tool" Command="{Binding Zoom100Command}" ToolTip.Tip="100%（Ctrl+1）"><PathIcon Data="{StaticResource Icon.Zoom100}" /></Button>
+        <Separator Classes="vertical" />
+        <Button Classes="tool" Command="{Binding ExportCommand}" ToolTip.Tip="匯出（Ctrl+E）"><PathIcon Data="{StaticResource Icon.Export}" /></Button>
+        <Button Classes="tool" Command="{Binding PreferencesCommand}" ToolTip.Tip="偏好設定"><PathIcon Data="{StaticResource Icon.Settings}" /></Button>
+      </StackPanel>
+    </Border>
+
+    <!-- ───── 狀態列：算圖狀態｜GPU 介面卡｜縮放比例｜選取數量｜背景工作進度 ───── -->
+    <Border DockPanel.Dock="Bottom" Classes="statusbar" IsVisible="{Binding !IsFullScreen}">
+      <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto,Auto" Margin="8,0">
+        <TextBlock Grid.Column="0" Classes="numeric" Text="{Binding LastRenderText}" Margin="0,0,16,0" ToolTip.Tip="最近一次預覽算圖時間" />
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
+          <PathIcon Data="{StaticResource Icon.Warning}" Width="11" Height="11" Foreground="{DynamicResource FB.WarningTextBrush}" IsVisible="{Binding IsSoftwareGpu}" />
+          <TextBlock Text="{Binding GpuName}" Classes.warning="{Binding IsSoftwareGpu}" />
+        </StackPanel>
+        <TextBlock Grid.Column="3" Classes="numeric" Text="{Binding Preview.ZoomText}" Margin="16,0" />
+        <TextBlock Grid.Column="4" Text="{Binding SelectionText}" Margin="16,0" />
+        <Button Grid.Column="5" Classes="icon" Padding="4,0" Background="Transparent">
+          <TextBlock Text="{Binding BackgroundText}" />
+          <Button.Flyout>
+            <Flyout>
+              <StackPanel Width="260" Spacing="4">
+                <TextBlock FontWeight="SemiBold" Text="背景工作" />
+                <TextBlock Classes="small" Text="{Binding BackgroundText}" />
+                <TextBlock Classes="small secondary" Text="匯出佇列於 M7 加入" />
+              </StackPanel>
+            </Flyout>
+          </Button.Flyout>
+        </Button>
+      </Grid>
+    </Border>
+
+    <!-- ───── 主區域 ───── -->
+    <Panel>
+      <dock:DockControl Name="DockHost" InitializeLayout="False" InitializeFactory="True" IsVisible="{Binding !PanelsHidden}">
+        <dock:DockControl.DataTemplates>
+          <v:DockViewLocator />
+        </dock:DockControl.DataTemplates>
+      </dock:DockControl>
+      <!-- Tab 隱藏所有面板時只顯示預覽 -->
+      <v:PreviewView DataContext="{Binding Preview}" IsVisible="{Binding $parent[Window].((vm:MainWindowViewModel)DataContext).PanelsHidden}" />
+
+      <!-- ToastBar：狀態列上方的非阻斷提示 -->
+      <Border Classes="toast" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,16"
+              IsVisible="{Binding Toast.IsVisible}">
+        <StackPanel Orientation="Horizontal" Spacing="12">
+          <TextBlock Text="{Binding Toast.Message}" VerticalAlignment="Center" Foreground="{DynamicResource FB.ToolTipTextBrush}" />
+          <Button Content="{l:Tr Toast.Undo}" Command="{Binding Toast.UndoCommand}" IsVisible="{Binding Toast.CanUndo}"
+                  Background="Transparent" BorderThickness="0" Foreground="{DynamicResource FB.LinkBrush}" Padding="4,0" />
+        </StackPanel>
+      </Border>
+    </Panel>
+  </DockPanel>
+</Window>

@@ -1,0 +1,320 @@
+<!--
+  自訂元件與 Fluent 控制項的樣式（計畫書 2.2.1）。集中於此、最後載入，不散落在各 View。
+  - Fluent 控制項偏大（觸控友善）：統一縮小 Slider / NumericUpDown / ComboBox / TextBox 以符合 28px 參數列。
+  - 模組停用時內容淡化但仍可調整：以 .module-disabled class + Opacity 實作（不用 IsEnabled=false）。
+-->
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:c="using:FilmBatch.App.Controls">
+
+  <Styles.Resources>
+    <ResourceDictionary>
+      <!-- Fluent 尺寸資源 -->
+      <x:Double x:Key="TextControlThemeMinHeight">24</x:Double>
+      <Thickness x:Key="TextControlThemePadding">6,2,6,2</Thickness>
+      <x:Double x:Key="SliderHorizontalHeight">24</x:Double>
+      <x:Double x:Key="SliderHorizontalThumbWidth">12</x:Double>
+      <x:Double x:Key="SliderHorizontalThumbHeight">12</x:Double>
+      <x:Double x:Key="SliderTrackThemeHeight">3</x:Double>
+      <Thickness x:Key="SliderTopHeaderMargin">0</Thickness>
+      <x:Double x:Key="ComboBoxMinHeight">24</x:Double>
+      <Thickness x:Key="ComboBoxPadding">8,2,0,2</Thickness>
+      <x:Double x:Key="MenuFlyoutThemeMinHeight">24</x:Double>
+
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceInclude Source="avares://FilmBatch/Themes/Icons.axaml" />
+      </ResourceDictionary.MergedDictionaries>
+    </ResourceDictionary>
+  </Styles.Resources>
+
+  <!-- ───── 視窗 ───── -->
+  <Style Selector="Window">
+    <Setter Property="Background" Value="{DynamicResource FB.WindowBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource FB.TextBrush}" />
+    <Setter Property="FontSize" Value="13" />
+  </Style>
+
+  <!-- ───── 標題列與選單列合一 ─────
+       主視窗把內容延伸進標題列（ExtendClientAreaToDecorationsHint），自行在同一列顯示選單與標題；
+       隱藏 Fluent 繪製的標題文字，只保留系統按鈕。對話框使用原生標題列，不受影響。 -->
+  <Style Selector=":is(Control)#PART_TitleTextPanel">
+    <Setter Property="IsVisible" Value="False" />
+  </Style>
+
+  <!-- ───── 數值欄位：等寬數字 ───── -->
+  <Style Selector="TextBlock.numeric">
+    <Setter Property="FontFeatures" Value="+tnum" />
+  </Style>
+  <Style Selector="NumericUpDown">
+    <Setter Property="FontFeatures" Value="+tnum" />
+  </Style>
+  <Style Selector="NumericUpDown">
+    <Setter Property="MinHeight" Value="24" />
+    <Setter Property="Height" Value="24" />
+    <Setter Property="ShowButtonSpinner" Value="False" />
+    <Setter Property="HorizontalContentAlignment" Value="Right" />
+    <Setter Property="Background" Value="{DynamicResource FB.BaseBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource FB.BorderBrush}" />
+  </Style>
+  <Style Selector="NumericUpDown /template/ TextBox">
+    <Setter Property="MinHeight" Value="24" />
+    <Setter Property="Padding" Value="4,2" />
+  </Style>
+  <Style Selector="ComboBox">
+    <Setter Property="MinHeight" Value="24" />
+    <Setter Property="Padding" Value="8,2,0,2" />
+    <Setter Property="Background" Value="{DynamicResource FB.BaseBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource FB.BorderBrush}" />
+  </Style>
+  <Style Selector="TextBox">
+    <Setter Property="Background" Value="{DynamicResource FB.BaseBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource FB.BorderBrush}" />
+  </Style>
+  <Style Selector="CheckBox">
+    <Setter Property="MinHeight" Value="24" />
+  </Style>
+
+  <!-- ───── 按鈕（一般按鈕沿用 Fluent，其背景已由 SystemBaseLowColor 對應到 FB.ButtonBrush；
+         不設全域 Padding，否則 Dock 標題列的小按鈕圖示會被擠掉） ───── -->
+  <Style Selector="Button.accent">
+    <Setter Property="Background" Value="{DynamicResource FB.AccentBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource FB.AccentTextBrush}" />
+  </Style>
+  <Style Selector="Button.accent:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource SystemAccentColorLight1}" />
+    <Setter Property="Foreground" Value="{DynamicResource FB.AccentTextBrush}" />
+  </Style>
+  <!-- 工具列按鈕：只有圖示、透明背景 -->
+  <Style Selector="Button.tool, ToggleButton.tool">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="6" />
+    <Setter Property="Margin" Value="1,0" />
+  </Style>
+  <Style Selector="Button.tool PathIcon, ToggleButton.tool PathIcon">
+    <Setter Property="Width" Value="18" />
+    <Setter Property="Height" Value="18" />
+    <Setter Property="Foreground" Value="{DynamicResource FB.TextBrush}" />
+  </Style>
+  <Style Selector="Button.tool:disabled PathIcon">
+    <Setter Property="Foreground" Value="{DynamicResource FB.DisabledTextBrush}" />
+  </Style>
+  <Style Selector="Button.tool:disabled /template/ ContentPresenter, Button.icon:disabled /template/ ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+  <Style Selector="ToggleButton.tool:checked /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource FB.ButtonBrush}" />
+  </Style>
+  <Style Selector="ToggleButton.tool:checked PathIcon">
+    <Setter Property="Foreground" Value="{DynamicResource FB.AccentBrush}" />
+  </Style>
+  <!-- 小型圖示按鈕（面板內） -->
+  <Style Selector="Button.icon">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="2" />
+    <Setter Property="MinHeight" Value="0" />
+  </Style>
+  <Style Selector="Button.icon PathIcon">
+    <Setter Property="Width" Value="14" />
+    <Setter Property="Height" Value="14" />
+  </Style>
+
+  <Style Selector="Separator.vertical">
+    <Setter Property="Width" Value="1" />
+    <Setter Property="Height" Value="20" />
+    <Setter Property="Margin" Value="6,0" />
+    <Setter Property="Background" Value="{DynamicResource FB.BorderLightBrush}" />
+  </Style>
+
+  <!-- ───── 文字 ───── -->
+  <Style Selector="TextBlock.secondary">
+    <Setter Property="Foreground" Value="{DynamicResource FB.PlaceholderBrush}" />
+  </Style>
+  <Style Selector="TextBlock.small">
+    <Setter Property="FontSize" Value="11" />
+  </Style>
+  <Style Selector="TextBlock.panel-title">
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Margin" Value="8,6" />
+  </Style>
+  <Style Selector="TextBlock.group-title">
+    <Setter Property="FontSize" Value="11" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{DynamicResource FB.PlaceholderBrush}" />
+  </Style>
+  <!-- 被覆寫的參數：名稱粗體 -->
+  <Style Selector="TextBlock.overridden">
+    <Setter Property="FontWeight" Value="Bold" />
+  </Style>
+  <Style Selector="TextBlock.warning">
+    <Setter Property="Foreground" Value="{DynamicResource FB.WarningTextBrush}" />
+  </Style>
+
+  <!-- ───── 標記點 ───── -->
+  <Style Selector="Ellipse.override-dot">
+    <Setter Property="Width" Value="6" />
+    <Setter Property="Height" Value="6" />
+    <Setter Property="Fill" Value="{DynamicResource FB.OverrideBrush}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+
+  <!-- ───── 參數列 ───── -->
+  <Style Selector="c|ParamRow">
+    <Setter Property="Height" Value="{StaticResource FB.ParamRowHeight}" />
+  </Style>
+  <Style Selector="c|ParamRow TextBlock.param-name">
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+  </Style>
+
+  <!-- ───── 模組區塊 ───── -->
+  <Style Selector="c|ModuleSection">
+    <Setter Property="Template">
+      <ControlTemplate>
+        <DockPanel>
+          <Border DockPanel.Dock="Top" Classes="module-header" Name="PART_Header">
+            <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto" Height="28">
+              <ToggleButton Grid.Column="0" Classes="chevron" IsChecked="{TemplateBinding IsExpanded, Mode=TwoWay}" Focusable="False">
+                <Panel>
+                  <PathIcon Classes="collapsed" Data="{StaticResource Icon.ChevronRight}" />
+                  <PathIcon Classes="expanded" Data="{StaticResource Icon.ChevronDown}" />
+                </Panel>
+              </ToggleButton>
+              <CheckBox Grid.Column="1" Name="PART_Enabled" IsChecked="{TemplateBinding IsModuleEnabled, Mode=TwoWay}" MinWidth="0" Padding="0" Margin="2,0,6,0" />
+              <ContentPresenter Grid.Column="2" Name="PART_Title" Content="{TemplateBinding Header}" VerticalAlignment="Center" Background="Transparent" />
+              <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="4" Margin="4,0" IsVisible="{TemplateBinding HasOverrides}" VerticalAlignment="Center">
+                <Ellipse Classes="override-dot" />
+                <TextBlock Classes="numeric small" Text="{TemplateBinding OverrideCount}" Foreground="{DynamicResource FB.OverrideBrush}" />
+              </StackPanel>
+              <Button Grid.Column="4" Classes="icon" Flyout="{TemplateBinding HeaderFlyout}" Margin="0,0,6,0" Focusable="False">
+                <PathIcon Data="{StaticResource Icon.More}" />
+              </Button>
+            </Grid>
+          </Border>
+          <ContentPresenter Name="PART_Content" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}"
+                            IsVisible="{TemplateBinding IsExpanded}" Padding="8,4,8,8" />
+        </DockPanel>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="c|ModuleSection /template/ Border.module-header">
+    <Setter Property="Background" Value="{DynamicResource FB.ButtonBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource FB.ShadowBrush}" />
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
+  </Style>
+  <Style Selector="c|ModuleSection /template/ Border.module-header:pointerover">
+    <Setter Property="Background" Value="{DynamicResource FB.ButtonHoverBrush}" />
+  </Style>
+  <Style Selector="c|ModuleSection:module-disabled /template/ ContentPresenter#PART_Content">
+    <Setter Property="Opacity" Value="0.45" />
+  </Style>
+  <Style Selector="c|ModuleSection:module-disabled /template/ ContentPresenter#PART_Title">
+    <Setter Property="Foreground" Value="{DynamicResource FB.DisabledTextBrush}" />
+  </Style>
+  <Style Selector="ToggleButton.chevron">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="6,0,2,0" />
+    <Setter Property="MinHeight" Value="0" />
+  </Style>
+  <Style Selector="ToggleButton.chevron PathIcon">
+    <Setter Property="Width" Value="12" />
+    <Setter Property="Height" Value="12" />
+  </Style>
+  <Style Selector="ToggleButton.chevron:checked /template/ ContentPresenter, ToggleButton.chevron:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+  <Style Selector="ToggleButton.chevron PathIcon.expanded">
+    <Setter Property="IsVisible" Value="False" />
+  </Style>
+  <Style Selector="ToggleButton.chevron:checked PathIcon.expanded">
+    <Setter Property="IsVisible" Value="True" />
+  </Style>
+  <Style Selector="ToggleButton.chevron:checked PathIcon.collapsed">
+    <Setter Property="IsVisible" Value="False" />
+  </Style>
+
+  <!-- ───── 縮圖列 ───── -->
+  <Style Selector="ListBox.filmstrip">
+    <Setter Property="Background" Value="{DynamicResource FB.BaseBrush}" />
+  </Style>
+  <Style Selector="ListBox.filmstrip ListBoxItem">
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="Margin" Value="3,4" />
+    <Setter Property="BorderThickness" Value="2" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="CornerRadius" Value="2" />
+  </Style>
+  <Style Selector="ListBox.filmstrip ListBoxItem /template/ ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+  <Style Selector="ListBox.filmstrip ListBoxItem:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="{DynamicResource FB.BorderLightBrush}" />
+  </Style>
+  <!-- 選取中：強調色 2px 外框 -->
+  <Style Selector="ListBox.filmstrip ListBoxItem:selected /template/ ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="{DynamicResource FB.AccentBrush}" />
+  </Style>
+  <Style Selector="Border.drop-target">
+    <Setter Property="BorderBrush" Value="{DynamicResource FB.AccentBrush}" />
+    <Setter Property="BorderThickness" Value="2" />
+  </Style>
+
+  <!-- ───── 預設庫 ───── -->
+  <Style Selector="TreeView.presets">
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+  <Style Selector="TreeView.presets TreeViewItem">
+    <Setter Property="MinHeight" Value="26" />
+  </Style>
+  <Style Selector="TreeView.presets TreeViewItem:selected /template/ Border#PART_LayoutRoot">
+    <Setter Property="Background" Value="{DynamicResource FB.ButtonBrush}" />
+  </Style>
+  <Style Selector="ListBox.presets ListBoxItem:selected /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource FB.ButtonBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource FB.TextBrush}" />
+  </Style>
+  <Style Selector="Border.color-label">
+    <Setter Property="Width" Value="10" />
+    <Setter Property="Height" Value="10" />
+    <Setter Property="CornerRadius" Value="2" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+
+  <!-- ───── 狀態列、提示 ───── -->
+  <Style Selector="Border.statusbar">
+    <Setter Property="Background" Value="{DynamicResource FB.AlternateBaseBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource FB.ShadowBrush}" />
+    <Setter Property="BorderThickness" Value="0,1,0,0" />
+    <Setter Property="Height" Value="24" />
+  </Style>
+  <Style Selector="Border.statusbar TextBlock">
+    <Setter Property="FontSize" Value="11" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Border.toast">
+    <Setter Property="Background" Value="{DynamicResource FB.ToolTipBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource FB.BorderLightBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="Padding" Value="12,6" />
+    <Setter Property="BoxShadow" Value="0 2 8 0 #80000000" />
+  </Style>
+  <Style Selector="Border.panel-header">
+    <Setter Property="Background" Value="{DynamicResource FB.AlternateBaseBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource FB.ShadowBrush}" />
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
+  </Style>
+  <Style Selector="Border.toolbar">
+    <Setter Property="Background" Value="{DynamicResource FB.WindowBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource FB.ShadowBrush}" />
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
+    <Setter Property="Padding" Value="6,2" />
+  </Style>
+  <Style Selector="Menu">
+    <Setter Property="Background" Value="{DynamicResource FB.WindowBrush}" />
+  </Style>
+</Styles>

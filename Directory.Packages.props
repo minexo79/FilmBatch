@@ -1,0 +1,29 @@
+<Project>
+  <!-- Central Package Management：Avalonia 與 Dock.Avalonia 必須維持同一主版本 -->
+  <PropertyGroup>
+    <AvaloniaVersion>12.1.4</AvaloniaVersion>
+    <DockVersion>12.1.0.9</DockVersion>
+    <MsExtVersion>10.0.13</MsExtVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageVersion Include="Avalonia" Version="$(AvaloniaVersion)" />
+    <PackageVersion Include="Avalonia.Desktop" Version="$(AvaloniaVersion)" />
+    <PackageVersion Include="Avalonia.Themes.Fluent" Version="$(AvaloniaVersion)" />
+    <PackageVersion Include="Avalonia.Headless.XUnit" Version="$(AvaloniaVersion)" />
+    <PackageVersion Include="Dock.Avalonia" Version="$(DockVersion)" />
+    <PackageVersion Include="Dock.Avalonia.Themes.Fluent" Version="$(DockVersion)" />
+    <PackageVersion Include="Dock.Model.Mvvm" Version="$(DockVersion)" />
+    <PackageVersion Include="Dock.Serializer.SystemTextJson" Version="$(DockVersion)" />
+    <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageVersion Include="WebGPUSharp" Version="0.5.7" />
+    <PackageVersion Include="Magick.NET-Q16-HDRI-AnyCPU" Version="14.17.2" />
+    <PackageVersion Include="System.IO.Hashing" Version="$(MsExtVersion)" />
+    <PackageVersion Include="System.CommandLine" Version="2.0.13" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="$(MsExtVersion)" />
+    <PackageVersion Include="Microsoft.Extensions.Logging" Version="$(MsExtVersion)" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
+    <PackageVersion Include="xunit.v3" Version="3.2.2" />
+    <PackageVersion Include="Avalonia.Skia" Version="$(AvaloniaVersion)" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
+  </ItemGroup>
+</Project>

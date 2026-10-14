@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="App.Title" xml:space="preserve"><value>FilmBatch</value></data>
+  <data name="Menu.File" xml:space="preserve"><value>檔案(_F)</value></data>
+  <data name="Menu.Edit" xml:space="preserve"><value>編輯(_E)</value></data>
+  <data name="Menu.View" xml:space="preserve"><value>檢視(_V)</value></data>
+  <data name="Menu.Presets" xml:space="preserve"><value>預設(_P)</value></data>
+  <data name="Menu.Help" xml:space="preserve"><value>說明(_H)</value></data>
+  <data name="Cmd.OpenFolder" xml:space="preserve"><value>開啟資料夾…</value></data>
+  <data name="Cmd.OpenSamples" xml:space="preserve"><value>開啟範例資料夾</value></data>
+  <data name="Cmd.Export" xml:space="preserve"><value>匯出…</value></data>
+  <data name="Cmd.Preferences" xml:space="preserve"><value>偏好設定…</value></data>
+  <data name="Cmd.Exit" xml:space="preserve"><value>結束</value></data>
+  <data name="Cmd.Undo" xml:space="preserve"><value>復原</value></data>
+  <data name="Cmd.Redo" xml:space="preserve"><value>重做</value></data>
+  <data name="Cmd.Copy" xml:space="preserve"><value>複製設定</value></data>
+  <data name="Cmd.Paste" xml:space="preserve"><value>貼上</value></data>
+  <data name="Cmd.PastePresetOnly" xml:space="preserve"><value>只貼預設</value></data>
+  <data name="Cmd.PasteSpecial" xml:space="preserve"><value>選擇性貼上…</value></data>
+  <data name="Cmd.SelectAll" xml:space="preserve"><value>全選</value></data>
+  <data name="Cmd.Compare" xml:space="preserve"><value>原圖對比（按住空白鍵）</value></data>
+  <data name="Cmd.SplitCompare" xml:space="preserve"><value>左右分割對比</value></data>
+  <data name="Cmd.ZoomFit" xml:space="preserve"><value>符合視窗</value></data>
+  <data name="Cmd.Zoom100" xml:space="preserve"><value>100%</value></data>
+  <data name="Cmd.TogglePanels" xml:space="preserve"><value>隱藏／顯示面板</value></data>
+  <data name="Cmd.FullScreen" xml:space="preserve"><value>全螢幕預覽</value></data>
+  <data name="Cmd.ResetLayout" xml:space="preserve"><value>重設版面</value></data>
+  <data name="Cmd.Gallery" xml:space="preserve"><value>元件展示視窗</value></data>
+  <data name="Cmd.ManagePresets" xml:space="preserve"><value>管理預設…</value></data>
+  <data name="Cmd.CreatePreset" xml:space="preserve"><value>以目前照片建立預設…</value></data>
+  <data name="Cmd.Language" xml:space="preserve"><value>語言</value></data>
+  <data name="Panel.Presets" xml:space="preserve"><value>預設庫</value></data>
+  <data name="Panel.Preview" xml:space="preserve"><value>預覽</value></data>
+  <data name="Panel.Inspector" xml:space="preserve"><value>照片資訊與模組</value></data>
+  <data name="Panel.Filmstrip" xml:space="preserve"><value>縮圖列</value></data>
+  <data name="Inspector.NoPhoto" xml:space="preserve"><value>尚未選取照片</value></data>
+  <data name="Inspector.Preset" xml:space="preserve"><value>預設</value></data>
+  <data name="Inspector.ResetPhoto" xml:space="preserve"><value>重設此張</value></data>
+  <data name="Inspector.CreatePreset" xml:space="preserve"><value>以此張建立預設</value></data>
+  <data name="Inspector.UpdatePreset" xml:space="preserve"><value>更新回預設</value></data>
+  <data name="Inspector.HideDisabled" xml:space="preserve"><value>隱藏未啟用模組</value></data>
+  <data name="Inspector.ResetModule" xml:space="preserve"><value>重設此模組</value></data>
+  <data name="Inspector.CopyModule" xml:space="preserve"><value>只複製此模組</value></data>
+  <data name="Filmstrip.All" xml:space="preserve"><value>全部</value></data>
+  <data name="Filmstrip.OverridesOnly" xml:space="preserve"><value>只顯示有覆寫</value></data>
+  <data name="Filmstrip.Unassigned" xml:space="preserve"><value>未指定預設</value></data>
+  <data name="Filmstrip.ByPreset" xml:space="preserve"><value>依預設：</value></data>
+  <data name="Presets.Apply" xml:space="preserve"><value>套用到選取照片</value></data>
+  <data name="Presets.Rename" xml:space="preserve"><value>重新命名…</value></data>
+  <data name="Presets.Color" xml:space="preserve"><value>更改色彩標籤</value></data>
+  <data name="Presets.Duplicate" xml:space="preserve"><value>複製</value></data>
+  <data name="Presets.Delete" xml:space="preserve"><value>刪除</value></data>
+  <data name="Presets.Reveal" xml:space="preserve"><value>在檔案總管中顯示</value></data>
+  <data name="Presets.Pin" xml:space="preserve"><value>釘選（數字鍵 1–9）</value></data>
+  <data name="Presets.Manage" xml:space="preserve"><value>管理…</value></data>
+  <data name="Status.NoProject" xml:space="preserve"><value>尚未開啟資料夾</value></data>
+  <data name="Status.Selected" xml:space="preserve"><value>已選取 {0} 張</value></data>
+  <data name="Status.Background" xml:space="preserve"><value>背景工作：{0}</value></data>
+  <data name="Status.Idle" xml:space="preserve"><value>就緒</value></data>
+  <data name="Status.SoftwareGpu" xml:space="preserve"><value>（軟體介面卡，效能受影響）</value></data>
+  <data name="Preview.MultiOverlay" xml:space="preserve"><value>已選取 {0} 張，調整將套用到全部</value></data>
+  <data name="Preview.Empty" xml:space="preserve"><value>開啟照片資料夾以開始（Ctrl+O）</value></data>
+  <data name="Toast.Undo" xml:space="preserve"><value>復原</value></data>
+  <data name="Dialog.OK" xml:space="preserve"><value>確定</value></data>
+  <data name="Dialog.Cancel" xml:space="preserve"><value>取消</value></data>
+  <data name="Dialog.Close" xml:space="preserve"><value>關閉</value></data>
+  <data name="Dialog.SelectAll" xml:space="preserve"><value>全選</value></data>
+  <data name="Dialog.SelectNone" xml:space="preserve"><value>全不選</value></data>
+  <data name="Dialog.ColorOnly" xml:space="preserve"><value>只選色彩類</value></data>
+  <data name="Dialog.IncludeSeeds" xml:space="preserve"><value>包含隨機種子</value></data>
+  <data name="Dialog.MirrorPositions" xml:space="preserve"><value>貼上時鏡像位置</value></data>
+  <data name="Dialog.Paste" xml:space="preserve"><value>貼上</value></data>
+  <data name="Dialog.SelectivePaste" xml:space="preserve"><value>選擇性貼上</value></data>
+  <data name="Dialog.Export" xml:space="preserve"><value>匯出</value></data>
+  <data name="Dialog.PresetManager" xml:space="preserve"><value>預設管理</value></data>
+  <data name="Dialog.Preferences" xml:space="preserve"><value>偏好設定</value></data>
+  <data name="Dialog.KeepOverrides" xml:space="preserve"><value>保留覆寫</value></data>
+  <data name="Dialog.ClearOverrides" xml:space="preserve"><value>清除覆寫</value></data>
+  <data name="Dialog.Remember" xml:space="preserve"><value>記住我的選擇</value></data>
+  <data name="Dialog.AssignTitle" xml:space="preserve"><value>指定預設</value></data>
+</root>

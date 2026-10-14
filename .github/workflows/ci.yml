@@ -1,0 +1,38 @@
+# M0：只建置 Windows。macOS / Linux 矩陣與正式發佈（計畫書 9.4）於跨平台冒煙建置時加入。
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore FilmBatch.sln
+
+      - name: Build
+        run: dotnet build FilmBatch.sln -c Release --no-restore
+
+      # runner 沒有實體 GPU：GPU 測試自動略過；UI 測試使用 Avalonia.Headless + CPU 參考算圖器
+      - name: Test
+        run: dotnet test FilmBatch.sln -c Release --no-build
+
+      # 發佈 + 冒煙測試（無 GPU 時改用 CPU 算圖，仍會驗證原生函式庫、Trimming 與視窗）
+      - name: Publish (win-x64) + smoke
+        run: dotnet run build/Build.cs -- --rid win-x64 --smoke --zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FilmBatch-win-x64
+          path: |
+            dist/FilmBatch-win-x64.zip
+            dist/smoke-win-x64.txt

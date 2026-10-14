@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    WebGPU 薄封裝：引擎只透過本專案存取 WebGPU 綁定。
+    綁定選型（M0 spike）：WebGPUSharp（Dawn）。理由與比較見 docs/adr/0001-webgpu-binding.md。
+  -->
+  <ItemGroup>
+    <PackageReference Include="WebGPUSharp" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Shaders\**\*.wgsl" LogicalName="FilmBatch.Shaders/%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

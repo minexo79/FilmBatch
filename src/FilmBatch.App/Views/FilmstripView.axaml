@@ -1,0 +1,61 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:FilmBatch.App.ViewModels"
+             xmlns:d="using:FilmBatch.App.ViewModels.Dialogs"
+             x:Class="FilmBatch.App.Views.FilmstripView"
+             x:DataType="vm:FilmstripViewModel">
+  <!-- 縮圖列（計畫書 2.4.4）：水平虛擬化；Ctrl/⌘、Shift 多選；可拖放預設到縮圖上 -->
+  <DockPanel>
+    <Border DockPanel.Dock="Top" Classes="panel-header" Padding="6,2">
+      <StackPanel Orientation="Horizontal" Spacing="6">
+        <PathIcon Data="{StaticResource Icon.Filter}" Width="12" Height="12" Foreground="{DynamicResource FB.PlaceholderBrush}" />
+        <ComboBox ItemsSource="{Binding FilterOptions}" SelectedItem="{Binding SelectedFilterOption}" MinWidth="120" />
+        <ComboBox ItemsSource="{Binding PresetOptions}" SelectedItem="{Binding FilterPreset}" MinWidth="140" PlaceholderText="選擇預設">
+          <ComboBox.ItemTemplate>
+            <DataTemplate x:DataType="vm:PresetItemViewModel">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <Border Classes="color-label" Background="{Binding ColorBrush}" />
+                <TextBlock Text="{Binding Name}" />
+              </StackPanel>
+            </DataTemplate>
+          </ComboBox.ItemTemplate>
+        </ComboBox>
+        <TextBlock Classes="secondary small numeric" Text="{Binding CountText}" VerticalAlignment="Center" Margin="6,0" />
+      </StackPanel>
+    </Border>
+    <ListBox Name="List" Classes="filmstrip" ItemsSource="{Binding Items}" Selection="{Binding Selection}"
+             SelectionMode="Multiple" DragDrop.AllowDrop="True"
+             ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Disabled">
+      <ListBox.ItemsPanel>
+        <ItemsPanelTemplate>
+          <VirtualizingStackPanel Orientation="Horizontal" />
+        </ItemsPanelTemplate>
+      </ListBox.ItemsPanel>
+      <ListBox.ItemTemplate>
+        <DataTemplate x:DataType="vm:ThumbnailViewModel">
+          <Grid Width="132" Height="92" Background="#1A1A1A" ToolTip.Tip="{Binding FileName}">
+            <Image Source="{Binding Bitmap}" Stretch="Uniform" />
+            <TextBlock Classes="secondary small" Text="…" HorizontalAlignment="Center" VerticalAlignment="Center"
+                       IsVisible="{Binding Bitmap, Converter={x:Static ObjectConverters.IsNull}}" />
+            <!-- 讀檔失敗：錯誤圖示，滑鼠停留看原因 -->
+            <PathIcon Data="{StaticResource Icon.Warning}" Width="20" Height="20" Foreground="{DynamicResource FB.ErrorBrush}"
+                      IsVisible="{Binding HasError}" ToolTip.Tip="{Binding Error}" />
+            <!-- 左下：色彩標籤 + 預設名稱縮寫 -->
+            <Border HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="3" Padding="4,1" CornerRadius="2" Background="#B01A1A1A">
+              <StackPanel Orientation="Horizontal" Spacing="4">
+                <Border Classes="color-label" Width="7" Height="7" Background="{Binding PresetBrush}" />
+                <TextBlock FontSize="10" Text="{Binding PresetLabel}" Foreground="#EAEAEA" />
+              </StackPanel>
+            </Border>
+            <!-- 右上：● 有單張覆寫、⟳ 預設已更新 -->
+            <StackPanel Orientation="Horizontal" Spacing="3" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="4">
+              <PathIcon Data="{StaticResource Icon.Sync}" Width="10" Height="10" Foreground="{DynamicResource FB.PresetUpdatedBrush}"
+                        IsVisible="{Binding PresetUpdated}" ToolTip.Tip="所用預設已更新，可同步" />
+              <Ellipse Classes="override-dot" Width="8" Height="8" IsVisible="{Binding HasOverrides}" ToolTip.Tip="有單張覆寫" />
+            </StackPanel>
+          </Grid>
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+  </DockPanel>
+</UserControl>

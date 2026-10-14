@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!-- 不可與 GUI 的 FilmBatch.exe／FilmBatch.dll 同名：Windows 與 macOS 的檔案系統不分大小寫（M0 冒煙建置發現） -->
+    <AssemblyName>filmbatch-cli</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\FilmBatch.Core\FilmBatch.Core.csproj" />
+    <ProjectReference Include="..\FilmBatch.Engine\FilmBatch.Engine.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="System.CommandLine" />
+  </ItemGroup>
+</Project>

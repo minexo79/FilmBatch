@@ -1,0 +1,23 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:FilmBatch.App.ViewModels"
+             xmlns:c="using:FilmBatch.App.Controls"
+             x:Class="FilmBatch.App.Controls.ParamRow"
+             x:DataType="vm:SliderParamViewModel">
+  <!-- 覆寫點 ● ＋ 名稱 ＋ 滑桿 ＋ 數值框（計畫書 2.5 ParamRow） -->
+  <Grid ColumnDefinitions="10,96,*,58" Height="28">
+    <Ellipse Grid.Column="0" Classes="override-dot" IsVisible="{Binding IsOverridden}" HorizontalAlignment="Left" />
+    <TextBlock Grid.Column="1" Name="NameText" Classes="param-name" Classes.overridden="{Binding IsOverridden}"
+               Text="{Binding Label}" Background="Transparent"
+               ToolTip.Tip="雙擊重設回預設值" ToolTip.ShowDelay="800" />
+    <c:ParamSlider Grid.Column="2" Name="Slider" Margin="4,0,8,0" VerticalAlignment="Center"
+                   Minimum="{Binding Minimum}" Maximum="{Binding Maximum}"
+                   SmallChange="{Binding Step}" TickFrequency="{Binding Step}"
+                   Value="{Binding Value, Mode=TwoWay}" />
+    <NumericUpDown Grid.Column="3" Value="{Binding NumericValue, Mode=TwoWay}" FormatString="{Binding FormatString}"
+                   Minimum="{Binding Minimum, Converter={x:Static c:ParamRow.ToDecimal}}"
+                   Maximum="{Binding Maximum, Converter={x:Static c:ParamRow.ToDecimal}}"
+                   Increment="{Binding Step, Converter={x:Static c:ParamRow.ToDecimal}}"
+                   VerticalAlignment="Center" />
+  </Grid>
+</UserControl>

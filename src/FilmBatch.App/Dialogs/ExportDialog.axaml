@@ -1,0 +1,53 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="using:FilmBatch.App.ViewModels.Dialogs"
+        xmlns:vm="using:FilmBatch.App.ViewModels"
+        xmlns:l="using:FilmBatch.App.Localization"
+        x:Class="FilmBatch.App.Dialogs.ExportDialog"
+        x:DataType="d:ExportViewModel"
+        Title="{l:Tr Dialog.Export}" Width="520" SizeToContent="Height" CanResize="False"
+        ShowInTaskbar="False" WindowStartupLocation="CenterOwner">
+  <!-- 匯出對話框原型（計畫書 2.8、第 10 章）：實際匯出於 M7 實作 -->
+  <StackPanel Margin="16" Spacing="10">
+    <Grid ColumnDefinitions="96,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="8">
+      <TextBlock Grid.Row="0" Text="範圍" VerticalAlignment="Center" />
+      <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Spacing="8">
+        <ComboBox ItemsSource="{Binding Scopes}" SelectedItem="{Binding SelectedScope}" MinWidth="140" />
+        <ComboBox ItemsSource="{Binding Presets}" SelectedItem="{Binding Preset}" IsVisible="{Binding IsByPreset}" MinWidth="160" />
+      </StackPanel>
+
+      <TextBlock Grid.Row="1" Text="格式" VerticalAlignment="Center" />
+      <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Spacing="8">
+        <ComboBox ItemsSource="{Binding Formats}" SelectedItem="{Binding SelectedFormat}" MinWidth="140" />
+        <TextBlock Text="品質" VerticalAlignment="Center" IsVisible="{Binding IsJpeg}" />
+        <NumericUpDown Value="{Binding Quality}" Minimum="1" Maximum="100" Width="64" IsVisible="{Binding IsJpeg}" />
+      </StackPanel>
+
+      <TextBlock Grid.Row="2" Text="尺寸" VerticalAlignment="Center" />
+      <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Spacing="8">
+        <ComboBox ItemsSource="{Binding Sizes}" SelectedItem="{Binding SelectedSize}" MinWidth="140" />
+        <NumericUpDown Value="{Binding LongEdge}" Minimum="100" Maximum="20000" Width="80" IsVisible="{Binding IsLongEdge}" />
+        <TextBlock Text="px（長邊）" VerticalAlignment="Center" IsVisible="{Binding IsLongEdge}" />
+      </StackPanel>
+
+      <TextBlock Grid.Row="3" Text="目的地" VerticalAlignment="Center" />
+      <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding Destination}" />
+
+      <TextBlock Grid.Row="4" Text="檔名範本" VerticalAlignment="Center" />
+      <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding FileNameTemplate}" PlaceholderText="{}{name}_{preset}" />
+
+      <TextBlock Grid.Row="5" Text="中繼資料" VerticalAlignment="Center" />
+      <TextBlock Grid.Row="5" Grid.Column="1" Classes="secondary" Text="保留 EXIF（方向重設為 1），嵌入 sRGB ICC" />
+    </Grid>
+    <Border Classes="panel-header" Padding="8" CornerRadius="3">
+      <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" />
+    </Border>
+    <Grid ColumnDefinitions="*,Auto">
+      <TextBlock Classes="secondary small" Text="原型：匯出管線於 M7 實作" VerticalAlignment="Center" />
+      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+        <Button Classes="accent" Content="{l:Tr Dialog.Export}" IsEnabled="False" />
+        <Button Name="CloseButton" Content="{l:Tr Dialog.Close}" IsCancel="True" />
+      </StackPanel>
+    </Grid>
+  </StackPanel>
+</Window>

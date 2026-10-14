@@ -1,0 +1,49 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="using:FilmBatch.App.ViewModels.Dialogs"
+        xmlns:l="using:FilmBatch.App.Localization"
+        x:Class="FilmBatch.App.Dialogs.PresetManagerDialog"
+        x:DataType="d:PresetManagerViewModel"
+        Title="{l:Tr Dialog.PresetManager}" Width="640" Height="460"
+        ShowInTaskbar="False" WindowStartupLocation="CenterOwner">
+  <!-- 預設管理（計畫書 2.8）：名稱、分類、色彩標籤；刪除時顯示使用中的照片數；YAML 匯入／匯出於 M2 -->
+  <DockPanel Margin="16">
+    <Grid DockPanel.Dock="Bottom" ColumnDefinitions="Auto,Auto,*,Auto" Margin="0,12,0,0">
+      <Button Content="匯入 YAML…" IsEnabled="False" ToolTip.Tip="M2 實作" Margin="0,0,6,0" />
+      <Button Grid.Column="1" Content="匯出 YAML…" IsEnabled="False" ToolTip.Tip="M2 實作" />
+      <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="8">
+        <Button Content="{l:Tr Presets.Delete}" Command="{Binding DeleteCommand}" />
+        <Button Name="CloseButton" Classes="accent" Content="{l:Tr Dialog.Close}" IsDefault="True" />
+      </StackPanel>
+    </Grid>
+    <Grid DockPanel.Dock="Top" ColumnDefinitions="24,*,140,120,96" Margin="4,0,4,4">
+      <TextBlock Grid.Column="1" Classes="group-title" Text="名稱" />
+      <TextBlock Grid.Column="2" Classes="group-title" Text="分類" />
+      <TextBlock Grid.Column="3" Classes="group-title" Text="色彩標籤" />
+      <TextBlock Grid.Column="4" Classes="group-title" Text="使用中" />
+    </Grid>
+    <ListBox ItemsSource="{Binding Rows}" SelectedItem="{Binding Selected}" Background="{DynamicResource FB.BaseBrush}">
+      <ListBox.ItemTemplate>
+        <DataTemplate x:DataType="d:PresetRowViewModel">
+          <Grid ColumnDefinitions="24,*,140,120,96" ColumnSpacing="6">
+            <Border Classes="color-label" Background="{Binding ColorBrush}" />
+            <TextBox Grid.Column="1" Text="{Binding Name}" />
+            <TextBox Grid.Column="2" Text="{Binding Category}" />
+            <ComboBox Grid.Column="3" ItemsSource="{Binding $parent[Window].((d:PresetManagerViewModel)DataContext).ColorLabels}"
+                      SelectedItem="{Binding ColorLabel}" HorizontalAlignment="Stretch">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="x:String">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <Border Classes="color-label" Background="{Binding}" />
+                    <TextBlock Text="{Binding}" FontSize="11" />
+                  </StackPanel>
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+            <TextBlock Grid.Column="4" Classes="secondary small" Text="{Binding UsersText}" VerticalAlignment="Center" />
+          </Grid>
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+  </DockPanel>
+</Window>
