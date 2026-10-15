@@ -70,6 +70,8 @@ public sealed class ExportLogEntry
     public required string Renderer { get; set; }
     public required string Status { get; set; }
     public string? Error { get; set; }
+    /// <summary>Pixels were exported, but source EXIF was omitted or reduced; null when preserved.</summary>
+    public string? MetadataWarning { get; set; }
 }
 
 public sealed class ExportLogDocument

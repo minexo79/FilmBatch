@@ -126,11 +126,12 @@ public static class BatchExporter
             try
             {
                 // 同一執行緒直接處理（算圖器親和性；GUI 端已在背景 Task 內）
-                var (w, h) = ProcessOne(job, outputs[i], options, renderer, ct);
+                var (w, h, metadataWarning) = ProcessOne(job, outputs[i], options, renderer, ct);
                 deviceName = renderer.DeviceName;
                 isSoftware |= renderer.IsSoftware;
                 outputFiles.Add(outputs[i]);
                 entries[i] = LogEntry(job, outputs[i], options, deviceName, w, h, "ok", null);
+                entries[i].MetadataWarning = metadataWarning;
             }
             catch (OperationCanceledException)
             {
@@ -188,7 +189,7 @@ public static class BatchExporter
         Error = error,
     };
 
-    private static (int Width, int Height) ProcessOne(
+    private static (int Width, int Height, string? MetadataWarning) ProcessOne(
         ExportJob job, string outputPath, ExportOptions options, IPreviewRenderer renderer, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
@@ -209,8 +210,8 @@ public static class BatchExporter
             : rendered;
 
         // 4. 編碼寫檔（原子寫入；絕不覆寫既有檔；取消時刪除未完成暫存）
-        Encode(sized, job, outputPath, options, ct);
-        return (sized.Width, sized.Height);
+        var metadataWarning = Encode(sized, job, outputPath, options, ct);
+        return (sized.Width, sized.Height, metadataWarning);
     }
 
     internal static SourceImage DownscaleLongEdge(SourceImage image, int longEdge, CancellationToken ct)
@@ -300,7 +301,7 @@ public static class BatchExporter
 
     private static ushort Clamp16(double v) => (ushort)Math.Clamp(Math.Round(v), 0, 65535);
 
-    internal static void Encode(SourceImage image, ExportJob job, string outputPath, ExportOptions options, CancellationToken ct)
+    internal static string? Encode(SourceImage image, ExportJob job, string outputPath, ExportOptions options, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
         if (File.Exists(outputPath))
@@ -313,7 +314,7 @@ public static class BatchExporter
         picture.Depth = 16;
 
         // 中繼資料：保留來源 EXIF（方向重設為 1：像素已轉正），嵌入 sRGB ICC
-        var exif = CopyExifProfile(job.SourcePath, picture);
+        var exif = CopyExifProfile(job.SourcePath, picture, out var metadataWarning);
         picture.SetProfile(ColorProfiles.SRGB);
         picture.Orientation = OrientationType.TopLeft;
 
@@ -350,6 +351,7 @@ public static class BatchExporter
                 TiffMetadata.Append(tmp, exif);
             ct.ThrowIfCancellationRequested();
             File.Move(tmp, outputPath, overwrite: false);
+            return metadataWarning;
         }
         catch
         {
@@ -361,9 +363,10 @@ public static class BatchExporter
         }
     }
 
-    private static ExifProfile CopyExifProfile(string sourcePath, MagickImage picture)
+    private static ExifProfile CopyExifProfile(string sourcePath, MagickImage picture, out string? metadataWarning)
     {
         IExifProfile? source = null;
+        metadataWarning = null;
         try
         {
             using var probe = new MagickImage();
@@ -377,9 +380,10 @@ public static class BatchExporter
             picture.SetProfile(normalized);
             return normalized;
         }
-        catch (MagickException)
+        catch (Exception ex) when (ex is MagickException or InvalidDataException or IOException or OverflowException)
         {
             // EXIF 損毀或不支援：輸出仍帶 ICC + 方向 1，不因中繼資料失敗整張
+            metadataWarning = $"{ex.GetType().Name}: {ex.Message}";
             var fresh = TiffMetadata.Normalize((IExifProfile?)null, picture.Width, picture.Height);
             picture.SetProfile((IImageProfile)fresh);
             return fresh;

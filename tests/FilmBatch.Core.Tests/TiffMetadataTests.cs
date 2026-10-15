@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.Text;
+using System.Text.Json;
 using FilmBatch.Core.Commands;
 using FilmBatch.Core.Presets;
 using FilmBatch.Core.Projects;
@@ -110,6 +111,65 @@ public sealed class TiffMetadataTests
                 Assert.Equal("2026:01:02 03:04:05", format == ExportFormat.Tiff16
                     ? output.GetAttribute("exif:DateTimeOriginal")
                     : output.GetExifProfile()?.GetValue(ExifTag.DateTimeOriginal)?.Value);
+            }
+            Assert.Equal(source, File.ReadAllBytes(path));
+        }
+        finally { Directory.Delete(folder, recursive: true); }
+    }
+
+    [Theory]
+    [InlineData("value-offset")]
+    [InlineData("unsupported-type")]
+    [InlineData("count-overflow")]
+    public async Task Export_MalformedTiffMetadata_PreservesPixelsAndRecordsMetadataLoss(string corruption)
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "filmbatch-bad-exif-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var source = Fixture(false, false);
+            var root = BinaryPrimitives.ReadUInt32LittleEndian(source.AsSpan(4));
+            var exif = DirectoryValue(source, root, 34665);
+            var date = FindField(source, exif, 36867);
+            if (corruption == "value-offset")
+                BinaryPrimitives.WriteUInt32LittleEndian(source.AsSpan(date + 8), (uint)source.Length + 4096);
+            else if (corruption == "unsupported-type")
+                BinaryPrimitives.WriteUInt16LittleEndian(source.AsSpan(date + 2), 13);
+            else
+                BinaryPrimitives.WriteUInt32LittleEndian(source.AsSpan(date + 4), uint.MaxValue);
+            var path = Path.Combine(folder, "source.tif");
+            File.WriteAllBytes(path, source);
+            using (var decoded = new MagickImage(path))
+                Assert.Equal(1u, decoded.Width);
+            using var library = new PresetLibrary(SamplePresets.Create());
+            var service = new ProjectService(Project.Open(folder, SamplePresets.Neutral), library, new CommandStack());
+            foreach (var format in new[] { ExportFormat.Png16, ExportFormat.Tiff16, ExportFormat.Jpeg })
+            {
+                var summary = await BatchExporter.RunAsync(new ExportRequest
+                {
+                    Service = service, Files = ["source.tif"],
+                    Options = new ExportOptions { Destination = Path.Combine(folder, format.ToString()), Format = format }
+                }, () => new CpuFakeRenderer(), cancellationToken: TestContext.Current.CancellationToken);
+                Assert.Equal(0, summary.Failed);
+                using var output = new MagickImage(Assert.Single(summary.OutputFiles));
+                Assert.Equal(OrientationType.TopLeft, output.Orientation);
+                Assert.Equal(ColorProfiles.SRGB.ToByteArray(), output.GetColorProfile()?.ToByteArray());
+                var raw = format == ExportFormat.Tiff16
+                    ? File.ReadAllBytes(summary.OutputFiles[0])
+                    : output.GetExifProfile()!.ToByteArray()![6..];
+                AssertInterop(raw);
+                if (format != ExportFormat.Jpeg)
+                {
+                    using var pixels = output.GetPixelsUnsafe();
+                    var rgba = pixels.ToShortArray(PixelMapping.RGBA)!;
+                    Assert.InRange((int)rgba[0], 8190, 8194);
+                    Assert.InRange((int)rgba[1], 16382, 16386);
+                    Assert.InRange((int)rgba[2], 32766, 32770);
+                }
+                using var log = JsonDocument.Parse(File.ReadAllText(Path.Combine(folder, ".filmbatch", "export_log.json")));
+                var entry = log.RootElement.GetProperty("Entries")[0];
+                Assert.Equal("ok", entry.GetProperty("Status").GetString());
+                Assert.NotNull(entry.GetProperty("MetadataWarning").GetString());
             }
             Assert.Equal(source, File.ReadAllBytes(path));
         }
