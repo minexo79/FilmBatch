@@ -19,6 +19,11 @@ public sealed class LayoutService(DockFactory factory, string? path = null)
         {
             if (File.Exists(_path) && _serializer.Deserialize<IRootDock>(File.ReadAllText(_path)) is { } saved)
             {
+                if (!DockFactory.IsCurrentLayout(saved))
+                {
+                    AppLog.Info("版面檔為舊版配置，改用預設版面");
+                    return CreateDefault();
+                }
                 factory.InitLayout(saved);
                 factory.UpdateTitles(saved);
                 return saved;

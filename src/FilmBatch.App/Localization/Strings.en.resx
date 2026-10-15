@@ -37,6 +37,7 @@
   <data name="Panel.Preview" xml:space="preserve"><value>Preview</value></data>
   <data name="Panel.Inspector" xml:space="preserve"><value>Photo &amp; Modules</value></data>
   <data name="Panel.Filmstrip" xml:space="preserve"><value>Filmstrip</value></data>
+  <data name="Panel.Export" xml:space="preserve"><value>Export</value></data>
   <data name="Inspector.NoPhoto" xml:space="preserve"><value>No photo selected</value></data>
   <data name="Inspector.Preset" xml:space="preserve"><value>Preset</value></data>
   <data name="Inspector.ResetPhoto" xml:space="preserve"><value>Reset Photo</value></data>

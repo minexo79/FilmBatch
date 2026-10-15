@@ -79,15 +79,17 @@
         </StackPanel>
         <StackPanel Grid.Column="2" Spacing="4">
           <TextBlock Classes="group-title" Text="ChoiceRow／Toggle" />
-          <Grid ColumnDefinitions="10,96,*" Height="28" DataContext="{Binding ChoiceParam}" x:DataType="vm:ChoiceParamViewModel">
-            <Ellipse Classes="override-dot" IsVisible="{Binding IsOverridden}" HorizontalAlignment="Left" />
-            <TextBlock Grid.Column="1" Classes="param-name" Classes.overridden="{Binding IsOverridden}" Text="{Binding Label}" VerticalAlignment="Center" />
-            <ComboBox Grid.Column="2" HorizontalAlignment="Stretch" ItemsSource="{Binding Options}" SelectedItem="{Binding Selected}"
+          <Grid ColumnDefinitions="*,Auto" Classes="param-line" DataContext="{Binding ChoiceParam}" x:DataType="vm:ChoiceParamViewModel">
+            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+              <TextBlock Classes="param-name" Classes.overridden="{Binding IsOverridden}" Text="{Binding Label}" />
+              <Ellipse Classes="override-dot" IsVisible="{Binding IsOverridden}" />
+            </StackPanel>
+            <ComboBox Grid.Column="1" Classes="flat" MinWidth="150" VerticalAlignment="Center" ItemsSource="{Binding Options}" SelectedItem="{Binding Selected}"
                       DisplayMemberBinding="{Binding Label, x:DataType=p:ChoiceOption}" />
           </Grid>
-          <Grid ColumnDefinitions="10,96,*" Height="28" DataContext="{Binding ToggleParam}" x:DataType="vm:ToggleParamViewModel">
-            <TextBlock Grid.Column="1" Text="{Binding Label}" VerticalAlignment="Center" />
-            <CheckBox Grid.Column="2" IsChecked="{Binding Value}" />
+          <Grid ColumnDefinitions="*,Auto" Classes="param-line" DataContext="{Binding ToggleParam}" x:DataType="vm:ToggleParamViewModel">
+            <TextBlock Classes="param-name" Text="{Binding Label}" />
+            <ToggleSwitch Grid.Column="1" Classes="compact" IsChecked="{Binding Value}" OnContent="" OffContent="" />
           </Grid>
         </StackPanel>
       </Grid>
@@ -105,28 +107,30 @@
       <!-- ───── 縮圖 ───── -->
       <StackPanel Spacing="8">
         <TextBlock Classes="group-title" Text="ThumbnailView：一般／有覆寫 ●／預設已更新 ⟳／讀檔失敗；多選（第 1、2 張選取中）" />
-        <ListBox Name="Thumbs" Classes="filmstrip" ItemsSource="{Binding Thumbnails}" SelectionMode="Multiple" Height="112">
+        <ListBox Name="Thumbs" Classes="filmstrip" ItemsSource="{Binding Thumbnails}" SelectionMode="Multiple" Height="112" CornerRadius="8">
           <ListBox.ItemsPanel>
             <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
           </ListBox.ItemsPanel>
           <ListBox.ItemTemplate>
             <DataTemplate x:DataType="vm:ThumbnailViewModel">
-              <Grid Width="132" Height="92" Background="#1A1A1A" ToolTip.Tip="{Binding FileName}">
+              <Border Classes="thumb" ToolTip.Tip="{Binding FileName}">
+              <Grid Width="128" Height="88">
                 <Image Source="{Binding Bitmap}" Stretch="Uniform" />
                 <PathIcon Data="{StaticResource Icon.Warning}" Width="20" Height="20" Foreground="{DynamicResource FB.ErrorBrush}"
                           IsVisible="{Binding HasError}" ToolTip.Tip="{Binding Error}" />
-                <Border HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="3" Padding="4,1" CornerRadius="2" Background="#B01A1A1A">
+                <Border HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="4" Padding="5,1" CornerRadius="8" Background="#B0141414">
                   <StackPanel Orientation="Horizontal" Spacing="4">
-                    <Border Classes="color-label" Width="7" Height="7" Background="{Binding PresetBrush}" />
+                    <Border Classes="color-label" Width="6" Height="6" CornerRadius="3" Background="{Binding PresetBrush}" />
                     <TextBlock FontSize="10" Text="{Binding PresetLabel}" Foreground="#EAEAEA" />
                   </StackPanel>
                 </Border>
-                <StackPanel Orientation="Horizontal" Spacing="3" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="4">
+                <StackPanel Orientation="Horizontal" Spacing="3" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="5">
                   <PathIcon Data="{StaticResource Icon.Sync}" Width="10" Height="10" Foreground="{DynamicResource FB.PresetUpdatedBrush}" IsVisible="{Binding PresetUpdated}" />
                   <Ellipse Classes="override-dot" Width="8" Height="8" IsVisible="{Binding HasOverrides}" />
                 </StackPanel>
-                <TextBlock Text="{Binding FileName}" FontSize="10" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,2" Foreground="#EAEAEA" />
+                <TextBlock Text="{Binding FileName}" FontSize="10" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,3" Foreground="#EAEAEA" />
               </Grid>
+              </Border>
             </DataTemplate>
           </ListBox.ItemTemplate>
         </ListBox>
@@ -166,7 +170,7 @@
           <TextBlock Classes="group-title" Text="PreviewCanvas：左右分割、控制點（可拖曳）、多選疊字、算圖中指示" />
           <c:PreviewCanvas Name="Canvas" Height="260" Image="{Binding Sample}" Original="{Binding SampleOriginal}"
                            IsSplit="True" SplitPosition="0.4" IsBusy="True" OverlayText="已選取 3 張，調整將套用到全部"
-                           ControlPoint="0.65,0.45" CanvasBackground="#1A1A1A" />
+                           ControlPoint="0.65,0.45" CanvasBackground="#161616" />
         </StackPanel>
       </Grid>
     </StackPanel>

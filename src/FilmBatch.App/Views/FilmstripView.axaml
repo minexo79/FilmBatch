@@ -5,12 +5,12 @@
              x:Class="FilmBatch.App.Views.FilmstripView"
              x:DataType="vm:FilmstripViewModel">
   <!-- 縮圖列（計畫書 2.4.4）：水平虛擬化；Ctrl/⌘、Shift 多選；可拖放預設到縮圖上 -->
-  <DockPanel>
-    <Border DockPanel.Dock="Top" Classes="panel-header" Padding="6,2">
-      <StackPanel Orientation="Horizontal" Spacing="6">
+  <DockPanel Background="{DynamicResource FB.WindowBrush}">
+    <Border DockPanel.Dock="Top" Padding="12,8,12,2">
+      <StackPanel Orientation="Horizontal" Spacing="8">
         <PathIcon Data="{StaticResource Icon.Filter}" Width="12" Height="12" Foreground="{DynamicResource FB.PlaceholderBrush}" />
-        <ComboBox ItemsSource="{Binding FilterOptions}" SelectedItem="{Binding SelectedFilterOption}" MinWidth="120" />
-        <ComboBox ItemsSource="{Binding PresetOptions}" SelectedItem="{Binding FilterPreset}" MinWidth="140" PlaceholderText="選擇預設">
+        <ComboBox Classes="flat" ItemsSource="{Binding FilterOptions}" SelectedItem="{Binding SelectedFilterOption}" MinWidth="120" />
+        <ComboBox Classes="flat" ItemsSource="{Binding PresetOptions}" SelectedItem="{Binding FilterPreset}" MinWidth="140" PlaceholderText="選擇預設">
           <ComboBox.ItemTemplate>
             <DataTemplate x:DataType="vm:PresetItemViewModel">
               <StackPanel Orientation="Horizontal" Spacing="6">
@@ -20,7 +20,7 @@
             </DataTemplate>
           </ComboBox.ItemTemplate>
         </ComboBox>
-        <TextBlock Classes="secondary small numeric" Text="{Binding CountText}" VerticalAlignment="Center" Margin="6,0" />
+        <TextBlock Classes="secondary small numeric" Text="{Binding CountText}" VerticalAlignment="Center" Margin="4,0" />
       </StackPanel>
     </Border>
     <ListBox Name="List" Classes="filmstrip" ItemsSource="{Binding Items}" Selection="{Binding Selection}"
@@ -33,27 +33,29 @@
       </ListBox.ItemsPanel>
       <ListBox.ItemTemplate>
         <DataTemplate x:DataType="vm:ThumbnailViewModel">
-          <Grid Width="132" Height="92" Background="#1A1A1A" ToolTip.Tip="{Binding FileName}">
-            <Image Source="{Binding Bitmap}" Stretch="Uniform" />
-            <TextBlock Classes="secondary small" Text="…" HorizontalAlignment="Center" VerticalAlignment="Center"
-                       IsVisible="{Binding Bitmap, Converter={x:Static ObjectConverters.IsNull}}" />
-            <!-- 讀檔失敗：錯誤圖示，滑鼠停留看原因 -->
-            <PathIcon Data="{StaticResource Icon.Warning}" Width="20" Height="20" Foreground="{DynamicResource FB.ErrorBrush}"
-                      IsVisible="{Binding HasError}" ToolTip.Tip="{Binding Error}" />
-            <!-- 左下：色彩標籤 + 預設名稱縮寫 -->
-            <Border HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="3" Padding="4,1" CornerRadius="2" Background="#B01A1A1A">
-              <StackPanel Orientation="Horizontal" Spacing="4">
-                <Border Classes="color-label" Width="7" Height="7" Background="{Binding PresetBrush}" />
-                <TextBlock FontSize="10" Text="{Binding PresetLabel}" Foreground="#EAEAEA" />
+          <Border Classes="thumb" ToolTip.Tip="{Binding FileName}">
+            <Grid Width="128" Height="88">
+              <Image Source="{Binding Bitmap}" Stretch="Uniform" />
+              <TextBlock Classes="secondary small" Text="…" HorizontalAlignment="Center" VerticalAlignment="Center"
+                         IsVisible="{Binding Bitmap, Converter={x:Static ObjectConverters.IsNull}}" />
+              <!-- 讀檔失敗：錯誤圖示，滑鼠停留看原因 -->
+              <PathIcon Data="{StaticResource Icon.Warning}" Width="20" Height="20" Foreground="{DynamicResource FB.ErrorBrush}"
+                        IsVisible="{Binding HasError}" ToolTip.Tip="{Binding Error}" />
+              <!-- 左下：色彩標籤 + 預設名稱縮寫 -->
+              <Border HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="4" Padding="5,1" CornerRadius="8" Background="#B0141414">
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                  <Border Classes="color-label" Width="6" Height="6" CornerRadius="3" Background="{Binding PresetBrush}" />
+                  <TextBlock FontSize="10" Text="{Binding PresetLabel}" Foreground="#EAEAEA" />
+                </StackPanel>
+              </Border>
+              <!-- 右上：● 有單張覆寫、⟳ 預設已更新 -->
+              <StackPanel Orientation="Horizontal" Spacing="3" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="5">
+                <PathIcon Data="{StaticResource Icon.Sync}" Width="10" Height="10" Foreground="{DynamicResource FB.PresetUpdatedBrush}"
+                          IsVisible="{Binding PresetUpdated}" ToolTip.Tip="所用預設已更新，可同步" />
+                <Ellipse Classes="override-dot" Width="8" Height="8" IsVisible="{Binding HasOverrides}" ToolTip.Tip="有單張覆寫" />
               </StackPanel>
-            </Border>
-            <!-- 右上：● 有單張覆寫、⟳ 預設已更新 -->
-            <StackPanel Orientation="Horizontal" Spacing="3" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="4">
-              <PathIcon Data="{StaticResource Icon.Sync}" Width="10" Height="10" Foreground="{DynamicResource FB.PresetUpdatedBrush}"
-                        IsVisible="{Binding PresetUpdated}" ToolTip.Tip="所用預設已更新，可同步" />
-              <Ellipse Classes="override-dot" Width="8" Height="8" IsVisible="{Binding HasOverrides}" ToolTip.Tip="有單張覆寫" />
-            </StackPanel>
-          </Grid>
+            </Grid>
+          </Border>
         </DataTemplate>
       </ListBox.ItemTemplate>
     </ListBox>

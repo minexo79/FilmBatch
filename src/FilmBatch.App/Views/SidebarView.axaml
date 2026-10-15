@@ -1,0 +1,33 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:FilmBatch.App.ViewModels"
+             xmlns:v="using:FilmBatch.App.Views"
+             xmlns:l="using:FilmBatch.App.Localization"
+             x:Class="FilmBatch.App.Views.SidebarView"
+             x:DataType="vm:SidebarViewModel">
+  <!-- 右側邊欄：內容區｜外緣圖示工具列（預設庫、照片資訊與模組、照片匯出）。三個分頁常駐，只切換顯示。 -->
+  <Grid ColumnDefinitions="*,Auto">
+    <Panel Grid.Column="0">
+      <Panel IsVisible="{Binding IsPresets}"><v:PresetLibraryView DataContext="{Binding Presets}" /></Panel>
+      <Panel IsVisible="{Binding IsInspector}"><v:InspectorView DataContext="{Binding Inspector}" /></Panel>
+      <Panel IsVisible="{Binding IsExport}"><v:ExportPanelView DataContext="{Binding Export}" /></Panel>
+    </Panel>
+
+    <Border Grid.Column="1" Classes="tab-rail">
+      <StackPanel Spacing="4">
+        <RadioButton Classes="rail" GroupName="SidebarTabs" IsChecked="{Binding IsPresets}"
+                     ToolTip.Tip="{l:Tr Panel.Presets}" ToolTip.Placement="Left">
+          <PathIcon Data="{StaticResource Icon.Presets}" />
+        </RadioButton>
+        <RadioButton Classes="rail" GroupName="SidebarTabs" IsChecked="{Binding IsInspector}"
+                     ToolTip.Tip="{l:Tr Panel.Inspector}" ToolTip.Placement="Left">
+          <PathIcon Data="{StaticResource Icon.Settings}" />
+        </RadioButton>
+        <RadioButton Classes="rail" GroupName="SidebarTabs" IsChecked="{Binding IsExport}"
+                     ToolTip.Tip="{l:Tr Panel.Export}" ToolTip.Placement="Left">
+          <PathIcon Data="{StaticResource Icon.Export}" />
+        </RadioButton>
+      </StackPanel>
+    </Border>
+  </Grid>
+</UserControl>

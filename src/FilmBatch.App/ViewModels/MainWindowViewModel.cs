@@ -33,6 +33,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     public PresetLibraryViewModel Presets { get; }
     public FilmstripViewModel Filmstrip { get; }
     public InspectorViewModel Inspector { get; }
+    public SidebarViewModel Sidebar { get; }
     public PreviewViewModel Preview { get; }
     public ToastViewModel Toast { get; }
 
@@ -89,6 +90,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         Presets = new PresetLibraryViewModel(this);
         Filmstrip = new FilmstripViewModel(this);
         Inspector = new InspectorViewModel(this);
+        Sidebar = new SidebarViewModel(Presets, Inspector, new ExportViewModel(this));
         Preview.SetBackground(settings.PreviewBackground);
 
         Stack.Changed += (_, _) =>
@@ -172,6 +174,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         SelectionText = Service is null ? Loc.Get("Status.NoProject") : Loc.Format("Status.Selected", selection.Count);
         OnPropertyChanged(nameof(HasSelection));
         Inspector.Refresh();
+        if (Sidebar.IsExport) Sidebar.Export.Refresh();
         _ = LoadPreviewAsync();
         NotifyCommands();
     }
@@ -231,6 +234,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     {
         Presets.Rebuild();
         Inspector.RefreshPresetOptions();
+        if (Sidebar.IsExport) Sidebar.Export.Refresh();
         if (Service is null) return;
         // 預設內容改變：所有使用者自動同步（未覆寫的欄位）
         var all = Service.Project.FileNames;
@@ -425,8 +429,14 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private Task Preferences() => Dialogs.ShowPreferencesAsync(new PreferencesViewModel(this));
 
+    /// <summary>切換到側邊欄的「照片匯出」分頁（Ctrl+E、檔案 → 匯出）。</summary>
     [RelayCommand]
-    private Task Export() => Dialogs.ShowExportAsync(new ExportViewModel(this));
+    private void Export()
+    {
+        IsFullScreen = false;
+        PanelsHidden = false;
+        Sidebar.Active = SidePanel.Export;
+    }
 
     /// <summary>偏好設定變更預覽背景。</summary>
     public void ApplyPreviewBackground(PreviewBackground bg)

@@ -46,7 +46,6 @@ public sealed class FakeDialogs : IDialogService
         return Task.FromResult(OnSelectivePaste is not null);
     }
 
-    public Task ShowExportAsync(ExportViewModel vm) => Task.CompletedTask;
     public Task ShowPresetManagerAsync(PresetManagerViewModel vm) => Task.CompletedTask;
     public Task ShowPreferencesAsync(PreferencesViewModel vm) => Task.CompletedTask;
     public Task<bool> ConfirmAsync(string title, string message, string confirmText) => Task.FromResult(ConfirmAnswer);

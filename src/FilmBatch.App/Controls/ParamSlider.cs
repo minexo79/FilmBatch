@@ -19,6 +19,9 @@ public class ParamSlider : Slider
 {
     private const double FineFactor = 0.1;
 
+    /// <summary>滑桿圓鈕半徑（與 Controls.axaml 的 SliderHorizontalThumbWidth 一致）。</summary>
+    private const double ThumbHalf = 7;
+
     private bool _dragging;
     private double _dragStartValue;
     private double _dragStartX;
@@ -44,9 +47,9 @@ public class ParamSlider : Slider
         AddHandler(PointerCaptureLostEvent, (_, _) => EndDrag(), RoutingStrategies.Tunnel);
     }
 
-    private double TrackWidth => Math.Max(1, Bounds.Width - 12);
+    private double TrackWidth => Math.Max(1, Bounds.Width - 2 * ThumbHalf);
 
-    private double ValueAt(double x) => Minimum + Math.Clamp((x - 6) / TrackWidth, 0, 1) * (Maximum - Minimum);
+    private double ValueAt(double x) => Minimum + Math.Clamp((x - ThumbHalf) / TrackWidth, 0, 1) * (Maximum - Minimum);
 
     private void OnPressed(object? sender, PointerPressedEventArgs e)
     {

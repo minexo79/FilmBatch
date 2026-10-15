@@ -1,0 +1,73 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="using:FilmBatch.App.ViewModels.Dialogs"
+             xmlns:l="using:FilmBatch.App.Localization"
+             x:Class="FilmBatch.App.Views.ExportPanelView"
+             x:DataType="d:ExportViewModel">
+  <!-- 照片匯出分頁（計畫書 2.8、第 10 章）：欄位直向排列以配合側邊欄寬度；實際匯出於 M7 實作 -->
+  <DockPanel Background="{DynamicResource FB.PanelBrush}">
+    <Border DockPanel.Dock="Top" Classes="panel-header">
+      <TextBlock Classes="panel-title" Text="{l:Tr Panel.Export}" />
+    </Border>
+
+    <!-- 底部：摘要＋主要動作 -->
+    <Border DockPanel.Dock="Bottom" BorderBrush="{DynamicResource FB.DividerBrush}" BorderThickness="0,1,0,0" Padding="16,12">
+      <StackPanel Spacing="10">
+        <Border Classes="summary-card">
+          <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" />
+        </Border>
+        <Button Classes="accent pill" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="False">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <PathIcon Data="{StaticResource Icon.Export}" Width="14" Height="14" />
+            <TextBlock Text="{l:Tr Dialog.Export}" VerticalAlignment="Center" />
+          </StackPanel>
+        </Button>
+        <TextBlock Classes="secondary small" Text="原型：匯出管線於 M7 實作" HorizontalAlignment="Center" />
+      </StackPanel>
+    </Border>
+
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+      <StackPanel Margin="16,8,16,16" Spacing="18">
+        <StackPanel Classes="field">
+          <TextBlock Classes="field-label" Text="範圍" />
+          <ComboBox Classes="flat" HorizontalAlignment="Stretch" ItemsSource="{Binding Scopes}" SelectedItem="{Binding SelectedScope}" />
+          <ComboBox Classes="flat" HorizontalAlignment="Stretch" ItemsSource="{Binding Presets}" SelectedItem="{Binding Preset}"
+                    IsVisible="{Binding IsByPreset}" PlaceholderText="選擇預設" />
+        </StackPanel>
+
+        <StackPanel Classes="field">
+          <TextBlock Classes="field-label" Text="格式" />
+          <ComboBox Classes="flat" HorizontalAlignment="Stretch" ItemsSource="{Binding Formats}" SelectedItem="{Binding SelectedFormat}" />
+          <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding IsJpeg}">
+            <TextBlock Classes="param-name" Text="品質" />
+            <NumericUpDown Grid.Column="1" Value="{Binding Quality}" Minimum="1" Maximum="100" Width="72" />
+          </Grid>
+        </StackPanel>
+
+        <StackPanel Classes="field">
+          <TextBlock Classes="field-label" Text="尺寸" />
+          <ComboBox Classes="flat" HorizontalAlignment="Stretch" ItemsSource="{Binding Sizes}" SelectedItem="{Binding SelectedSize}" />
+          <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding IsLongEdge}">
+            <TextBlock Classes="param-name" Text="長邊（px）" />
+            <NumericUpDown Grid.Column="1" Value="{Binding LongEdge}" Minimum="100" Maximum="20000" Width="88" />
+          </Grid>
+        </StackPanel>
+
+        <StackPanel Classes="field">
+          <TextBlock Classes="field-label" Text="目的地" />
+          <TextBox Text="{Binding Destination}" />
+        </StackPanel>
+
+        <StackPanel Classes="field">
+          <TextBlock Classes="field-label" Text="檔名範本" />
+          <TextBox Text="{Binding FileNameTemplate}" PlaceholderText="{}{name}_{preset}" />
+        </StackPanel>
+
+        <StackPanel Classes="field">
+          <TextBlock Classes="field-label" Text="中繼資料" />
+          <TextBlock Classes="secondary small" Text="保留 EXIF（方向重設為 1），嵌入 sRGB ICC" TextWrapping="Wrap" />
+        </StackPanel>
+      </StackPanel>
+    </ScrollViewer>
+  </DockPanel>
+</UserControl>

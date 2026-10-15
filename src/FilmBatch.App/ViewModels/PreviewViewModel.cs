@@ -50,7 +50,7 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
     private string? _overlayText;
 
     [ObservableProperty]
-    private IBrush _background = new SolidColorBrush(Color.FromRgb(0x1A, 0x1A, 0x1A));
+    private IBrush _background = new SolidColorBrush(Color.FromRgb(0x16, 0x16, 0x16));
 
     /// <summary>目前展開模組的控制點（正規化座標）；沒有則為 null。</summary>
     [ObservableProperty]
@@ -67,7 +67,7 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
     {
         PreviewBackground.MidGray => Color.FromRgb(0x80, 0x80, 0x80),
         PreviewBackground.Black => Colors.Black,
-        _ => Color.FromRgb(0x1A, 0x1A, 0x1A),
+        _ => Color.FromRgb(0x16, 0x16, 0x16),
     });
 
     public void SetOriginal(SourceImage source)

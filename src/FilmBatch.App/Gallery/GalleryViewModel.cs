@@ -12,13 +12,13 @@ public sealed class GalleryViewModel : IParamHost
 {
     public IReadOnlyList<GallerySwatch> Swatches { get; } =
     [
-        new GallerySwatch("FB.WindowBrush", "#2D2D2D"), new GallerySwatch("FB.TextBrush", "#DCDCDC"), new GallerySwatch("FB.BaseBrush", "#1E1E1E"),
-        new GallerySwatch("FB.AlternateBaseBrush", "#262626"), new GallerySwatch("FB.ButtonBrush", "#353535"), new GallerySwatch("FB.PlaceholderBrush", "#7A7A7A"),
-        new GallerySwatch("FB.ToolTipBackgroundBrush", "#3A3A3A"), new GallerySwatch("FB.BorderLightBrush", "#4A4A4A"), new GallerySwatch("FB.BorderBrush", "#3E3E3E"),
-        new GallerySwatch("FB.ShadowBrush", "#1A1A1A"), new GallerySwatch("FB.DisabledTextBrush", "#6E6E6E"), new GallerySwatch("FB.DisabledAccentBrush", "#505050"),
-        new GallerySwatch("FB.AccentBrush", "#D98E2B"), new GallerySwatch("FB.AccentTextBrush", "#111111"), new GallerySwatch("FB.LinkBrush", "#E6A44A"),
-        new GallerySwatch("FB.WarningTextBrush", "#FF6B6B"), new GallerySwatch("FB.PresetUpdatedBrush", "#5AA9E6"), new GallerySwatch("FB.ErrorBrush", "#E05555"),
-        new GallerySwatch("FB.SuccessBrush", "#6BBF59"),
+        new GallerySwatch("FB.CanvasBrush", "#161616"), new GallerySwatch("FB.WindowBrush", "#1C1C1C"), new GallerySwatch("FB.PanelBrush", "#232323"),
+        new GallerySwatch("FB.BaseBrush", "#2C2C2C"), new GallerySwatch("FB.ButtonBrush", "#333333"), new GallerySwatch("FB.TextBrush", "#E6E6E6"),
+        new GallerySwatch("FB.SecondaryTextBrush", "#A0A0A0"), new GallerySwatch("FB.PlaceholderBrush", "#7C7C7C"), new GallerySwatch("FB.ToolTipBackgroundBrush", "#333333"),
+        new GallerySwatch("FB.BorderLightBrush", "#4A4A4A"), new GallerySwatch("FB.BorderBrush", "#2E2E2E"), new GallerySwatch("FB.DisabledTextBrush", "#666666"),
+        new GallerySwatch("FB.AccentBrush", "#3D8EF0"), new GallerySwatch("FB.AccentTextBrush", "#FFFFFF"), new GallerySwatch("FB.LinkBrush", "#6AAAF5"),
+        new GallerySwatch("FB.OverrideBrush", "#E8A43C"), new GallerySwatch("FB.WarningTextBrush", "#FF6B6B"), new GallerySwatch("FB.PresetUpdatedBrush", "#5AA9E6"),
+        new GallerySwatch("FB.ErrorBrush", "#E05555"), new GallerySwatch("FB.SuccessBrush", "#6BBF59"),
     ];
 
     public SliderParamViewModel NormalParam { get; }

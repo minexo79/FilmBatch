@@ -5,27 +5,29 @@
              x:Class="FilmBatch.App.Views.PresetLibraryView"
              x:DataType="vm:PresetLibraryViewModel">
   <!-- 預設庫（計畫書 2.4.2）：分類 → 預設；拖曳到縮圖或預覽區指定；雙擊套用；數字鍵 1–9 套用釘選預設 -->
-  <DockPanel>
-    <StackPanel DockPanel.Dock="Bottom" Margin="6" Spacing="4">
-      <Button HorizontalAlignment="Stretch" Name="CreateButton">
-        <StackPanel Orientation="Horizontal" Spacing="6">
-          <PathIcon Data="{StaticResource Icon.Plus}" Width="12" Height="12" />
-          <TextBlock Text="{l:Tr Cmd.CreatePreset}" />
-        </StackPanel>
+  <DockPanel Background="{DynamicResource FB.PanelBrush}">
+    <!-- 標題列：面板名稱｜＋ 以目前照片建立預設 -->
+    <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="16,14,10,6">
+      <TextBlock Classes="panel-title" Text="{l:Tr Panel.Presets}" VerticalAlignment="Center" />
+      <Button Grid.Column="1" Name="CreateButton" Classes="tool" ToolTip.Tip="{l:Tr Cmd.CreatePreset}">
+        <PathIcon Data="{StaticResource Icon.Plus}" />
       </Button>
-      <Button HorizontalAlignment="Stretch" Name="ManageButton" Content="{l:Tr Presets.Manage}" />
-    </StackPanel>
+    </Grid>
+    <Border DockPanel.Dock="Bottom" BorderBrush="{DynamicResource FB.DividerBrush}" BorderThickness="0,1,0,0" Padding="10,8">
+      <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Name="ManageButton" Classes="outline" Content="{l:Tr Presets.Manage}" />
+    </Border>
     <TreeView Name="Tree" Classes="presets" ItemsSource="{Binding Categories}" SelectedItem="{Binding SelectedNode}">
       <TreeView.DataTemplates>
         <TreeDataTemplate DataType="vm:PresetCategoryViewModel" ItemsSource="{Binding Presets}">
-          <TextBlock Classes="group-title" Text="{Binding Name}" />
+          <TextBlock Classes="category" Text="{Binding Name}" />
         </TreeDataTemplate>
         <DataTemplate DataType="vm:PresetItemViewModel">
           <Grid ColumnDefinitions="Auto,*,Auto" Background="Transparent" ToolTip.Tip="{Binding Summary}" ToolTip.ShowDelay="500">
-            <Border Grid.Column="0" Classes="color-label" Background="{Binding ColorBrush}" Margin="0,0,8,0" />
+            <Border Grid.Column="0" Classes="color-label" Background="{Binding ColorBrush}" Margin="0,0,10,0" />
             <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-            <TextBlock Grid.Column="2" Classes="secondary small numeric" Text="{Binding PinKey}" IsVisible="{Binding HasPinKey}"
-                       Margin="6,0,4,0" VerticalAlignment="Center" />
+            <Border Grid.Column="2" Classes="key-hint" IsVisible="{Binding HasPinKey}" Margin="6,0,4,0">
+              <TextBlock Classes="numeric" Text="{Binding PinKey}" />
+            </Border>
           </Grid>
         </DataTemplate>
       </TreeView.DataTemplates>

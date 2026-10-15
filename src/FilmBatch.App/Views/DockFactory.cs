@@ -9,29 +9,25 @@ using FilmBatch.App.ViewModels;
 namespace FilmBatch.App.Views;
 
 /// <summary>
-/// 停靠版面（計畫書 2.3）：左預設庫、中央預覽、右照片資訊與模組、下縮圖列。
+/// 停靠版面（計畫書 2.3）：中央預覽、右側邊欄（預設庫｜照片資訊與模組｜照片匯出，以分頁工具列切換）、下縮圖列。
 /// 面板只用 Dock 內建的 Tool / Document 型別（以 Id 識別），ViewModel 經 <see cref="Factory.ContextLocator"/> 指派，
 /// 因此 layout.json 只包含版面本身，可安全地序列化與還原。
 /// </summary>
 public sealed class DockFactory(MainWindowViewModel main) : Factory
 {
-    public const string PresetsId = "presets";
     public const string PreviewId = "preview";
-    public const string InspectorId = "inspector";
+    public const string SidebarId = "sidebar";
     public const string FilmstripId = "filmstrip";
+
+    /// <summary>目前版面應有的面板；舊版 layout.json（左側預設庫＋右側模組）缺少側邊欄，載入時改用預設版面。</summary>
+    private static readonly string[] ExpectedIds = [PreviewId, SidebarId, FilmstripId];
 
     public override IRootDock CreateLayout()
     {
-        var presets = new Tool { Id = PresetsId, Title = Loc.Get("Panel.Presets"), CanClose = false };
-        var inspector = new Tool { Id = InspectorId, Title = Loc.Get("Panel.Inspector"), CanClose = false };
+        var sidebar = new Tool { Id = SidebarId, Title = Loc.Get("Panel.Inspector"), CanClose = false };
         var filmstrip = new Tool { Id = FilmstripId, Title = Loc.Get("Panel.Filmstrip"), CanClose = false };
         var preview = new Document { Id = PreviewId, Title = Loc.Get("Panel.Preview"), CanClose = false, CanFloat = false };
 
-        var left = new ToolDock
-        {
-            Id = "LeftDock", Proportion = 0.16, Alignment = Alignment.Left,
-            ActiveDockable = presets, VisibleDockables = CreateList<IDockable>(presets),
-        };
         var center = new DocumentDock
         {
             Id = "CenterDock", IsCollapsable = false, CanCreateDocument = false,
@@ -39,13 +35,13 @@ public sealed class DockFactory(MainWindowViewModel main) : Factory
         };
         var right = new ToolDock
         {
-            Id = "RightDock", Proportion = 0.25, Alignment = Alignment.Right,
-            ActiveDockable = inspector, VisibleDockables = CreateList<IDockable>(inspector),
+            Id = "RightDock", Proportion = 0.27, Alignment = Alignment.Right,
+            ActiveDockable = sidebar, VisibleDockables = CreateList<IDockable>(sidebar),
         };
         var top = new ProportionalDock
         {
             Id = "TopRow", Orientation = Orientation.Horizontal,
-            VisibleDockables = CreateList<IDockable>(left, new ProportionalDockSplitter(), center, new ProportionalDockSplitter(), right),
+            VisibleDockables = CreateList<IDockable>(center, new ProportionalDockSplitter(), right),
         };
         var bottom = new ToolDock
         {
@@ -71,9 +67,8 @@ public sealed class DockFactory(MainWindowViewModel main) : Factory
     {
         ContextLocator = new Dictionary<string, Func<object?>>
         {
-            [PresetsId] = () => main.Presets,
             [PreviewId] = () => main.Preview,
-            [InspectorId] = () => main.Inspector,
+            [SidebarId] = () => main.Sidebar,
             [FilmstripId] = () => main.Filmstrip,
         };
         HostWindowLocator = new Dictionary<string, Func<IHostWindow?>>
@@ -82,6 +77,11 @@ public sealed class DockFactory(MainWindowViewModel main) : Factory
         };
         DockableLocator = new Dictionary<string, Func<IDockable?>>();
         base.InitLayout(layout);
+
+        // 不顯示 IDE 式的工具標題列（含滑鼠移入時自動浮現）；面板看起來像固定欄位。
+        // 於 InitLayout 設定，舊的 layout.json 還原後也一併套用。
+        foreach (var dock in Enumerate(layout).OfType<IToolDock>())
+            dock.GripMode = GripMode.Hidden;
     }
 
     /// <summary>切換語言後更新面板標題（標題會存進 layout.json，載入後以目前語言覆寫）。</summary>
@@ -91,13 +91,19 @@ public sealed class DockFactory(MainWindowViewModel main) : Factory
         {
             d.Title = d.Id switch
             {
-                PresetsId => Loc.Get("Panel.Presets"),
                 PreviewId => Loc.Get("Panel.Preview"),
-                InspectorId => Loc.Get("Panel.Inspector"),
+                SidebarId => Loc.Get("Panel.Inspector"),
                 FilmstripId => Loc.Get("Panel.Filmstrip"),
                 _ => d.Title,
             };
         }
+    }
+
+    /// <summary>版面是否恰好包含目前版本的面板（不多不少）。</summary>
+    public static bool IsCurrentLayout(IDockable root)
+    {
+        var ids = Enumerate(root).Where(d => d is ITool or IDocument).Select(d => d.Id).ToHashSet();
+        return ids.SetEquals(ExpectedIds);
     }
 
     private static IEnumerable<IDockable> Enumerate(IDockable d)

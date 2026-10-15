@@ -1,7 +1,7 @@
 # FilmBatch 計畫書：批次底片效果處理工具
 
-> 版本：v0.7（規劃稿）
-> 日期：2026-10-14
+> 版本：v0.10（規劃稿）
+> 日期：2026-10-15
 > 定位：獨立的批次類比效果工具。接收任何 RAW 編輯器（例如 RapidRAW）匯出的照片，為每張照片套上底片色彩與類比效果後批次輸出
 > 技術：C# / **.NET 10（LTS）** ＋ **Avalonia UI 12**（Fluent 深色主題、MVVM）＋ **WebGPU（wgpu-native）與 WGSL compute shader 影像引擎**，以 `dotnet publish` 發佈為 Windows / macOS / Linux 原生執行檔
 
@@ -17,6 +17,8 @@
 | v0.6 | 技術棧改為 C# / .NET 10 + Avalonia UI；影像運算採 OpenCvSharp4 + SIMD；影像 IO 採 Magick.NET。Python 版計畫保存於 `plan_python_v0.5.md` |
 | v0.7 | **影像引擎改為 GPU 架構（參考 RapidRAW 的 wgpu + WGSL 做法）**：移除 OpenCV，全部效果以 WGSL compute shader 實作，透過 C# 的 WebGPU 綁定呼叫 wgpu-native（Windows：DX12 / Vulkan、macOS：Metal、Linux：Vulkan）；預覽與匯出共用同一套 shader；CPU 端只負責檔案讀寫（Magick.NET）與排程。UI 升級為 **Avalonia 12** 與對應的 Dock.Avalonia 12。改寫 5、7、9–16 章 |
 | v0.8 | M0 結果：C# WebGPU 綁定定案為 **WebGPUSharp（Dawn）**，取代 9.1 的 Silk.NET 首選（理由見 `docs/adr/0001-webgpu-binding.md`）；標題列與選單列合一（2.2.1）；M0 進度與發現見 `docs/M0-status.md` |
+| v0.9 | **底片色彩全部改為搬移 [Recipe Lab](https://github.com/voxivoid/recipe-lab-sony-pmca)（MIT）的 77 組配方**：移除自有的參數化底片模型、內建 10 款底片與 LUT / HaldCLUT 匯入；`film` 模組改為「配方 + Sony 成像模擬」，參數沿用 Recipe Lab 欄位；自訂配方與 Recipe Lab 的 `.YML` 格式相容；以 Recipe Lab 樣張校正。改寫第 7 章，並同步 1.3、4.2、5、6、8–16 章的相關段落 |
+| v0.10 | 新增**示波器**（直方圖、波形圖、RGB 分量圖）：UI 規格見 2.4.6，算圖時序見 11.3，排入 M3（1.5 週 → 2 週），並補上 1.4、12、14、16.2 的相關段落 |
 
 ### 目錄
 
@@ -26,7 +28,7 @@
 4. 資料模型
 5. 影像處理管線
 6. 效果模組總覽
-7. 底片色彩來源
+7. 底片色彩配方（移植自 Recipe Lab）
 8. 材質庫
 9. 跨平台與 .NET 發佈
 10. 批次匯出
@@ -89,7 +91,7 @@ flowchart LR
 | R9 | 提供完整的類比效果模組：底片色彩、顆粒、光暈、漏光、光學模糊、鏡頭變形、雙重曝光、多格分鏡、灰塵刮痕、古典版材等（見第 6 章） | 必要 |
 | R10 | UI 使用 Avalonia Fluent 深色主題，配色依 2.2 規格 | 必要 |
 | R11 | 以 C# / .NET 10 + Avalonia 開發，影像運算在 GPU 上以 WGSL compute shader 執行，發佈為三平台執行檔 | 必要 |
-| R12 | 可匯入 `.cube` 與 HaldCLUT 格式的 LUT 當作底片 | 重要 |
+| R12 | 內建 Recipe Lab 的 77 組底片配方；可讀寫與 Recipe Lab 相容的自訂配方檔（`.YML`），與相機記憶卡互通 | 重要 |
 | R13 | 多選後可同時調整同一參數 | 重要 |
 
 ### 1.4 不在範圍內（第一版不做）
@@ -98,6 +100,7 @@ flowchart LR
 - 相框與邊框
 - 局部調整、筆刷遮罩（第一版以各模組內建的對焦區 / 保護區遮罩處理常見需求）
 - 照片管理（評分、標籤、關鍵字）
+- 向量示波器（vectorscope）與膚色線（第一版的示波器只提供直方圖、波形圖與 RGB 分量圖，見 2.4.6）
 - 沒有可用 GPU 的環境下的高效能運作（以軟體 GPU 介面卡維持可用，但速度不列入效能目標，見 12）
 
 ---
@@ -214,7 +217,7 @@ flowchart TB
             direction LR
             L["左 ToolDock<br/>預設庫<br/>寬 220px，可收合"]
             C["中央 DocumentDock<br/>預覽畫布 + 控制點<br/>佔剩餘空間"]
-            R["右 ToolDock<br/>照片資訊 + 模組面板<br/>寬 ≥ 320px"]
+            R["右 ToolDock<br/>示波器（頂端，可折疊）<br/>照片資訊 + 模組面板<br/>寬 ≥ 320px"]
         end
         F["下 ToolDock<br/>縮圖列 Filmstrip，高 120px"]
         S["狀態列<br/>算圖狀態｜GPU 介面卡｜縮放比例｜選取數量｜背景工作進度"]
@@ -322,6 +325,33 @@ flowchart TB
 - 分組標題可整組折疊；未啟用的模組可選擇「隱藏未啟用模組」，讓面板只顯示正在使用的效果。
 - 「基本調整」橫跨線性與顯示兩段運算（見 5.2），在面板上仍放在最上方，因為它是最常調整的模組。
 
+#### 2.4.6 示波器（直方圖、波形圖、RGB 分量圖）
+
+調整色調與底片配方時，用來客觀判斷亮部 / 暗部是否裁切、整體亮度分布與色偏，不必只靠螢幕目視。
+
+```mermaid
+flowchart TB
+    SP["右面板頂端：ScopeView<br/>高 120px，可折疊"] --> HD["標題列<br/>模式切換：直方圖｜波形｜分量｜▾ 折疊"]
+    SP --> CV["示波器畫面<br/>依模式繪製，含刻度線"]
+    SP --> CL["裁切警示<br/>直方圖左右兩端 ▲（暗部 / 亮部）"]
+    PV["預覽算圖完成（generation = n）"] --> ST["GPU 統計 pass"] --> RB["讀回統計結果（數 KB）"] --> SP
+```
+
+| 模式 | 內容 | 用途 |
+|---|---|---|
+| **直方圖** | R、G、B 三通道疊合（加法混色，重疊處呈白色）＋ 亮度輪廓線；256 個區間 | 整體亮度分布、通道是否裁切 |
+| **波形圖** | 橫軸對應影像的水平位置，縱軸為亮度（0–100%），以點的密度表示該位置的像素數量 | 看出畫面中「哪一區」過亮或過暗，例如天空、暗角、漏光的範圍 |
+| **RGB 分量圖** | 波形圖的 R、G、B 三通道並排（parade） | 判斷色偏、白平衡與配方的通道曲線差異 |
+
+- **位置**：右面板頂端，固定在照片資訊與模組捲動區之上，不隨捲動移動；可折疊為只剩標題列。模式與折疊狀態存入 `settings.json`。
+- **資料來源**：預覽算圖的最終結果（顯示空間的 sRGB 編碼值，也就是畫面上看到的影像），不是線性光中間值。按住空白鍵看原圖時，示波器同步改為顯示原圖的分布；左右分割對比時顯示調整後的結果。
+- **多選**：以焦點照片計算（與預覽畫布相同）。
+- **裁切警示**：任一通道值為 0 或 255 的像素超過總數 0.1% 時，直方圖對應端的 ▲ 亮起（暗部、亮部分開）；滑鼠停留顯示裁切比例。點擊 ▲ 可在預覽畫布上暫時以色塊標出裁切區域（暗部藍、亮部紅），再點一次取消。
+- **刻度**：波形圖與分量圖在 0%、25%、50%、75%、100% 畫淡色刻度線；直方圖不畫刻度。
+- **配色**：示波器的 R / G / B 與裁切標示屬於「資料顯示」，與預覽影像一樣不受 2.2.2「介面灰階 R = G = B」的限制；背景使用畫布色，刻度線使用 `FB.BorderBrush`。
+- **更新頻率**：隨預覽每一幀更新，不另外排程；拖曳中預覽降為 800px 時，示波器也以 800px 結果計算。示波器折疊或面板隱藏（`Tab`、全螢幕）時不執行統計 pass。
+- **實作**：自訂控制項 `ScopeView`（不使用 `Image` 控制項），以 `WriteableBitmap` 繪製統計結果；繪製本身在 UI 執行緒只做「把統計值畫成點」，不碰影像像素。
+
 ### 2.5 自訂元件規格
 
 | 元件 | Avalonia 實作 | 行為規格 |
@@ -329,11 +359,12 @@ flowchart TB
 | **ParamRow** | `UserControl`：覆寫點 ● ＋ 名稱 ＋ `ParamSlider` ＋ `NumericUpDown` | 被覆寫時名稱粗體、顯示 ●（`Classes.overridden` 繫結）；雙擊名稱重設回預設值；數值框可直接輸入；滑桿與數值框同步 |
 | **滑桿滾輪行為** | `ParamSlider : Slider` | **只有在滑桿取得焦點時才處理 `PointerWheelChanged`**，否則不標記 `Handled`，讓事件冒泡給 `ScrollViewer`，避免捲動面板時誤改參數 |
 | **滑桿拖曳** | `ParamSlider` | 拖曳中持續送出預覽請求；放開時合併為一筆復原紀錄；按住 `Shift` 微調（步進 ÷ 10） |
-| **ChoiceRow** | 名稱 ＋ `ComboBox` | 用於底片種類、光圈形狀、版面配置等 |
+| **ChoiceRow** | 名稱 ＋ `ComboBox` | 用於底片配方（依品牌分組的下拉選單，含「自訂」分組）、創意風格、照片效果、光圈形狀、版面配置等 |
 | **ModuleSection** | `HeaderedContentControl`（自訂 `ControlTemplate`）：標題列 ＋ 內容區 | 點標題折疊或展開；啟用勾選框關閉時，內容區變為停用色但仍可預先調整；`⋯` 選單提供「重設此模組」「只複製此模組」 |
 | **PresetItem** | `TreeViewItem` 的 `DataTemplate`：色彩標籤 ＋ 名稱 | 可拖曳；停留 500ms（`ToolTip.ShowDelay`）顯示效果縮圖 |
 | **ThumbnailView** | `ListBoxItem` 的 `DataTemplate`：縮圖 ＋ 標記 | 見 2.4.4 |
 | **ControlPoint** | `PreviewCanvas` 內繪製的圓形把手 | 見 2.4.3 |
+| **ScopeView** | 自訂 `Control`，以 `WriteableBitmap` 繪製 GPU 讀回的統計結果 | 直方圖 / 波形 / 分量三種模式、裁切警示 ▲；見 2.4.6 |
 | **ToastBar** | 狀態列上方的非阻斷提示（覆蓋層 `Panel`） | 3 秒後自動消失（`DispatcherTimer`），可附「復原」按鈕（例如「已貼上到 12 張照片｜復原」） |
 
 ### 2.6 互動狀態
@@ -413,7 +444,7 @@ flowchart TD
 | **選擇性貼上** | 16 個模組的勾選清單（分組：色彩類 / 光學類 / 表面類）、「包含隨機種子」、「貼上時鏡像位置」 | 提供「全選」「全不選」「只選色彩類」快捷按鈕；記住上次的勾選 |
 | **匯出** | 範圍、格式、品質、尺寸、目的地、檔名範本 | 下方即時顯示「將匯出 N 張到 …」；可儲存為匯出預設 |
 | **預設管理** | 預設清單、分類、色彩標籤、匯入 / 匯出 YAML | 刪除預設時顯示「有 N 張照片使用中，將改用專案內快照」 |
-| **偏好設定** | 預覽背景色、預覽代理圖尺寸、GPU 介面卡選擇（多顯卡時）與後端偏好、GPU 記憶體上限、材質庫與 LUT 資料夾、語言 | 修改後立即生效（切換介面卡需重新建立 GPU 裝置） |
+| **偏好設定** | 預覽背景色、預覽代理圖尺寸、GPU 介面卡選擇（多顯卡時）與後端偏好、GPU 記憶體上限、材質庫與自訂配方資料夾、預設參考色溫、語言 | 修改後立即生效（切換介面卡需重新建立 GPU 裝置） |
 | **同步預設** | 列出所用預設已更新的照片，可逐張或全部同步 | 見 4.4 |
 
 ### 2.9 回饋與錯誤處理
@@ -452,7 +483,7 @@ flowchart TD
 ```mermaid
 flowchart BT
     D["系統預設值 Defaults<br/>程式內建，所有參數的初始值"]
-    P["指定的預設 Preset<br/>從預設庫選一個，例如「Portra 暖調 + 漏光」"]
+    P["指定的預設 Preset<br/>從預設庫選一個，例如「Portra 400 + 漏光」"]
     O["單張覆寫 Overrides<br/>只存和預設不一樣的欄位"]
     F["最終參數<br/>Defaults ⊕ Preset ⊕ Overrides"]
     D --> P --> O --> F
@@ -569,7 +600,7 @@ classDiagram
 
 ```yaml
 id: 3f2a9c1e-8b4d-4e2a-9f1c-0a7b6d5e4c3b
-name: Portra 暖調 + 漏光
+name: Portra 400 + 漏光
 category: 人像
 color_label: "#D98E2B"
 pipeline_version: 1
@@ -587,8 +618,10 @@ modules:
   halation:   { enabled: true, amount: 20, threshold: 70, radius: 30, hue: 10 }
   light_leak: { enabled: true, mode: procedural, amount: 35, angle: 30, size: 40, hue: 25,
                 irregularity: 50 }
-  film:       { enabled: true, stock: portra400, strength: 85, contrast: -10, saturation: 0,
-                warmth: 15, fade: 8 }
+  film:       { enabled: true, recipe: kodak-portra-400, strength: 85, style: portrait,
+                saturation: -1, contrast: -1, sharpness: 0, white_balance: auto,
+                amber_blue: 3, green_magenta: 1, effect: off, effect_option: null,
+                exposure: 2, dro: auto, wb_reference: 5500 }   # exposure 以 1/3 EV 為單位
   photo_plate:{ enabled: false }
   tone:       { enabled: true, shadow_hue: 200, shadow_amount: 10, highlight_hue: 40,
                 highlight_amount: 15, balance: 0 }
@@ -606,7 +639,7 @@ modules:
   "pipeline_version": 1,
   "default_preset_id": "3f2a9c1e-...",
   "preset_snapshots": {
-    "3f2a9c1e-...": { "name": "Portra 暖調 + 漏光", "updated_at": "2026-10-13T15:00:00", "settings": { } }
+    "3f2a9c1e-...": { "name": "Portra 400 + 漏光", "updated_at": "2026-10-13T15:00:00", "settings": { } }
   },
   "photos": {
     "DSC_0012.tif": {
@@ -657,7 +690,7 @@ stateDiagram-v2
 ### 5.1 輸入假設與 GPU 資料格式
 
 - 輸入是 RAW 編輯器已完成基礎調色的 **sRGB** 影像，建議使用 16-bit TIFF，避免色階斷層。
-- 這是「顯示參考」（display-referred）影像，不是場景線性資料。所以底片曲線必須保持 0→0、1→1，不能再套一次完整的 S 曲線，否則對比會被重複壓縮。
+- 這是「顯示參考」（display-referred）影像，不是場景線性資料。所以配方的色調曲線（見 7.3）必須保持 0→0、1→1，不能再套一次完整的 S 曲線，否則對比會被重複壓縮。
 - **CPU 端**：Magick.NET 解碼、EXIF 轉正，轉成 16-bit RGBA 後上傳 GPU。CPU 不做任何效果運算。
 - **GPU 端**：
   - 上傳紋理 `rgba16uint` 或 `rgba16float`，第一個 shader 轉成**線性光 `rgba32float`** 的工作紋理。
@@ -686,9 +719,9 @@ flowchart TB
         MB --> VG["鏡頭暈影"] --> HL["光暈"] --> LL["漏光"]
     end
 
-    subgraph G3["③ 底片（log → 顯示）"]
+    subgraph G3["③ 底片（線性 → 顯示）"]
         direction LR
-        FM["底片色彩<br/>串擾 → 特性曲線 → 色偏<br/>或 LUT"] --> MIX["膠片效果比例<br/>中性結果與底片結果混合"] --> PP["古典版材"]
+        FM["底片色彩（Recipe Lab 配方）<br/>曝光 → 白平衡 → 創意風格 / 照片效果<br/>→ 對比、飽和 → DRO → 銳利度"] --> MIX["效果比例<br/>輸入與配方結果混合"] --> PP["古典版材"]
     end
 
     subgraph G4["④ 顯示空間"]
@@ -706,11 +739,11 @@ flowchart TB
 
 排序上的考量：
 
-- **鏡頭暈影在光學區段**：暗角是鏡頭的光學現象，發生在底片曝光之前，所以在線性光中以乘法處理，高光區域的暗角會被底片曲線自然壓縮。
+- **鏡頭暈影在光學區段**：暗角是鏡頭的光學現象，發生在底片曝光之前，所以在線性光中以乘法處理，高光區域的暗角會被配方的色調曲線自然壓縮。
 - **光暈與漏光放在模糊之後**：它們發生在底片乳劑上，不應該被鏡頭模糊。
 - **灰塵與刮痕在底片之後、顆粒之前**：灰塵與刮痕位於底片表面，不會被底片的色彩曲線改變顏色，但仍會被顆粒覆蓋。
 - **顆粒最後加入**：才不會被其他調整放大。
-- **逐像素模組可合併**：相鄰且只做逐像素運算的模組（例如基本調整線性部分、暗角、底片色彩、色調分離），日後可由 shader 組合器合併成單一 pass，減少紋理讀寫（見 12）。
+- **逐像素模組可合併**：相鄰且只做逐像素運算的模組（例如基本調整線性部分、暗角、底片色彩的逐像素部分、色調分離；底片色彩的 DRO 與銳利度為空間運算，不合併），日後可由 shader 組合器合併成單一 pass，減少紋理讀寫（見 12）。
 
 ### 5.3 模組與參數清單
 
@@ -857,20 +890,24 @@ flowchart TB
 | count | 1 ~ 3 | 漏光數量 |
 | seed | 整數 | 樣式種子 |
 
-實作：程序化模式在 shader 中以正規化座標計算從畫面邊緣某點向內衰減的光斑，以低頻雜訊（以種子決定的值雜訊 / simplex）扭曲形狀，中心偏白、邊緣飽和；材質模式則把黑底的漏光掃描圖上傳為紋理，轉線性、縮放旋轉後相加。兩者都是在線性光中「增加曝光」，再由底片曲線壓縮，看起來比 Screen 混合更像真的漏光。
+實作：程序化模式在 shader 中以正規化座標計算從畫面邊緣某點向內衰減的光斑，以低頻雜訊（以種子決定的值雜訊 / simplex）扭曲形狀，中心偏白、邊緣飽和；材質模式則把黑底的漏光掃描圖上傳為紋理，轉線性、縮放旋轉後相加。兩者都是在線性光中「增加曝光」，再由配方的色調曲線壓縮，看起來比 Screen 混合更像真的漏光。
 
 #### 5.3.11 底片色彩 `film`
 
 | 參數 | 範圍 | 說明 |
 |---|---|---|
-| stock | 內建底片 key 或 `lut:檔名` | 底片種類（見第 7 章） |
-| strength | 0 ~ 100 % | 膠片效果比例 |
-| contrast | −100 ~ 100 | 底片對比 |
-| saturation | −100 ~ 100 | 底片飽和 |
-| warmth | −100 ~ 100 | 底片冷暖 |
-| fade | 0 ~ 100 | 褪色（黑位提升） |
+| recipe | 內建配方 key 或 `custom:名稱` | 底片配方（Recipe Lab 的 77 組內建配方或自訂配方，見第 7 章） |
+| strength | 0 ~ 100 % | 效果比例（輸入與配方結果混合） |
+| style | standard / vivid / neutral / portrait / clear / deep / light / mono / sepia | 創意風格 |
+| saturation / contrast / sharpness | −3 ~ +3 | 創意風格的飽和、對比、銳利度 |
+| white_balance | auto / keep / 2500K ~ 9900K | 白平衡（auto 與 keep 皆沿用輸入） |
+| amber_blue / green_magenta | −7 ~ +7 | 白平衡微調 |
+| effect / effect_option | 見 7.2 | 照片效果與其子參數；啟用時忽略創意風格 |
+| exposure | −15 ~ +15（1/3 EV 格數） | 曝光補償，顯示為 −5.0 ~ +5.0 |
+| dro | off / 1 ~ 5 / auto | 動態範圍最佳化 |
+| wb_reference | 2500 ~ 9900 K | 參考色溫：輸入影像被視為在此色溫下已平衡（只影響指定色溫的配方） |
 
-底片的色彩與顆粒拆成「底片色彩」與「顆粒」兩個模組，讓兩者可以獨立微調與複製。實作見第 7 章。
+選擇 `recipe` 時，`style` 到 `dro` 的欄位會帶入該配方的值；各欄位之後仍可單獨覆寫，與配方不同時顯示 EDITED 標記。底片的色彩與顆粒拆成「底片色彩」與「顆粒」兩個模組，讓兩者可以獨立微調與複製。實作見第 7 章。
 
 #### 5.3.12 古典版材 `photo_plate`
 
@@ -990,7 +1027,7 @@ mindmap
 | 暗角 | `vignette` | 光學 | — | ✓ | — | 極低 | M1 |
 | 光暈 | `halation` | 光學 | — | — | — | 中 | M1 |
 | 漏光 | `light_leak` | 光學 | ✓ | ✓ | ✓ | 低 | M1（程序化）/ M6（材質） |
-| 底片色彩 | `film` | 底片 | — | — | LUT | 低 | M1 |
+| 底片色彩 | `film` | 底片 | — | — | — | 低（開啟 DRO / 銳利度時為中） | M1 |
 | 古典版材 | `photo_plate` | 底片 | ✓ | — | ✓ | 低 | M6 |
 | 色調分離 | `tone` | 顯示 | — | — | — | 極低 | M1 |
 | 清晰與銳化 | `detail` | 顯示 | — | — | — | 中 | M1 |
@@ -1013,63 +1050,198 @@ mindmap
 
 ---
 
-## 7. 底片色彩來源
+## 7. 底片色彩配方（移植自 Recipe Lab）
 
-### 7.1 內建參數化底片模型
+FilmBatch 的底片色彩**全部搬移自 [Recipe Lab](https://github.com/voxivoid/recipe-lab-sony-pmca)**（voxivoid/recipe-lab-sony-pmca）。該專案是在 Sony PlayMemories Camera Apps 相機（A6000、A6300、A6500、A7 II 等）上執行的小程式，把 77 組「底片模擬 / 相機風格」配方寫進相機設定，讓相機直出就有該風格。FilmBatch 沿用它的配方資料、欄位定義、品牌分組與自訂配方檔格式，再以自有的 GPU shader 在電腦上重現 Sony 相機的成像，讓 RAW 編輯器匯出的照片也能套用這些配方。
 
-| 參數 | 意義 |
+### 7.1 來源、範圍與授權
+
+| 項目 | 內容 |
 |---|---|
-| `crosstalk` 3×3 | 染料層色彩串擾。每列總和為 1，中性灰不受影響；對角線 > 1 時飽和度提高 |
-| `k`（RGB） | 各通道特性曲線斜率（對比） |
-| `shift`（RGB） | 各通道曲線位移，形成色彩交叉（crossover） |
-| `black` / `white`（RGB） | 黑位與白位的色偏 |
-| `shadow_tint` / `highlight_tint` | 暗部與亮部的額外色偏 |
-| `sat` | 整體飽和 |
-| `mono` | 黑白底片的各通道感光權重 |
+| 來源檔案 | `src/com/voxivoid/recipelab/Recipes.java`（配方表 `Recipes.ALL`）、`docs/DEVELOPMENT.md`（自訂配方格式 1）、`docs/SAMPLES.md` 與 `docs/samples/`（77 張實拍樣張） |
+| 搬移內容 | 77 組配方的**原始數值**（一字不改）、欄位語意與範圍、12 個品牌分組與排列順序、自訂配方 YAML 格式 1、樣張（作為校正與回歸測試的參考圖） |
+| 不搬移 | Android App 程式碼、相機設定寫入、按鍵與介面；這些與 FilmBatch 無關 |
+| 授權 | MIT License，Copyright (c) 2026 André Domingues。於 `THIRD_PARTY_NOTICES.md` 與「關於」對話框保留版權聲明；內建資料檔標頭記錄來源 commit |
+| 商標 | 配方名稱沿用 Recipe Lab 的命名，只用來描述「近似的風格」；Kodak、Fujifilm、Ilford 等名稱為各公司商標，FilmBatch 不宣稱與其有關聯 |
 
-曲線在 sRGB 值的 logit 空間計算：`y = sigmoid(k · logit(x) − shift)`，可保持端點 0→0、1→1，適合顯示參考的輸入。整條底片模型在 shader 中逐像素計算，參數以 uniform 傳入，調整「底片對比 / 飽和 / 冷暖」時只需要更新 uniform，不需要重建任何資料。
+Recipe Lab 的配方本身就是**近似**：A6000 無法儲存色調曲線與 log 設定檔，每組配方只用相機可儲存的設定（創意風格、飽和、對比、銳利度、白平衡、曝光補償、照片效果、DRO）去接近目標風格，並非複製其他品牌的色彩科學。FilmBatch 忠實搬移這些設定值，風格的準確度以「與 Recipe Lab 樣張的差距」衡量（見 7.6）。
 
-```mermaid
-flowchart LR
-    A["線性 RGB"] --> B["log2"] --> C["× 串擾矩陣"] --> D["exp2 → sRGB 編碼"]
-    D --> E["logit"] --> F["各通道 k、shift"] --> G["sigmoid"]
-    G --> H["黑位 / 白位映射"] --> I["暗部 / 亮部色偏"] --> J["飽和調整"] --> K["底片結果"]
-```
+### 7.2 配方欄位
 
-第一版內建的風格（皆為「風格近似」，非實測校正）：
+每組配方是一組 Sony 相機設定。欄位名稱沿用 Recipe Lab 自訂配方格式 1 的 key，數值範圍與相機可儲存的範圍相同：
 
-- 彩色：Portra 400、Ektar 100、Gold 200、Superia 400、Pro 400H、CineStill 800T、Kodachrome、Velvia 50
-- 黑白：Tri-X 400、HP5 Plus
+| 欄位 | 範圍 | 說明 |
+|---|---|---|
+| `style` | standard / vivid / neutral / portrait / clear / deep / light / mono / sepia | 創意風格（Creative Style）。另有 landscape、sunset、night、red-leaves 為 Recipe Lab 已辨識但內建配方未使用的風格 |
+| `saturation` | −3 ~ +3 | 創意風格的飽和度調整 |
+| `contrast` | −3 ~ +3 | 創意風格的對比調整 |
+| `sharpness` | −3 ~ +3 | 創意風格的銳利度調整 |
+| `white-balance` | `auto` / `keep` / `2500K` ~ `9900K`（以 100K 為單位） | 白平衡模式；`auto` 與 `keep` 在 FilmBatch 中都表示「沿用輸入的白平衡」 |
+| `amber-blue` | −7 ~ +7 | 白平衡微調，琥珀（+）／藍（−），畫面顯示為 A1 / B1 |
+| `green-magenta` | −7 ~ +7 | 白平衡微調，綠（+）／洋紅（−），畫面顯示為 G1 / M1 |
+| `effect` | off / toy-camera / pop-color / posterization / retro-photo / soft-high-key / part-color / rough-mono / soft-focus / hdr-art / richtone-mono / miniature / illust / watercolor | 照片效果（Picture Effect）。啟用時相機會**忽略創意風格**（含飽和、對比、銳利度），FilmBatch 照做 |
+| `effect-option` | 依效果而定 | 效果的子參數：Soft High-key 色調 blue / pink / green；Toy 色調 normal / cool / warm / green / magenta；Part color 色相 red / green / blue / yellow；Posterization color / b&w |
+| `exposure` | −5.0 ~ +5.0（1/3 EV 步進） | 曝光補償；內部以「1/3 EV 的整數格數」儲存，顯示為 +0.3、+0.7、+1.0 |
+| `dro` | off / 1 ~ 5 / auto | 動態範圍最佳化（Dynamic Range Optimizer） |
 
-內建底片資料以 JSON 嵌入組件資源（`EmbeddedResource`）。「底片對比 / 飽和 / 冷暖」分別對應 `k` 的倍率、飽和倍率與 `shift` 的紅藍偏移。
+### 7.3 Sony 成像模擬（FilmBatch 自有實作）
 
-### 7.2 LUT 底片
-
-除了內建模型，底片也可以是一個 3D LUT。LUT 與內建底片一樣，可以搭配膠片效果比例、底片對比、飽和、冷暖、褪色等微調。
-
-支援格式：
-
-- `.cube`（業界通用的 3D LUT 格式）。
-- HaldCLUT 影像（PNG / TIFF）。
-
-GPU 實作：LUT 在 CPU 端解析後上傳為 **3D 紋理**（`rgba16float`，可使用硬體三線性過濾；`rgba32float` 的過濾需要額外的裝置功能，不列為必要），shader 以 `textureSampleLevel` 取樣，並依 LUT 尺寸修正半格偏移。LUT 紋理以檔案路徑 + 修改時間為鍵快取在 GPU 上。
-
-**用 HaldCLUT 製作自己的 LUT**：把任何一套調色轉成 FilmBatch 可用的底片。
+Recipe Lab 只提供「相機要設成什麼」，真正的成像是在相機內完成的。FilmBatch 的輸入已是 RAW 編輯器調好的 sRGB 影像，因此把配方解讀為**相對於相機原廠設定 `FACTORY (ST)`（Standard 0/0、白平衡 auto、DRO auto）的差異**：套用 `FACTORY (ST)` 時輸出等於輸入（符合「零值即恆等」原則），其他配方只套用與原廠設定不同的部分。
 
 ```mermaid
 flowchart LR
-    A["FilmBatch<br/>產生 identity HaldCLUT<br/>512×512、16-bit PNG"] --> B["任一調色軟體<br/>對這張對照圖套用調色<br/>只用色彩類調整"]
-    B --> C["存成 16-bit PNG / TIFF"] --> D["放進 LUT 資料夾"]
-    D --> E["底片選單出現此 LUT"]
+    A["線性 RGB"] --> B["曝光補償<br/>× 2^(格數/3)"] --> C["白平衡<br/>色溫 + A/B、G/M 微調<br/>（Bradford 色適應）"]
+    C --> D{"照片效果？"}
+    D -->|"off"| E["創意風格基底<br/>色調曲線、色彩矩陣"] --> F["對比 / 飽和 ±3"] --> G["DRO<br/>局部亮部 / 暗部調整"] --> H["銳利度 ±3"]
+    D -->|"其他"| X["照片效果<br/>Retro / Soft High-key / HC Mono…"]
+    H --> M["效果比例<br/>與輸入混合"]
+    X --> M
+    M --> K["配方結果"]
 ```
 
-- 調色時**只使用全域的色彩調整**（曲線、色彩平衡、HSL 等），不要加顆粒、暗角、模糊等空間效果，因為 LUT 只能記錄「每個顏色對應到哪個顏色」。
-- LUT 檔只放使用者自製或授權明確的檔案。
+| 步驟 | 做法 |
+|---|---|
+| 曝光補償 | 在線性光中乘上 `2^(exposure/3)` |
+| 白平衡 | `auto` / `keep`：不變。指定色溫：假設輸入已平衡到「參考色溫」`wb_reference`（預設 5500K，可單張覆寫），以 Bradford 色適應把白點從參考色溫移到「相機設定的色溫」所看到的顏色——設定值低於參考色溫時偏藍、高於時偏黃，與在相機上的行為一致。`amber-blue`、`green-magenta` 以每格固定的 mired / CC 偏移疊加（初始係數見 `creative_styles.json`，由 7.6 校正） |
+| 創意風格基底 | 每種風格一組參數：色調曲線（logit 空間 `y = sigmoid(k · logit(x) − shift)`，保持 0→0、1→1）、3×3 色彩矩陣（每列總和為 1，中性灰不變）、黑白風格的通道權重、Sepia 的染色。Standard 為恆等，其餘以 Recipe Lab 樣張校正 |
+| 對比 / 飽和 | 每格對應曲線斜率 `k` 的倍率與 OKLab 色度的倍率（逐格查表，非線性；初始值每格約 ±12%，由校正決定） |
+| DRO | 在降採樣金字塔上以邊緣保留濾波取得基底層，依等級提亮暗部、壓低亮部。以 `auto` 為恆等基準：`off` 讓暗部略沉（Bleach Bypass 類配方用它補足飽和 −3 不夠的部分），`Lv1`–`Lv5` 依等級相對於 `auto` 增減 |
+| 銳利度 | 只作用於亮度的小半徑反銳化遮罩；負值為輕微柔化 |
+| 照片效果 | 第一版實作內建配方用到的三種：**Retro**（降飽和、暖色偏、褪色黑位）、**Soft High-key**（提亮、低對比、依 `effect-option` 染色）、**HC Mono / rough-mono**（高反差黑白、輕微粗粒）。其餘效果可被自訂配方讀入，但在實作前顯示「此效果尚未支援」並以 off 算圖 |
+| 效果比例 | `strength` 0–100%，把配方結果與輸入混合（FilmBatch 自有參數，不寫入配方檔） |
 
-### 7.3 未來擴充
+創意風格基底與每格係數放在 `Film/creative_styles.json`（`EmbeddedResource`），與配方資料分開：配方數值永遠與 Recipe Lab 一致，只有「Sony 相機怎麼成像」的模擬參數會隨校正更新。調整配方欄位只更新 uniform，不需要重建任何資料；DRO 與銳利度為空間運算，各需一到兩個額外 pass。
 
-- 研究 agx-emulsion / Spectral Film LUT 的光譜模型，產生更準確的底片參數或 LUT（GPU 上可直接執行較重的光譜模型）。
-- 底片參數編輯器：讓使用者自己調整 crosstalk 與各通道曲線，存成自訂底片（調整時即時預覽）。
+### 7.4 內建配方一覽（77 組，12 個品牌）
+
+以下數值逐字搬移自 Recipe Lab `Recipes.ALL`，順序即底片選單的順序（先依品牌，再依原始順序）。`key` 為 FilmBatch 內部識別碼（由配方英文名稱轉成小寫連字號）；配方名稱沿用 Recipe Lab 的英文原名，中文介面另有翻譯名稱，但識別一律用 `key`。白平衡微調以 A（琥珀）/ B（藍）、G（綠）/ M（洋紅）加格數表示。
+
+| # | 品牌 | 配方 | key | 創意風格 | 飽和 | 對比 | 銳利 | 白平衡 | A/B | G/M | 照片效果 | 曝光 | DRO | 備註 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | Sony | FACTORY (ST) | `factory-st` | Standard | 0 | 0 | 0 | auto | 0 | 0 | — | 0 | auto |  |
+| 2 | Sony | Sony PT (portrait) | `sony-pt-portrait` | Portrait | 0 | 0 | 0 | auto | 0 | 0 | — | 0 | auto |  |
+| 3 | Sony | Sony NT (neutral) | `sony-nt-neutral` | Neutral | 0 | 0 | 0 | auto | 0 | 0 | — | 0 | auto |  |
+| 4 | Sony | Sony VV (vivid) | `sony-vv-vivid` | Vivid | 0 | 0 | 0 | auto | 0 | 0 | — | 0 | auto |  |
+| 5 | Sony | Sony VV2 | `sony-vv2` | Vivid | +2 | +1 | 0 | auto | 0 | 0 | — | 0 | auto |  |
+| 6 | Sony | Sony FL (film-like) | `sony-fl-film-like` | Neutral | −3 | −1 | 0 | auto | A1 | 0 | — | 0 | auto |  |
+| 7 | Sony | Sony IN (instant) | `sony-in-instant` | Neutral | −3 | −3 | 0 | auto | 0 | M1 | — | 0 | auto |  |
+| 8 | Sony | Sony SH (soft high-key) | `sony-sh-soft-high-key` | Light | −2 | −2 | 0 | auto | A1 | 0 | Soft High-key | +1.0 | auto | 柔和高調，藍色調（effect_option = blue） |
+| 9 | Fuji Sim | Provia | `provia` | Standard | +1 | 0 | 0 | auto | 0 | 0 | — | 0 | auto |  |
+| 10 | Fuji Sim | Velvia | `velvia` | Vivid | +3 | +2 | 0 | auto | 0 | 0 | — | 0 | auto |  |
+| 11 | Fuji Sim | Astia | `astia` | Portrait | 0 | −1 | 0 | auto | A1 | 0 | — | +0.3 | auto |  |
+| 12 | Fuji Sim | Classic Chrome | `classic-chrome` | Standard | −1 | +2 | 0 | auto | A3 | G1 | — | −0.3 | auto | 金黃調、藍色壓低 |
+| 13 | Fuji Sim | Classic Negative | `classic-negative` | Standard | −3 | +3 | +1 | auto | B1 | G1 | — | 0 | auto |  |
+| 14 | Fuji Sim | Nostalgic Neg | `nostalgic-neg` | Standard | +1 | 0 | 0 | auto | A3 | 0 | — | 0 | auto | 琥珀色、飽和 |
+| 15 | Fuji Sim | Reala Ace | `reala-ace` | Standard | 0 | +1 | 0 | auto | 0 | 0 | — | 0 | auto |  |
+| 16 | Fuji Sim | Pro Neg Std | `pro-neg-std` | Portrait | −2 | −1 | 0 | auto | 0 | 0 | — | 0 | auto |  |
+| 17 | Fuji Sim | Pro Neg Hi | `pro-neg-hi` | Portrait | −2 | +1 | 0 | auto | 0 | 0 | — | 0 | auto |  |
+| 18 | Fuji Sim | Eterna | `eterna` | Neutral | −3 | −2 | −1 | auto | 0 | 0 | — | −0.3 | Lv3 |  |
+| 19 | Fuji Sim | Eterna Bleach Bypass | `eterna-bleach-bypass` | Neutral | −3 | +3 | 0 | auto | 0 | 0 | — | −0.3 | off | 飽和只能存到 −3，其餘由關閉 DRO 補足 |
+| 20 | Fuji Sim | Acros | `acros` | B&W | 0 | +1 | +1 | auto | 0 | 0 | — | 0 | auto |  |
+| 21 | Fuji Sim | Acros +Ye (yellow filter) | `acros-ye-yellow-filter` | B&W | 0 | +1 | +1 | 4000K | 0 | 0 | — | 0 | auto |  |
+| 22 | Fuji Sim | Acros +R (red filter) | `acros-r-red-filter` | B&W | 0 | 0 | 0 | 2500K | 0 | 0 | HC Mono | 0 | auto | 深黑、天空戲劇化 |
+| 23 | Fuji Sim | Acros +G (green filter) | `acros-g-green-filter` | B&W | 0 | +1 | +1 | 5600K | 0 | G4 | — | 0 | auto |  |
+| 24 | Fuji Sim | Sepia | `sepia` | Sepia | 0 | 0 | 0 | auto | 0 | 0 | — | 0 | auto |  |
+| 25 | Fuji Film | Fuji Pro 400H | `fuji-pro-400h` | Light | −2 | −2 | 0 | auto | B1 | G1 | — | +0.7 | auto | 冷調粉彩 |
+| 26 | Fuji Film | Fuji Fortia 50 | `fuji-fortia-50` | Vivid | +3 | +2 | 0 | auto | B1 | 0 | — | −0.3 | auto |  |
+| 27 | Fuji Film | Fuji Superia 400 | `fuji-superia-400` | Standard | +1 | +1 | 0 | auto | A1 | G1 | — | +0.3 | auto |  |
+| 28 | Fuji Film | Fuji C200 | `fuji-c200` | Standard | 0 | 0 | 0 | auto | B1 | G1 | — | 0 | auto |  |
+| 29 | Fuji Film | Fuji Natura 1600 | `fuji-natura-1600` | Portrait | −2 | −2 | 0 | auto | A1 | 0 | — | +0.3 | auto |  |
+| 30 | Kodak | Kodak Portra 160 | `kodak-portra-160` | Portrait | −3 | −2 | 0 | auto | A1 | M1 | — | +0.7 | auto | 暖調粉彩、帶一點洋紅 |
+| 31 | Kodak | Kodak Portra 400 | `kodak-portra-400` | Portrait | −1 | −1 | 0 | auto | A3 | G1 | — | +0.7 | auto | 金黃、柔和 |
+| 32 | Kodak | Kodak Portra 800 | `kodak-portra-800` | Portrait | −2 | −2 | 0 | auto | A1 | G1 | — | +0.3 | auto | 霧面、褪色暖調 |
+| 33 | Kodak | Kodak Gold 200 | `kodak-gold-200` | Standard | +2 | +1 | 0 | auto | A3 | G1 | — | +0.3 | auto |  |
+| 34 | Kodak | Kodak Ultra Max 400 | `kodak-ultra-max-400` | Standard | 0 | 0 | 0 | auto | 0 | G1 | — | +0.3 | auto |  |
+| 35 | Kodak | Kodak Color Plus 200 | `kodak-color-plus-200` | Standard | +1 | +1 | 0 | auto | A2 | G1 | — | +0.3 | auto |  |
+| 36 | Kodak | Kodak Ektar 100 | `kodak-ektar-100` | Standard | +3 | +1 | +1 | auto | 0 | 0 | — | −0.3 | auto |  |
+| 37 | Kodak | Kodak Ektachrome E100 | `kodak-ektachrome-e100` | Clear | +3 | +1 | 0 | auto | B1 | 0 | — | −0.3 | auto |  |
+| 38 | Kodak | Kodachrome 64 | `kodachrome-64` | Deep | +3 | +2 | +1 | auto | B1 | 0 | — | −0.3 | auto | 參考為冷中性 |
+| 39 | Kodak | Kodak Vision3 500T (daylight) | `kodak-vision3-500t-daylight` | Neutral | −1 | 0 | 0 | 3200K | 0 | 0 | — | +0.3 | Lv3 |  |
+| 40 | Kodak | Kodak Vision 200T (Asteroid City) | `kodak-vision-200t-asteroid-city` | Neutral | −2 | −3 | 0 | 5000K | A2 | G3 | — | +0.3 | Lv3 | 黃綠粉彩、青色天空 |
+| 41 | Kodak | Kodak Tri-X 400 | `kodak-tri-x-400` | B&W | 0 | +2 | +2 | auto | 0 | 0 | — | +0.3 | auto |  |
+| 42 | Kodak | Kodak T-Max | `kodak-t-max` | B&W | 0 | +2 | +3 | auto | 0 | 0 | — | 0 | auto |  |
+| 43 | Kodak | Kodak Tri-X 1600 (pushed) | `kodak-tri-x-1600-pushed` | B&W | 0 | 0 | 0 | auto | 0 | 0 | HC Mono | +0.3 | auto | 增感的高反差 |
+| 44 | Cine | Cinestill 50D (Blue Velvet) | `cinestill-50d-blue-velvet` | Standard | −2 | −1 | 0 | 5500K | B1 | M1 | — | 0 | auto | 褪色、近中性、略冷略洋紅 |
+| 45 | Cine | Cinestill 800T | `cinestill-800t` | Neutral | 0 | 0 | 0 | 3200K | 0 | M1 | — | +0.3 | auto |  |
+| 46 | Cine | Classic Cinema | `classic-cinema` | Standard | 0 | −1 | 0 | 6000K | A2 | 0 | — | 0 | Lv3 | 金黃、飽和 |
+| 47 | Cine | Rec709 Video (flat-ish) | `rec709-video-flat-ish` | Neutral | −2 | −2 | 0 | auto | 0 | 0 | — | 0 | Lv5 |  |
+| 48 | Ricoh GR | GR Positive Film | `gr-positive-film` | Standard | +3 | +2 | 0 | auto | A2 | 0 | — | −0.3 | auto |  |
+| 49 | Ricoh GR | GR Negative Film | `gr-negative-film` | Neutral | −2 | +1 | 0 | auto | B1 | G1 | — | +0.3 | auto |  |
+| 50 | Ricoh GR | GR Bleach Bypass | `gr-bleach-bypass` | Neutral | −3 | +3 | +1 | auto | 0 | 0 | — | 0 | off | 飽和只能存到 −3，其餘由關閉 DRO 補足 |
+| 51 | Ricoh GR | GR Retro | `gr-retro` | Standard | −3 | −1 | 0 | auto | A3 | M1 | Retro | 0 | auto |  |
+| 52 | Ricoh GR | GR Cross Process | `gr-cross-process` | Vivid | +2 | +2 | 0 | auto | B2 | G4 | — | 0 | auto |  |
+| 53 | Ricoh GR | GR Hi-Contrast B&W | `gr-hi-contrast-b-w` | B&W | 0 | +3 | +1 | auto | 0 | 0 | HC Mono | 0 | auto |  |
+| 54 | Ricoh GR | GR Hard Monotone | `gr-hard-monotone` | B&W | 0 | +2 | +2 | auto | 0 | 0 | — | 0 | auto |  |
+| 55 | Ricoh GR | GR Soft Monotone | `gr-soft-monotone` | B&W | 0 | −2 | −1 | auto | 0 | 0 | — | 0 | auto |  |
+| 56 | Leica | Leica Contemporary | `leica-contemporary` | Standard | +1 | +1 | 0 | auto | 0 | 0 | — | 0 | auto |  |
+| 57 | Leica | Leica Classic | `leica-classic` | Standard | −1 | +2 | 0 | auto | A1 | 0 | — | 0 | auto |  |
+| 58 | Leica | Leica Eternal | `leica-eternal` | Neutral | −3 | −1 | 0 | auto | A1 | 0 | — | 0 | Lv3 |  |
+| 59 | Leica | Leica Monochrom | `leica-monochrom` | B&W | 0 | +2 | +1 | auto | 0 | 0 | — | 0 | auto |  |
+| 60 | Hasselblad | Hasselblad HNCS Natural | `hasselblad-hncs-natural` | Neutral | −1 | −1 | 0 | auto | 0 | 0 | — | 0 | auto |  |
+| 61 | Canon / Nikon | Canon Standard | `canon-standard` | Standard | +1 | +1 | 0 | auto | A1 | M1 | — | 0 | auto |  |
+| 62 | Canon / Nikon | Canon Portrait | `canon-portrait` | Portrait | 0 | 0 | −1 | auto | A1 | M1 | — | 0 | auto |  |
+| 63 | Canon / Nikon | Canon Faithful | `canon-faithful` | Neutral | 0 | 0 | 0 | auto | 0 | 0 | — | 0 | auto |  |
+| 64 | Canon / Nikon | Nikon Flat | `nikon-flat` | Neutral | −3 | −3 | −1 | auto | 0 | 0 | — | 0 | Lv5 |  |
+| 65 | Canon / Nikon | Nikon Vivid | `nikon-vivid` | Vivid | +1 | +1 | +1 | auto | 0 | 0 | — | 0 | auto |  |
+| 66 | Pana / Olympus | Pana L.Monochrome D | `pana-l-monochrome-d` | B&W | 0 | +3 | +1 | auto | 0 | 0 | — | 0 | auto |  |
+| 67 | Pana / Olympus | Pana L.ClassicNeo | `pana-l-classicneo` | Neutral | −3 | −1 | 0 | auto | A2 | 0 | — | +0.3 | auto |  |
+| 68 | Pana / Olympus | Olympus Pop Art | `olympus-pop-art` | Vivid | +3 | +3 | 0 | auto | 0 | 0 | — | 0 | auto |  |
+| 69 | Pana / Olympus | Olympus Pale & Light | `olympus-pale-light` | Light | −3 | −2 | 0 | auto | 0 | 0 | — | +0.7 | auto |  |
+| 70 | Other Stocks | Agfa Vista 200 | `agfa-vista-200` | Standard | +2 | +1 | 0 | auto | A2 | M1 | — | +0.3 | auto |  |
+| 71 | Other Stocks | Agfa Ultra 100 | `agfa-ultra-100` | Vivid | +3 | +1 | 0 | auto | 0 | 0 | — | 0 | auto |  |
+| 72 | Other Stocks | Polaroid / Instax | `polaroid-instax` | Standard | −3 | −2 | 0 | auto | A1 | M2 | Retro | +0.3 | auto |  |
+| 73 | Ilford | Ilford HP5 | `ilford-hp5` | B&W | 0 | +1 | 0 | auto | 0 | 0 | — | +0.3 | auto |  |
+| 74 | Ilford | Ilford FP4 | `ilford-fp4` | B&W | 0 | +1 | +1 | auto | 0 | 0 | — | 0 | auto |  |
+| 75 | Ilford | Ilford Delta 100 | `ilford-delta-100` | B&W | 0 | +1 | +1 | auto | 0 | 0 | — | 0 | auto |  |
+| 76 | Ilford | Ilford Delta 3200 | `ilford-delta-3200` | B&W | 0 | +3 | −2 | auto | 0 | 0 | — | +0.7 | auto |  |
+| 77 | Ilford | Ilford Pan F 50 | `ilford-pan-f-50` | B&W | 0 | +2 | +2 | auto | 0 | 0 | — | 0 | auto |  |
+
+各品牌數量：Sony 8、Fuji Sim 16、Fuji Film 5、Kodak 14、Cine 4、Ricoh GR 8、Leica 4、Hasselblad 1、Canon / Nikon 5、Pana / Olympus 4、Other Stocks 3、Ilford 5。
+
+- 啟用照片效果的 6 組（Sony SH、Acros +R、Tri-X 1600、GR Retro、GR Hi-Contrast B&W、Polaroid / Instax）：表中的創意風格與飽和 / 對比 / 銳利度照原樣保存，但算圖時忽略（同相機行為）。
+- 指定色溫的 8 組（Acros +Ye / +R / +G、Vision3 500T、Vision 200T、Cinestill 50D / 800T、Classic Cinema）：結果取決於 `wb_reference`。Recipe Lab 註明這些配方以日光為準，所以參考色溫預設 5500K；室內照片可把參考色溫改成實際光源。
+
+### 7.5 內建資料與自訂配方
+
+**內建資料**：77 組配方存成 `Film/Recipes/recipelab.json`（`EmbeddedResource`），每筆保留 Recipe Lab 的英文名稱、品牌、全部欄位與 `key`；檔頭記錄來源 repo、commit 與授權。資料由 `tools/import-recipelab` 腳本從 `Recipes.java` 轉出，不手動輸入；單元測試比照 Recipe Lab 的 `RecipesTest` 檢查筆數、品牌順序、飽和 / 對比 / 銳利度不超出 ±3、色溫在 2500–9900K 等規則。
+
+**自訂配方**：與 Recipe Lab 的自訂配方檔**完全相容**，相機與電腦之間可以直接互通。
+
+```mermaid
+flowchart LR
+    A["相機記憶卡<br/>RECIPES/*.YML"] -->|"複製"| B["FilmBatch<br/>recipes/ 資料夾"]
+    B --> C["底片選單<br/>「自訂」分組"]
+    C -->|"另存為自訂配方 / 匯出"| D["*.YML<br/>8.3 檔名"]
+    D -->|"複製回記憶卡"| A
+```
+
+- 位置：`<使用者資料夾>/FilmBatch/recipes/`，一個配方一個 `.yml` 檔；底片選單在 12 個品牌之後顯示「自訂」分組，依名稱排序。
+- 格式：Recipe Lab 自訂配方**格式 1**——扁平的 YAML（每行一個 `key: value`、`#` 註解、UTF-8，忽略 BOM），key 見 7.2，另有 `format`（預設 1）、`name`（1–24 個字元：`A–Z a–z 0–9` 與 ` -.'()&+`）、`made-on`（僅供參考）。
+- 讀取規則照搬 Recipe Lab：不認得的 key 忽略；任何一個值超出範圍就略過整個檔案並顯示原因（不自動截斷）；`format` 比程式支援的新則整檔略過；名稱與已載入的配方重複（不分大小寫）則略過；超過 8KB 或隱藏檔忽略。
+- 寫出時採 Recipe Lab 的命名規則（名稱前 8 個英數字轉大寫，重複時加數字，例如 `GOLDENHO.YML`、`GOLDENH2.YML`），名稱一律加引號；`strength`、`wb_reference` 等 FilmBatch 自有參數不寫入配方檔。
+- 預設與配方的關係：預設（第 3 章）的 `film` 模組記錄「選了哪個配方」與各欄位的值。選擇配方會把該配方的欄位值帶入；之後修改任一欄位，模組標題顯示 **EDITED** 標記（沿用 Recipe Lab 的概念），可「重設為配方值」或「另存為自訂配方」。
+
+### 7.6 以 Recipe Lab 樣張校正
+
+Recipe Lab 的 `docs/samples/` 有 77 張在同一場景、同一曝光（ILCE-6000、1/30、f/4.5、ISO 250）下依配方順序拍攝的相機直出樣張（寬 900px），第 01 張為 `FACTORY (ST)`。FilmBatch 以此校正 7.3 的模擬參數：
+
+```mermaid
+flowchart LR
+    A["樣張 01<br/>FACTORY (ST)"] --> B["FilmBatch 套用配方 n"] --> C["與樣張 n 比較<br/>ΔE00"]
+    C --> D["最小平方調整<br/>創意風格基底與每格係數"] --> B
+```
+
+- 校正使用白平衡為 auto 的配方；指定色溫的 8 組在室內拍攝，結果相對於室內光源，只用來檢查方向，不參與擬合。
+- Recipe Lab 註明有 9 張樣張拍攝時飽和超出 ±3（Sony FL、Sony IN、Velvia、Eterna、Eterna Bleach Bypass、Fortia 50、GR Bleach Bypass、Olympus Pop Art、Agfa Ultra 100），另有 5 張使用已停用的 PP3 色彩矩陣；這些樣張與現行數值不符，排除在擬合之外，待上游重拍後再納入。
+- 樣張場景沒有膚色、植物與天空，人像類配方（Portra、Astia、Pro Neg、Canon Portrait）較難判斷；日後可補拍日光下的樣張再校正。
+- 校正結果寫回 `creative_styles.json`，並以樣張建立回歸測試（見 14）。
+
+### 7.7 限制與未來擴充
+
+- **近似的近似**：Recipe Lab 的配方是以相機設定近似目標風格，FilmBatch 再以 shader 近似 Sony 相機的成像；風格以「接近 Recipe Lab 樣張」為目標，不以真實底片為目標。
+- **輸入已經調過色**：輸入不是 Sony 的 RAW，而是 RAW 編輯器的輸出，白平衡為 auto 的配方直接沿用輸入的白平衡。
+- **跟進上游**：Recipe Lab 新增或修改配方時，重新執行 `tools/import-recipelab` 更新內建資料（`key` 不變的配方維持相容；專案檔已記錄實際欄位值，舊專案結果不受影響）；若上游推出自訂配方格式 2，新增對應的讀取器並保留格式 1。
+- 補齊其餘照片效果（Toy、Pop color、Posterization、Part color、Soft focus、HDR art、Rich-tone mono、Miniature、Illustration、Watercolor）。
 
 ---
 
@@ -1084,7 +1256,7 @@ flowchart LR
 ├── settings.json     偏好設定、視窗位置、GPU 介面卡選擇
 ├── layout.json       停靠面板版面
 ├── presets/          預設檔（YAML）
-├── luts/             .cube 與 HaldCLUT
+├── recipes/          自訂底片配方（Recipe Lab 相容 .yml）
 ├── logs/             執行記錄
 └── textures/
     ├── leaks/        漏光掃描（黑底）
@@ -1142,7 +1314,7 @@ flowchart LR
 | 路徑 | 一律使用 `Path.Combine` / `Path.GetRelativePath`；專案檔內存相對路徑並用 `/` 分隔 |
 | 中文路徑 | .NET 與 Magick.NET 皆支援 Unicode 路徑；仍納入路徑測試（見 14） |
 | 使用者資料夾 | 自行實作 `AppPaths`，以 `OperatingSystem.IsWindows() / IsMacOS() / IsLinux()` 決定：Windows `%APPDATA%\FilmBatch`、macOS `~/Library/Application Support/FilmBatch`、Linux `$XDG_CONFIG_HOME/FilmBatch`（預設 `~/.config/FilmBatch`） |
-| 程式內建資源 | 圖示、XAML 以 `AvaloniaResource`（`avares://`）嵌入；內建底片資料與 **WGSL shader** 以 `EmbeddedResource` 嵌入；開發模式可改從原始碼資料夾讀取 shader 以支援熱重載 |
+| 程式內建資源 | 圖示、XAML 以 `AvaloniaResource`（`avares://`）嵌入；內建配方資料（Recipe Lab）、創意風格模擬參數與 **WGSL shader** 以 `EmbeddedResource` 嵌入；開發模式可改從原始碼資料夾讀取 shader 以支援熱重載 |
 | 偏好設定 | 統一存為 `settings.json`（System.Text.Json） |
 | 檔名大小寫 | 比對副檔名一律 `OrdinalIgnoreCase`；專案內照片 key 保留原始大小寫，並以 `StringComparer.Ordinal` 比對 |
 | GPU 後端 | Windows 預設 DX12（Vulkan 為備援）、macOS 為 Metal、Linux 為 Vulkan；偏好設定可強制指定後端，方便排除驅動程式問題 |
@@ -1282,9 +1454,10 @@ flowchart LR
 
 ```bash
 filmbatch export <照片資料夾> --out <輸出資料夾> --format jpg --quality 95
-filmbatch export <照片資料夾> --preset "Portra 暖調" --only-unassigned
+filmbatch export <照片資料夾> --preset "Portra 400" --only-unassigned
 filmbatch export <照片資料夾> --adapter software   # 強制使用軟體介面卡
-filmbatch haldclut identity.png                     # 產生 HaldCLUT 對照圖
+filmbatch recipes list                              # 列出內建與自訂底片配方
+filmbatch recipes import <記憶卡>/RECIPES           # 匯入 Recipe Lab 自訂配方
 filmbatch gpu-info                                  # 列出可用的 GPU 介面卡與限制
 ```
 
@@ -1328,7 +1501,7 @@ flowchart TB
         direction LR
         E1["管線 Pipeline<br/>組合 compute pass"]
         E2["效果模組 Modules/"]
-        E3["底片模型與 LUT Film/"]
+        E3["底片配方與 Sony 成像模擬 Film/"]
         E4["影像 IO<br/>Magick.NET"]
     end
 
@@ -1345,7 +1518,7 @@ flowchart TB
         direction LR
         D1[("project.json")]
         D2[("presets/*.yaml")]
-        D3[("textures/、luts/")]
+        D3[("textures/、recipes/")]
         D4[("settings.json<br/>layout.json")]
     end
 
@@ -1395,7 +1568,7 @@ public interface IEffectModule
     Stage Stage { get; }
     IReadOnlyList<ParamDef> Params { get; }      // schema（同時決定 uniform 佈局）
 
-    /// 準備本模組需要的 GPU 資源（材質、LUT、灰塵圖形緩衝區…），可快取
+    /// 準備本模組需要的 GPU 資源（材質、DRO 金字塔、灰塵圖形緩衝區…），可快取
     ValueTask PrepareAsync(ModuleParams p, RenderContext ctx);
 
     /// 把本模組的 compute pass 錄進指令編碼器：讀 ctx.Input、寫 ctx.Output
@@ -1466,8 +1639,9 @@ sequenceDiagram
     Note over R: 每個顯示幀最多一次請求<br/>只保留最新請求（Channel 容量 1、DropOldest）
     R->>G: 從受影響的區段開始算圖（其餘用區段快取）
     G->>G: 派送 compute pass → 轉 BGRA8 → 複製到讀回緩衝區
+    G->>G: 示波器統計 pass（直方圖 / 波形，示波器折疊時略過）
     G-->>R: MapAsync 完成（generation = n）
-    R-->>V: 經 Dispatcher.UIThread：若 n 為最新則更新 WriteableBitmap，否則丟棄
+    R-->>V: 經 Dispatcher.UIThread：若 n 為最新則更新 WriteableBitmap 與示波器，否則丟棄
     U->>P: 放開滑桿
     P->>C: 結束合併，記為一筆復原紀錄
     R->>G: 背景更新該照片縮圖（低優先）
@@ -1476,6 +1650,10 @@ sequenceDiagram
 - 來源影像在切換照片時上傳一次，之後只有 uniform 改變，不重新上傳。
 - 讀回使用雙緩衝的讀回緩衝區（注意 WebGPU 要求每列位元組數為 256 的倍數），GPU 寫下一幀時 CPU 讀上一幀。
 - 若 GPU 跟不上（例如散景大半徑），排程器自動把拖曳中的預覽降為 800px，放開後補算 1600px。
+- 示波器統計（見 2.4.6）緊接在轉 BGRA8 之後、對同一張預覽紋理執行，與預覽共用同一個 generation，因此畫面與示波器永遠對應同一幀：
+  - 直方圖：每個 workgroup 先在共享記憶體累加 4 × 256 個區間（R、G、B、亮度），最後以 `atomicAdd` 合併到全域緩衝區，讀回 4KB。
+  - 波形 / 分量圖：把影像寬度分為 256 欄，每欄 × 256 個亮度區間的計數（分量圖為 3 組），讀回 256KB–768KB，由 `ScopeView` 依計數的對數值畫成點的亮度。
+  - 統計緩衝區每幀先清零（`clearBuffer`），與讀回緩衝區同樣採雙緩衝。
 
 ### 11.4 Shader 管理
 
@@ -1536,7 +1714,7 @@ FilmBatch/
 │   ├── FilmBatch.Engine/         # 不依賴 UI
 │   │   ├── Imaging/              # Magick.NET 讀寫、EXIF、上傳格式轉換
 │   │   ├── Pipeline/             # Pipeline、RenderContext、區段快取、分塊算圖
-│   │   ├── Film/                 # 底片模型、內建底片（EmbeddedResource）、LUT、HaldCLUT
+│   │   ├── Film/                 # Recipe Lab 配方資料、創意風格參數（EmbeddedResource）、成像模擬、自訂配方 YAML 讀寫
 │   │   ├── Modules/              # 每個效果一個類別
 │   │   ├── Textures/             # 材質載入、灰塵 / 刮痕圖形產生
 │   │   └── Scheduling/           # RenderScheduler、快取、ExportQueue
@@ -1581,6 +1759,7 @@ GPU 讓逐像素運算幾乎不成問題，效能的重點轉為：**減少 CPU�
   - 散景以半解析度的聚集式可變模糊為主（見 5.3.5）。
   - 放射 / 旋轉 / 動態模糊以疊代倍增的少量取樣達到長距離平滑。
 - **讀回成本**：預覽在 GPU 上先轉成 8-bit BGRA 再讀回（1600px 約 10MB），並以雙緩衝避免等待；縮圖批次產生後一次讀回。未來可評估 Avalonia GPU 互通直接共享紋理，完全省去讀回。
+- **示波器**：統計在 GPU 上完成，只讀回統計結果（直方圖 4KB、波形 / 分量圖 256–768KB），不讀回影像；只計算目前顯示的模式，折疊或面板隱藏時完全略過。目標是開啟示波器後，拖曳滑桿的預覽更新時間增加不超過 1 ms（1600px）。
 - **100% 檢視**：只算可見區域加上邊界延伸的全解析度圖塊，平移時增量補算。
 - **分塊匯出**：影像尺寸超過 `maxTextureDimension2D`，或預估顯示記憶體用量超過上限時，以重疊圖塊算圖（邊界延伸依管線中最大的模糊半徑計算），逐塊讀回後在 CPU 端拼接。
 - **顯示記憶體估算**：24MP `rgba32float` 一張約 384MB；工作紋理 2 張 + 區段快取（`rgba16float` 約 192MB × 數張）+ 暫存，24MP 全尺寸算圖約需 1.2–1.8GB 顯示記憶體。顯示記憶體較小的 GPU（例如 2GB 內顯）自動改用分塊。
@@ -1608,13 +1787,13 @@ GPU 讓逐像素運算幾乎不成問題，效能的重點轉為：**減少 CPU�
 | 階段 | 內容 | 產出 | 預估 |
 |---|---|---|---|
 | **M0 UI 規範、原型與 GPU spike** | 第 2 章全部內容：方案骨架（sln、分層專案、CPM、CI）、Fluent 深色主題與資源字典、Dock 版面、元件展示視窗、可操作原型、對話框原型、三層設定模型與復原堆疊；**GPU spike：WebGPU 綁定選型、上傳 → compute → 讀回 → 顯示的完整路徑、三平台後端與軟體介面卡**；三平台發佈冒煙建置；UI 規範定稿 | 凍結的 v1 UI 規範 + 可發佈的原型 + 綁定選型結論 | 3 週 |
-| **M1 GPU 引擎核心** | `FilmBatch.Gpu`（裝置、資源池、shader 前處理與快取）、Magick.NET IO、參數 schema 與 uniform 佈局、模組介面、管線；基本調整、底片色彩、LUT（3D 紋理）、色調分離、清晰與銳化、暗角、光暈、程序化漏光、顆粒；CLI 批次輸出 | `filmbatch export` 可用 | 2.5 週 |
-| **M2 預設與專案** | 預設庫（YAML）、專案檔、預設快照與同步、`AppPaths` | 合併、貼上、同步規則的單元測試 | 1 週 |
-| **M3 UI 與引擎整合** | 原型接上 GPU 引擎：RenderScheduler、來源紋理 LRU、區段快取、縮圖背景產生、指定預設、覆寫標示、裝置遺失處理 | 日常使用可行（色彩類效果） | 1.5 週 |
+| **M1 GPU 引擎核心** | `FilmBatch.Gpu`（裝置、資源池、shader 前處理與快取）、Magick.NET IO、參數 schema 與 uniform 佈局、模組介面、管線；基本調整、底片色彩（Recipe Lab 77 組配方資料、Sony 成像模擬、Retro / Soft High-key / HC Mono 照片效果）、色調分離、清晰與銳化、暗角、光暈、程序化漏光、顆粒；CLI 批次輸出 | `filmbatch export` 可用 | 2.5 週 |
+| **M2 預設與專案** | 預設庫（YAML）、專案檔、預設快照與同步、`AppPaths`、Recipe Lab 自訂配方 `.yml` 讀寫 | 合併、貼上、同步規則的單元測試 | 1 週 |
+| **M3 UI 與引擎整合** | 原型接上 GPU 引擎：RenderScheduler、來源紋理 LRU、區段快取、縮圖背景產生、指定預設、覆寫標示、裝置遺失處理；**示波器**（直方圖、波形圖、RGB 分量圖、裁切警示，見 2.4.6）；以 Recipe Lab 樣張校正成像模擬（見 7.6） | 日常使用可行（色彩類效果） | 2 週 |
 | **M4 批次操作** | 完整 / 只貼預設 / 選擇性貼上、多選調整、拖曳套用預設、ToastBar 復原 | 完整批次工作流程 | 1 週 |
 | **M5 光學效果** | 鏡頭變形、焦外成像、縮放旋轉模糊、動態模糊、畫布控制點、100% 檢視的區域算圖 | 光學類模組完成 | 2.5 週 |
 | **M6 合成與表面效果** | 雙重曝光、多格分鏡、灰塵與刮痕、古典版材、材質漏光、材質庫 | 第 6 章全部 16 個模組完成 | 2 週 |
-| **M7 匯出與發佈** | 匯出對話框與三段流水線、分塊匯出、檔名範本、EXIF / ICC、HaldCLUT 產生器、三平台 CI 正式發佈（.zip / .dmg / .tar.gz）、Pass 合併優化、Native AOT 評估 | 可發佈的 v1.0 | 2 週 |
+| **M7 匯出與發佈** | 匯出對話框與三段流水線、分塊匯出、檔名範本、EXIF / ICC、`THIRD_PARTY_NOTICES.md`（Recipe Lab MIT 授權）、三平台 CI 正式發佈（.zip / .dmg / .tar.gz）、Pass 合併優化、Native AOT 評估 | 可發佈的 v1.0 | 2 週 |
 
 ### 13.2 時程
 
@@ -1631,7 +1810,7 @@ gantt
     section 核心
     M1 GPU 引擎核心             :m1, after m0, 17d
     M2 預設與專案               :m2, after m1, 7d
-    M3 UI 與引擎整合            :m3, after m2, 10d
+    M3 UI 與引擎整合            :m3, after m2, 13d
     M4 批次操作                 :m4, after m3, 7d
     完整批次工作流程（里程碑）    :milestone, after m4, 0d
 
@@ -1644,7 +1823,7 @@ gantt
     v1.0 發佈（里程碑）          :milestone, after m7, 0d
 ```
 
-合計約 15–16 週（以業餘時間開發可能更長）。GPU 引擎的前期成本較高（M0 spike、M1 基礎建設），但之後各效果模組的開發與調校會比 CPU 版快，預覽體驗也好得多。M4 完成後即可進行大部分日常批次工作。
+合計約 16 週（以業餘時間開發可能更長）。GPU 引擎的前期成本較高（M0 spike、M1 基礎建設），但之後各效果模組的開發與調校會比 CPU 版快，預覽體驗也好得多。M4 完成後即可進行大部分日常批次工作。
 
 ### 13.3 階段相依關係
 
@@ -1677,7 +1856,11 @@ M1（引擎）與 M2（預設與專案）在 M0 之後彼此獨立，若有兩�
 | **Shader 驗證** | 所有 WGSL 經前處理後以 naga 驗證；C# 端 uniform 佈局與 WGSL `struct` 一致 |
 | **亂數一致性** | C# 與 WGSL 的雜湊亂數對同一組輸入產生相同結果（GPU 跑一個測試 shader 讀回比對） |
 | **模組 identity 測試** | 每個模組在參數為 0 或關閉時，輸出必須與輸入完全相同（以 `[Theory]` 對所有已註冊模組執行） |
-| **影像回歸測試** | 5–10 張代表性照片（人像、夜景、高反差、低飽和、直幅），對每款底片與每個模組的代表參數產生參考圖，比對 ΔE，超過門檻則失敗 |
+| **影像回歸測試** | 5–10 張代表性照片（人像、夜景、高反差、低飽和、直幅），對每組配方與每個模組的代表參數產生參考圖，比對 ΔE，超過門檻則失敗 |
+| **配方資料測試** | 內建配方與 Recipe Lab 來源 commit 的 `Recipes.java` 逐筆一致（77 筆、品牌順序）；飽和 / 對比 / 銳利度在 ±3 內、色溫 2500–9900K、白平衡微調 ±7 |
+| **自訂配方相容測試** | 讀取 Recipe Lab 格式 1 的範例檔；寫出後再讀回不失真；超出範圍、格式版本過新、名稱重複的檔案被略過並回報原因 |
+| **樣張比對測試** | 以 Recipe Lab 樣張 01（FACTORY）套用各配方，與對應樣張比較 ΔE00，平均值不得比上次校正結果變差（排除 7.6 所列不適用的樣張） |
+| **示波器測試** | 以已知分布的測試圖（純色、水平漸層、左黑右白）比對 GPU 統計結果與 CPU 參考實作，必須完全相同；裁切警示在 0.1% 門檻上下正確切換；示波器折疊時不派送統計 pass |
 | **一致性測試** | 同一張照片在不同解析度下算圖，縮小後比對，驗證「以短邊比例計算」有效 |
 | **分塊測試** | 同一張照片以整張與分塊兩種方式算圖，結果在 ΔE 門檻內（理想為逐位元相同） |
 | **決定性測試** | 同一設定在同一台機器、同一 GPU 與驅動程式上重複算圖，結果逐位元相同 |
@@ -1707,7 +1890,9 @@ M1（引擎）與 M2（預設與專案）在 M0 之後彼此獨立，若有兩�
 | Avalonia 12 / Dock.Avalonia 大版本升級造成破壞性變更 | 重工 | 以 CPM 鎖定版本；兩者維持同一主版本；Dock 版面只透過自有的 `LayoutService` 存取 |
 | Fluent 主題的預設資源與自訂樣式互相干擾 | 外觀不一致 | 自訂樣式集中在 `Controls.axaml` 並最後載入；以元件展示視窗檢查所有狀態 |
 | Trimming 移除了 XAML、序列化或綁定需要的型別 | 發佈版當機 | 編譯繫結與 JSON 原始碼產生器；`TrimMode=partial`；發佈冒煙測試涵蓋 GPU 初始化與所有視窗 |
-| 內建底片風格不夠像 | 使用意願 | 支援匯入 LUT（含以外部調色軟體烘焙的 HaldCLUT）；內建風格持續以參考圖校正 |
+| Sony 成像模擬與相機直出差距過大 | 配方風格不像 | 以 Recipe Lab 樣張校正並建立回歸測試；模擬參數獨立於 `creative_styles.json`，可只更新參數不動配方資料；日後補拍日光樣張 |
+| Recipe Lab 上游修改或刪除配方 | 內建資料過時、舊預設找不到配方 | 資料檔記錄來源 commit，以 `tools/import-recipelab` 更新；預設與專案保存實際欄位值，配方消失時仍可算圖並標示「配方已移除」 |
+| 第三方資料授權與商標 | 法律風險 | 遵守 MIT 授權保留版權聲明；配方名稱僅作風格描述，說明文件註明與各底片品牌無關 |
 | 程序化的灰塵、刮痕、版材不夠真實 | 質感 | 支援使用者自備材質；程序化版作為預設 |
 | 修改預設意外影響舊專案 | 結果不可重現 | 專案保存預設快照，更新時需使用者確認；舊版 shader 依 `pipeline_version` 保留 |
 | macOS 未簽章的 App 被 Gatekeeper 擋下 | 安裝困難 | 自用時右鍵開啟；公開發佈時申請 Apple Developer 簽章與公證 |
@@ -1747,8 +1932,11 @@ M1（引擎）與 M2（預設與專案）在 M0 之後彼此獨立，若有兩�
 - [ ] 只開色彩與顆粒時，拖曳任一滑桿的預覽更新達 60 fps（一般筆電內顯）。
 - [ ] 焦外成像、縮放旋轉模糊、動態模糊、鏡頭暈影、漏光、雙重曝光可在預覽上拖曳控制點，並即時看到結果。
 - [ ] 沒有任何材質檔時，漏光、灰塵與刮痕、古典版材仍可使用程序化效果。
-- [ ] 以外部調色軟體烘焙的 HaldCLUT 可以當作底片使用，且可調整效果比例。
+- [ ] 底片選單可選用 Recipe Lab 全部 77 組配方（依 12 個品牌分組），且可調整效果比例；套用 `FACTORY (ST)` 時輸出與輸入相同。
+- [ ] 以 Recipe Lab 樣張校正後，適用樣張的平均 ΔE00 達到 M3 訂定的門檻。
+- [ ] 從相機記憶卡 `RECIPES/` 複製來的自訂配方可以直接使用；在 FilmBatch 另存的自訂配方放回記憶卡後，Recipe Lab 可讀取。
 - [ ] 預覽與匯出結果目視一致；整張與分塊匯出結果一致。
+- [ ] 示波器可切換直方圖、波形圖、RGB 分量圖，拖曳滑桿時與預覽同步更新且仍達 60 fps（只開色彩與顆粒）；亮部或暗部裁切時 ▲ 亮起，可在預覽上標出裁切區域；按住空白鍵時顯示原圖的分布。
 
 **匯出與平台**
 

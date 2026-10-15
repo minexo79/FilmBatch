@@ -47,6 +47,21 @@ public class ThemeSnapshotTests
     }
 
     [AvaloniaFact]
+    public async Task Sidebar_Tabs_Render()
+    {
+        using var vm = TestEnv.CreateViewModel();
+        var window = new MainWindow(vm) { Width = 1440, Height = 900 };
+        window.Show();
+        await TestEnv.OpenSamplesAsync(vm);
+        TestEnv.PumpUntil(() => !vm.Preview.IsBusy);
+
+        vm.Sidebar.IsPresets = true;
+        Save(window.CaptureRenderedFrame(), "sidebar-presets.png");
+        vm.ExportCommand.Execute(null);
+        Save(window.CaptureRenderedFrame(), "sidebar-export.png");
+    }
+
+    [AvaloniaFact]
     public void Gallery_Renders()
     {
         TestEnv.IsolateUserFolder();

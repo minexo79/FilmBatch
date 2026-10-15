@@ -37,6 +37,7 @@
   <data name="Panel.Preview" xml:space="preserve"><value>預覽</value></data>
   <data name="Panel.Inspector" xml:space="preserve"><value>照片資訊與模組</value></data>
   <data name="Panel.Filmstrip" xml:space="preserve"><value>縮圖列</value></data>
+  <data name="Panel.Export" xml:space="preserve"><value>照片匯出</value></data>
   <data name="Inspector.NoPhoto" xml:space="preserve"><value>尚未選取照片</value></data>
   <data name="Inspector.Preset" xml:space="preserve"><value>預設</value></data>
   <data name="Inspector.ResetPhoto" xml:space="preserve"><value>重設此張</value></data>

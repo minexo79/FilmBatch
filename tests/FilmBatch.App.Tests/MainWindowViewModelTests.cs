@@ -21,6 +21,27 @@ public class MainWindowViewModelTests
     }
 
     [AvaloniaFact]
+    public async Task ExportCommand_SwitchesSidebarToExportTab_AndCountsSelection()
+    {
+        using var vm = TestEnv.CreateViewModel();
+        await TestEnv.OpenSamplesAsync(vm);
+        Assert.Equal(ViewModels.SidePanel.Inspector, vm.Sidebar.Active);
+
+        vm.SelectAllCommand.Execute(null);
+        vm.PanelsHidden = true;
+        vm.ExportCommand.Execute(null);
+
+        Assert.True(vm.Sidebar.IsExport);
+        Assert.False(vm.PanelsHidden);
+        Assert.Equal(ViewModels.Dialogs.ExportScope.Selected, vm.Sidebar.Export.Scope);
+        Assert.Equal(4, vm.Sidebar.Export.Count);
+        Assert.EndsWith("export", vm.Sidebar.Export.Destination);
+
+        vm.Sidebar.IsPresets = true;
+        Assert.Equal(ViewModels.SidePanel.Presets, vm.Sidebar.Active);
+    }
+
+    [AvaloniaFact]
     public async Task EditingParam_MarksOverride_AndUndoClearsIt()
     {
         using var vm = TestEnv.CreateViewModel();

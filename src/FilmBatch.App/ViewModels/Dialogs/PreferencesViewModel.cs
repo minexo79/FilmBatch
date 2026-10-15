@@ -22,7 +22,7 @@ public sealed partial class PreferencesViewModel : ObservableObject
 
     public IReadOnlyList<Option<PreviewBackground>> Backgrounds { get; } =
     [
-        new(PreviewBackground.DarkGray, "深灰 #1A1A1A（預設）"),
+        new(PreviewBackground.DarkGray, "深灰 #161616（預設）"),
         new(PreviewBackground.MidGray, "中灰 #808080（判斷亮度用）"),
         new(PreviewBackground.Black, "純黑 #000000"),
     ];

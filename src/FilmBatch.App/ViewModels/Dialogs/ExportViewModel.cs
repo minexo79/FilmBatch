@@ -6,7 +6,7 @@ public enum ExportScope { Selected, All, ByPreset }
 public enum ExportFormat { Jpeg, Tiff16, Png16 }
 public enum ExportSize { Original, LongEdge }
 
-/// <summary>匯出對話框原型（計畫書 2.8、第 10 章）。實際匯出於 M7 實作。</summary>
+/// <summary>匯出面板原型（計畫書 2.8、第 10 章），位於側邊欄的「照片匯出」分頁。實際匯出於 M7 實作。</summary>
 public sealed partial class ExportViewModel : ObservableObject
 {
     private readonly MainWindowViewModel _main;
@@ -18,7 +18,8 @@ public sealed partial class ExportViewModel : ObservableObject
     public Option<ExportScope> SelectedScope { get => Scopes.First(o => o.Value == Scope); set { if (value is not null) Scope = value.Value; } }
     public Option<ExportFormat> SelectedFormat { get => Formats.First(o => o.Value == Format); set { if (value is not null) Format = value.Value; } }
     public Option<ExportSize> SelectedSize { get => Sizes.First(o => o.Value == Size); set { if (value is not null) Size = value.Value; } }
-    public IReadOnlyList<PresetItemViewModel> Presets { get; }
+    [ObservableProperty]
+    private IReadOnlyList<PresetItemViewModel> _presets = [];
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Summary), nameof(IsByPreset))]
@@ -56,9 +57,24 @@ public sealed partial class ExportViewModel : ObservableObject
     public ExportViewModel(MainWindowViewModel main)
     {
         _main = main;
-        Presets = main.Library.Presets.Select(p => new PresetItemViewModel(p)).ToList();
-        _destination = main.Folder is null ? "" : Path.Combine(main.Folder, "export");
-        _scope = main.Selection.Count > 1 ? ExportScope.Selected : ExportScope.All;
+        _destination = "";
+        _scope = ExportScope.All;
+        Refresh();
+    }
+
+    /// <summary>
+    /// 依目前的資料夾、選取與預設庫更新：預設清單、預設目的地（使用者未填時）、範圍（多選時改為「選取的照片」）與摘要。
+    /// </summary>
+    public void Refresh()
+    {
+        var presetId = Preset?.Id;
+        Presets = _main.Library.Presets.Select(p => new PresetItemViewModel(p)).ToList();
+        Preset = Presets.FirstOrDefault(p => p.Id == presetId);
+        if (string.IsNullOrEmpty(Destination) && _main.Folder is { } folder)
+            Destination = Path.Combine(folder, "export");
+        if (_main.Selection.Count > 1 && Scope == ExportScope.All) Scope = ExportScope.Selected;
+        OnPropertyChanged(nameof(Count));
+        OnPropertyChanged(nameof(Summary));
     }
 
     public int Count => _main.Service is not { } svc ? 0 : Scope switch
