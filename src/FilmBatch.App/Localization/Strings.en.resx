@@ -13,6 +13,10 @@
   <data name="Cmd.OpenFolder" xml:space="preserve"><value>Open Folder…</value></data>
   <data name="Cmd.OpenSamples" xml:space="preserve"><value>Open Sample Folder</value></data>
   <data name="Cmd.Export" xml:space="preserve"><value>Export…</value></data>
+  <data name="Cmd.QuickExport" xml:space="preserve"><value>Quick Export Selected Photos</value></data>
+  <data name="Cmd.ResetSelected" xml:space="preserve"><value>Reset Selected Photos</value></data>
+  <data name="Histogram.Title" xml:space="preserve"><value>Histogram · RGB / Luminance</value></data>
+  <data name="Histogram.Clipping" xml:space="preserve"><value>Shadow clipping {0:P1}　Highlight clipping {1:P1}</value></data>
   <data name="Cmd.Preferences" xml:space="preserve"><value>Preferences…</value></data>
   <data name="Cmd.Exit" xml:space="preserve"><value>Exit</value></data>
   <data name="Cmd.Undo" xml:space="preserve"><value>Undo</value></data>

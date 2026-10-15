@@ -6,6 +6,8 @@ using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
+using FilmBatch.App.Views;
 using FilmBatch.App.Gallery;
 using FilmBatch.App.ViewModels;
 using FilmBatch.App.ViewModels.Dialogs;
@@ -71,6 +73,46 @@ public static class SmokeTest
             Check("重開專案保留編輯", vm.Service!.SettingsFor(file).Number("basic.exposure") == 0.75);
             await WaitUntil(() => vm.Preview.Source is not null && !vm.Renderer.IsBusy, TimeSpan.FromSeconds(30));
 
+            var processedHistogram = vm.Preview.Histogram;
+            vm.Preview.ShowOriginal = true;
+            var originalHistogram = vm.Preview.Histogram;
+            Check("直方圖與原圖對比", processedHistogram is not null && originalHistogram is not null
+                && processedHistogram.PixelCount == vm.Preview.Source!.Width * vm.Preview.Source.Height
+                && !processedHistogram.Luminance.SequenceEqual(originalHistogram.Luminance));
+            vm.Preview.ShowOriginal = false;
+
+            var filmstrip = window.GetVisualDescendants().OfType<FilmstripView>().First();
+            var photoList = filmstrip.FindControl<ListBox>("List")!;
+            var photoMenu = photoList.ContextMenu!;
+            vm.Filmstrip.SelectAll();
+            vm.Filmstrip.SelectContextTarget(vm.Filmstrip.Items.First(t => t.FileName == file));
+            photoMenu.Open(photoList);
+            await Task.Delay(100);
+            Check("縮圖右鍵選單顯示", photoMenu.IsOpen && vm.Selection.Count == 3);
+            using (var menuCapture = new RenderTargetBitmap(
+                new PixelSize((int)Math.Ceiling(photoMenu.Bounds.Width), (int)Math.Ceiling(photoMenu.Bounds.Height)), new Vector(96, 96)))
+            {
+                menuCapture.Render(photoMenu);
+                menuCapture.Save(Path.ChangeExtension(output ?? "smoke-result.txt", ".menu.png"), PngBitmapEncoderOptions.Default);
+            }
+            ActivateMenu(photoMenu, "CopySettingsItem");
+            var pasteTarget = vm.Filmstrip.Items.First(t => t.FileName != file);
+            vm.Filmstrip.SelectContextTarget(pasteTarget);
+            // This target was already in the selected group; narrow it before pasting.
+            vm.Filmstrip.SelectOnly(pasteTarget.FileName);
+            photoMenu.Open(photoList);
+            ActivateMenu(photoMenu, "PasteSettingsItem");
+            Check("右鍵貼上設定", vm.Service.SettingsFor(pasteTarget.FileName).Number("basic.exposure") == 0.75);
+            photoMenu.Open(photoList);
+            ActivateMenu(photoMenu, "ResetPhotoItem");
+            var reset = !vm.Service.Project[pasteTarget.FileName].HasOverrides;
+            vm.UndoCommand.Execute(null);
+            Check("右鍵重設與復原", reset && vm.Service.SettingsFor(pasteTarget.FileName).Number("basic.exposure") == 0.75);
+
+            // Context selection starts an asynchronous source load; hover requires that source.
+            await WaitUntil(() => vm.Preview.Source?.FilePath == vm.Service.Project.PathOf(pasteTarget.FileName)
+                && vm.Preview.Image is not null && !vm.Preview.IsBusy, TimeSpan.FromSeconds(30));
+
             var hovered = vm.Presets.Categories.SelectMany(category => category.Presets).First();
             vm.Presets.Hover.BeginHover(hovered);
             await WaitUntil(() => hovered.HoverPreview is not null, TimeSpan.FromSeconds(20));
@@ -83,14 +125,16 @@ public static class SmokeTest
                 TimeSpan.FromSeconds(30));
             Check("代理圖立即重建", vm.Preview.Source?.Width == 1200 && vm.Preview.Image?.PixelSize.Width == 1200);
 
-            vm.OnSelectionChanged([file], file);
+            vm.Filmstrip.SelectOnly(file);
             vm.ExportCommand.Execute(null);
             var export = vm.Sidebar.Export;
             export.Scope = ExportScope.Selected;
             export.Format = ExportFormat.Png16;
             export.Destination = Path.Combine(folder, "export");
             export.Refresh();
-            await export.StartExportCommand.ExecuteAsync(null);
+            photoMenu.Open(photoList);
+            ActivateMenu(photoMenu, "QuickExportItem");
+            await vm.QuickExportCommand.ExecutionTask!;
             Check("GUI 16-bit 匯出", export.LastSummary is { Succeeded: 1, Failed: 0, Cancelled: false },
                 export.StatusText);
             if (export.LastSummary?.OutputFiles is { Count: 1 } files)
@@ -135,6 +179,15 @@ public static class SmokeTest
         await File.WriteAllTextAsync(path, log.ToString());
         AppLog.Info("冒煙測試結果\n" + log);
         desktop.Shutdown(ok ? 0 : 1);
+    }
+
+    private static void ActivateMenu(ContextMenu menu, string name)
+    {
+        var item = menu.Items.OfType<MenuItem>().Single(i => i.Name == name);
+        if (!item.IsEffectivelyEnabled || item.Command?.CanExecute(item.CommandParameter) != true)
+            throw new InvalidOperationException($"Menu action is unavailable: {name}");
+        item.Command.Execute(item.CommandParameter);
+        menu.Close();
     }
 
     private static byte[] HashFile(string path)

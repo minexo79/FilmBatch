@@ -22,6 +22,7 @@ public sealed class AppSettings
     public string? TexturesFolder { get; set; }
     public AssignOverridesChoice AssignOverrides { get; set; } = AssignOverridesChoice.Ask;
     public bool HideDisabledModules { get; set; }
+    public bool HistogramExpanded { get; set; } = true;
     public string? LastFolder { get; set; }
     public List<string> SelectivePasteModules { get; set; } = [];
     public bool SelectivePasteIncludeSeeds { get; set; }

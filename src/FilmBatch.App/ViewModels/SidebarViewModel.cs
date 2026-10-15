@@ -15,6 +15,7 @@ public sealed partial class SidebarViewModel : ObservableObject
     public PresetLibraryViewModel Presets { get; }
     public InspectorViewModel Inspector { get; }
     public ExportViewModel Export { get; }
+    public PreviewViewModel Preview { get; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsPresets), nameof(IsInspector), nameof(IsExport))]
@@ -38,11 +39,12 @@ public sealed partial class SidebarViewModel : ObservableObject
         set { if (value) Active = SidePanel.Export; }
     }
 
-    public SidebarViewModel(PresetLibraryViewModel presets, InspectorViewModel inspector, ExportViewModel export)
+    public SidebarViewModel(PresetLibraryViewModel presets, InspectorViewModel inspector, ExportViewModel export, PreviewViewModel preview)
     {
         Presets = presets;
         Inspector = inspector;
         Export = export;
+        Preview = preview;
     }
 
     partial void OnActiveChanged(SidePanel value)

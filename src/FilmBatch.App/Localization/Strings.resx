@@ -13,6 +13,10 @@
   <data name="Cmd.OpenFolder" xml:space="preserve"><value>開啟資料夾…</value></data>
   <data name="Cmd.OpenSamples" xml:space="preserve"><value>開啟範例資料夾</value></data>
   <data name="Cmd.Export" xml:space="preserve"><value>匯出…</value></data>
+  <data name="Cmd.QuickExport" xml:space="preserve"><value>快速匯出選取照片</value></data>
+  <data name="Cmd.ResetSelected" xml:space="preserve"><value>重設選取照片</value></data>
+  <data name="Histogram.Title" xml:space="preserve"><value>直方圖 · RGB / 亮度</value></data>
+  <data name="Histogram.Clipping" xml:space="preserve"><value>暗部裁切 {0:P1}　亮部裁切 {1:P1}</value></data>
   <data name="Cmd.Preferences" xml:space="preserve"><value>偏好設定…</value></data>
   <data name="Cmd.Exit" xml:space="preserve"><value>結束</value></data>
   <data name="Cmd.Undo" xml:space="preserve"><value>復原</value></data>
