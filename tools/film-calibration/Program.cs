@@ -37,6 +37,7 @@ static class Program
     static readonly Dictionary<int, Settings> RecipeSettings = new();
     static readonly Dictionary<int, double> BaseDE = new();
     static readonly Dictionary<int, double> FinalDE = new();
+    static bool _extrapolatedMinimumSaturation;
 
     static int Main(string[] args)
     {
@@ -385,6 +386,14 @@ static class Program
             if ((prev - now) / Math.Max(prev, 1e-9) < 1e-3) break;
             prev = now;
         }
+        // An underconstrained endpoint must not keep an arbitrary near-gray initial value
+        // after its two neighboring steps have been fitted. Use their slope, not held-out photos.
+        if (!satSteps.Contains(0) && satSteps.Contains(1) && satSteps.Contains(2))
+        {
+            m.Saturation[0] = Math.Clamp(2 * m.Saturation[1] - m.Saturation[2], 0, m.Saturation[1]);
+            _extrapolatedMinimumSaturation = true;
+            Console.WriteLine($"[{tag}] underconstrained saturation -3 extrapolated to {m.Saturation[0]:F6}");
+        }
         return m;
     }
 
@@ -435,6 +444,8 @@ static class Program
         sb.AppendLine($"    \"heldoutMeanDE\": {F6(heldAfter)},");
         sb.AppendLine($"    \"heldoutBaselineMeanDE\": {F6(heldBefore)},");
         sb.AppendLine($"    \"heldoutCount\": {Rows.Count(r => r.Cls == "Held")},");
+        if (_extrapolatedMinimumSaturation)
+            sb.AppendLine("    \"satMinus3Guard\": \"Unfitted -3 extrapolated from fitted -2/-1 slope, clamped to [0,-2]; no held-out photos used\",");
         sb.AppendLine("    \"excluded\": \"9 overrange + 5 PP3-matrix (union 10) fit-excluded; 8 kelvin direction-check only; 5 supported-effect measured-only\"");
         sb.AppendLine("  },");
         sb.AppendLine("  // 每種創意風格的基底：logit 空間色調曲線 y = sigmoid(k * logit(x) - shift)（0→0、1→1），");
@@ -463,6 +474,8 @@ static class Program
         }
         sb.AppendLine("  },");
         sb.AppendLine("  // 對比 / 飽和逐格係數：零檔固定為 1，保持單調，單樣本檔位不擬合。");
+        if (_extrapolatedMinimumSaturation)
+            sb.AppendLine("  // 飽和 -3 樣本不足時，延續已擬合 -2/-1 的斜率；不沿用任意近灰初值。");
         sb.Append("  \"contrastPerStep\": { ");
         sb.Append(string.Join(", ", Enumerable.Range(0, 7).Select(i => $"\"{i - 3}\": {F6(m.Contrast[i])}")));
         sb.AppendLine(" },");
