@@ -7,17 +7,30 @@ namespace FilmBatch.Core.Projects;
 /// <summary>
 /// UI 對專案的所有修改入口：每個操作都包成命令送進 <see cref="CommandStack"/>，因此都能復原。
 /// </summary>
-public sealed class ProjectService(Project project, PresetLibrary library, CommandStack stack)
+public sealed class ProjectService
 {
+    private readonly Project project;
+    private readonly PresetLibrary library;
+    private readonly CommandStack stack;
+
+    public ProjectService(Project project, PresetLibrary library, CommandStack stack)
+    {
+        this.project = project;
+        this.library = library;
+        this.stack = stack;
+        project.AttachLibrary(library);
+    }
+
     public Project Project => project;
     public PresetLibrary Library => library;
     public CommandStack Stack => stack;
 
-    /// <summary>預設：預設庫優先，其次專案快照；找不到時回傳 null（照片以系統預設算圖）。</summary>
+    /// <summary>重開專案保留快照；只有明確同步才採用修改後的全域預設。</summary>
     public Preset? PresetFor(Guid? id)
     {
         if (id is not { } g) return null;
-        return library.Get(g) ?? project.PresetSnapshots.GetValueOrDefault(g);
+        var snapshot = project.PresetSnapshots.GetValueOrDefault(g);
+        return project.PreserveSnapshots ? snapshot ?? library.Get(g) : library.Get(g) ?? snapshot;
     }
 
     /// <summary>系統預設 ⊕ 預設。</summary>
@@ -44,8 +57,17 @@ public sealed class ProjectService(Project project, PresetLibrary library, Comma
     public bool SetValue(IReadOnlyCollection<string> fileNames, string key, ParamValue value, string? mergeKey = null)
     {
         var label = ModuleCatalog.Param(key)?.Label ?? key;
+        if (ModuleCatalog.Param(key)?.Kind == ParamKind.Path && Path.IsPathRooted(value.AsText))
+            value = AppPaths.ToProjectRelative(project.Folder, value.AsText);
         return Apply($"調整 {label}", fileNames, e => PhotoOperations.SetValue(e, key, value, BaseFor(e.PresetId)), mergeKey);
     }
+
+    /// <summary>一筆可復原的多欄位操作，例如選擇底片配方。</summary>
+    public bool SetValues(IReadOnlyCollection<string> fileNames, Settings values, string description) =>
+        Apply(description, fileNames, entry => entry with
+        {
+            Overrides = PhotoOperations.Clean(entry.Overrides.Overlay(values), BaseFor(entry.PresetId)),
+        });
 
     public bool ResetParam(IReadOnlyCollection<string> fileNames, string key) =>
         Apply($"重設 {ModuleCatalog.Param(key)?.Label ?? key}", fileNames, e => PhotoOperations.ResetParam(e, key));

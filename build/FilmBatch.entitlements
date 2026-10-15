@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- .NET self-contained 應用在 hardened runtime 下需要允許 JIT 編譯。 -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <!-- CLR 會產生並執行未逐一簽章的 JIT 程式碼頁面。 -->
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+</dict>
+</plist>

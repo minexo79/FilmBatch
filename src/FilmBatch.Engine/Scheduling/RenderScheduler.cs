@@ -13,13 +13,16 @@ public sealed record PreviewRendered(string Key, long Generation, RenderResult R
 /// </summary>
 public sealed class RenderScheduler : IDisposable
 {
-    private readonly Func<IPreviewRenderer> _factory;
-    private readonly Func<IPreviewRenderer>? _fallback;
+    private Func<IPreviewRenderer> _factory;
+    private Func<IPreviewRenderer>? _fallback;
     private readonly Thread _thread;
     private readonly AutoResetEvent _signal = new(false);
     private readonly object _lock = new();
-    private readonly LinkedList<(string Key, SourceImage Source, Settings Settings)> _thumbs = new();
-    private (string Key, SourceImage Source, Settings Settings, long Generation)? _preview;
+    private readonly LinkedList<(string Key, SourceImage Source, Settings Settings, long Epoch)> _thumbs = new();
+    private (string Key, SourceImage Source, Settings Settings, long Generation, long Epoch)? _preview;
+    private (Func<IPreviewRenderer> Factory, Func<IPreviewRenderer>? Fallback)? _pendingReset;
+    private long _epoch;
+    private Exception? _initError;
     private volatile bool _disposed;
     private bool _started;
     private IPreviewRenderer? _renderer;
@@ -57,9 +60,21 @@ public sealed class RenderScheduler : IDisposable
         }
     }
 
+    /// <summary>目前的算圖世代：每次重建裝置時推進，用於丟棄舊裝置的飛行中結果。</summary>
+    public long Epoch
+    {
+        get { lock (_lock) return _epoch; }
+    }
+
+    /// <summary>最近一次算圖器建立失敗的原因；成功後清除。null 表示無已知錯誤。</summary>
+    public Exception? InitError
+    {
+        get { lock (_lock) return _initError; }
+    }
+
     public void RequestPreview(string key, SourceImage source, Settings settings, long generation)
     {
-        lock (_lock) _preview = (key, source, settings, generation);
+        lock (_lock) _preview = (key, source, settings, generation, _epoch);
         _signal.Set();
     }
 
@@ -74,28 +89,74 @@ public sealed class RenderScheduler : IDisposable
                 _thumbs.Remove(n);
                 break;
             }
-            _thumbs.AddLast((key, source, settings));
+            _thumbs.AddLast((key, source, settings, _epoch));
         }
         _signal.Set();
     }
 
     public void CancelThumbnails()
     {
-        lock (_lock) _thumbs.Clear();
+        lock (_lock)
+        {
+            _thumbs.Clear();
+            _preview = null;
+            _epoch++;
+        }
+    }
+
+    /// <summary>
+    /// 以新的算圖器工廠重建裝置。呼叫後立即丟棄所有排隊中與飛行中的舊請求；
+    /// 重建本身在擁有的 GPU 執行緒上執行，不阻塞呼叫端。事件訂閱原樣保留。
+    /// 重建完成（或失敗）會再次觸發 <see cref="DeviceReady"/>（失敗時觸發 <see cref="RenderFailed"/>）。
+    /// </summary>
+    public void ResetRenderer(Func<IPreviewRenderer> factory, Func<IPreviewRenderer>? fallback = null)
+    {
+        lock (_lock)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            _pendingReset = (factory, fallback);
+            // 立即推進世代：此後送達的舊裝置結果一律丟棄，即使重建尚未在 GPU 執行緒上執行。
+            _epoch++;
+            _preview = null;
+            _thumbs.Clear();
+            _signal.Set();
+        }
     }
 
     private void Run()
     {
-        InitRenderer(isRetry: false);
+        InitRenderer();
         while (!_disposed)
         {
             _signal.WaitOne(500);
             while (!_disposed)
             {
-                (string Key, SourceImage Source, Settings Settings, long Generation)? preview;
-                (string Key, SourceImage Source, Settings Settings)? thumb = null;
+                // 偏好設定觸發的重建優先於任何算圖；在 GPU 執行緒上序列化執行。
+                (Func<IPreviewRenderer> Factory, Func<IPreviewRenderer>? Fallback)? reset = null;
                 lock (_lock)
                 {
+                    reset = _pendingReset;
+                    _pendingReset = null;
+                }
+                if (reset is { } job)
+                {
+                    // 佇列已在 ResetRenderer 送出時清空並推進世代；此處只換工廠並重建，
+                    // 避免清除送出後才到達的新世代請求。
+                    lock (_lock)
+                    {
+                        _factory = job.Factory;
+                        _fallback = job.Fallback;
+                    }
+                    InitRenderer();
+                    continue;
+                }
+
+                (string Key, SourceImage Source, Settings Settings, long Generation, long Epoch)? preview;
+                (string Key, SourceImage Source, Settings Settings, long Epoch)? thumb = null;
+                long epoch;
+                lock (_lock)
+                {
+                    epoch = _epoch;
                     preview = _preview;
                     _preview = null;
                     if (preview is null && _thumbs.First is { } first)
@@ -107,13 +168,23 @@ public sealed class RenderScheduler : IDisposable
 
                 if (preview is { } p)
                 {
-                    if (TryRender(p.Key, p.Source, p.Settings) is { } r)
-                        PreviewRendered?.Invoke(new PreviewRendered(p.Key, p.Generation, r));
+                    if (p.Epoch != epoch) continue; // 重建後的舊請求：丟棄
+                    if (TryRender(p.Key, p.Source, p.Settings, p.Epoch) is { } r)
+                    {
+                        lock (_lock)
+                            if (p.Epoch == _epoch)
+                                PreviewRendered?.Invoke(new PreviewRendered(p.Key, p.Generation, r));
+                    }
                 }
                 else if (thumb is { } t)
                 {
-                    if (TryRender(t.Key, t.Source, t.Settings) is { } r)
-                        ThumbnailRendered?.Invoke(t.Key, r);
+                    if (t.Epoch != epoch) continue;
+                    if (TryRender(t.Key, t.Source, t.Settings, t.Epoch) is { } r)
+                    {
+                        lock (_lock)
+                            if (t.Epoch == _epoch)
+                                ThumbnailRendered?.Invoke(t.Key, r);
+                    }
                 }
                 else break;
             }
@@ -121,8 +192,14 @@ public sealed class RenderScheduler : IDisposable
         _renderer?.Dispose();
     }
 
-    private RenderResult? TryRender(string key, SourceImage source, Settings settings)
+    private RenderResult? TryRender(string key, SourceImage source, Settings settings, long epoch)
     {
+        if (_renderer is null)
+        {
+            // 算圖器尚未成功建立（前次 InitRenderer 兩者皆失敗）：重試建立，而非 NullReference 墜機
+            InitRenderer();
+            if (_renderer is null) return null;
+        }
         for (var attempt = 0; attempt < 2; attempt++)
         {
             try
@@ -133,30 +210,63 @@ public sealed class RenderScheduler : IDisposable
             {
                 // 裝置遺失或驅動程式重置：重建裝置並重新上傳後重試一次
                 Notice?.Invoke($"GPU 已重新初始化（{ex.Message}）");
-                InitRenderer(isRetry: true);
+                InitRenderer();
+                if (_renderer is null) return null;
             }
             catch (Exception ex)
             {
-                RenderFailed?.Invoke(key, ex);
+                lock (_lock)
+                    if (epoch == _epoch) RenderFailed?.Invoke(key, ex);
             }
         }
         return null;
     }
 
-    private void InitRenderer(bool isRetry)
+    /// <summary>
+    /// 建立算圖器。成功（或備援成功）時觸發 DeviceReady；兩者皆失敗時觸發 RenderFailed 並保留錯誤，
+    /// 不讓例外殺死 GPU 執行緒，後續請求仍可重試。
+    /// </summary>
+    private void InitRenderer()
     {
-        try { _renderer?.Dispose(); } catch { /* 遺失的裝置可能無法正常釋放 */ }
+        try { _renderer?.Dispose(); } catch { /* A lost device may already be unavailable. */ }
         _renderer = null;
+        IPreviewRenderer? next = null;
+        Exception? primaryError = null;
         try
         {
-            _renderer = _factory();
+            next = _factory();
         }
-        catch (Exception ex) when (_fallback != null)
+        catch (Exception ex)
         {
-            Notice?.Invoke($"無法建立 GPU 裝置，改用 CPU 算圖：{ex.Message}");
-            _renderer = _fallback();
+            primaryError = ex;
         }
-        DeviceReady?.Invoke(_renderer.DeviceName, _renderer.IsSoftware);
+        if (next is null && _fallback is not null)
+        {
+            try
+            {
+                Notice?.Invoke($"無法建立 GPU 裝置，改用 CPU 算圖：{primaryError?.Message}");
+                next = _fallback();
+            }
+            catch (Exception fallbackError)
+            {
+                primaryError = new AggregateException(primaryError!, fallbackError);
+            }
+        }
+        if (next is null)
+        {
+            lock (_lock)
+            {
+                _initError = primaryError ?? new InvalidOperationException("Renderer factory returned no renderer.");
+                if (_pendingReset is null) RenderFailed?.Invoke("$init", _initError);
+            }
+            return;
+        }
+        _renderer = next;
+        lock (_lock)
+        {
+            _initError = null;
+            if (_pendingReset is null) DeviceReady?.Invoke(_renderer.DeviceName, _renderer.IsSoftware);
+        }
     }
 
     public void Dispose()

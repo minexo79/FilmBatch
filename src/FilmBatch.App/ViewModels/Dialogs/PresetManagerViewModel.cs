@@ -29,7 +29,7 @@ public sealed partial class PresetRowViewModel(Preset preset, int users) : Obser
     public Preset ToPreset() => Preset with { Name = Name.Trim(), Category = Category.Trim(), ColorLabel = ColorLabel };
 }
 
-/// <summary>預設管理對話框原型（計畫書 2.8）：名稱、分類、色彩標籤；YAML 匯入／匯出於 M2 實作。</summary>
+/// <summary>預設管理：即時持久化名稱、分類、色彩標籤，以及 YAML 匯入／匯出。</summary>
 public sealed partial class PresetManagerViewModel : ObservableObject
 {
     private readonly MainWindowViewModel _main;
@@ -39,6 +39,7 @@ public sealed partial class PresetManagerViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(DeleteCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ExportCommand))]
     private PresetRowViewModel? _selected;
 
     public PresetManagerViewModel(MainWindowViewModel main)
@@ -59,6 +60,42 @@ public sealed partial class PresetManagerViewModel : ObservableObject
     {
         foreach (var r in Rows.Where(r => r.IsDirty && !string.IsNullOrWhiteSpace(r.Name)))
             _main.Library.Save(r.ToPreset());
+    }
+
+    [RelayCommand]
+    private async Task Import()
+    {
+        var path = await _main.Dialogs.PickFileAsync("匯入預設 YAML", ["*.yaml", "*.yml"]);
+        if (path is null) return;
+        try
+        {
+            var preset = PresetFile.Read(path);
+            if (_main.Library.Get(preset.Id) is { } existing
+                && !await _main.Dialogs.ConfirmAsync("更新預設", $"取代預設「{existing.Name}」？原專案仍保留快照。", "取代")) return;
+            _main.Library.Save(preset);
+            Reload();
+            Selected = Rows.FirstOrDefault(row => row.Preset.Id == preset.Id);
+            _main.Toast.Show($"已匯入預設「{preset.Name}」");
+        }
+        catch (Exception ex) { _main.Toast.Show($"匯入失敗：{ex.Message}"); }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanDelete))]
+    private async Task Export()
+    {
+        if (Selected is not { } row) return;
+        var invalidCharacters = Path.GetInvalidFileNameChars();
+        var name = string.Concat(row.Name.Select(character => invalidCharacters.Contains(character) ? '_' : character));
+        var path = await _main.Dialogs.SaveFileAsync("匯出預設 YAML", name + ".yaml", ["*.yaml", "*.yml"]);
+        if (path is null) return;
+        try
+        {
+            if (!new[] { ".yaml", ".yml" }.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase))
+                throw new InvalidDataException("預設檔副檔名必須是 .yaml 或 .yml。");
+            PresetFile.Write(path, row.ToPreset());
+            _main.Toast.Show($"已匯出預設：{path}");
+        }
+        catch (Exception ex) { _main.Toast.Show($"匯出失敗：{ex.Message}"); }
     }
 
     private bool CanDelete() => Selected is not null;

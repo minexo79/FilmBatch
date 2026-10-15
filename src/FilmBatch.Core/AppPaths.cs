@@ -26,7 +26,7 @@ public static class AppPaths
     public static string SettingsFile => Path.Combine(Root, "settings.json");
     public static string LayoutFile => Path.Combine(Root, "layout.json");
     public static string Presets => Path.Combine(Root, "presets");
-    public static string Luts => Path.Combine(Root, "luts");
+    public static string Recipes => Path.Combine(Root, "recipes");
     public static string Logs => Path.Combine(Root, "logs");
     public static string Textures => Path.Combine(Root, "textures");
 
@@ -39,9 +39,23 @@ public static class AppPaths
     /// <summary>原子寫檔：先寫暫存檔再取代，避免當機時檔案損毀。</summary>
     public static void WriteAllTextAtomic(string path, string content)
     {
+        path = Path.GetFullPath(path);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        var tmp = path + ".tmp";
-        File.WriteAllText(tmp, content);
-        File.Move(tmp, path, overwrite: true);
+        var tmp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            using (var stream = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+                using var writer = new StreamWriter(stream, new System.Text.UTF8Encoding(false), leaveOpen: true);
+                writer.Write(content);
+                writer.Flush();
+                stream.Flush(flushToDisk: true);
+            }
+            File.Move(tmp, path, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(tmp)) File.Delete(tmp);
+        }
     }
 }

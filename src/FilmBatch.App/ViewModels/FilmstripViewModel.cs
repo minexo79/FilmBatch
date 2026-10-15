@@ -111,10 +111,12 @@ public sealed partial class FilmstripViewModel : ObservableObject
 
     private async Task LoadThumbnailAsync(ThumbnailViewModel vm, Project project)
     {
+        var generation = _main.Images.FolderGeneration;
         try
         {
             vm.Source = await _main.Images.GetThumbnailSourceAsync(project.PathOf(vm.FileName));
             if (_main.Service?.Project != project) return;
+            if (!_main.Images.IsCurrent(generation)) return; // 跨資料夾的舊結果：丟棄
             _main.RequestThumbnail(vm.FileName, vm.Source);
         }
         catch (Exception ex)

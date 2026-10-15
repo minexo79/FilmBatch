@@ -13,8 +13,9 @@ public sealed record Option<T>(T Value, string Label)
 }
 
 /// <summary>
-/// 偏好設定（計畫書 2.8）。預覽背景、隱藏未啟用模組與語言立即生效；
-/// GPU 介面卡與後端於下次啟動生效（M3 起改為即時重建裝置）。
+/// 偏好設定（計畫書 2.8）。所有設定在關閉對話框時寫回並立即生效：
+/// 後端、軟體介面卡、材質資料夾與記憶體預算會在 GPU 執行緒上重建算圖器，
+/// 代理圖尺寸會重建預覽快取並重新載入目前照片。介面卡清單僅供顯示（唯讀），不提供選擇。
 /// </summary>
 public sealed partial class PreferencesViewModel : ObservableObject
 {
@@ -59,10 +60,13 @@ public sealed partial class PreferencesViewModel : ObservableObject
     private string _texturesFolder;
 
     [ObservableProperty]
-    private string _lutsFolder;
-
-    [ObservableProperty]
     private Option<string> _language;
+
+    /// <summary>重建失敗時的錯誤訊息；成功時為 null。</summary>
+    [ObservableProperty]
+    private string? _applyError;
+
+    public bool HasApplyError => ApplyError is not null;
 
     public string CurrentAdapter => _main.GpuName;
 
@@ -76,7 +80,6 @@ public sealed partial class PreferencesViewModel : ObservableObject
         _forceSoftware = s.ForceSoftwareGpu;
         _gpuMemoryLimitMb = s.GpuMemoryLimitMb;
         _texturesFolder = s.TexturesFolder ?? Core.AppPaths.Textures;
-        _lutsFolder = s.LutsFolder ?? Core.AppPaths.Luts;
         _language = Languages.FirstOrDefault(l => l.Value == s.Language) ?? Languages[0];
         _ = LoadAdaptersAsync();
     }
@@ -96,14 +99,19 @@ public sealed partial class PreferencesViewModel : ObservableObject
 
     partial void OnBackgroundChanged(Option<PreviewBackground> value) => _main.ApplyPreviewBackground(value.Value);
 
+    partial void OnApplyErrorChanged(string? value) => OnPropertyChanged(nameof(HasApplyError));
+
     partial void OnLanguageChanged(Option<string> value)
     {
         _main.Settings.Language = value.Value;
         Loc.Instance.Culture = CultureInfo.GetCultureInfo(value.Value);
     }
 
-    /// <summary>關閉時寫回其餘設定。</summary>
-    public void Apply()
+    /// <summary>
+    /// 關閉時寫回設定並立即生效。傳回 true 表示算圖器重建成功或無需重建；
+    /// 重建失敗時傳回 false 並在 <see cref="ApplyError"/> 說明（錯誤同時經 Renderer.Failed 表面化）。
+    /// </summary>
+    public bool Apply()
     {
         var s = _main.Settings;
         s.PreviewLongEdge = ProxySize;
@@ -111,6 +119,16 @@ public sealed partial class PreferencesViewModel : ObservableObject
         s.ForceSoftwareGpu = ForceSoftware;
         s.GpuMemoryLimitMb = GpuMemoryLimitMb;
         s.TexturesFolder = TexturesFolder;
-        s.LutsFolder = LutsFolder;
+        ApplyError = null;
+        try
+        {
+            _main.ApplyRenderPreferences();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            ApplyError = ex.Message;
+            return false;
+        }
     }
 }

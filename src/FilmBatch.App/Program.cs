@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Media;
 using FilmBatch.App.Services;
+using FilmBatch.Core;
 
 namespace FilmBatch.App;
 
@@ -30,7 +31,11 @@ internal static class Program
     [STAThread]
     public static int Main(string[] args)
     {
-        StartupOptions.Parse(args);
+        var options = StartupOptions.Parse(args);
+        // 發佈版冒煙測試絕不寫入真正的使用者資料夾（設定、預設庫、layout、log）：
+        // 在 AppSettings.Load / AppLog 之前就切到一次性暫存 profile；外部已指定 OverrideRoot 時尊重原值。
+        if (options.Smoke && AppPaths.OverrideRoot is null)
+            AppPaths.OverrideRoot = Path.Combine(Path.GetTempPath(), $"filmbatch-smoke-{Environment.ProcessId}");
         AppLog.Info($"FilmBatch 啟動：{string.Join(' ', args)}");
         try
         {
@@ -47,8 +52,11 @@ internal static class Program
     public static AppBuilder BuildAvaloniaApp() =>
         AppBuilder.Configure<App>()
             .UsePlatformDetect()
+            // macOS：顯示 Dock 圖示並保留 Avalonia 在應用程式選單追加的預設項目（關閉視窗、結束等）
+            .With(new MacOSPlatformOptions { ShowInDock = true })
             .With(FontOptions())
             .LogToTrace();
+
 
     /// <summary>預設字型與後備字型（計畫書 2.2.3）。</summary>
     internal static FontManagerOptions FontOptions()

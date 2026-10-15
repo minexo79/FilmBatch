@@ -5,15 +5,39 @@ using FilmBatch.Engine.Imaging;
 namespace FilmBatch.Engine.Rendering;
 
 /// <summary>
-/// 與 GPU spike 相同數學的 CPU 參考實作。用於沒有 GPU 的 UI 測試、GPU 結果比對（ΔE），
-/// 以及連軟體介面卡都無法建立時的最後備援。速度不列入效能目標。
+/// 完整效果管線的 CPU 實作，也是沒有 GPU 時的備援。SpikeParams 多載只供獨立 benchmark 使用。
 /// </summary>
 public sealed class CpuFakeRenderer : IPreviewRenderer
 {
     public string DeviceName => "CPU（參考實作）";
     public bool IsSoftware => true;
 
-    public RenderResult Render(SourceImage source, Settings settings) => Render(source, SpikeParams.From(settings));
+    private readonly EffectAssets _assets;
+
+    public CpuFakeRenderer(EffectRendererOptions? options = null) => _assets = new(options ?? new());
+
+    public RenderResult Render(SourceImage source, Settings settings)
+    {
+        var sw = Stopwatch.StartNew();
+        var rendered = Render16(source, settings);
+        var pixels = rendered.Rgba16;
+        var bgra = new byte[pixels.Length];
+        for (var i = 0; i < pixels.Length; i += 4)
+        {
+            bgra[i] = (byte)((pixels[i + 2] + 128) / 257);
+            bgra[i + 1] = (byte)((pixels[i + 1] + 128) / 257);
+            bgra[i + 2] = (byte)((pixels[i] + 128) / 257);
+            bgra[i + 3] = (byte)((pixels[i + 3] + 128) / 257);
+        }
+        return new RenderResult(source.Width, source.Height, bgra, sw.Elapsed);
+    }
+
+    public SourceImage Render16(SourceImage source, Settings settings, CancellationToken cancellationToken = default)
+    {
+        var parameters = ModuleParams.From(source, settings);
+        _assets.Prepare(source, parameters);
+        return CpuPipeline.Process(source, parameters, null, cancellationToken);
+    }
 
     public RenderResult Render(SourceImage source, SpikeParams p)
     {

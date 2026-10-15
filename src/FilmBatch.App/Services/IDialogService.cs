@@ -7,6 +7,8 @@ namespace FilmBatch.App.Services;
 public interface IDialogService
 {
     Task<string?> PickFolderAsync(string? startFolder);
+    Task<string?> PickFileAsync(string title, IReadOnlyList<string> patterns);
+    Task<string?> SaveFileAsync(string title, string suggestedName, IReadOnlyList<string> patterns);
 
     /// <summary>指定預設時，目標照片已有覆寫：回傳 (保留覆寫?, 記住選擇?)；取消時回傳 null。</summary>
     Task<(bool Keep, bool Remember)?> AskKeepOverridesAsync(int photoCount);

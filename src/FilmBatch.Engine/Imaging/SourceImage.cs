@@ -8,10 +8,11 @@ public sealed class SourceImage(int width, int height, ushort[] rgba16)
 {
     public int Width { get; } = width;
     public int Height { get; } = height;
+    public int ShortSide => Math.Min(Width, Height);
     /// <summary>每像素 4 個 ushort（R、G、B、A）。</summary>
     public ushort[] Rgba16 { get; } = rgba16;
-
-    public int ShortSide => Math.Min(Width, Height);
+    /// <summary>來源檔案的完整路徑（ImageLoader 設定；Downscale 會保留）。用於解析相對路徑的外部素材與每張照片的確定性種子。</summary>
+    public string? FilePath { get; init; }
 
     /// <summary>縮小（box filter），用於縮圖或拖曳中的降解析度預覽。</summary>
     public SourceImage Downscale(int maxLongEdge)
@@ -47,6 +48,6 @@ public sealed class SourceImage(int width, int height, ushort[] rgba16)
                 dst[o + 3] = (ushort)(a / n);
             }
         }
-        return new SourceImage(w, h, dst);
+        return new SourceImage(w, h, dst) { FilePath = FilePath };
     }
 }

@@ -1,77 +1,72 @@
-# M0 狀態：UI 規範、原型與 GPU spike
+# 修復狀態與驗證紀錄
 
-> 更新：2026-10-15。原 Windows M0 原型已加入 macOS `.app`／CLI 封裝；Apple Silicon 原生 Metal 路徑已驗證，Linux 仍未驗證。
+> 更新：2026-10-15。由 Windows M0 原型延伸為可保存編輯、實際算圖及批次匯出的 Windows／macOS 程式。本頁區分已執行的驗證、歷史紀錄與仍需外部環境的項目；不以跨平台編譯代替實機驗證。
 
 ## 使用方式
 
 ```bash
-dotnet run --project src/FilmBatch.App                 # 原型（檔案 → 開啟範例資料夾）
-dotnet run --project src/FilmBatch.App -- --gallery    # 元件展示視窗
-dotnet run --project src/FilmBatch.Cli -- spike        # GPU spike 量測（--backend Vulkan、--low-power、--width/--height）
-dotnet test FilmBatch.sln                              # Core 28 項 + UI（Headless）17 項
-dotnet run build/Build.cs -- --rid win-x64 --smoke --zip   # 發佈 + 冒煙測試 + 壓縮
-dotnet run build/Build.cs -- --rid osx-arm64 --smoke --zip # Mac：.app + CLI；Intel 使用 osx-x64
+dotnet run --project src/FilmBatch.App
+dotnet run --project src/FilmBatch.App -- --gallery
+dotnet run --project src/FilmBatch.Cli -- export "/path/to/photos" --format png --software
+dotnet test FilmBatch.sln -c Release
+dotnet run build/CheckShaders.cs
+dotnet run build/Build.cs -- --rid osx-arm64 --smoke --zip
 ```
 
-UI 截圖由 `ThemeSnapshotTests` 產生於 `tests/FilmBatch.App.Tests/bin/Debug/net10.0/snapshots/`。
+Mac 封裝、較低部署目標的 Dawn 重建及正式簽章參數見 [README](../README.md)。元件快照由 `ThemeSnapshotTests` 產生；封裝冒煙流程另外輸出 `dist/smoke-<rid>.txt` 與實際視窗的 Avalonia 內容擷取 `.png`。
 
-## 交付物（計畫書 2.11）
+## 已修復的功能
 
-| # | 交付物 | 狀態 | 位置 |
-|---|---|---|---|
-| 1 | Colors.axaml + Controls.axaml | 完成 | `src/FilmBatch.App/Themes/` |
-| 2 | 元件展示視窗（`--gallery`） | 完成 | `src/FilmBatch.App/Gallery/` |
-| 3 | 可操作原型（Dock 版面、縮圖列、預設庫、模組面板、預覽畫布） | 完成 | `Views/`、`ViewModels/`、`Controls/` |
-| 4 | 對話框原型（選擇性貼上、匯出、預設管理、偏好設定） | 完成；選擇性貼上可實際使用，其餘為原型 | `Dialogs/` |
-| 5 | 資料流：三層設定模型 + 復原堆疊 | 完成 | `src/FilmBatch.Core/` |
-| 6 | GPU spike | 完成（綁定已改選，見 ADR） | `src/FilmBatch.Gpu/`、`docs/adr/0001-webgpu-binding.md` |
-| 7 | 發佈冒煙建置 | Windows（原紀錄）＋macOS（見下方驗證紀錄） | `build/Build.cs`、`.github/workflows/ci.yml` |
-| 8 | UI 規範定稿 | **未完成**：需要你實際操作原型後的回饋 | — |
+| 項目 | 行為與實作位置 |
+|---|---|
+| 專案與預設保存 | `Core/Projects`、`Core/Presets`：JSON 專案、YAML 預設、覆寫、種子與預設快照往返；原子寫入，不改寫來源照片；損毀檔不以空白資料覆蓋 |
+| 預設更新 | 已保存的專案保留自己的快照；只有明確同步才套用外部更新；支援外部預設庫重新載入 |
+| GUI／CLI 批次匯出 | 共用 `Engine/Exporting/BatchExporter`，實際解碼、16-bit 算圖、縮放、編碼；支援 JPEG 品質、PNG16、ZIP TIFF16、範圍、命名、進度、取消、逐檔錯誤與 `export_log.json` |
+| 匯出資料安全 | 拒絕覆寫來源與既有輸出；暫存寫入完成才搬移；取消或失敗不留下假完成檔 |
+| 色彩與中繼資料 | 來源 ICC 先轉換為 sRGB，再進入效果管線；輸出嵌入 sRGB ICC，方向正規化；EXIF 拍攝時間、相機資訊、曝光與 GPS 往返有實際檔案驗證 |
+| TIFF EXIF | Magick.NET 的 TIFF 編碼器不寫 EXIF 子目錄，讀取時也只提供格式化屬性。`TiffMetadata` 讀取有界的 metadata 目錄、補寫輸出目錄，不複製或重編碼像素區塊；回歸涵蓋兩種位元組順序及 classic TIFF／BigTIFF 來源 |
+| 中繼資料異常 | 可解碼的照片不因來源 EXIF 解析失敗而整張匯出失敗；若因此或為符合 JPEG 上限而捨棄或縮減 EXIF，逐張寫入 `.filmbatch/export_log.json` 的 `MetadataWarning`，影像成功輸出的 `Status` 仍為 `ok` |
+| 全部效果模組 | 16 個模組有 CPU 與真正的 WebGPU 算圖路徑；原尺寸輸出保留 16-bit 精度。外部雙重曝光照片、紋理路徑、空紋理庫的程序化效果、每張照片的確定性種子均已串接 |
+| 底片配方 | 77 組 Recipe Lab 配方、12 個品牌群組、格式 1 自訂配方、EDITED／重設與匯入／匯出；曝光使用精確的 1/3 EV，不使用畫面顯示的四捨五入值 |
+| 預設懸停 | 對目前照片實際算圖；有 debounce、有界快取及過期結果排除，不再以文字摘要假裝預覽 |
+| 即時偏好 | GPU 後端、CPU 模式、代理圖尺寸、記憶體預算與紋理資料夾可立即套用；在算圖執行緒重建，丟棄前一代結果，重建預覽及縮圖 |
+| 初始化競態 | scheduler → service → ViewModel 完成事件訂閱後才 `Start()`，避免已算出預覽但裝置名稱仍為 `…` |
+| Mac 整合 | 原生選單列、Command 手勢、偏好設定後端選項與標題列配置；NativeMenu 不以 Headless 結構測試冒充原生互動證據 |
+| 發佈修剪 | GUI 與 CLI 不啟用 trimming；Avalonia／Dock 反射路徑保留，不以 warning suppression 隱藏相容性問題；兩個 self-contained 程式分開封裝 |
+| Shader／合併閘門 | 釘選 naga-cli 驗證 include 展開後的 WGSL；Windows 與兩種 Mac 架構工作加上 `pre-merge` 彙總。儲存庫仍須將此檢查設為必要狀態 |
 
-## 驗收標準（計畫書 16.1）
+底片數值的來源、相機效果支援範圍與校正結果分別見 [配方來源](film-provenance.md)及[色彩校正](film-calibration.md)。配方欄位吻合、CPU／GPU 一致，均不代表與實體相機的色彩誤差已達標。
 
-- [x] 介面灰階皆為中性灰：配色 token 與覆寫的 Fluent 系統色皆 R=G=B；展示視窗逐一標示，快照測試檢查工具列像素。
-- [x] 元件展示視窗涵蓋一般、停用、被覆寫、多選狀態。停留／按下為互動狀態，需以滑鼠檢查（未做強制狀態的靜態展示）。
-- [x] 原型可開啟範例資料夾，各面板可操作；解碼與算圖在背景，UI 執行緒不阻塞。
-- [x] 指定預設、單張微調、三種貼上、復原／重做已串接三層模型（有測試）。
-- [x] 滑桿只在取得焦點時接受滾輪（有 Headless 測試）。
-- [x] 停靠版面重新啟動後還原（`layout.json`；有測試，發佈版冒煙測試也驗證）。
-- [~] GPU spike：Windows DX12 / Vulkan 完整路徑可運作，1600px 拖曳更新約 2–3 ms（原紀錄）；macOS Apple M3 / Metal 已驗證，見 ADR。**軟體介面卡未達成**（Dawn 建置不含軟體介面卡）；無 GPU 時以 CPU 參考實作降級。Linux 未驗證。
-- [x] 已定案 C# WebGPU 綁定並記錄理由（WebGPUSharp / Dawn）。
-- [~] `dotnet publish`：Windows 原紀錄完成；macOS self-contained `.app` 與 CLI 已完成本機封裝和冒煙測試，只有 ad-hoc 簽章、尚未公證。Linux 延後。
+## macOS 原生相依套件與發行
 
-## M0 發現、已採取的處理與待決事項
+- WebGPUSharp 0.5.7 的 NuGet Dawn 原生檔要求 macOS 26.0。`build/build-dawn.sh` 釘選同源 commit `4178cb7e771b700743bc489037390777b98be39d`，實際重建 arm64 與 x64，兩者 `vtool -show-build` 的 `minos` 均為 **14.0**，各有 277 個 `_wgpu*` 匯出符號；來源、雜湊與建置參數在 `artifacts/dawn/PROVENANCE.txt`。
+- 封裝只整檔取代 Dawn，不修改 Mach-O 載入命令。最低系統版本取所有 Mach-O 的最高需求：重建 Dawn 後，Apple Silicon 為 14.0；Intel 因 Magick.NET 原生相依套件為 15.0。沒有重建產物時仍使用 NuGet 的 26.0 要求。
+- 上述數字是量測的部署目標，不是舊系統實機通過紀錄。本次載入與算圖在 macOS 26 執行；macOS 14／15 尚無測試機。
+- `build/Build.cs` 支援 Developer ID、hardened runtime、公證 keychain profile、staple 與 Gatekeeper 檢查。缺少身分或 profile 直接失敗，不會改用 ad-hoc 假裝正式發行。
+- 本機已知沒有有效 Developer ID 身分，未讀取私人憑證、未提交公證。交付的 ZIP 只有 **ad-hoc 簽章**；適合本機試用，不是可保證通過網路下載 Gatekeeper 的正式發行版。
 
-| 發現 | 處理 | 待決 |
-|---|---|---|
-| Silk.NET.WebGPU 2.23 在 DX12 建立 compute pipeline 時存取違規（含 WARP） | 改用 WebGPUSharp（Dawn） | — |
-| Dawn 建置沒有軟體介面卡 | CPU 參考實作降級 + 狀態列警示 | M1 前：自建含 SwiftShader 的 Dawn，或另做 wgpu-native 實作，或接受降級（ADR 選項 1–3） |
-| GUI `FilmBatch.exe` 與 CLI `filmbatch.exe` 在不分大小寫的檔案系統上同名衝突 | CLI 改名 `filmbatch-cli` | 是否讓 GUI 執行檔兼任 CLI 子命令 |
-| 兩個 self-contained 發佈疊在同一資料夾（GUI 有 trimming）會讓 GUI 啟動失敗 | CLI 暫放 `cli\` 子資料夾 | M7 定案：共用資料夾的發佈方式（例如單一發佈或不修剪） |
-| Dock.Avalonia 的序列化與樣板以反射為主 | Dock 組件整個保留不修剪（`TrimmerRootAssembly`） | Native AOT 評估時再確認 |
-| `{l:Tr}` 原本用反射繫結，發佈時 trim 分析報錯 | 改為 IObservable 繫結 | — |
-| 全域 Button Padding 會擠掉 Dock 標題列按鈕圖示 | 移除全域樣式 | — |
-| 標題列與選單列合一（需求變更） | 內容延伸進標題列；空白處標為原生拖曳區（已以 `WM_NCHITTEST` 驗證為 HTCAPTION），隱藏平台繪製的標題文字（該元素不在樣式樹中，改以程式隱藏）；計畫書 2.2.1 已更新 | macOS／Linux 的按鈕位置於跨平台建置時驗證 |
-| macOS `codesign` 將 `Contents/MacOS` 內的受控 DLL 也當作巢狀程式碼 | 先逐檔簽署（不含 apphost），最後簽署 `.app`；以 `ditto` 保存延伸屬性 | 正式發行仍需 Developer ID、公證 |
-| Headless 測試固定使用 Windows 字型，在 Mac 無法建立 glyphTypeface | 與 GUI 共用 `Program.FontOptions()`，使用 PingFang TC 與相同後備字型 | — |
-| Mac 偏好設定缺少 Metal、快捷鍵提示固定為 Ctrl | 依平台顯示後端選項、選單手勢、工具提示與空白畫面快捷鍵 | — |
-| WebGPUSharp 0.5.7 的兩個 Mac Dawn 原生檔都宣告 `minos 26.0`（`vtool -show-build`） | `.app` 的 `LSMinimumSystemVersion`、README 與 Mac CI runner 一律使用 macOS 26 | 支援較舊 macOS 需另取得並驗證相容的 Dawn 建置，不能只降低 plist 版本 |
-| CI 偶發預覽已完成但狀態列仍為 `…` | `RenderScheduler` 不再於建構函式啟動；先完成 scheduler → service → ViewModel 的事件訂閱，再明確 `Start()`。保留原本 `CPU` 斷言，新增啟動／備援順序回歸 | 隔離的 CI 修正快照重新建置後，`dotnet test FilmBatch.sln -c Release --no-build`：Core 30、UI 17 全數通過、無略過；同步派送的 100 次 CPU 初始化與實際像素輸出冒煙亦通過 |
+## 已執行的驗證
 
-## macOS 驗證紀錄（2026-10-15）
+- Release 整合測試：Core 99 項、Avalonia Headless 40 項全數通過，無略過；包含保存／重開、匯出安全、真 16-bit、metadata、懸停、即時偏好、scheduler 狀態轉換及快捷鍵復原／重做。13 項 TIFF metadata 回歸涵蓋大小端序、classic TIFF／BigTIFF、sRGB interoperability、來源圖層排除、損毀目錄與 JPEG 大型 EXIF。
+- 真正的 CPU 與 Apple M3／Metal 算圖：16 個模組在 128×85 測試影像的最大通道差為 0–1／65535。此為受測場景結果，不是對所有照片的誤差上界。曾發現 halation 中間紋理被重用覆寫，修正後通過。
+- 最終 arm64 與 x64 封裝均通過 GUI 冒煙；x64 在 Apple Silicon 上以 **Rosetta** 執行。視窗、原生函式庫、三張範例照片、預覽、縮圖、編輯／復原、重開保留、懸停、即時代理圖、PNG16 匯出、ICC、來源雜湊、匯出紀錄、Dock 版面與元件展示均通過；結果與內容擷取在 `dist/smoke-osx-{arm64,x64}.{txt,png}`。
+- 實際 metadata 匯出程式：PNG 來源 → TIFF16／PNG16／JPEG，以及 TIFF → PNG 再匯出；拍攝時間、曝光分數、GPS 與 sRGB ICC 保留。
+- 本次 metadata 修正後，兩種 Mac 架構的正式封裝 CLI 各以 9 種來源情境匯出 JPEG／PNG16／TIFF16：有效來源、R03 色域宣告、失效 Interop 位址、Photoshop 圖層、欄位位址越界、不支援的型別、計數溢位、大型 MakerNote、大型描述。停用外部 .NET 查找後全部通過；檢查 R98／0100、ICC、方向與尺寸、拍攝時間、來源未修改、逐張警告，以及 PNG／TIFF 像素與 TIFF ZIP 壓縮。
+- 最終兩份 Mac ZIP 解壓至含空白路徑後，GUI 與 CLI 均通過 `codesign --verify --strict`（GUI 另加 `--deep`），兩份 `.app` 均以 LaunchServices 啟動並完成冒煙。arm64 CPU GUI 與兩種架構的 CLI 也在 `DOTNET_ROOT` 指向不存在的位置、PATH 不含 SDK 時成功執行。
+- 此次 metadata 修正前，解壓後的 CLI 另已驗證保存的專案與 YAML 自訂設定，分別走 arm64 CPU 備援與 x64／Rosetta Metal，完成 PNG16、ZIP TIFF16、JPEG 匯出。PNG／TIFF 與預期保存設定的 CPU 像素差分別為 0 與最多 1／65535；尺寸、方向、ICC、拍攝時間、GPS、來源雜湊及無效格式退出碼均通過。本次重新驗證上述 metadata 情境與 GUI 工作流程；GUI 結果在 `dist/smoke-osx-arm64-cpu.txt`、`dist/smoke-osx-{arm64,x64}-extracted.txt`。
+- CI 競態修正獨立提交 `3ce9280`；合併前工作流程獨立提交 `371ad52`。隔離快照的 47 項測試、100 次同步 CPU 初始化／實際像素輸出及失敗閘門情境已驗證；這不代表遠端 GitHub Actions 已執行。
 
-- `dotnet test FilmBatch.sln -c Release`：Core 28、UI 17 全數通過，無略過；包含 Metal 與 CPU 參考結果比對。
-- `osx-arm64` 發佈版冒煙：視窗、Magick.Native、Dawn / Metal、3 張範例照片、預覽、縮圖、參數覆寫／復原、Dock 版面往返、展示視窗均通過。
-- `osx-x64` 也完成封裝、簽章驗證、GUI 全部冒煙項目及 CLI `gpu-info`，執行環境為 Apple Silicon 上的 **Rosetta**，不等於實體 Intel Mac 驗證。
-- ZIP 以 `ditto` 解壓縮至含空白的路徑後，`codesign --verify --deep --strict` 通過；再以 LaunchServices `open -n -W` 啟動冒煙模式通過。驗證時將 `DOTNET_ROOT` 指向不存在的目錄，確認不依賴外部 .NET。
-- GUI 實際開啟含空白路徑的 12 張 TIFF 範例，原生視窗已顯示。此工作階段沒有螢幕擷取／Apple Events 權限，因此不能聲稱已人工驗證原生標題列按鈕或鍵盤互動；Headless 渲染快照不等於原生視窗截圖。
-- CI 已加入 macOS 26 Apple Silicon 與 Intel runner；本機執行不代表 GitHub Actions 已執行。Windows 本次未重跑；實體 Intel Mac、正式簽章／公證仍需各自驗證。較舊 macOS 不在目前封裝支援範圍。
-- 既有 Avalonia / Dock 第三方修剪警告仍存在；不抑制新增警告，發佈版以實際冒煙確認目前使用路徑。
+## 驗證邊界與剩餘限制
 
+1. **實體 Intel、Windows、較舊 macOS 與 Linux**：本機無對應環境。Rosetta、跨平台 publish 和 CI YAML 都不等同實機測試。
+2. **正式簽章／公證**：缺少使用者的 Developer ID Application 身分與公證 profile；已完成流程及拒絕路徑，未驗證 Apple 端成功路徑。
+3. **原生互動外觀**：此工作階段沒有螢幕擷取／Apple Events 權限。實際視窗的 Avalonia 內容可擷取，但不含系統選單列與原生標題列；不能聲稱已人工驗證交通燈按鈕、滑鼠手勢及所有 Command 快捷鍵。
+4. **相機模擬與色彩校正**：以校正文件中的實測結果為準；不支援的相機 Picture Effect 會顯示提示，不能解讀為已實作全部 Sony 效果。
+5. **私有中繼資料**：不以原封不動的 metadata 封包備份為目的；移除舊縮圖與 Photoshop 來源圖層，更新方向、尺寸與色域。TIFF metadata 上限 16 MiB；影像布局／ICC／XMP 不混入 EXIF。Interoperability 重建為符合 sRGB 的 R98／0100，不沿用來源 R03 宣告或失效位址。JPEG EXIF 的 APP1 上限為 65,533 位元組，超限先移除 MakerNote；仍過大或來源 EXIF 解析失敗時，只保留新的方向、尺寸與 sRGB 宣告，並寫入 `MetadataWarning`。未移除的廠商 MakerNote，其私有相對位址仍不保證可搬移。
+6. **UI 規範定稿**：功能驗證不取代實際使用者對操作與外觀的驗收。
 
-## 尚未納入 M0 的項目（依計畫書屬於後續里程碑）
+## 保留的原型決策
 
-- 預設 YAML／專案 JSON 讀寫、預設快照同步對話框（M2）；預設庫目前為記憶體內的範例資料，關閉後不保存。
-- 實際效果模組：spike 只實作曝光、亮度、飽和與高斯模糊（散景模糊量驅動），其他模組參數可調但不影響畫面（M1／M5／M6）。
-- 預設滑鼠停留的效果縮圖（目前以文字摘要代替，M3）；偏好設定中 GPU 相關選項於下次啟動生效（M3 起即時重建裝置）。
-- macOS 原生選單列（NativeMenu）、自繪標題列驗證；naga 驗證 WGSL（CI 尚未安裝 naga）。
+- Silk.NET.WebGPU 在 DX12 建立 compute pipeline 曾發生存取違規，已改為 WebGPUSharp／Dawn，見 [ADR](adr/0001-webgpu-binding.md)。Dawn 沒有可用的軟體介面卡時，以明確標示的 CPU 參考實作處理，不宣稱是 GPU。
+- CLI 使用 `filmbatch-cli` 並放在 `cli/`，避免不分大小寫檔案系統的名稱衝突，以及兩份 self-contained 框架互相覆寫。
+- 中性灰 token、共用平台字型、滑桿焦點滾輪、復原／重做、三種貼上與 Dock 版面還原保留既有行為測試。

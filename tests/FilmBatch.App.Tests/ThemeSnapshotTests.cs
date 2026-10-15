@@ -19,9 +19,7 @@ public class ThemeSnapshotTests
         Assert.NotNull(frame);
         Directory.CreateDirectory(OutDir);
         var path = Path.Combine(OutDir, name);
-#pragma warning disable CS0618 // Avalonia 12：新多載需要 BitmapEncoderOptions，PNG 預設即可
-        frame.Save(path);
-#pragma warning restore CS0618
+        frame.Save(path, PngBitmapEncoderOptions.Default);
         return path;
     }
 

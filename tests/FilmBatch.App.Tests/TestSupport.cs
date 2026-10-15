@@ -30,8 +30,13 @@ public sealed class FakeDialogs : IDialogService
     public bool ConfirmAnswer { get; set; } = true;
     public string? PromptAnswer { get; set; } = "測試預設";
     public int KeepOverridesAsked { get; private set; }
+    public string? PickFolderAnswer { get; set; }
 
-    public Task<string?> PickFolderAsync(string? startFolder) => Task.FromResult<string?>(null);
+    public Task<string?> PickFolderAsync(string? startFolder) => Task.FromResult(PickFolderAnswer);
+    public string? PickFileAnswer { get; set; }
+    public string? SaveFileAnswer { get; set; }
+    public Task<string?> PickFileAsync(string title, IReadOnlyList<string> patterns) => Task.FromResult(PickFileAnswer);
+    public Task<string?> SaveFileAsync(string title, string suggestedName, IReadOnlyList<string> patterns) => Task.FromResult(SaveFileAnswer);
 
     public Task<(bool Keep, bool Remember)?> AskKeepOverridesAsync(int photoCount)
     {
@@ -63,9 +68,22 @@ public static class TestEnv
 
     /// <summary>隔離的使用者資料夾，避免測試讀寫真正的 settings.json / layout.json。</summary>
     public static void IsolateUserFolder() =>
-        AppPaths.OverrideRoot = Path.Combine(Path.GetTempPath(), "filmbatch-tests", "user-" + Environment.ProcessId);
+        AppPaths.OverrideRoot = Path.Combine(Path.GetTempPath(), "filmbatch-tests", "user-" + Guid.NewGuid().ToString("N"));
 
-    public static string Samples => SampleFolder.Value;
+    public static string Samples
+    {
+        get
+        {
+            var folder = Path.Combine(AppPaths.Root, "samples");
+            if (!Directory.Exists(folder))
+            {
+                Directory.CreateDirectory(folder);
+                foreach (var path in Directory.EnumerateFiles(SampleFolder.Value, "*.tif"))
+                    File.Copy(path, Path.Combine(folder, Path.GetFileName(path)));
+            }
+            return folder;
+        }
+    }
 
     /// <summary>使用 CPU 參考算圖器（不需要 GPU）的主視窗 ViewModel。</summary>
     public static MainWindowViewModel CreateViewModel(FakeDialogs? dialogs = null)

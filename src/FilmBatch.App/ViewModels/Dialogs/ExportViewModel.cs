@@ -1,28 +1,45 @@
 using CommunityToolkit.Mvvm.ComponentModel;
-
+using CommunityToolkit.Mvvm.Input;
+using FilmBatch.App.Services;
+using FilmBatch.Core.Projects;
+using FilmBatch.Engine.Exporting;
 namespace FilmBatch.App.ViewModels.Dialogs;
 
 public enum ExportScope { Selected, All, ByPreset }
-public enum ExportFormat { Jpeg, Tiff16, Png16 }
-public enum ExportSize { Original, LongEdge }
 
-/// <summary>匯出面板原型（計畫書 2.8、第 10 章），位於側邊欄的「照片匯出」分頁。實際匯出於 M7 實作。</summary>
+/// <summary>匯出面板（計畫書 2.4.7、2.8、第 10 章），位於側邊欄的「照片匯出」分頁。</summary>
+/// <remarks>
+/// 背景執行：匯出在 Task.Run 的工作執行緒上以自有算圖器實例依序算圖（算圖器具執行緒親和性），
+/// 進度經 StatusText/ProgressValue 回到 UI 執行緒（_post）；分頁本身不鎖住，可準備下一批（計畫書 2.4.7）。
+/// 匯出開始前先為每張照片建立參數快照（ExportJob），匯出期間的編輯不影響已排入的照片（計畫書 2.6）。
+/// </remarks>
 public sealed partial class ExportViewModel : ObservableObject
 {
     private readonly MainWindowViewModel _main;
+    private CancellationTokenSource? _cts;
+    private int _runId;
 
     public IReadOnlyList<Option<ExportScope>> Scopes { get; } = [new(ExportScope.Selected, "選取的照片"), new(ExportScope.All, "全部"), new(ExportScope.ByPreset, "依預設")];
-    public IReadOnlyList<Option<ExportFormat>> Formats { get; } = [new(ExportFormat.Jpeg, "JPEG"), new(ExportFormat.Tiff16, "16-bit TIFF"), new(ExportFormat.Png16, "16-bit PNG")];
-    public IReadOnlyList<Option<ExportSize>> Sizes { get; } = [new(ExportSize.Original, "原尺寸"), new(ExportSize.LongEdge, "指定長邊")];
+    public IReadOnlyList<Option<Engine.Exporting.ExportFormat>> Formats { get; } =
+    [
+        new(Engine.Exporting.ExportFormat.Jpeg, "JPEG"),
+        new(Engine.Exporting.ExportFormat.Tiff16, "16-bit TIFF"),
+        new(Engine.Exporting.ExportFormat.Png16, "16-bit PNG"),
+    ];
+    public IReadOnlyList<Option<Engine.Exporting.ExportSize>> Sizes { get; } =
+    [
+        new(Engine.Exporting.ExportSize.Original, "原尺寸"),
+        new(Engine.Exporting.ExportSize.LongEdge, "指定長邊"),
+    ];
 
     public Option<ExportScope> SelectedScope { get => Scopes.First(o => o.Value == Scope); set { if (value is not null) Scope = value.Value; } }
-    public Option<ExportFormat> SelectedFormat { get => Formats.First(o => o.Value == Format); set { if (value is not null) Format = value.Value; } }
-    public Option<ExportSize> SelectedSize { get => Sizes.First(o => o.Value == Size); set { if (value is not null) Size = value.Value; } }
+    public Option<Engine.Exporting.ExportFormat> SelectedFormat { get => Formats.First(o => o.Value == Format); set { if (value is not null) Format = value.Value; } }
+    public Option<Engine.Exporting.ExportSize> SelectedSize { get => Sizes.First(o => o.Value == Size); set { if (value is not null) Size = value.Value; } }
     [ObservableProperty]
     private IReadOnlyList<PresetItemViewModel> _presets = [];
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(Summary), nameof(IsByPreset))]
+    [NotifyPropertyChangedFor(nameof(Summary), nameof(IsByPreset), nameof(SelectedScope))]
     private ExportScope _scope;
 
     [ObservableProperty]
@@ -30,15 +47,15 @@ public sealed partial class ExportViewModel : ObservableObject
     private PresetItemViewModel? _preset;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsJpeg))]
-    private ExportFormat _format = ExportFormat.Jpeg;
+    [NotifyPropertyChangedFor(nameof(IsJpeg), nameof(SelectedFormat))]
+    private Engine.Exporting.ExportFormat _format = Engine.Exporting.ExportFormat.Jpeg;
 
     [ObservableProperty]
     private int _quality = 95;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsLongEdge))]
-    private ExportSize _size = ExportSize.Original;
+    [NotifyPropertyChangedFor(nameof(IsLongEdge), nameof(SelectedSize))]
+    private Engine.Exporting.ExportSize _size = Engine.Exporting.ExportSize.Original;
 
     [ObservableProperty]
     private int _longEdge = 3000;
@@ -50,9 +67,29 @@ public sealed partial class ExportViewModel : ObservableObject
     [ObservableProperty]
     private string _fileNameTemplate = "{name}_{preset}";
 
-    public bool IsJpeg => Format == ExportFormat.Jpeg;
-    public bool IsLongEdge => Size == ExportSize.LongEdge;
+    // ── 即時狀態（MacRelease 的背景工作 flyout 繫結 StatusText；SmokeTest 檢查 StatusText/ProgressValue/IsExporting）──
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanExport))]
+    private bool _isExporting;
+
+    [ObservableProperty]
+    private double _progressValue;
+
+    [ObservableProperty]
+    private string _statusText = "就緒";
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanExport))]
+    private string? _lastError;
+
+    public bool IsJpeg => Format == Engine.Exporting.ExportFormat.Jpeg;
+    public bool IsLongEdge => Size == Engine.Exporting.ExportSize.LongEdge;
     public bool IsByPreset => Scope == ExportScope.ByPreset;
+    /// <summary>未匯出中、且目前規劃有張數、且無驗證錯誤時可匯出（Count 變化時由 Refresh 通知）。</summary>
+    public bool CanExport => !IsExporting && LastError is null && Count > 0;
+
+    /// <summary>最近一次匯出的結果摘要（headless 檢查用；UI 顯示經 StatusText）。</summary>
+    public BatchExportSummary? LastSummary { get; private set; }
 
     public ExportViewModel(MainWindowViewModel main)
     {
@@ -75,8 +112,10 @@ public sealed partial class ExportViewModel : ObservableObject
         if (_main.Selection.Count > 1 && Scope == ExportScope.All) Scope = ExportScope.Selected;
         OnPropertyChanged(nameof(Count));
         OnPropertyChanged(nameof(Summary));
+        OnPropertyChanged(nameof(CanExport));
+        Validate();
+        StartExportCommand.NotifyCanExecuteChanged();
     }
-
     public int Count => _main.Service is not { } svc ? 0 : Scope switch
     {
         ExportScope.Selected => _main.Selection.Count,
@@ -86,4 +125,159 @@ public sealed partial class ExportViewModel : ObservableObject
 
     /// <summary>下方即時顯示「將匯出 N 張到 …」。</summary>
     public string Summary => $"將匯出 {Count} 張到 {Destination}";
+
+    partial void OnScopeChanged(ExportScope value) => Validate();
+    partial void OnPresetChanged(PresetItemViewModel? value) => Validate();
+    partial void OnFormatChanged(Engine.Exporting.ExportFormat value) => Validate();
+    partial void OnQualityChanged(int value) => Validate();
+    partial void OnSizeChanged(Engine.Exporting.ExportSize value) => Validate();
+    partial void OnLongEdgeChanged(int value) => Validate();
+    partial void OnDestinationChanged(string value) => Validate();
+    partial void OnFileNameTemplateChanged(string value) => Validate();
+
+    private void Validate()
+    {
+        try
+        {
+            BatchExporter.ValidateOptions(ToOptions(Path.Combine(Path.GetTempPath(), "filmbatch-validate")));
+            if (Count == 0 && _main.Service is not null)
+                throw new InvalidDataException(Scope == ExportScope.ByPreset && Preset is null ? "請先選擇預設。" : "沒有符合的照片。");
+            LastError = null;
+        }
+        catch (Exception ex)
+        {
+            LastError = ex.Message;
+        }
+    }
+
+    private ExportOptions ToOptions(string destination) => new()
+    {
+        Destination = destination,
+        FileNameTemplate = FileNameTemplate,
+        Format = Format,
+        Quality = Quality,
+        Size = Size,
+        LongEdgePx = Size == Engine.Exporting.ExportSize.LongEdge ? LongEdge : 0,
+    };
+
+    /// <summary>目前規劃的匯出檔名清單（SmokeTest/測試檢查用）。</summary>
+    public IReadOnlyList<string> PlannedFiles()
+    {
+        var svc = _main.Service ?? throw new InvalidDataException("尚未開啟照片資料夾。");
+        return Scope switch
+        {
+            ExportScope.Selected => _main.Selection.Count > 0 ? _main.Selection
+                : throw new InvalidDataException("尚未選取照片。"),
+            ExportScope.ByPreset => Preset is null
+                ? throw new InvalidDataException("請先選擇預設。")
+                : svc.Project.FileNames.Where(f => svc.Project[f].PresetId == Preset.Id).ToList(),
+            _ => svc.Project.FileNames,
+        };
+    }
+
+    /// <summary>headless 入口（SmokeTest/測試呼叫；不需要 UI 執行緒）。</summary>
+    public Task<BatchExportSummary> ExportAsync(
+        IProgress<BatchExportProgress>? progress = null, CancellationToken ct = default)
+    {
+        var svc = _main.Service ?? throw new InvalidDataException("尚未開啟照片資料夾。");
+        var files = PlannedFiles();
+        if (files.Count == 0) throw new InvalidDataException("沒有符合的照片。");
+        var options = ToOptions(Destination);
+        BatchExporter.ValidateOptions(options);
+        var request = new ExportRequest { Service = svc, Files = files, Options = options };
+        return BatchExporter.RunAsync(request, _main.RendererFactory, progress, ct);
+    }
+
+    [RelayCommand(CanExecute = nameof(CanExport))]
+    private async Task StartExport()
+    {
+        if (IsExporting) return;
+        var run = ++_runId;
+        _cts = new CancellationTokenSource();
+        IsExporting = true;
+        ProgressValue = 0;
+        LastError = null;
+        StatusText = "準備匯出…";
+        StartExportCommand.NotifyCanExecuteChanged();
+        CancelExportCommand.NotifyCanExecuteChanged();
+        var progress = new Progress<BatchExportProgress>(p =>
+        {
+            if (run != _runId || !IsExporting) return;
+            ProgressValue = p.Total == 0 ? 0 : 100.0 * p.Done / p.Total;
+            StatusText = p.Failed == 0
+                ? $"匯出中 {p.Done}/{p.Total}：{p.CurrentFile}"
+                : $"匯出中 {p.Done}/{p.Total}（失敗 {p.Failed}）：{p.CurrentFile}";
+        });
+        BatchExportSummary summary;
+        try
+        {
+            // 背景工作執行緒：自有算圖器實例、同一執行緒全程（算圖器親和性）；分頁不鎖住。
+            // 取消（含開始前取消）以誠實摘要回報，不抛 OperationCanceledException。
+            summary = await ExportAsync(progress, _cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            // Task.Run 在啟動前即取消時才會走到此處：同樣以已取消狀態呈現。
+            if (run == _runId) StatusText = "已取消";
+            return;
+        }
+        catch (Exception ex)
+        {
+            if (run == _runId)
+            {
+                LastError = ex.Message;
+                StatusText = $"失敗：{ex.Message}";
+            }
+            return;
+        }
+        finally
+        {
+            if (run == _runId)
+            {
+                IsExporting = false;
+                _cts?.Dispose();
+                _cts = null;
+                StartExportCommand.NotifyCanExecuteChanged();
+                CancelExportCommand.NotifyCanExecuteChanged();
+            }
+        }
+        var status = summary.Cancelled
+            ? $"已取消：完成 {summary.Succeeded} 張"
+            : summary.Failed == 0
+                ? $"完成：成功 {summary.Succeeded} 張"
+                : $"完成：成功 {summary.Succeeded} 張、失敗 {summary.Failed} 張";
+        var errors = summary.Failed > 0
+            ? string.Join("\n", summary.Errors.Select(e => $"{e.Key}：{e.Value}")) : null;
+        AppLog.Info($"匯出：{status}（到 {Destination}）");
+        if (run != _runId) return;
+        LastSummary = summary;
+        ProgressValue = 100;
+        StatusText = status;
+        if (errors is not null) LastError = errors;
+        _main.Toast.Show(status);
+    }
+
+    [RelayCommand(CanExecute = nameof(IsExporting))]
+    private void CancelExport()
+    {
+        try { _cts?.Cancel(); }
+        catch (ObjectDisposedException) { }
+    }
+
+    [RelayCommand]
+    private async Task BrowseDestination()
+    {
+        var picked = await _main.Dialogs.PickFolderAsync(
+            Directory.Exists(Destination) ? Destination : _main.Folder);
+        if (picked is null) return;
+        Destination = picked;
+    }
+
+    public void Dispose()
+    {
+        ++_runId;
+        try { _cts?.Cancel(); } catch (ObjectDisposedException) { }
+        _cts?.Dispose();
+        _cts = null;
+    }
 }

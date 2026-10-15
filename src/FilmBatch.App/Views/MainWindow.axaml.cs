@@ -200,6 +200,20 @@ public partial class MainWindow : Window
     {
         base.OnClosing(e);
         if (_vm is null) return;
+
+        // 先寫回專案（每張照片的預設指定與覆寫）：失敗時取消關閉，避免靜默遺失資料
+        try
+        {
+            _vm.SaveProject();
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("儲存專案失敗", ex);
+            _vm.Toast.Show($"無法儲存專案：{ex.Message}（已取消關閉）");
+            e.Cancel = true;
+            return;
+        }
+
         _layout?.Save(DockHost.Layout);
         var s = _vm.Settings;
         s.WindowMaximized = WindowState == WindowState.Maximized;

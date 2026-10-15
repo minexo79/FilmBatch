@@ -115,7 +115,7 @@ public sealed partial class SliderParamViewModel(string moduleKey, ParamDef def,
     }
 }
 
-/// <summary>選項參數：底片種類、光圈形狀、版面配置等。</summary>
+/// <summary>選項參數：未知值（如自訂配方 key）保留顯示，不強制跳回首項。</summary>
 public sealed partial class ChoiceParamViewModel(string moduleKey, ParamDef def, IParamHost host) : ParamViewModel(moduleKey, def, host)
 {
     private ChoiceOption? _selected;
@@ -132,8 +132,19 @@ public sealed partial class ChoiceParamViewModel(string moduleKey, ParamDef def,
         }
     }
 
-    protected override void OnLoad(ParamValue value) =>
-        SetProperty(ref _selected, Options.FirstOrDefault(o => o.Key == value.AsText) ?? Options[0], nameof(Selected));
+    /// <summary>目前值不在選項中時顯示原文（例如 custom: 自訂配方）。</summary>
+    public string UnknownValue { get; private set; } = "";
+
+    public bool HasUnknownValue => UnknownValue.Length > 0;
+
+    protected override void OnLoad(ParamValue value)
+    {
+        var match = Options.FirstOrDefault(o => o.Key == value.AsText);
+        UnknownValue = match is null ? value.AsText : "";
+        OnPropertyChanged(nameof(UnknownValue));
+        OnPropertyChanged(nameof(HasUnknownValue));
+        SetProperty(ref _selected, match ?? Options[0], nameof(Selected));
+    }
 }
 
 public sealed partial class ToggleParamViewModel(string moduleKey, ParamDef def, IParamHost host) : ParamViewModel(moduleKey, def, host)
