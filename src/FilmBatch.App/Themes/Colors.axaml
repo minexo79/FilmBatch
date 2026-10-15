@@ -119,4 +119,7 @@
   <x:Double x:Key="FB.FontSizeSmall">11</x:Double>
   <x:Double x:Key="FB.FontSizeTitle">14</x:Double>
   <sys:Double x:Key="DockCornerRadiusSmall">0</sys:Double>
+  <!-- 工具面板頂端的 1px 分隔線：Dock 主題在 :pointerover 時會讓它出現，把面板內容往下推 1px，
+       滑鼠移入／移出右側與底部面板時看起來會跳動。厚度設為 0，不論可見與否都不佔版面。 -->
+  <sys:Double x:Key="DockToolChromeDividerThickness">0</sys:Double>
 </ResourceDictionary>

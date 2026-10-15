@@ -41,8 +41,7 @@ public static class NativeMenus
     internal static NativeMenu CreateAppMenu(MainWindow window, MainWindowViewModel vm)
     {
         var menu = new NativeMenu();
-        menu.Items.Add(Item(Loc.Format("Menu.AboutApp", Loc.Get("App.Title")),
-            new CommandAdapter(() => ShowAbout(window))));
+        menu.Items.Add(Item(Loc.Get("Cmd.About"), vm.AboutCommand));
         menu.Items.Add(new NativeMenuItemSeparator());
         menu.Items.Add(Item(Loc.Get("Cmd.Preferences"), vm.PreferencesCommand,
             new KeyGesture(Key.OemComma, KeyModifiers.Meta)));
@@ -98,6 +97,12 @@ public static class NativeMenus
         win.Items.Add(Item(Loc.Get("Cmd.FullScreen"), vm.ToggleFullScreenCommand, new KeyGesture(Key.F, KeyModifiers.Meta | KeyModifiers.Control)));
         menu.Items.Add(SubMenu(Loc.Get("Menu.Window"), win));
 
+        // macOS 慣例：「關於」在應用程式選單，說明選單只放外部連結
+        var help = new NativeMenu();
+        help.Items.Add(Item(Loc.Get("Cmd.OpenGitHub"), vm.OpenGitHubCommand));
+        help.Items.Add(Item(Loc.Get("Cmd.ReportIssue"), vm.ReportIssueCommand));
+        menu.Items.Add(SubMenu(Loc.Get("Menu.Help"), help));
+
         return menu;
     }
 
@@ -120,50 +125,6 @@ public static class NativeMenus
         command.CanExecuteChanged += (_, _) =>
             Avalonia.Threading.Dispatcher.UIThread.Post(() => item.IsEnabled = command.CanExecute(null));
         return item;
-    }
-
-    /// <summary>簡單的「關於」視窗（原生應用程式選單第一項），避免新增對話框服務介面。</summary>
-    private static void ShowAbout(Window owner)
-    {
-        var version = typeof(App).Assembly.GetName().Version?.ToString(3) ?? "";
-        var w = new Window
-        {
-            Title = Loc.Format("Menu.AboutApp", Loc.Get("App.Title")),
-            Width = 340,
-            SizeToContent = SizeToContent.Height,
-            CanResize = false,
-            ShowInTaskbar = false,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            Content = new StackPanel
-            {
-                Margin = new Thickness(24),
-                Spacing = 8,
-                Children =
-                {
-                    new TextBlock
-                    {
-                        Text = Loc.Get("App.Title"),
-                        FontSize = 18,
-                        FontWeight = FontWeight.SemiBold,
-                        HorizontalAlignment = HorizontalAlignment.Center,
-                    },
-                    new TextBlock
-                    {
-                        Text = $"{Loc.Get("Menu.Version")} {version}",
-                        Classes = { "secondary" },
-                        HorizontalAlignment = HorizontalAlignment.Center,
-                    },
-                    new TextBlock
-                    {
-                        Text = Loc.Get("Menu.AboutText"),
-                        Classes = { "secondary" },
-                        TextWrapping = TextWrapping.Wrap,
-                        TextAlignment = TextAlignment.Center,
-                    },
-                },
-            },
-        };
-        _ = w.ShowDialog(owner);
     }
 
     /// <summary>把同步動作包成 <see cref="ICommand"/>，讓原生選單項目可共用啟用狀態邏輯。</summary>

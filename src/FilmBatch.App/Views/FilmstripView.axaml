@@ -2,9 +2,10 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:FilmBatch.App.ViewModels"
              xmlns:d="using:FilmBatch.App.ViewModels.Dialogs"
+             xmlns:l="using:FilmBatch.App.Localization"
              x:Class="FilmBatch.App.Views.FilmstripView"
              x:DataType="vm:FilmstripViewModel">
-  <!-- 縮圖列（計畫書 2.4.4）：水平虛擬化；Ctrl/⌘、Shift 多選；可拖放預設到縮圖上 -->
+  <!-- 縮圖列（計畫書 2.4.4）：水平虛擬化；Ctrl/⌘、Shift 多選；可拖放預設到縮圖上；在空白處按兩下選擇照片資料夾 -->
   <DockPanel Background="{DynamicResource FB.WindowBrush}">
     <Border DockPanel.Dock="Top" Padding="12,8,12,2">
       <StackPanel Orientation="Horizontal" Spacing="8">
@@ -23,6 +24,7 @@
         <TextBlock Classes="secondary small numeric" Text="{Binding CountText}" VerticalAlignment="Center" Margin="4,0" />
       </StackPanel>
     </Border>
+    <Panel>
     <ListBox Name="List" Classes="filmstrip" ItemsSource="{Binding Items}" Selection="{Binding Selection}"
              SelectionMode="Multiple" DragDrop.AllowDrop="True"
              ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Disabled">
@@ -59,5 +61,12 @@
         </DataTemplate>
       </ListBox.ItemTemplate>
     </ListBox>
+    <!-- 尚未開啟資料夾時的提示（不攔截滑鼠，按兩下由 ListBox 處理） -->
+    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" VerticalAlignment="Center"
+                IsHitTestVisible="False" IsVisible="{Binding !HasFolder}">
+      <PathIcon Data="{StaticResource Icon.Open}" Width="16" Height="16" Foreground="{DynamicResource FB.PlaceholderBrush}" />
+      <TextBlock Classes="secondary" Text="{l:Tr Filmstrip.OpenHint}" VerticalAlignment="Center" />
+    </StackPanel>
+    </Panel>
   </DockPanel>
 </UserControl>

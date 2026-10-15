@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using FilmBatch.App.Localization;
 using FilmBatch.App.Services;
 using FilmBatch.Gpu.Device;
@@ -95,6 +96,13 @@ public sealed partial class PreferencesViewModel : ObservableObject
         {
             Adapters.Add($"無法列舉：{ex.Message}");
         }
+    }
+
+    [RelayCommand]
+    private async Task BrowseTextures()
+    {
+        var picked = await _main.Dialogs.PickFolderAsync(Directory.Exists(TexturesFolder) ? TexturesFolder : null);
+        if (picked is not null) TexturesFolder = picked;
     }
 
     partial void OnBackgroundChanged(Option<PreviewBackground> value) => _main.ApplyPreviewBackground(value.Value);

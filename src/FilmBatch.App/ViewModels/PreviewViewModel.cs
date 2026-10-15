@@ -19,6 +19,9 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
     private WriteableBitmap? _back;
     private string? _editSession;
 
+    /// <summary>預覽區浮動工具列（復原、重做、複製、貼上）直接繫結主視窗的命令。</summary>
+    public MainWindowViewModel Main => main;
+
     /// <summary>目前照片的來源（16-bit 代理圖），算圖時上傳 GPU。</summary>
     public SourceImage? Source { get; private set; }
 
