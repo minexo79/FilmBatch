@@ -675,26 +675,27 @@ public static class CpuPipeline
 
         var dirX = MathF.Cos(angle);
         var dirY = MathF.Sin(angle);
-        var aspect = w / (float)h;
+        // 置中、邊緣參考的投影：along 為沿漏光方向的有號距離（中心為零），sMax 為中心到該方向邊緣的距離；
+        // d 在受光邊緣為 0、對側為 1，全圓皆有定義（|dirX|+|dirY| ∈ [1, √2]，恆不為零，不需箝制角度）。
+        var sMax = 0.5f * (MathF.Abs(dirX) + MathF.Abs(dirY));
+        var range = sMax * 2f;
 
         Parallel.For(0, h, y =>
         {
             for (var x = 0; x < w; x++)
             {
-                var u = (x + 0.5f) / w;
-                var v = (y + 0.5f) / h;
+                var cu = (x + 0.5f) / w - 0.5f;
+                var cv = (y + 0.5f) / h - 0.5f;
                 float leak = 0;
                 for (var c = 0; c < count; c++)
                 {
                     var s = seed + (uint)c * 911u;
                     var off = (SeedHash.ToUnitFloat(SeedHash.Pcg(s)) - 0.5f) * irr * 0.4f;
-                    var jag = SeedHash.ToUnitFloat(SeedHash.Pcg(s + 1)) * 6.28f;
-                    var along = u * dirX + v * dirY + off;
-                    var perp = u * -dirY + v * dirX;
-                    // 從畫面邊緣進入的衰減：以 along 距離 + 低頻扭曲
-                    var d = 1f - along;
-                    var wob = (SeedHash.ToUnitFloat(SeedHash.Pcg(s + 2 + (uint)(perp * 7))) - 0.5f) * irr * 0.3f;
-                    var r0 = 0.5f + wob;
+                    var along = cu * dirX + cv * dirY + off;
+                    // 垂直軸平移 sMax 使全圓非負（與沿軸行程同值），雜湊索引與值雜訊在 CPU/GPU 同一定義。
+                    var perp = cu * -dirY + cv * dirX + sMax;
+                    // 從受光邊緣向內衰減：以橫跨畫面的行程正規化
+                    var d = (sMax - along) / range;
                     var e = MathF.Exp(-d * d / (size * size * 0.35f));
                     // 低頻不規則：沿垂直方向的值雜訊
                     var noise = ValueNoise1(perp * 3f, s + 3) * irr;
