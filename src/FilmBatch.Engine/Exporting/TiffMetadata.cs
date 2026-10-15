@@ -6,7 +6,7 @@ namespace FilmBatch.Engine.Exporting;
 /// <summary>
 /// Magick.NET 14 writes TIFF pixels/ICC but not the EXIF/GPS directories. Append those
 /// directories to our temporary output; leave compressed strips and their offsets untouched.
-/// Input metadata is reserialized by ExifProfile, never parsed directly from a source file.
+/// Normalize bounded source directories without copying image containers or stale color declarations.
 /// </summary>
 internal static class TiffMetadata
 {
@@ -74,17 +74,19 @@ internal static class TiffMetadata
                 file.Position = checked((long)(offset + (ulong)countSize + i * (large ? 20ul : 12ul)));
                 file.ReadExactly(entryBytes[..(large ? 20 : 12)]);
                 var tag = (ushort)Number(entryBytes[..2]);
-                // Image-layout fields and other profile containers are not EXIF.
-                if (depth == 0 && tag is 256 or 257 or 258 or 259 or 262 or 266 or 273 or 277 or 278 or 279
-                    or 284 or 288 or 289 or 290 or 291 or 292 or 293 or 301 or 317 or 320 or 322 or 323
-                    or 324 or 325 or 330 or 338 or 339 or 347 or 512 or 513 or 514 or 515 or 517 or 518
-                    or 519 or 520 or 521 or 529 or 530 or 531 or 532 or 700 or 33723 or 34377 or 34675)
+                // Only descriptive IFD0 fields and EXIF/GPS pointers belong in a rendered image.
+                // In particular, Photoshop ImageSourceData (37724) contains obsolete source layers.
+                if (depth == 0 && tag is not (269 or 270 or 271 or 272 or 274 or 305 or 306
+                    or 315 or 316 or 33432 or 34665 or 34853))
                     continue;
+                // Source interoperability may describe Adobe RGB (R03), or have a stale pointer.
+                // Our output is sRGB: regenerate this directory instead of following/copying it.
+                if (kind == 34665 && tag == 40965) continue;
                 var type = (ushort)Number(entryBytes.Slice(2, 2));
                 var components = Number(entryBytes.Slice(4, large ? 8 : 4));
                 var raw = entryBytes.Slice(large ? 12 : 8, large ? 8 : 4);
                 uint value;
-                if (tag is 34665 or 34853 or 40965)
+                if (tag is 34665 or 34853)
                 {
                     if (components != 1 || type is not (4 or 13 or 18))
                         throw new InvalidDataException("Invalid TIFF EXIF pointer.");
@@ -124,14 +126,14 @@ internal static class TiffMetadata
             if (kind == 34665)
             {
                 entries.RemoveAll(entry => entry.Tag is 40961 or 40962 or 40963);
-                entries.AddRange(OutputDimensions(width, height));
+                entries.AddRange(OutputExif(width, height, writer));
             }
             if (depth == 0)
             {
                 entries.RemoveAll(entry => entry.Tag == 274);
                 entries.Add(new Entry(274, 3, 1, 1));
                 if (!entries.Any(entry => entry.Tag == 34665))
-                    entries.Add(new Entry(34665, 4, 1, WriteDirectory(OutputDimensions(width, height), writer)));
+                    entries.Add(new Entry(34665, 4, 1, WriteDirectory(OutputExif(width, height, writer), writer)));
             }
             return WriteDirectory(entries, writer);
         }
@@ -255,10 +257,15 @@ internal static class TiffMetadata
         _ => throw new InvalidDataException($"Unsupported EXIF field type: {type}")
     };
 
-    private static Entry[] OutputDimensions(uint width, uint height) =>
+    private static Entry[] OutputExif(uint width, uint height, BinaryWriter writer) =>
     [
         new(40961, 3, 1, 1), // sRGB
         new(40962, 4, 1, width),
-        new(40963, 4, 1, height)
+        new(40963, 4, 1, height),
+        new(40965, 4, 1, WriteDirectory(
+        [
+            new Entry(1, 2, 4, U32("R98\0"u8, 0)), // DCF basic file, matching sRGB
+            new Entry(2, 7, 4, U32("0100"u8, 0))
+        ], writer))
     ];
 }

@@ -63,6 +63,109 @@ public sealed class TiffMetadataTests
         finally { Directory.Delete(folder, recursive: true); }
     }
 
+    [Theory]
+    [InlineData("adobe-rgb")]
+    [InlineData("dangling-interop")]
+    [InlineData("photoshop-layers")]
+    public async Task Export_NormalizesColorMetadataWithoutCopyingSourceContainers(string scenario)
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "filmbatch-exif-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var source = Fixture(false, false, scenario == "adobe-rgb" ? "R03" : "R98");
+            var root = BinaryPrimitives.ReadUInt32LittleEndian(source.AsSpan(4));
+            var exif = DirectoryValue(source, root, 34665);
+            if (scenario == "adobe-rgb")
+                source = WithTag(source, true, 40961, 3, 1, [255, 255]);
+            else if (scenario == "dangling-interop")
+                BinaryPrimitives.WriteUInt32LittleEndian(source.AsSpan(FindField(source, exif, 40965) + 8), uint.MaxValue);
+            else
+            {
+                byte[] layers = [.. "Adobe Photoshop Document Data Block\0"u8, .. "8BIMLayr\0\0\0\x02\0\0"u8];
+                source = WithTag(source, false, 37724, 7, (uint)layers.Length, layers);
+            }
+            var path = Path.Combine(folder, "source.tif");
+            File.WriteAllBytes(path, source);
+            using (var decoded = new MagickImage(path))
+                Assert.Equal(1u, decoded.Width);
+            using var library = new PresetLibrary(SamplePresets.Create());
+            var service = new ProjectService(Project.Open(folder, SamplePresets.Neutral), library, new CommandStack());
+            foreach (var format in new[] { ExportFormat.Tiff16, ExportFormat.Png16, ExportFormat.Jpeg })
+            {
+                var summary = await BatchExporter.RunAsync(new ExportRequest
+                {
+                    Service = service, Files = ["source.tif"],
+                    Options = new ExportOptions { Destination = Path.Combine(folder, format.ToString()), Format = format }
+                }, () => new CpuFakeRenderer(), cancellationToken: TestContext.Current.CancellationToken);
+                Assert.Equal(0, summary.Failed);
+                using var output = new MagickImage(Assert.Single(summary.OutputFiles));
+                var raw = format == ExportFormat.Tiff16
+                    ? File.ReadAllBytes(summary.OutputFiles[0])
+                    : output.GetExifProfile()!.ToByteArray()![6..];
+                AssertInterop(raw);
+                root = BinaryPrimitives.ReadUInt32LittleEndian(raw.AsSpan(4));
+                Assert.Equal(-1, FindField(raw, root, 37724));
+                Assert.Equal(ColorProfiles.SRGB.ToByteArray(), output.GetColorProfile()?.ToByteArray());
+                Assert.Equal("2026:01:02 03:04:05", format == ExportFormat.Tiff16
+                    ? output.GetAttribute("exif:DateTimeOriginal")
+                    : output.GetExifProfile()?.GetValue(ExifTag.DateTimeOriginal)?.Value);
+            }
+            Assert.Equal(source, File.ReadAllBytes(path));
+        }
+        finally { Directory.Delete(folder, recursive: true); }
+    }
+
+    private static int FindField(byte[] tiff, uint directory, ushort tag)
+    {
+        var count = BinaryPrimitives.ReadUInt16LittleEndian(tiff.AsSpan((int)directory, 2));
+        for (var i = 0; i < count; i++)
+        {
+            var position = checked((int)directory + 2 + i * 12);
+            if (BinaryPrimitives.ReadUInt16LittleEndian(tiff.AsSpan(position, 2)) == tag) return position;
+        }
+        return -1;
+    }
+
+    private static uint DirectoryValue(byte[] tiff, uint directory, ushort tag)
+    {
+        var position = FindField(tiff, directory, tag);
+        if (position < 0) throw new InvalidDataException($"Missing fixture tag {tag}.");
+        return BinaryPrimitives.ReadUInt32LittleEndian(tiff.AsSpan(position + 8, 4));
+    }
+
+    private static byte[] WithTag(byte[] tiff, bool inExif, ushort tag, ushort type, uint count, byte[] payload)
+    {
+        using var stream = new MemoryStream();
+        stream.Write(tiff);
+        using var writer = new BinaryWriter(stream);
+        var root = BinaryPrimitives.ReadUInt32LittleEndian(tiff.AsSpan(4));
+        var pointer = inExif ? FindField(tiff, root, 34665) + 8 : 4;
+        var directory = BinaryPrimitives.ReadUInt32LittleEndian(tiff.AsSpan(pointer, 4));
+        var entries = new List<byte[]>();
+        var size = BinaryPrimitives.ReadUInt16LittleEndian(tiff.AsSpan((int)directory, 2));
+        for (var i = 0; i < size; i++) entries.Add(tiff.AsSpan((int)directory + 2 + i * 12, 12).ToArray());
+        var added = new byte[12];
+        BinaryPrimitives.WriteUInt16LittleEndian(added, tag);
+        BinaryPrimitives.WriteUInt16LittleEndian(added.AsSpan(2), type);
+        BinaryPrimitives.WriteUInt32LittleEndian(added.AsSpan(4), count);
+        if (payload.Length <= 4) payload.CopyTo(added, 8);
+        else
+        {
+            BinaryPrimitives.WriteUInt32LittleEndian(added.AsSpan(8), (uint)stream.Position);
+            stream.Write(payload);
+        }
+        entries.Add(added);
+        if ((stream.Position & 1) != 0) writer.Write((byte)0);
+        var replacement = (uint)stream.Position;
+        writer.Write((ushort)entries.Count);
+        foreach (var entry in entries.OrderBy(e => BinaryPrimitives.ReadUInt16LittleEndian(e))) writer.Write(entry);
+        writer.Write(0u);
+        stream.Position = pointer;
+        writer.Write(replacement);
+        return stream.ToArray();
+    }
+
     private static void AssertInterop(byte[] tiff)
     {
         uint Value(uint directory, ushort tag)
@@ -78,13 +181,14 @@ public sealed class TiffMetadataTests
         }
         var root = BinaryPrimitives.ReadUInt32LittleEndian(tiff.AsSpan(4, 4));
         var exif = Value(root, 34665);
+        Assert.Equal(1u, Value(exif, 40961));
         Assert.Equal(1u, Value(exif, 40962));
         Assert.Equal(1u, Value(exif, 40963));
         var interoperability = Value(exif, 40965);
         Assert.Equal(0x00383952u, Value(interoperability, 1)); // ASCII "R98\0"
     }
 
-    private static byte[] Fixture(bool bigEndian, bool large)
+    private static byte[] Fixture(bool bigEndian, bool large, string interoperabilityIndex = "R98")
     {
         using var stream = new MemoryStream();
         void Number(ulong number, int size)
@@ -109,7 +213,7 @@ public sealed class TiffMetadataTests
             if (type == 3 && count == 1) Number(value, 2);
             else if (tag == 258 && large) { Number(16, 2); Number(16, 2); Number(16, 2); }
             else if (tag == 33434 && large) { Number(1, 4); Number(125, 4); }
-            else if (tag == 1) stream.Write("R98\0"u8);
+            else if (tag == 1) stream.Write(Encoding.ASCII.GetBytes(interoperabilityIndex + "\0"));
             else Number(value, slot);
             while (stream.Position < start + slot) stream.WriteByte(0);
         }
