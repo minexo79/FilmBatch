@@ -65,4 +65,11 @@ public sealed class DialogService(Func<Window?> owner) : IDialogService
         SimpleDialogs.PromptAsync(Owner, title, label, initial);
 
     public void ShowGallery() => new GalleryWindow().Show(Owner);
+
+    public Task ShowAboutAsync(AboutViewModel vm) => new AboutDialog { DataContext = vm }.ShowDialog(Owner);
+
+    public async Task OpenUriAsync(string uri)
+    {
+        if (!await Owner.Launcher.LaunchUriAsync(new Uri(uri))) AppLog.Warn($"無法開啟網址：{uri}");
+    }
 }

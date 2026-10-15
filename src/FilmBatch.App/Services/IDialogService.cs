@@ -19,4 +19,8 @@ public interface IDialogService
     Task<bool> ConfirmAsync(string title, string message, string confirmText);
     Task<string?> PromptAsync(string title, string label, string initial);
     void ShowGallery();
+    Task ShowAboutAsync(AboutViewModel vm);
+
+    /// <summary>以系統預設瀏覽器開啟網址（GitHub 專案頁、回報問題）。</summary>
+    Task OpenUriAsync(string uri);
 }

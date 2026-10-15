@@ -12,10 +12,10 @@
         Icon="avares://FilmBatch/Assets/icon.ico"
         ExtendClientAreaToDecorationsHint="True"
         ExtendClientAreaTitleBarHeightHint="44">
-  <!-- 主視窗（計畫書 2.3）：頂列（選單＋常用動作）｜Dock（中預覽、右側邊欄、下縮圖列）｜底列（檢視控制與狀態） -->
+  <!-- 主視窗（計畫書 2.3）：頂列（選單）｜Dock（中預覽、右側邊欄＋常用動作、下縮圖列）｜底列（檢視控制與狀態） -->
   <DockPanel>
-    <!-- ───── 頂列：圖示｜選單｜標題（拖曳區）｜編輯動作｜系統按鈕保留區 ───── -->
-    <Grid DockPanel.Dock="Top" Name="TitleBar" Classes="topbar" ColumnDefinitions="Auto,Auto,*,Auto,Auto"
+    <!-- ───── 頂列：圖示｜選單｜標題（拖曳區）｜系統按鈕保留區 ───── -->
+    <Grid DockPanel.Dock="Top" Name="TitleBar" Classes="topbar" ColumnDefinitions="Auto,Auto,*,Auto"
           IsVisible="{Binding !IsFullScreen}">
       <Image Grid.Column="0" Name="TitleIcon" Source="avares://FilmBatch/Assets/icon.ico" Width="18" Height="18" Margin="14,0,6,0"
              VerticalAlignment="Center" IsHitTestVisible="False" />
@@ -25,27 +25,8 @@
                    TextTrimming="CharacterEllipsis" Margin="16,0" IsHitTestVisible="False" />
       </Border>
 
-      <!-- 常用動作：圓角群組（匯出改在側邊欄的「照片匯出」分頁） -->
-      <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="0,0,8,0">
-        <Border Classes="tool-group">
-          <StackPanel Orientation="Horizontal">
-            <Button Classes="tool" Command="{Binding UndoCommand}" ToolTip.Tip="{OnPlatform '復原（Ctrl+Z）', macOS='復原（⌘Z）'}"><PathIcon Data="{StaticResource Icon.Undo}" /></Button>
-            <Button Classes="tool" Command="{Binding RedoCommand}" ToolTip.Tip="{OnPlatform '重做（Ctrl+Shift+Z）', macOS='重做（⌘⇧Z）'}"><PathIcon Data="{StaticResource Icon.Redo}" /></Button>
-          </StackPanel>
-        </Border>
-        <Border Classes="tool-group">
-          <StackPanel Orientation="Horizontal">
-            <Button Classes="tool" Command="{Binding CopyCommand}" ToolTip.Tip="{OnPlatform '複製設定（Ctrl+C）', macOS='複製設定（⌘C）'}"><PathIcon Data="{StaticResource Icon.Copy}" /></Button>
-            <Button Classes="tool" Command="{Binding PasteCommand}" ToolTip.Tip="{OnPlatform '貼上（Ctrl+V）', macOS='貼上（⌘V）'}"><PathIcon Data="{StaticResource Icon.Paste}" /></Button>
-            <Button Classes="tool" Command="{Binding PasteSpecialCommand}" ToolTip.Tip="{OnPlatform '選擇性貼上（Ctrl+Shift+V）', macOS='選擇性貼上（⌘⇧V）'}"><PathIcon Data="{StaticResource Icon.PasteSpecial}" /></Button>
-          </StackPanel>
-        </Border>
-        <Button Classes="tool" Command="{Binding OpenFolderCommand}" ToolTip.Tip="{OnPlatform '開啟資料夾（Ctrl+O）', macOS='開啟資料夾（⌘O）'}"><PathIcon Data="{StaticResource Icon.Open}" /></Button>
-        <Button Classes="tool" Command="{Binding PreferencesCommand}" ToolTip.Tip="偏好設定"><PathIcon Data="{StaticResource Icon.Gear}" /></Button>
-      </StackPanel>
-
       <!-- 系統的最小化／最大化／關閉按鈕所在位置（由程式依平台設定寬度） -->
-      <Border Grid.Column="4" Name="CaptionButtonsSpace" Width="138" Background="Transparent" WindowDecorationProperties.ElementRole="TitleBar" />
+      <Border Grid.Column="3" Name="CaptionButtonsSpace" Width="138" Background="Transparent" WindowDecorationProperties.ElementRole="TitleBar" />
     <Menu Grid.Column="1" Name="MainMenu" VerticalAlignment="Center" Background="Transparent">
       <MenuItem Header="{l:Tr Menu.File}">
         <MenuItem Header="{l:Tr Cmd.OpenFolder}" Command="{Binding OpenFolderCommand}" InputGesture="{OnPlatform Ctrl+O, macOS=Meta+O}" />
@@ -82,6 +63,12 @@
       <MenuItem Header="{l:Tr Menu.Presets}">
         <MenuItem Header="{l:Tr Cmd.CreatePreset}" Command="{Binding CreatePresetCommand}" />
         <MenuItem Header="{l:Tr Cmd.ManagePresets}" Command="{Binding ManagePresetsCommand}" />
+      </MenuItem>
+      <MenuItem Header="{l:Tr Menu.Help}">
+        <MenuItem Header="{l:Tr Cmd.OpenGitHub}" Command="{Binding OpenGitHubCommand}" />
+        <MenuItem Header="{l:Tr Cmd.ReportIssue}" Command="{Binding ReportIssueCommand}" />
+        <Separator />
+        <MenuItem Header="{l:Tr Cmd.About}" Command="{Binding AboutCommand}" />
       </MenuItem>
     </Menu>
     </Grid>

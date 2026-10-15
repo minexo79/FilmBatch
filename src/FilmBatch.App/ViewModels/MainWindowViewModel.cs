@@ -483,6 +483,17 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private Task Preferences() => Dialogs.ShowPreferencesAsync(new PreferencesViewModel(this));
 
+    // ───────────── 說明 ─────────────
+
+    [RelayCommand]
+    private Task About() => Dialogs.ShowAboutAsync(new AboutViewModel(GpuName));
+
+    [RelayCommand]
+    private Task OpenGitHub() => Dialogs.OpenUriAsync(AboutViewModel.RepositoryUrl);
+
+    [RelayCommand]
+    private Task ReportIssue() => Dialogs.OpenUriAsync(AboutViewModel.IssuesUrl);
+
     /// <summary>切換到側邊欄的「照片匯出」分頁（Ctrl+E、檔案 → 匯出）。</summary>
     [RelayCommand]
     private void Export()

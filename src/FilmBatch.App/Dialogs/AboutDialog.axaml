@@ -1,0 +1,80 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="using:FilmBatch.App.ViewModels.Dialogs"
+        xmlns:l="using:FilmBatch.App.Localization"
+        x:Class="FilmBatch.App.Dialogs.AboutDialog"
+        x:DataType="d:AboutViewModel"
+        Title="{l:Tr Cmd.About}" Width="560" Height="620" CanResize="False"
+        ShowInTaskbar="False" WindowStartupLocation="CenterOwner">
+  <!-- 說明 → 關於：版本、執行環境、第三方套件與 GitHub 連結 -->
+  <DockPanel>
+    <Border DockPanel.Dock="Bottom" Classes="dialog-footer">
+      <Grid ColumnDefinitions="Auto,*,Auto">
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <Button Name="CopyButton" Classes="outline" Content="{l:Tr About.CopyInfo}" />
+          <HyperlinkButton Content="{l:Tr Cmd.OpenGitHub}" NavigateUri="{Binding Repository}" VerticalAlignment="Center" />
+        </StackPanel>
+        <Button Grid.Column="2" Name="CloseButton" Classes="accent" Content="{l:Tr Dialog.Close}" IsDefault="True" IsCancel="True" />
+      </Grid>
+    </Border>
+
+    <ScrollViewer>
+      <StackPanel Margin="24,24,24,16" Spacing="20">
+        <!-- 標頭：圖示、名稱、版本 -->
+        <StackPanel Orientation="Horizontal" Spacing="16">
+          <Image Source="avares://FilmBatch/Assets/icon.ico" Width="56" Height="56" />
+          <StackPanel VerticalAlignment="Center" Spacing="2">
+            <TextBlock Text="{l:Tr App.Title}" FontSize="22" FontWeight="SemiBold" />
+            <TextBlock Classes="secondary" Text="{l:Tr Menu.AboutText}" />
+          </StackPanel>
+        </StackPanel>
+
+        <!-- 版本資訊 -->
+        <StackPanel Spacing="8">
+          <TextBlock Classes="group-title" Text="{l:Tr About.VersionInfo}" />
+          <Border Classes="settings-card" Padding="16,12">
+            <Grid ColumnDefinitions="120,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="8">
+              <TextBlock Classes="secondary" Text="{l:Tr Menu.Version}" />
+              <SelectableTextBlock Grid.Column="1" Classes="numeric" Text="{Binding Version}" />
+              <TextBlock Grid.Row="1" Classes="secondary" Text="{l:Tr About.Runtime}" />
+              <SelectableTextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Runtime}" TextWrapping="Wrap" />
+              <TextBlock Grid.Row="2" Classes="secondary" Text="{l:Tr About.OS}" />
+              <SelectableTextBlock Grid.Row="2" Grid.Column="1" Text="{Binding OperatingSystem}" TextWrapping="Wrap" />
+              <TextBlock Grid.Row="3" Classes="secondary" Text="GPU" />
+              <SelectableTextBlock Grid.Row="3" Grid.Column="1" Text="{Binding Gpu}" TextWrapping="Wrap" />
+            </Grid>
+          </Border>
+        </StackPanel>
+
+        <!-- 第三方套件 -->
+        <StackPanel Spacing="8">
+          <TextBlock Classes="group-title" Text="{l:Tr About.Packages}" />
+          <Border Classes="settings-card" Padding="0">
+            <StackPanel>
+              <Grid Classes="package-row" ColumnDefinitions="*,130,120">
+                <TextBlock Classes="secondary small" Text="{l:Tr About.Package}" />
+                <TextBlock Grid.Column="1" Classes="secondary small" Text="{l:Tr Menu.Version}" />
+                <TextBlock Grid.Column="2" Classes="secondary small" Text="{l:Tr About.License}" />
+              </Grid>
+              <ItemsControl ItemsSource="{Binding Packages}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="d:PackageInfo">
+                    <Border Classes="package-divider">
+                      <Grid Classes="package-row" ColumnDefinitions="*,130,120">
+                        <HyperlinkButton Content="{Binding Name}" NavigateUri="{Binding Url}" Padding="0"
+                                         ToolTip.Tip="{Binding Url}" HorizontalAlignment="Left" />
+                        <TextBlock Grid.Column="1" Classes="numeric" Text="{Binding Version}" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="2" Text="{Binding License}" VerticalAlignment="Center" />
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </Border>
+          <TextBlock Classes="secondary small" TextWrapping="Wrap" Text="{l:Tr About.NoticeHint}" />
+        </StackPanel>
+      </StackPanel>
+    </ScrollViewer>
+  </DockPanel>
+</Window>

@@ -86,6 +86,10 @@ public sealed partial class FilmstripViewModel : ObservableObject
     [ObservableProperty]
     private string _countText = "";
 
+    /// <summary>尚未開啟資料夾：縮圖列顯示「按兩下選擇資料夾」的提示。</summary>
+    [ObservableProperty]
+    private bool _hasFolder;
+
     public FilmstripViewModel(MainWindowViewModel main)
     {
         _main = main;
@@ -97,6 +101,7 @@ public sealed partial class FilmstripViewModel : ObservableObject
     {
         _byName.Clear();
         _all.Clear();
+        HasFolder = true;
         foreach (var f in project.FileNames)
         {
             var vm = new ThumbnailViewModel(f);

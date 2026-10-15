@@ -13,5 +13,17 @@
                      ControlPoint="{Binding ControlPoint}" CanvasBackground="{Binding Background}" />
     <TextBlock Classes="secondary" Text="{Binding EmptyText}" HorizontalAlignment="Center" VerticalAlignment="Center"
                IsVisible="{Binding Image, Converter={x:Static ObjectConverters.IsNull}}" IsHitTestVisible="False" />
+
+    <!-- 浮動工具列：常用編輯動作，位於右上角（算圖指示畫在其左側）；全螢幕預覽時隱藏 -->
+    <Border Classes="preview-toolbar" IsVisible="{Binding !Main.IsFullScreen}">
+      <StackPanel Classes="preview-toolbar">
+        <Button Classes="tool" Command="{Binding Main.UndoCommand}" ToolTip.Tip="{OnPlatform '復原（Ctrl+Z）', macOS='復原（⌘Z）'}"><PathIcon Data="{StaticResource Icon.Undo}" /></Button>
+        <Button Classes="tool" Command="{Binding Main.RedoCommand}" ToolTip.Tip="{OnPlatform '重做（Ctrl+Shift+Z）', macOS='重做（⌘⇧Z）'}"><PathIcon Data="{StaticResource Icon.Redo}" /></Button>
+        <Border Classes="preview-toolbar-divider" />
+        <Button Classes="tool" Command="{Binding Main.CopyCommand}" ToolTip.Tip="{OnPlatform '複製設定（Ctrl+C）', macOS='複製設定（⌘C）'}"><PathIcon Data="{StaticResource Icon.Copy}" /></Button>
+        <Button Classes="tool" Command="{Binding Main.PasteCommand}" ToolTip.Tip="{OnPlatform '貼上（Ctrl+V）', macOS='貼上（⌘V）'}"><PathIcon Data="{StaticResource Icon.Paste}" /></Button>
+        <Button Classes="tool" Command="{Binding Main.PasteSpecialCommand}" ToolTip.Tip="{OnPlatform '選擇性貼上（Ctrl+Shift+V）', macOS='選擇性貼上（⌘⇧V）'}"><PathIcon Data="{StaticResource Icon.PasteSpecial}" /></Button>
+      </StackPanel>
+    </Border>
   </Panel>
 </UserControl>

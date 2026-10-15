@@ -44,6 +44,13 @@ public class PreviewCanvas : Control
     private const double PointRadius = 6;
     private const double HitRadius = 12;
 
+    /// <summary>
+    /// 算圖指示的位置：右上角留給預覽浮動工具列（右邊距 14 + 寬 44，見 Controls.axaml 的 Border.preview-toolbar），
+    /// 指示畫在工具列左側、與第一顆按鈕同高。
+    /// </summary>
+    private const double SpinnerRightInset = 74;
+    private const double SpinnerTop = 36;
+
     private static readonly IPen PointPen = new Pen(new SolidColorBrush(Color.FromRgb(0x20, 0x20, 0x20)), 1);
     private static readonly IBrush PointFill = Brushes.White;
     private static readonly IPen SplitPen = new Pen(Brushes.White, 1);
@@ -172,7 +179,7 @@ public class PreviewCanvas : Control
         if (ShowOriginal && Original is not null)
             DrawLabel(ctx, "原圖", new Point(10, string.IsNullOrEmpty(OverlayText) ? 10 : 36), alignRight: false);
 
-        if (IsBusy) DrawSpinner(ctx, new Point(Bounds.Width - 18, 18));
+        if (IsBusy) DrawSpinner(ctx, new Point(Bounds.Width - SpinnerRightInset, SpinnerTop));
     }
 
     private void DrawLabel(DrawingContext ctx, string text, Point at, bool alignRight)

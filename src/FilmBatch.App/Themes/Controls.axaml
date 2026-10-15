@@ -275,6 +275,29 @@
     <Setter Property="CornerRadius" Value="8" />
     <Setter Property="Padding" Value="2" />
   </Style>
+  <!-- 預覽區浮動工具列：疊在畫面右上角，圓角半透明底座＋柔和陰影；按鈕之間留較寬的間距。
+       算圖指示改畫在工具列左側（PreviewCanvas.SpinnerRightInset），尺寸變動時兩邊要一起調整。 -->
+  <Style Selector="Border.preview-toolbar">
+    <Setter Property="HorizontalAlignment" Value="Right" />
+    <Setter Property="VerticalAlignment" Value="Top" />
+    <Setter Property="Margin" Value="0,14,14,0" />
+    <Setter Property="Padding" Value="5" />
+    <Setter Property="CornerRadius" Value="10" />
+    <Setter Property="Background" Value="#E61C1C1C" />
+    <Setter Property="BoxShadow" Value="0 4 14 0 #80000000" />
+  </Style>
+  <Style Selector="StackPanel.preview-toolbar">
+    <Setter Property="Spacing" Value="6" />
+  </Style>
+  <Style Selector="Border.preview-toolbar Button.tool">
+    <Setter Property="Padding" Value="9" />
+    <Setter Property="ToolTip.Placement" Value="Left" />
+  </Style>
+  <Style Selector="Border.preview-toolbar-divider">
+    <Setter Property="Height" Value="1" />
+    <Setter Property="Margin" Value="6,4" />
+    <Setter Property="Background" Value="{DynamicResource FB.BorderLightBrush}" />
+  </Style>
   <Style Selector="Border.tool-group TextBlock">
     <Setter Property="Foreground" Value="{DynamicResource FB.TextBrush}" />
   </Style>
@@ -630,9 +653,88 @@
     <Setter Property="Padding" Value="6,2" />
   </Style>
 
+  <!-- ───── 設定類對話框（偏好設定、關於）：左側分類、設定卡片、底部按鈕列 ───── -->
+  <Style Selector="Border.dialog-footer">
+    <Setter Property="Background" Value="{DynamicResource FB.WindowBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource FB.DividerBrush}" />
+    <Setter Property="BorderThickness" Value="0,1,0,0" />
+    <Setter Property="Padding" Value="24,12" />
+  </Style>
+  <Style Selector="Border.settings-nav">
+    <Setter Property="Width" Value="190" />
+    <Setter Property="Background" Value="{DynamicResource FB.WindowBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource FB.DividerBrush}" />
+    <Setter Property="BorderThickness" Value="0,0,1,0" />
+    <Setter Property="Padding" Value="10,16" />
+  </Style>
+  <Style Selector="ListBox.settings-nav">
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+  <Style Selector="ListBox.settings-nav ListBoxItem">
+    <Setter Property="Padding" Value="12,8" />
+    <Setter Property="Margin" Value="0,0,0,2" />
+    <Setter Property="CornerRadius" Value="6" />
+    <Setter Property="Foreground" Value="{DynamicResource FB.SecondaryTextBrush}" />
+  </Style>
+  <Style Selector="ListBox.settings-nav ListBoxItem:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource FB.HoverOverlayBrush}" />
+  </Style>
+  <Style Selector="ListBox.settings-nav ListBoxItem:selected /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource FB.ButtonBrush}" />
+  </Style>
+  <Style Selector="ListBox.settings-nav ListBoxItem:selected">
+    <Setter Property="Foreground" Value="{DynamicResource FB.TextBrush}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="Border.settings-card">
+    <Setter Property="Background" Value="{DynamicResource FB.PanelBrush}" />
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="Padding" Value="16,4" />
+  </Style>
+  <Style Selector="Grid.settings-row">
+    <Setter Property="MinHeight" Value="56" />
+    <Setter Property="ColumnSpacing" Value="24" />
+  </Style>
+  <Style Selector="StackPanel.settings-row-block">
+    <Setter Property="Spacing" Value="8" />
+    <Setter Property="Margin" Value="0,12" />
+  </Style>
+  <Style Selector="StackPanel.settings-label">
+    <Setter Property="Spacing" Value="2" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="TextBlock.settings-desc">
+    <Setter Property="FontSize" Value="11" />
+    <Setter Property="Foreground" Value="{DynamicResource FB.PlaceholderBrush}" />
+    <Setter Property="TextWrapping" Value="Wrap" />
+  </Style>
+  <Style Selector="Grid.settings-row > ComboBox.settings-control, Grid.settings-row > ToggleSwitch, Grid.settings-row > StackPanel">
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="ComboBox.settings-control">
+    <Setter Property="Width" Value="240" />
+  </Style>
+  <Style Selector="Border.settings-divider">
+    <Setter Property="Height" Value="1" />
+    <Setter Property="Background" Value="{DynamicResource FB.DividerBrush}" />
+  </Style>
+  <Style Selector="Grid.package-row">
+    <Setter Property="Margin" Value="16,8" />
+    <Setter Property="ColumnSpacing" Value="12" />
+  </Style>
+  <Style Selector="Border.package-divider">
+    <Setter Property="BorderBrush" Value="{DynamicResource FB.DividerBrush}" />
+    <Setter Property="BorderThickness" Value="0,1,0,0" />
+  </Style>
+  <Style Selector="HyperlinkButton">
+    <Setter Property="Foreground" Value="{DynamicResource FB.LinkBrush}" />
+  </Style>
+
   <!-- ───── Dock：隱藏 IDE 式的工具標題列與文件分頁，面板看起來像固定欄位 ───── -->
   <!-- 主要由 DockFactory 把 GripMode 設為 Hidden；這裡再保險一次。Dock 主題在 :pointerover 時會重新顯示標題列，
-       帶虛擬類別的樣式優先序較高，所以 :pointerover 也要明確覆寫。 -->
+       帶虛擬類別的樣式優先序較高，所以 :pointerover 也要明確覆寫。
+       注意：PART_Panel（1px 分隔線）在 :pointerover 時仍會被 Dock 主題顯示，因此另在 Colors.axaml
+       把 DockToolChromeDividerThickness 設為 0，避免滑鼠移入面板時內容被推動。 -->
   <Style Selector="ToolChromeControl /template/ Border#PART_Border, ToolChromeControl /template/ Panel#PART_Panel,
                    ToolChromeControl:pointerover /template/ Border#PART_Border, ToolChromeControl:pointerover /template/ Panel#PART_Panel">
     <Setter Property="IsVisible" Value="False" />
