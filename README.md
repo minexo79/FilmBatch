@@ -27,6 +27,23 @@ dotnet test FilmBatch.sln
 
 UI 測試以 Avalonia.Headless 執行，不需要顯示器；沒有 GPU 時 GPU 測試自動略過。
 
+### 合併前 CI
+
+`.github/workflows/ci.yml` 在 pull request、merge queue（`merge_group`）、推送至 `master` 及手動觸發時執行：
+
+- Windows x64、macOS Apple Silicon／Intel：還原相依套件、Release 建置、測試、封裝與 GUI 冒煙測試。
+- WGSL：使用固定版本的 naga-cli 與產品共用的 `ShaderLibrary`，驗證編譯後嵌入的所有 shader。
+- `pre-merge`：只有上述工作全部成功才通過；失敗、取消或略過均不放行。
+
+請在 `master` 的分支保護或 ruleset 中，將 **`pre-merge`** 設為必要狀態檢查，才能阻擋未通過的合併；工作流程本身不會修改儲存庫規則。`merge_group` 觸發方式依 [GitHub 官方說明](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#merge_group) 設定。
+
+本機可執行相同的 shader 驗證：
+
+```bash
+cargo install --locked --version 30.0.1 naga-cli
+dotnet run build/CheckShaders.cs
+```
+
 ## 發佈
 
 ### macOS
