@@ -12,10 +12,11 @@ public sealed class GpuSpikeRenderer : IPreviewRenderer
     private readonly GpuDevice _gpu;
     private readonly GpuEffectPipeline _pipeline;
     private readonly EffectAssets _assets;
-    private bool _usingCpu;
+    private string? _cpuReason;
+    private bool UsingCpu => _cpuReason is not null;
 
-    public string DeviceName => _usingCpu ? "CPU（影像超過 GPU 尺寸或記憶體預算）" : _gpu.AdapterInfo.DisplayName;
-    public bool IsSoftware => _usingCpu || _gpu.AdapterInfo.IsSoftware;
+    public string DeviceName => _cpuReason is { } reason ? $"CPU（{reason}）" : _gpu.AdapterInfo.DisplayName;
+    public bool IsSoftware => UsingCpu || _gpu.AdapterInfo.IsSoftware;
     public GpuAdapterInfo AdapterInfo => _gpu.AdapterInfo;
     public GpuDevice Device => _gpu;
 
@@ -33,8 +34,14 @@ public sealed class GpuSpikeRenderer : IPreviewRenderer
     public SourceImage Render16(SourceImage source, Settings settings, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var parameters = Prepare(source, settings);
-        if (_usingCpu) return CpuPipeline.Process(source, parameters, null, cancellationToken);
+        var parameters = ModuleParams.From(source, settings);
+        _assets.Prepare(source, parameters);
+        // 匯出不受預覽記憶體預算限制：只要不超過裝置紋理上限就用 GPU，
+        // 實際配置顯示記憶體失敗時才改用 CPU 等效路徑（不靜默截斷）。
+        _cpuReason = !_pipeline.FitsDevice(source, parameters) ? "影像超過 GPU 紋理尺寸上限"
+            : _pipeline.Reserve(source, parameters) is { } error ? $"GPU 顯示記憶體不足：{error}"
+            : null;
+        if (UsingCpu) return CpuPipeline.Process(source, parameters, null, cancellationToken);
         var output = new ushort[source.Rgba16.Length];
         _pipeline.Render(source, parameters, output, cancellationToken);
         return new SourceImage(source.Width, source.Height, output) { FilePath = source.FilePath };
@@ -45,7 +52,7 @@ public sealed class GpuSpikeRenderer : IPreviewRenderer
         var timer = Stopwatch.StartNew();
         var parameters = Prepare(source, settings);
         var output = new byte[source.Rgba16.Length];
-        if (_usingCpu)
+        if (UsingCpu)
         {
             var rendered = CpuPipeline.Process(source, parameters, null, default).Rgba16;
             for (var i = 0; i < rendered.Length; i += 4)
@@ -64,14 +71,14 @@ public sealed class GpuSpikeRenderer : IPreviewRenderer
     {
         var parameters = ModuleParams.From(source, settings);
         _assets.Prepare(source, parameters);
-        _usingCpu = !_pipeline.CanRender(source, parameters);
+        _cpuReason = _pipeline.CanRender(source, parameters) ? null : "影像超過 GPU 尺寸或記憶體預算";
         return parameters;
     }
 
     public RenderResult Render(SourceImage source, SpikeParams parameters)
     {
         if (!_pipeline.CanRender(source)) throw new GpuException("GPU benchmark image exceeds device limits or memory budget.");
-        _usingCpu = false;
+        _cpuReason = null;
         var timer = Stopwatch.StartNew();
         var pixels = new byte[source.Rgba16.Length];
         _pipeline.RenderSpike(source, parameters, pixels);

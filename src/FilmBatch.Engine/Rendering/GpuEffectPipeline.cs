@@ -13,20 +13,22 @@ public sealed record EffectRendererOptions
     public string? TexturesFolder { get; init; }
     public string? RecipesFolder { get; init; }
     public ulong MemoryBudgetBytes { get; init; }
+    /// <summary>每次編碼/讀回的列帶大小上限（位元組）；0 = 預設 64 MB，仍受裝置緩衝區上限約束。</summary>
+    public ulong MaxBandBytes { get; init; }
 }
 
 /// <summary>共用的完整 GPU 管線；預覽與 16-bit 匯出只有最後的量化方式不同。</summary>
 internal sealed class GpuEffectPipeline : IDisposable
 {
     private readonly GpuDevice _gpu;
-    private readonly ulong _budget;
+    private readonly ulong _budget, _bandCap;
     private readonly List<ComputeKernel> _kernels = [];
     private readonly List<GpuBuffer> _uniforms = [];
     private readonly Dictionary<int, GpuBuffer> _gaussians = [];
     private readonly LinkedList<CachedSource> _sources = new();
     private readonly GpuTexture[] _work = new GpuTexture[4];
-    private GpuBuffer? _output, _readback;
-    private uint _width, _height;
+    private GpuBuffer? _output, _readback, _band;
+    private uint _width, _height, _bandRows;
     private int _uniformIndex;
     private readonly ComputeKernel _decode, _encode8, _encode16, _display, _spike, _blur, _box,
         _basicLinear, _lens, _multi, _double, _bokeh, _zoom, _motion, _vignette,
@@ -37,6 +39,7 @@ internal sealed class GpuEffectPipeline : IDisposable
     {
         _gpu = gpu;
         _budget = options is { MemoryBudgetBytes: > 0 } ? options.MemoryBudgetBytes : 768UL * 1024 * 1024;
+        _bandCap = options is { MaxBandBytes: > 0 } ? options.MaxBandBytes : 64UL * 1024 * 1024;
         var tex = BindingSpec.TextureFloat;
         var storage = BindingSpec.StorageTexture(GpuTextureFormat.Rgba32Float);
         var uniform = BindingSpec.Uniform;
@@ -47,8 +50,8 @@ internal sealed class GpuEffectPipeline : IDisposable
             return kernel;
         }
         _decode = K("io/decode_rgba16", BindingSpec.TextureUint, storage);
-        _encode8 = K("io/encode_bgra8", tex, BindingSpec.Storage);
-        _encode16 = K("io/encode_rgba16", tex, BindingSpec.Storage);
+        _encode8 = K("io/encode_bgra8", tex, BindingSpec.Storage, uniform);
+        _encode16 = K("io/encode_rgba16", tex, BindingSpec.Storage, uniform);
         _display = K("io/linear_to_display", tex, storage);
         _spike = K("spike/adjust", tex, storage, uniform);
         _blur = K("common/gaussian", tex, storage, uniform, BindingSpec.StorageRead);
@@ -77,19 +80,63 @@ internal sealed class GpuEffectPipeline : IDisposable
         _texture = K("surface/texture_overlay", tex, tex, storage, uniform);
     }
 
+    /// <summary>預覽用：裝置上限內且不超過記憶體預算（預算保護預覽快取與其他程式）。</summary>
     public bool CanRender(SourceImage source, ModuleParams? p = null)
     {
-        var limit = _gpu.AdapterInfo.MaxTextureDimension2D;
-        if ((uint)source.Width > limit || (uint)source.Height > limit) return false;
-        // Four work textures, source upload+linear, output+readback; include external assets.
-        var bytes = (ulong)source.Width * (ulong)source.Height * 104;
+        if (!FitsDevice(source, p)) return false;
+        // Four work textures + linear source + banded output/readback; include external assets.
+        var bytes = WorkspaceBytes((uint)source.Width, (uint)source.Height) + CachedSource.BytesFor(source.Width, source.Height);
         if (p?.DoubleAsset is { } doubleAsset) bytes += AssetBytes(doubleAsset);
         if (p?.LeakAsset is { } leakAsset) bytes += AssetBytes(leakAsset);
         if (p?.DirtAsset is { } dirtAsset) bytes += AssetBytes(dirtAsset);
         return bytes <= _budget;
     }
 
-    private static ulong AssetBytes(EffectImage image) => (ulong)image.Image.Width * (ulong)image.Image.Height * 24;
+    /// <summary>只檢查裝置硬性上限（紋理尺寸）；匯出用，記憶體是否足夠改由實際配置結果判定。</summary>
+    public bool FitsDevice(SourceImage source, ModuleParams? p = null)
+    {
+        var limit = _gpu.AdapterInfo.MaxTextureDimension2D;
+        bool Fits(SourceImage image) => (uint)image.Width <= limit && (uint)image.Height <= limit;
+        return Fits(source)
+            && (p?.DoubleAsset is null || Fits(p.DoubleAsset.Image))
+            && (p?.LeakAsset is null || Fits(p.LeakAsset.Image))
+            && (p?.DirtAsset is null || Fits(p.DirtAsset.Image));
+    }
+
+    private static ulong AssetBytes(EffectImage image) => CachedSource.BytesFor(image.Image.Width, image.Image.Height);
+
+    private ulong WorkspaceBytes(uint width, uint height) =>
+        (ulong)width * height * 64 + 2 * (ulong)BandRows(width, height) * width * 8;
+
+    /// <summary>
+    /// 匯出前的 GPU 配置：清空預覽快取，並在 OutOfMemory scope 內配置工作區與來源/素材紋理。
+    /// 回傳 null 表示成功；否則為顯示記憶體不足的原因（已釋放配置，呼叫端應改用 CPU）。
+    /// </summary>
+    public string? Reserve(SourceImage source, ModuleParams p)
+    {
+        ClearSources();
+        var error = _gpu.TryAllocate(() =>
+        {
+            EnsureWorkspace(source);
+            Acquire(source);
+            if (p.DoubleAsset is not null) Acquire(p.DoubleAsset.Image);
+            if (p.LeakAsset is not null) Acquire(p.LeakAsset.Image);
+            if (p.DirtAsset is not null) Acquire(p.DirtAsset.Image);
+        });
+        if (error is not null) ReleaseAll();
+        return error;
+    }
+
+    /// <summary>釋放工作區與所有快取紋理（下次算圖時重新配置）。</summary>
+    public void ReleaseAll()
+    {
+        ClearSources();
+        foreach (var texture in _work) texture?.Dispose();
+        Array.Clear(_work);
+        _output?.Dispose(); _readback?.Dispose();
+        _output = _readback = null;
+        _width = _height = _bandRows = 0;
+    }
 
     public void Render<T>(SourceImage source, ModuleParams p, T[] destination, CancellationToken token) where T : unmanaged
     {
@@ -100,7 +147,7 @@ internal sealed class GpuEffectPipeline : IDisposable
         var leak = p.LeakAsset is null ? null : Acquire(p.LeakAsset.Image);
         var dirt = p.DirtAsset is null ? null : Acquire(p.DirtAsset.Image);
         _uniformIndex = 0;
-        using var commands = _gpu.BeginCommands();
+        var commands = _gpu.BeginCommands();
         var current = Process(commands, input, second, leak, dirt, p, token);
         Finish(commands, current, destination, token);
         TrimSources();
@@ -111,7 +158,7 @@ internal sealed class GpuEffectPipeline : IDisposable
         EnsureWorkspace(source);
         var input = Acquire(source);
         _uniformIndex = 0;
-        using var commands = _gpu.BeginCommands();
+        var commands = _gpu.BeginCommands();
         var current = Next(input);
         Dispatch(commands, _spike, [input, current, Uniform(new Vector4(p.Exposure, p.Brightness, p.Saturation, 0))]);
         var radius = p.BlurRadiusPixels(source.ShortSide);
@@ -288,14 +335,41 @@ internal sealed class GpuEffectPipeline : IDisposable
         return _uniforms[_uniformIndex++];
     }
 
+    /// <summary>
+    /// 以列帶編碼並讀回：第一帶與效果 pass 同一次提交，其餘每帶各自提交。
+    /// 輸出緩衝區只需容納一帶，大影像不受 maxStorageBufferBindingSize 限制，也不需整張大小的讀回緩衝區。
+    /// </summary>
     private void Finish<T>(GpuCommandList commands, GpuTexture current, T[] destination, CancellationToken token) where T : unmanaged
     {
+        var encode = typeof(T) == typeof(ushort) ? _encode16 : _encode8;
+        var perPixel = destination.Length / ((int)_width * (int)_height); // RGBA16 與 BGRA8 皆為每像素 4 個元素
+        _band ??= _gpu.CreateBuffer(16, GpuBufferUsage.Uniform | GpuBufferUsage.CopyDst, "encode band");
+        GpuCommandList? pending = commands;
+        for (uint row = 0; row < _height; row += _bandRows)
+        {
+            token.ThrowIfCancellationRequested();
+            var rows = Math.Min(_bandRows, _height - row);
+            var list = pending ?? _gpu.BeginCommands();
+            pending = null;
+            _gpu.WriteBuffer(_band, new BandUniforms(row, rows, 0, 0));
+            list.Dispatch2D(encode, [current, _output!, _band], _width, rows);
+            var count = (int)(rows * _width) * perPixel;
+            list.CopyBuffer(_output!, _readback!, (ulong)count * (ulong)Marshal.SizeOf<T>());
+            list.Submit();
+            _gpu.ReadBuffer(_readback!, destination, (int)(row * _width) * perPixel, count);
+        }
         token.ThrowIfCancellationRequested();
-        Dispatch(commands, typeof(T) == typeof(ushort) ? _encode16 : _encode8, [current, _output!]);
-        commands.CopyBuffer(_output!, _readback!, _output!.Size);
-        commands.Submit();
-        _gpu.ReadBuffer(_readback!, destination);
-        token.ThrowIfCancellationRequested();
+    }
+
+    /// <summary>每帶列數：輸出緩衝區不超過裝置的儲存/緩衝區上限與列帶上限（預設 64 MB）。</summary>
+    private uint BandRows(uint width, uint height)
+    {
+        var info = _gpu.AdapterInfo;
+        var cap = _bandCap;
+        if (info.MaxStorageBufferBindingSize > 0) cap = Math.Min(cap, info.MaxStorageBufferBindingSize);
+        if (info.MaxBufferSize > 0) cap = Math.Min(cap, info.MaxBufferSize);
+        var rows = cap / ((ulong)width * 8);
+        return (uint)Math.Clamp(rows, 1UL, height);
     }
 
     private void EnsureWorkspace(SourceImage source)
@@ -304,11 +378,12 @@ internal sealed class GpuEffectPipeline : IDisposable
         foreach (var texture in _work) texture?.Dispose();
         _output?.Dispose(); _readback?.Dispose();
         _width = (uint)source.Width; _height = (uint)source.Height;
+        _bandRows = BandRows(_width, _height);
         for (var i = 0; i < _work.Length; i++)
             _work[i] = _gpu.CreateTexture(_width, _height, GpuTextureFormat.Rgba32Float, GpuTextureUsage.Sampled | GpuTextureUsage.Storage, "effect work");
-        var size = (ulong)_width * _height * 8;
-        _output = _gpu.CreateBuffer(size, GpuBufferUsage.Storage | GpuBufferUsage.CopySrc, "effect output");
-        _readback = _gpu.CreateBuffer(size, GpuBufferUsage.MapRead | GpuBufferUsage.CopyDst, "effect readback");
+        var size = (ulong)_width * _bandRows * 8;
+        _output = _gpu.CreateBuffer(size, GpuBufferUsage.Storage | GpuBufferUsage.CopySrc, "effect output band");
+        _readback = _gpu.CreateBuffer(size, GpuBufferUsage.MapRead | GpuBufferUsage.CopyDst, "effect readback band");
         TrimSources();
     }
 
@@ -321,10 +396,13 @@ internal sealed class GpuEffectPipeline : IDisposable
                 return node.Value.Linear;
             }
         var uploaded = new CachedSource(_gpu, source);
-        _gpu.WriteTexture<ushort>(uploaded.Upload, source.Rgba16);
-        using (var commands = _gpu.BeginCommands())
+        // 16-bit 上傳紋理只用於解碼；解碼後立即釋放，快取只保留線性紋理
+        using (var upload = _gpu.CreateTexture((uint)source.Width, (uint)source.Height, GpuTextureFormat.Rgba16Uint,
+            GpuTextureUsage.CopyDst | GpuTextureUsage.Sampled, "source upload"))
         {
-            commands.Dispatch2D(_decode, [uploaded.Upload, uploaded.Linear], (uint)source.Width, (uint)source.Height);
+            _gpu.WriteTexture<ushort>(upload, source.Rgba16);
+            var commands = _gpu.BeginCommands();
+            commands.Dispatch2D(_decode, [upload, uploaded.Linear], (uint)source.Width, (uint)source.Height);
             commands.Submit();
         }
         _sources.AddFirst(uploaded);
@@ -333,7 +411,7 @@ internal sealed class GpuEffectPipeline : IDisposable
 
     private void TrimSources()
     {
-        var bytes = (ulong)_width * _height * 80;
+        var bytes = WorkspaceBytes(_width, _height);
         foreach (var source in _sources) bytes += source.Bytes;
         while (_sources.Count > 0 && (_sources.Count > 6 || bytes > _budget))
         {
@@ -341,6 +419,12 @@ internal sealed class GpuEffectPipeline : IDisposable
             bytes -= last.Bytes;
             last.Dispose(); _sources.RemoveLast();
         }
+    }
+
+    private void ClearSources()
+    {
+        foreach (var source in _sources) source.Dispose();
+        _sources.Clear();
     }
 
     public void Evict(SourceImage source)
@@ -355,16 +439,15 @@ internal sealed class GpuEffectPipeline : IDisposable
     private sealed class CachedSource : IDisposable
     {
         public SourceImage Source { get; }
-        public GpuTexture Upload { get; }
         public GpuTexture Linear { get; }
-        public ulong Bytes => (ulong)Source.Width * (ulong)Source.Height * 24;
+        public ulong Bytes => BytesFor(Source.Width, Source.Height);
+        public static ulong BytesFor(int width, int height) => (ulong)width * (ulong)height * 16;
         public CachedSource(GpuDevice gpu, SourceImage source)
         {
             Source = source;
-            Upload = gpu.CreateTexture((uint)source.Width, (uint)source.Height, GpuTextureFormat.Rgba16Uint, GpuTextureUsage.CopyDst | GpuTextureUsage.Sampled, "source upload");
             Linear = gpu.CreateTexture((uint)source.Width, (uint)source.Height, GpuTextureFormat.Rgba32Float, GpuTextureUsage.Sampled | GpuTextureUsage.Storage, "source linear");
         }
-        public void Dispose() { Upload.Dispose(); Linear.Dispose(); }
+        public void Dispose() => Linear.Dispose();
     }
 
     public void Dispose()
@@ -374,9 +457,10 @@ internal sealed class GpuEffectPipeline : IDisposable
         foreach (var buffer in _uniforms) buffer.Dispose();
         foreach (var buffer in _gaussians.Values) buffer.Dispose();
         foreach (var kernel in _kernels) kernel.Dispose();
-        _output?.Dispose(); _readback?.Dispose();
+        _output?.Dispose(); _readback?.Dispose(); _band?.Dispose();
     }
 
+    [StructLayout(LayoutKind.Sequential)] private readonly record struct BandUniforms(uint Row, uint Rows, uint Pad0, uint Pad1);
     [StructLayout(LayoutKind.Sequential)] private readonly record struct BlurUniforms(int X, int Y, int Radius, float Pad);
     [StructLayout(LayoutKind.Sequential)] private readonly record struct LensUniforms(float Amount, float Chromatic, float Soften, float Crop, float Aspect, float ShortSide, float Pad0, float Pad1);
     [StructLayout(LayoutKind.Sequential)] private readonly record struct DoubleUniforms(int Source, int Blend, int Mirror, float Opacity, float X, float Y, float Scale, float Rotation, float Exposure, float Pad0, float Pad1, float Pad2);
