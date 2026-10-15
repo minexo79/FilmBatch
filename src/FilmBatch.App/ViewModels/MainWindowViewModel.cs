@@ -119,6 +119,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             UpdateBackgroundText();
         };
         Renderer.Failed += (file, message) => Filmstrip.SetError(file, message);
+        Renderer.Start();
     }
 
     // ───────────── 開啟資料夾 ─────────────

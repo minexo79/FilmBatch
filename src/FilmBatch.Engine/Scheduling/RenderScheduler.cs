@@ -21,6 +21,7 @@ public sealed class RenderScheduler : IDisposable
     private readonly LinkedList<(string Key, SourceImage Source, Settings Settings)> _thumbs = new();
     private (string Key, SourceImage Source, Settings Settings, long Generation)? _preview;
     private volatile bool _disposed;
+    private bool _started;
     private IPreviewRenderer? _renderer;
 
     /// <summary>算圖器建立完成（或改用備援）。參數為裝置名稱與是否為軟體介面卡。</summary>
@@ -42,7 +43,18 @@ public sealed class RenderScheduler : IDisposable
         _factory = factory;
         _fallback = fallback;
         _thread = new Thread(Run) { IsBackground = true, Name = "FilmBatch GPU" };
-        _thread.Start();
+    }
+
+    /// <summary>Install all event handlers before starting the renderer thread.</summary>
+    public void Start()
+    {
+        lock (_lock)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_started) return;
+            _thread.Start();
+            _started = true;
+        }
     }
 
     public void RequestPreview(string key, SourceImage source, Settings settings, long generation)
@@ -149,9 +161,14 @@ public sealed class RenderScheduler : IDisposable
 
     public void Dispose()
     {
-        _disposed = true;
-        _signal.Set();
-        _thread.Join(TimeSpan.FromSeconds(3));
-        _signal.Dispose();
+        bool started;
+        lock (_lock)
+        {
+            if (_disposed) return;
+            _disposed = true;
+            started = _started;
+            _signal.Set();
+        }
+        if (!started || _thread.Join(TimeSpan.FromSeconds(3))) _signal.Dispose();
     }
 }

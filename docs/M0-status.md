@@ -56,6 +56,7 @@ UI 截圖由 `ThemeSnapshotTests` 產生於 `tests/FilmBatch.App.Tests/bin/Debug
 | Headless 測試固定使用 Windows 字型，在 Mac 無法建立 glyphTypeface | 與 GUI 共用 `Program.FontOptions()`，使用 PingFang TC 與相同後備字型 | — |
 | Mac 偏好設定缺少 Metal、快捷鍵提示固定為 Ctrl | 依平台顯示後端選項、選單手勢、工具提示與空白畫面快捷鍵 | — |
 | WebGPUSharp 0.5.7 的兩個 Mac Dawn 原生檔都宣告 `minos 26.0`（`vtool -show-build`） | `.app` 的 `LSMinimumSystemVersion`、README 與 Mac CI runner 一律使用 macOS 26 | 支援較舊 macOS 需另取得並驗證相容的 Dawn 建置，不能只降低 plist 版本 |
+| CI 偶發預覽已完成但狀態列仍為 `…` | `RenderScheduler` 不再於建構函式啟動；先完成 scheduler → service → ViewModel 的事件訂閱，再明確 `Start()`。保留原本 `CPU` 斷言，新增啟動／備援順序回歸 | 隔離的 CI 修正快照重新建置後，`dotnet test FilmBatch.sln -c Release --no-build`：Core 30、UI 17 全數通過、無略過；同步派送的 100 次 CPU 初始化與實際像素輸出冒煙亦通過 |
 
 ## macOS 驗證紀錄（2026-10-15）
 

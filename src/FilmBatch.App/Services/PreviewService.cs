@@ -51,6 +51,9 @@ public sealed class PreviewService : IDisposable
         _scheduler.ThumbnailRendered += (key, r) => _post(() => ThumbnailReady?.Invoke(key, r));
     }
 
+    /// <summary>Start after the view model has subscribed to initialization and failure events.</summary>
+    public void Start() => _scheduler.Start();
+
     /// <summary>依偏好設定建立 GPU 算圖器的工廠。</summary>
     public static Func<IPreviewRenderer> GpuFactory(AppSettings settings) => () =>
     {
