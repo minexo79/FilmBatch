@@ -27,6 +27,11 @@ public partial class PresetLibraryView : UserControl
             if (ItemAt(e.Source) is { } item && DataContext is PresetLibraryViewModel vm)
                 vm.ApplyCommand.Execute(item);
         };
+        // 懸停預覽：ToolTip 開啟後（非滑過整列）才請求算圖；關閉即取消防抖。
+        // ToolTipOpening/Closing 是附加路由事件，隨 Tree 釋放。
+        ToolTip.AddToolTipOpeningHandler(Tree, OnTooltipOpening);
+        ToolTip.AddToolTipClosingHandler(Tree, OnTooltipClosing);
+        Tree.AddHandler(PointerExitedEvent, OnHoverLeft, RoutingStrategies.Tunnel);
         CreateButton.Click += (_, _) => Main?.CreatePresetCommand.Execute(null);
         ManageButton.Click += (_, _) => Main?.ManagePresetsCommand.Execute(null);
     }
@@ -61,4 +66,27 @@ public partial class PresetLibraryView : UserControl
         data.Add(DataTransferItem.Create(PresetFormat, _pressItem.Id.ToString()));
         await DragDrop.DoDragDropAsync(_pressArgs, data, DragDropEffects.Copy);
     }
+
+    private void OnTooltipOpening(object? sender, CancelRoutedEventArgs e)
+    {
+        if (DataContext is PresetLibraryViewModel vm && RowItem(e.Source) is { } item)
+            vm.Hover.BeginHover(item);
+    }
+
+    private void OnTooltipClosing(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is PresetLibraryViewModel vm) vm.Hover.EndHover();
+    }
+
+    private void OnHoverLeft(object? sender, PointerEventArgs e)
+    {
+        if (DataContext is PresetLibraryViewModel vm) vm.Hover.EndHover();
+    }
+
+    private static PresetItemViewModel? RowItem(object? source) =>
+        (source as Control)?.Name == "PresetRow"
+            ? (source as Control)?.DataContext as PresetItemViewModel
+            : (source as Control)?.FindAncestorOfType<Grid>(includeSelf: true) is { Name: "PresetRow" } row
+                ? row.DataContext as PresetItemViewModel
+                : ItemAt(source);
 }

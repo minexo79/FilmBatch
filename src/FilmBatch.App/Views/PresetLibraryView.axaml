@@ -22,7 +22,15 @@
           <TextBlock Classes="category" Text="{Binding Name}" />
         </TreeDataTemplate>
         <DataTemplate DataType="vm:PresetItemViewModel">
-          <Grid ColumnDefinitions="Auto,*,Auto" Background="Transparent" ToolTip.Tip="{Binding Summary}" ToolTip.ShowDelay="500">
+          <Grid Name="PresetRow" ColumnDefinitions="Auto,*,Auto" Background="Transparent" ToolTip.ShowDelay="500">
+            <ToolTip.Tip>
+              <StackPanel Width="280" Spacing="6">
+                <Image Source="{Binding HoverPreview}" Width="264" Height="160" Stretch="Uniform"
+                       IsVisible="{Binding HasHoverPreview}" />
+                <TextBlock Classes="secondary small" Text="算圖中…" IsVisible="{Binding HoverLoading}" />
+                <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" />
+              </StackPanel>
+            </ToolTip.Tip>
             <Border Grid.Column="0" Classes="color-label" Background="{Binding ColorBrush}" Margin="0,0,10,0" />
             <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
             <Border Grid.Column="2" Classes="key-hint" IsVisible="{Binding HasPinKey}" Margin="6,0,4,0">

@@ -33,16 +33,21 @@ public sealed partial class ModuleSectionViewModel : ObservableObject
     public event EventHandler? ExpandedChanged;
 
     public ModuleSectionViewModel(ModuleSchema schema, IParamHost host,
-        Action<ModuleSectionViewModel> onReset, Action<ModuleSectionViewModel> onCopyOnly)
+        Action<ModuleSectionViewModel> onReset, Action<ModuleSectionViewModel> onCopyOnly,
+        FilmRecipeViewModel? film = null)
     {
         Schema = schema;
         _host = host;
         _onReset = onReset;
         _onCopyOnly = onCopyOnly;
+        Film = schema.Key == "film" ? film : null;
         Params = new(schema.Params
             .Where(p => p.Key != ModuleSchema.EnabledKey)
             .Select(p => ParamViewModel.Create(schema.Key, p, host)));
     }
+
+    /// <summary>film 模組頂部的配方選擇；其他模組為 null。</summary>
+    public FilmRecipeViewModel? Film { get; }
 
     /// <summary>模組開關（標題列的勾選框）。開關與其他參數一樣可存進預設、可被覆寫。</summary>
     public bool IsModuleEnabled

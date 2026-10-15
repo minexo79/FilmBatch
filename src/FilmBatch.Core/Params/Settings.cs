@@ -5,6 +5,7 @@ using System.Diagnostics.CodeAnalysis;
 namespace FilmBatch.Core.Params;
 
 /// <summary>扁平 key（<c>模組.參數</c>）→ 值 的不可變字典，可安全地跨執行緒傳遞。</summary>
+[System.Text.Json.Serialization.JsonConverter(typeof(SettingsJsonConverter))]
 public sealed class Settings : IReadOnlyDictionary<string, ParamValue>, IEquatable<Settings>
 {
     private readonly ImmutableDictionary<string, ParamValue> _values;

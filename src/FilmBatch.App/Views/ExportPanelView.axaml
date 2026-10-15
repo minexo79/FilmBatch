@@ -4,7 +4,7 @@
              xmlns:l="using:FilmBatch.App.Localization"
              x:Class="FilmBatch.App.Views.ExportPanelView"
              x:DataType="d:ExportViewModel">
-  <!-- 照片匯出分頁（計畫書 2.8、第 10 章）：欄位直向排列以配合側邊欄寬度；實際匯出於 M7 實作 -->
+  <!-- 照片匯出分頁（計畫書 2.4.7、第 10 章）：欄位直向排列以配合側邊欄寬度 -->
   <DockPanel Background="{DynamicResource FB.PanelBrush}">
     <Border DockPanel.Dock="Top" Classes="panel-header">
       <TextBlock Classes="panel-title" Text="{l:Tr Panel.Export}" />
@@ -14,15 +14,24 @@
     <Border DockPanel.Dock="Bottom" BorderBrush="{DynamicResource FB.DividerBrush}" BorderThickness="0,1,0,0" Padding="16,12">
       <StackPanel Spacing="10">
         <Border Classes="summary-card">
-          <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" />
+          <StackPanel Spacing="4">
+            <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" />
+            <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" Classes="secondary small" />
+            <ProgressBar Minimum="0" Maximum="100" Value="{Binding ProgressValue}" IsVisible="{Binding IsExporting}" />
+            <TextBlock Text="{Binding LastError}" TextWrapping="Wrap" Classes="warning small" IsVisible="{Binding LastError, Converter={x:Static ObjectConverters.IsNotNull}}" />
+          </StackPanel>
         </Border>
-        <Button Classes="accent pill" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="False">
+        <Button Classes="accent pill" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                Command="{Binding StartExportCommand}" IsVisible="{Binding !IsExporting}" IsEnabled="{Binding CanExport}">
           <StackPanel Orientation="Horizontal" Spacing="6">
             <PathIcon Data="{StaticResource Icon.Export}" Width="14" Height="14" />
             <TextBlock Text="{l:Tr Dialog.Export}" VerticalAlignment="Center" />
           </StackPanel>
         </Button>
-        <TextBlock Classes="secondary small" Text="原型：匯出管線於 M7 實作" HorizontalAlignment="Center" />
+        <Button Classes="outline pill" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                Command="{Binding CancelExportCommand}" IsVisible="{Binding IsExporting}">
+          <TextBlock Text="取消" VerticalAlignment="Center" />
+        </Button>
       </StackPanel>
     </Border>
 
@@ -55,12 +64,16 @@
 
         <StackPanel Classes="field">
           <TextBlock Classes="field-label" Text="目的地" />
-          <TextBox Text="{Binding Destination}" />
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBox Text="{Binding Destination}" />
+            <Button Grid.Column="1" Classes="outline" Margin="8,0,0,0" Content="…" Command="{Binding BrowseDestinationCommand}" ToolTip.Tip="選擇資料夾" />
+          </Grid>
         </StackPanel>
 
         <StackPanel Classes="field">
           <TextBlock Classes="field-label" Text="檔名範本" />
           <TextBox Text="{Binding FileNameTemplate}" PlaceholderText="{}{name}_{preset}" />
+          <TextBlock Classes="secondary small" Text="可用：{name} {preset} {index} {index:000}" TextWrapping="Wrap" />
         </StackPanel>
 
         <StackPanel Classes="field">

@@ -6,11 +6,11 @@
         x:DataType="d:PresetManagerViewModel"
         Title="{l:Tr Dialog.PresetManager}" Width="640" Height="460"
         ShowInTaskbar="False" WindowStartupLocation="CenterOwner">
-  <!-- 預設管理（計畫書 2.8）：名稱、分類、色彩標籤；刪除時顯示使用中的照片數；YAML 匯入／匯出於 M2 -->
+  <!-- 預設變更會持久化；刪除前提示使用中的照片數，專案保留舊快照。 -->
   <DockPanel Margin="16">
     <Grid DockPanel.Dock="Bottom" ColumnDefinitions="Auto,Auto,*,Auto" Margin="0,12,0,0">
-      <Button Content="匯入 YAML…" IsEnabled="False" ToolTip.Tip="M2 實作" Margin="0,0,6,0" />
-      <Button Grid.Column="1" Content="匯出 YAML…" IsEnabled="False" ToolTip.Tip="M2 實作" />
+      <Button Content="匯入 YAML…" Command="{Binding ImportCommand}" Margin="0,0,6,0" />
+      <Button Grid.Column="1" Content="匯出 YAML…" Command="{Binding ExportCommand}" />
       <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="8">
         <Button Content="{l:Tr Presets.Delete}" Command="{Binding DeleteCommand}" />
         <Button Name="CloseButton" Classes="accent" Content="{l:Tr Dialog.Close}" IsDefault="True" />

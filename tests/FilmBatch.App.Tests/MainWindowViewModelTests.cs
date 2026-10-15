@@ -173,4 +173,27 @@ public class MainWindowViewModelTests
         vm.Filmstrip.Filter = ViewModels.FilmstripFilter.All;
         Assert.Equal(4, vm.Filmstrip.Items.Count);
     }
+
+    [AvaloniaFact]
+    public async Task Restart_RestoresPhotoEditsAndCustomPreset()
+    {
+        using var first = TestEnv.CreateViewModel();
+        await TestEnv.OpenSamplesAsync(first);
+        var folder = first.Folder!;
+        var file = first.FocusFile!;
+        first.Inspector.SetValue("basic.exposure", 1.75, null);
+        await first.CreatePresetCommand.ExecuteAsync(null);
+        var presetId = first.Service!.Project[file].PresetId;
+        first.Dispose();
+
+        using var reopened = new ViewModels.MainWindowViewModel(new AppSettings(), new FakeDialogs(),
+            () => new FilmBatch.Engine.Rendering.CpuFakeRenderer(), action => Avalonia.Threading.Dispatcher.UIThread.Post(action));
+        var opening = reopened.OpenFolderAsync(folder);
+        TestEnv.PumpUntil(() => opening.IsCompleted);
+        await opening;
+        TestEnv.PumpUntil(() => reopened.Preview.Image is not null);
+        Assert.Equal(presetId, reopened.Service!.Project[file].PresetId);
+        Assert.Equal(1.75, reopened.Service.SettingsFor(file).Number("basic.exposure"));
+        Assert.Equal("測試預設", reopened.Library.Get(presetId!.Value)!.Name);
+    }
 }

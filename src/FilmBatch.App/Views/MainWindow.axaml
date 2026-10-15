@@ -114,7 +114,7 @@
               <StackPanel Width="260" Spacing="4">
                 <TextBlock FontWeight="SemiBold" Text="背景工作" />
                 <TextBlock Classes="small" Text="{Binding BackgroundText}" />
-                <TextBlock Classes="small secondary" Text="匯出佇列於 M7 加入" />
+                <TextBlock Classes="small" Text="{Binding Sidebar.Export.StatusText}" />
               </StackPanel>
             </Flyout>
           </Button.Flyout>

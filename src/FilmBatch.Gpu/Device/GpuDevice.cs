@@ -205,13 +205,13 @@ public sealed class GpuDevice : IDisposable
         => Queue.WriteBuffer(buffer.Handle, 0, new ReadOnlySpan<T>(in value));
 
     /// <summary>同步讀回（MapRead 緩衝區）到 <paramref name="destination"/>。呼叫端應在 GPU 執行緒上呼叫。</summary>
-    public void ReadBuffer(GpuBuffer buffer, byte[] destination)
+    public void ReadBuffer<T>(GpuBuffer buffer, T[] destination) where T : unmanaged
     {
         WaitIdle();
         buffer.Handle.MapSync(MapMode.Read, 0, (nuint)buffer.Size, 10_000);
         try
         {
-            buffer.Handle.GetConstMappedRange<byte>(span => span[..destination.Length].CopyTo(destination));
+            buffer.Handle.GetConstMappedRange<T>(span => span[..destination.Length].CopyTo(destination));
         }
         finally
         {

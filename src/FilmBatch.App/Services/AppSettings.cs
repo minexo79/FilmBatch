@@ -20,7 +20,6 @@ public sealed class AppSettings
     public bool ForceSoftwareGpu { get; set; }
     public int GpuMemoryLimitMb { get; set; } = 2048;
     public string? TexturesFolder { get; set; }
-    public string? LutsFolder { get; set; }
     public AssignOverridesChoice AssignOverrides { get; set; } = AssignOverridesChoice.Ask;
     public bool HideDisabledModules { get; set; }
     public string? LastFolder { get; set; }

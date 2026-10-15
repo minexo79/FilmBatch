@@ -74,6 +74,15 @@
                           <MenuItem Header="{l:Tr Inspector.CopyModule}" Command="{Binding CopyModuleOnlyCommand}" />
                         </MenuFlyout>
                       </c:ModuleSection.HeaderFlyout>
+                      <StackPanel>
+                      <!-- film 模組頂部的配方選擇由 ModuleSectionViewModel.Film 提供；其他模組為 null 不顯示 -->
+                      <ContentControl Content="{Binding Film}">
+                        <ContentControl.DataTemplates>
+                          <DataTemplate x:DataType="vm:FilmRecipeViewModel">
+                            <c:FilmRecipeControl />
+                          </DataTemplate>
+                        </ContentControl.DataTemplates>
+                      </ContentControl>
                       <ItemsControl ItemsSource="{Binding Params}">
                         <ItemsControl.DataTemplates>
                           <DataTemplate DataType="vm:SliderParamViewModel">
@@ -110,6 +119,7 @@
                           </DataTemplate>
                         </ItemsControl.DataTemplates>
                       </ItemsControl>
+                      </StackPanel>
                     </c:ModuleSection>
                   </DataTemplate>
                 </ItemsControl.ItemTemplate>

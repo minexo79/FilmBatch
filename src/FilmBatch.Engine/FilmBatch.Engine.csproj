@@ -9,5 +9,6 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Magick.NET-Q16-HDRI-AnyCPU" />
+    <InternalsVisibleTo Include="film-calibrate" />
   </ItemGroup>
 </Project>

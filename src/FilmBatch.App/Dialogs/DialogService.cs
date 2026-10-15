@@ -20,6 +20,26 @@ public sealed class DialogService(Func<Window?> owner) : IDialogService
         return result.Count > 0 ? result[0].TryGetLocalPath() : null;
     }
 
+    public async Task<string?> PickFileAsync(string title, IReadOnlyList<string> patterns)
+    {
+        var result = await Owner.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = title, AllowMultiple = false,
+            FileTypeFilter = [new FilePickerFileType(title) { Patterns = patterns }],
+        });
+        return result.Count > 0 ? result[0].TryGetLocalPath() : null;
+    }
+
+    public async Task<string?> SaveFileAsync(string title, string suggestedName, IReadOnlyList<string> patterns)
+    {
+        var result = await Owner.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = title, SuggestedFileName = suggestedName, ShowOverwritePrompt = true,
+            FileTypeChoices = [new FilePickerFileType(title) { Patterns = patterns }],
+        });
+        return result?.TryGetLocalPath();
+    }
+
     public Task<(bool Keep, bool Remember)?> AskKeepOverridesAsync(int photoCount) =>
         SimpleDialogs.AskKeepOverridesAsync(Owner, photoCount);
 

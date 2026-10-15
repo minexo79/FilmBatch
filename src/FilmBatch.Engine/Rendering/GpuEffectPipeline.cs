@@ -1,0 +1,414 @@
+using System.Numerics;
+using System.Runtime.InteropServices;
+using FilmBatch.Core.Random;
+using FilmBatch.Engine.Imaging;
+using FilmBatch.Gpu.Device;
+using FilmBatch.Gpu.Resources;
+using FilmBatch.Gpu.ShaderSystem;
+
+namespace FilmBatch.Engine.Rendering;
+
+public sealed record EffectRendererOptions
+{
+    public string? TexturesFolder { get; init; }
+    public string? RecipesFolder { get; init; }
+    public ulong MemoryBudgetBytes { get; init; }
+}
+
+/// <summary>共用的完整 GPU 管線；預覽與 16-bit 匯出只有最後的量化方式不同。</summary>
+internal sealed class GpuEffectPipeline : IDisposable
+{
+    private readonly GpuDevice _gpu;
+    private readonly ulong _budget;
+    private readonly List<ComputeKernel> _kernels = [];
+    private readonly List<GpuBuffer> _uniforms = [];
+    private readonly Dictionary<int, GpuBuffer> _gaussians = [];
+    private readonly LinkedList<CachedSource> _sources = new();
+    private readonly GpuTexture[] _work = new GpuTexture[4];
+    private GpuBuffer? _output, _readback;
+    private uint _width, _height;
+    private int _uniformIndex;
+    private readonly ComputeKernel _decode, _encode8, _encode16, _display, _spike, _blur, _box,
+        _basicLinear, _lens, _multi, _double, _bokeh, _zoom, _motion, _vignette,
+        _halExtract, _halAdd, _leak, _film, _droBase, _droApply, _filmBlend, _plate,
+        _basicDisplay, _tone, _detail, _dirt, _grain, _texture;
+
+    public GpuEffectPipeline(GpuDevice gpu, ShaderLibrary shaders, EffectRendererOptions? options = null)
+    {
+        _gpu = gpu;
+        _budget = options is { MemoryBudgetBytes: > 0 } ? options.MemoryBudgetBytes : 768UL * 1024 * 1024;
+        var tex = BindingSpec.TextureFloat;
+        var storage = BindingSpec.StorageTexture(GpuTextureFormat.Rgba32Float);
+        var uniform = BindingSpec.Uniform;
+        ComputeKernel K(string path, params BindingSpec[] bindings)
+        {
+            var kernel = gpu.CreateKernel(shaders.Load(path + ".wgsl"), "main", bindings, path);
+            _kernels.Add(kernel);
+            return kernel;
+        }
+        _decode = K("io/decode_rgba16", BindingSpec.TextureUint, storage);
+        _encode8 = K("io/encode_bgra8", tex, BindingSpec.Storage);
+        _encode16 = K("io/encode_rgba16", tex, BindingSpec.Storage);
+        _display = K("io/linear_to_display", tex, storage);
+        _spike = K("spike/adjust", tex, storage, uniform);
+        _blur = K("common/gaussian", tex, storage, uniform, BindingSpec.StorageRead);
+        _box = K("geometry/box_blur", tex, storage);
+        _basicLinear = K("linear/basic_linear", tex, storage, uniform);
+        _lens = K("geometry/lens_distortion", tex, tex, storage, uniform);
+        _multi = K("geometry/multi_lens", tex, storage, uniform);
+        _double = K("optical/double_exposure", tex, tex, storage, uniform);
+        _bokeh = K("optical/bokeh", tex, storage, uniform, uniform);
+        _zoom = K("optical/zoom_rotate_blur", tex, storage, uniform);
+        _motion = K("optical/motion_blur", tex, storage, uniform);
+        _vignette = K("optical/vignette", tex, storage, uniform);
+        _halExtract = K("optical/halation_extract", tex, storage, uniform);
+        _halAdd = K("optical/halation_add", tex, tex, storage, uniform);
+        _leak = K("optical/light_leak", tex, storage, uniform);
+        _film = K("film/film_pixel", tex, storage, uniform);
+        _droBase = K("film/dro_base", tex, storage, uniform);
+        _droApply = K("film/film_dro_sharpen", tex, tex, storage, uniform);
+        _filmBlend = K("film/blend", tex, tex, storage, uniform);
+        _plate = K("film/photo_plate", tex, storage, uniform);
+        _basicDisplay = K("linear/basic_display", tex, tex, storage, uniform);
+        _tone = K("film/tone", tex, storage, uniform);
+        _detail = K("detail/detail_apply", tex, tex, storage, uniform);
+        _dirt = K("surface/dirt_scratches", tex, storage, uniform);
+        _grain = K("surface/grain", tex, storage, uniform);
+        _texture = K("surface/texture_overlay", tex, tex, storage, uniform);
+    }
+
+    public bool CanRender(SourceImage source, ModuleParams? p = null)
+    {
+        var limit = _gpu.AdapterInfo.MaxTextureDimension2D;
+        if ((uint)source.Width > limit || (uint)source.Height > limit) return false;
+        // Four work textures, source upload+linear, output+readback; include external assets.
+        var bytes = (ulong)source.Width * (ulong)source.Height * 104;
+        if (p?.DoubleAsset is { } doubleAsset) bytes += AssetBytes(doubleAsset);
+        if (p?.LeakAsset is { } leakAsset) bytes += AssetBytes(leakAsset);
+        if (p?.DirtAsset is { } dirtAsset) bytes += AssetBytes(dirtAsset);
+        return bytes <= _budget;
+    }
+
+    private static ulong AssetBytes(EffectImage image) => (ulong)image.Image.Width * (ulong)image.Image.Height * 24;
+
+    public void Render<T>(SourceImage source, ModuleParams p, T[] destination, CancellationToken token) where T : unmanaged
+    {
+        token.ThrowIfCancellationRequested();
+        EnsureWorkspace(source);
+        var input = Acquire(source);
+        var second = p.DoubleAsset is null ? null : Acquire(p.DoubleAsset.Image);
+        var leak = p.LeakAsset is null ? null : Acquire(p.LeakAsset.Image);
+        var dirt = p.DirtAsset is null ? null : Acquire(p.DirtAsset.Image);
+        _uniformIndex = 0;
+        using var commands = _gpu.BeginCommands();
+        var current = Process(commands, input, second, leak, dirt, p, token);
+        Finish(commands, current, destination, token);
+        TrimSources();
+    }
+
+    public void RenderSpike(SourceImage source, SpikeParams p, byte[] destination)
+    {
+        EnsureWorkspace(source);
+        var input = Acquire(source);
+        _uniformIndex = 0;
+        using var commands = _gpu.BeginCommands();
+        var current = Next(input);
+        Dispatch(commands, _spike, [input, current, Uniform(new Vector4(p.Exposure, p.Brightness, p.Saturation, 0))]);
+        var radius = p.BlurRadiusPixels(source.ShortSide);
+        if (radius > 0) current = Blur(commands, current, radius);
+        var display = Next(current);
+        Dispatch(commands, _display, [current, display]);
+        Finish(commands, display, destination, default);
+        TrimSources();
+    }
+
+    private GpuTexture Process(GpuCommandList commands, GpuTexture current, GpuTexture? second,
+        GpuTexture? leak, GpuTexture? dirt, ModuleParams p, CancellationToken token)
+    {
+        var shortSide = Math.Min(_width, _height);
+        GpuTexture Apply<T>(ComputeKernel kernel, T values, GpuTexture? extra = null, GpuTexture? reserve = null) where T : unmanaged
+        {
+            token.ThrowIfCancellationRequested();
+            var target = Next(current, extra, reserve);
+            var uniform = Uniform(values);
+            if (extra is null) Dispatch(commands, kernel, [current, target, uniform]);
+            else Dispatch(commands, kernel, [current, extra, target, uniform]);
+            return target;
+        }
+        GpuTexture Sharpen(float radiusScale, float amount, GpuTexture? reserve = null)
+        {
+            var blurred = Blur(commands, current, Math.Max(1, (int)MathF.Round(shortSide * radiusScale)), reserve);
+            return Apply(_detail, new Vector4(amount, 0, 0, 0), blurred, reserve);
+        }
+        if (p.BasicOn && (p.Exposure != 0 || p.Temperature != 0 || p.Tint != 0))
+            current = Apply(_basicLinear, new Vector4(p.Exposure, p.Temperature / 100, p.Tint / 100, 0));
+        if (p.LensOn)
+        {
+            var soft = current;
+            if (p.EdgeSoften > 0)
+            {
+                soft = Next(current);
+                Dispatch(commands, _box, [current, soft]);
+            }
+            current = Apply(_lens, new LensUniforms(p.LensAmount / 100, p.Chromatic / 100, p.EdgeSoften / 100,
+                p.AutoCrop ? 1 : 0, _width / (float)_height, shortSide, 0, 0), soft);
+        }
+        if (p.MultiOn) current = Apply(_multi, MultiUniforms.From(p));
+        if (p.DoubleOn && p.Opacity > 0)
+            current = Apply(_double, new DoubleUniforms(p.DoubleSource, p.DoubleBlend, p.DoubleMirror,
+                p.Opacity / 100, p.OffsetX, p.OffsetY, MathF.Max(.01f, p.DoubleScale / 100),
+                p.DoubleRotation * MathF.PI / 180, p.ExposureBalance / 100, 0, 0, 0), second ?? current);
+        if (p.BokehOn && p.BokehBlur > 0)
+        {
+            token.ThrowIfCancellationRequested();
+            var output = Next(current);
+            var angle = p.FocusAngle * MathF.PI / 180;
+            var uniform = Uniform(new BokehUniforms(p.BokehCx, p.BokehCy, p.FocusSize / 200,
+                MathF.Max(.01f, 1 + p.FocusAspect / 100), MathF.Cos(angle), MathF.Sin(angle),
+                MathF.Max(.001f, p.BokehTransition / 100), p.BokehBlur / 100 * shortSide * .03f,
+                p.HighlightBoost / 100, shortSide, p.FocusShape, p.BokehShape));
+            var samples = UniformBuffer();
+            _gpu.WriteBuffer<Vector4>(samples, ApertureSamples.ForShape(p.BokehShape));
+            Dispatch(commands, _bokeh, [current, output, uniform, samples]);
+            current = output;
+        }
+        if (p.ZoomRotateOn && (p.Zoom != 0 || p.Rotate != 0))
+            current = Apply(_zoom, new ZoomUniforms(p.ZrCx, p.ZrCy, p.Zoom / 100, p.Rotate / 100,
+                p.ZrProtect / 100, p.ZrTransition / 100, _width / (float)_height, shortSide));
+        if (p.MotionOn && p.MotionLength > 0)
+            current = Apply(_motion, new MotionUniforms(p.MotionAngle * MathF.PI / 180, p.MotionLength / 100,
+                p.MotionProtectOn ? 1 : 0, p.MotionPx, p.MotionPy, p.MotionSize / 100, shortSide, 0));
+        if (p.VignetteOn && p.VigAmount != 0)
+            current = Apply(_vignette, new VignetteUniforms(p.VigAmount / 100, p.VigSize / 100,
+                p.VigRoundness / 100, p.VigFeather / 100, p.VigCx, p.VigCy, _width / (float)_height, 0));
+        if (p.HalationOn && p.HalAmount > 0)
+        {
+            var values = new HalationUniforms(p.HalAmount / 100, p.HalThreshold / 100, p.HalRadius / 100, p.HalHue, shortSide, 0, 0, 0);
+            var extracted = Apply(_halExtract, values);
+            var glow = Blur(commands, extracted, Math.Max(1, (int)MathF.Round(shortSide * p.HalRadius / 100 * .08f)), current);
+            current = Apply(_halAdd, values, glow);
+        }
+        if (p.LeakOn && p.LeakAmount > 0)
+            current = leak is null
+                ? Apply(_leak, new LeakUniforms(0, p.LeakAmount / 100, p.LeakAngle * MathF.PI / 180,
+                    p.LeakSize / 100, p.LeakHue, p.LeakIrregularity / 100, p.LeakCount, p.SeedLightLeak,
+                    _width / (float)_height, shortSide, 0, 0))
+                : Apply(_texture, OverlayUniforms(p, leak, true), leak);
+        if (p.FilmOn && p.Film.Mix.X > 0)
+        {
+            var original = p.Film.Mix.X < 1 ? current : null;
+            current = Apply(_film, p.Film, reserve: original);
+            if (p.Film.Spatial.X != 0 || p.Film.Spatial.Y != 0)
+            {
+                var basis = Apply(_droBase, p.Film, reserve: original);
+                current = Apply(_droApply, p.Film, basis, original);
+            }
+            if (p.Film.Spatial.Z != 0) current = Sharpen(.003f, p.Film.Spatial.Z, original);
+            if (original is not null) current = Apply(_filmBlend, p.Film, original);
+        }
+        if (p.PlateOn && p.PlateStrength > 0)
+            current = Apply(_plate, new PlateUniforms(p.PlateType, p.PlateStrength / 100, p.PlateOrtho / 100,
+                p.PlateTintHue, p.PlateTintAmount / 100, p.PlateEdgeErosion / 100, p.PlateStains / 100,
+                p.PlateUneven / 100, p.SeedPhotoPlate, _width / (float)_height, 0, 0));
+        token.ThrowIfCancellationRequested();
+        var display = Next(current);
+        Dispatch(commands, _display, [current, display]);
+        current = display;
+        if (p.BasicOn)
+        {
+            var basis = p.Structure == 0 ? current : Blur(commands, current, Math.Max(1, (int)MathF.Round(shortSide * .012f)));
+            current = Apply(_basicDisplay, new BasicUniforms(p.Brightness / 100, p.Contrast / 100,
+                p.Highlights / 100, p.Shadows / 100, p.Saturation / 100, p.Structure / 100, shortSide, 0), basis);
+        }
+        if (p.ToneOn)
+            current = Apply(_tone, new ToneUniforms(p.ToneShadowHue, p.ToneShadowAmount / 100,
+                p.ToneHighlightHue, p.ToneHighlightAmount / 100, p.ToneBalance / 100, 0, 0, 0));
+        if (p.DetailOn && p.Clarity != 0) current = Sharpen(.02f, p.Clarity / 100 * .5f);
+        if (p.DetailOn && p.Sharpen != 0) current = Sharpen(.004f, p.Sharpen / 100 * .7f);
+        if (p.DirtOn && p.DirtStrength > 0)
+            current = dirt is null
+                ? Apply(_dirt, new DirtUniforms(0, p.DirtDust / 100, p.DirtScratches / 100, p.DirtHairs / 100,
+                    p.Polarity, p.DirtStrength / 100, p.DirtScale / 100, p.SeedDirt, shortSide, 0, 0, 0))
+                : Apply(_texture, OverlayUniforms(p, dirt, false), dirt);
+        if (p.GrainOn && p.GrainAmount > 0)
+            current = Apply(_grain, new GrainUniforms(p.GrainAmount / 100, p.GrainSize / 100,
+                p.GrainRoughness / 100, p.GrainColor / 100, p.SeedGrain, shortSide, 0, 0));
+        return current;
+    }
+
+    private TextureUniforms OverlayUniforms(ModuleParams p, GpuTexture asset, bool leak)
+    {
+        var angle = (leak ? p.LeakAngle : SeedHash.ToUnitFloat(SeedHash.Pcg(p.SeedDirt)) * 360) * MathF.PI / 180;
+        if ((_width > _height) != (asset.Width > asset.Height)) angle += MathF.PI / 2;
+        return new(MathF.Max(.05f, (leak ? p.LeakSize : p.DirtScale) / 100),
+            (leak ? p.LeakAmount : p.DirtStrength) / 100, MathF.Cos(angle), MathF.Sin(angle),
+            p.LeakHue, p.LeakIrregularity / 100, (p.DirtDust + p.DirtScratches + p.DirtHairs) / 300,
+            Math.Min(_width, _height), leak ? Math.Clamp(p.LeakCount, 1, 3) : 1, p.Polarity,
+            leak ? p.SeedLightLeak : p.SeedDirt, leak ? 1 : 0);
+    }
+
+    private GpuTexture Blur(GpuCommandList commands, GpuTexture input, int radius, GpuTexture? reserve = null)
+    {
+        if (!_gaussians.TryGetValue(radius, out var weights))
+        {
+            var values = GaussianWeights.Get(radius, MathF.Max(.5f, radius / 3f));
+            weights = _gpu.CreateBuffer((ulong)values.Length * 4, GpuBufferUsage.Storage | GpuBufferUsage.CopyDst, "gaussian weights");
+            _gpu.WriteBuffer<float>(weights, values);
+            _gaussians.Add(radius, weights);
+        }
+        var temp = Next(input, reserve);
+        var result = Next(input, temp, reserve);
+        Dispatch(commands, _blur, [input, temp, Uniform(new BlurUniforms(1, 0, radius, 0)), weights]);
+        Dispatch(commands, _blur, [temp, result, Uniform(new BlurUniforms(0, 1, radius, 0)), weights]);
+        return result;
+    }
+
+    private GpuTexture Next(GpuTexture first, GpuTexture? second = null, GpuTexture? third = null)
+    {
+        foreach (var texture in _work)
+            if (texture != first && texture != second && texture != third) return texture;
+        throw new InvalidOperationException("No non-aliasing GPU work texture.");
+    }
+
+    private void Dispatch(GpuCommandList commands, ComputeKernel kernel, ReadOnlySpan<object> bindings) =>
+        commands.Dispatch2D(kernel, bindings, _width, _height);
+
+    private GpuBuffer Uniform<T>(in T value) where T : unmanaged
+    {
+        var result = UniformBuffer();
+        _gpu.WriteBuffer(result, value);
+        return result;
+    }
+
+    private GpuBuffer UniformBuffer()
+    {
+        // Queue writes occur before command submission: each recorded pass needs its own buffer.
+        if (_uniformIndex == _uniforms.Count)
+            _uniforms.Add(_gpu.CreateBuffer(512, GpuBufferUsage.Uniform | GpuBufferUsage.CopyDst, "effect parameters"));
+        return _uniforms[_uniformIndex++];
+    }
+
+    private void Finish<T>(GpuCommandList commands, GpuTexture current, T[] destination, CancellationToken token) where T : unmanaged
+    {
+        token.ThrowIfCancellationRequested();
+        Dispatch(commands, typeof(T) == typeof(ushort) ? _encode16 : _encode8, [current, _output!]);
+        commands.CopyBuffer(_output!, _readback!, _output!.Size);
+        commands.Submit();
+        _gpu.ReadBuffer(_readback!, destination);
+        token.ThrowIfCancellationRequested();
+    }
+
+    private void EnsureWorkspace(SourceImage source)
+    {
+        if (_width == source.Width && _height == source.Height) return;
+        foreach (var texture in _work) texture?.Dispose();
+        _output?.Dispose(); _readback?.Dispose();
+        _width = (uint)source.Width; _height = (uint)source.Height;
+        for (var i = 0; i < _work.Length; i++)
+            _work[i] = _gpu.CreateTexture(_width, _height, GpuTextureFormat.Rgba32Float, GpuTextureUsage.Sampled | GpuTextureUsage.Storage, "effect work");
+        var size = (ulong)_width * _height * 8;
+        _output = _gpu.CreateBuffer(size, GpuBufferUsage.Storage | GpuBufferUsage.CopySrc, "effect output");
+        _readback = _gpu.CreateBuffer(size, GpuBufferUsage.MapRead | GpuBufferUsage.CopyDst, "effect readback");
+        TrimSources();
+    }
+
+    private GpuTexture Acquire(SourceImage source)
+    {
+        for (var node = _sources.First; node is not null; node = node.Next)
+            if (ReferenceEquals(node.Value.Source, source))
+            {
+                _sources.Remove(node); _sources.AddFirst(node);
+                return node.Value.Linear;
+            }
+        var uploaded = new CachedSource(_gpu, source);
+        _gpu.WriteTexture<ushort>(uploaded.Upload, source.Rgba16);
+        using (var commands = _gpu.BeginCommands())
+        {
+            commands.Dispatch2D(_decode, [uploaded.Upload, uploaded.Linear], (uint)source.Width, (uint)source.Height);
+            commands.Submit();
+        }
+        _sources.AddFirst(uploaded);
+        return uploaded.Linear;
+    }
+
+    private void TrimSources()
+    {
+        var bytes = (ulong)_width * _height * 80;
+        foreach (var source in _sources) bytes += source.Bytes;
+        while (_sources.Count > 0 && (_sources.Count > 6 || bytes > _budget))
+        {
+            var last = _sources.Last!.Value;
+            bytes -= last.Bytes;
+            last.Dispose(); _sources.RemoveLast();
+        }
+    }
+
+    public void Evict(SourceImage source)
+    {
+        for (var node = _sources.First; node is not null; node = node.Next)
+            if (ReferenceEquals(node.Value.Source, source))
+            {
+                node.Value.Dispose(); _sources.Remove(node); return;
+            }
+    }
+
+    private sealed class CachedSource : IDisposable
+    {
+        public SourceImage Source { get; }
+        public GpuTexture Upload { get; }
+        public GpuTexture Linear { get; }
+        public ulong Bytes => (ulong)Source.Width * (ulong)Source.Height * 24;
+        public CachedSource(GpuDevice gpu, SourceImage source)
+        {
+            Source = source;
+            Upload = gpu.CreateTexture((uint)source.Width, (uint)source.Height, GpuTextureFormat.Rgba16Uint, GpuTextureUsage.CopyDst | GpuTextureUsage.Sampled, "source upload");
+            Linear = gpu.CreateTexture((uint)source.Width, (uint)source.Height, GpuTextureFormat.Rgba32Float, GpuTextureUsage.Sampled | GpuTextureUsage.Storage, "source linear");
+        }
+        public void Dispose() { Upload.Dispose(); Linear.Dispose(); }
+    }
+
+    public void Dispose()
+    {
+        foreach (var source in _sources) source.Dispose();
+        foreach (var texture in _work) texture?.Dispose();
+        foreach (var buffer in _uniforms) buffer.Dispose();
+        foreach (var buffer in _gaussians.Values) buffer.Dispose();
+        foreach (var kernel in _kernels) kernel.Dispose();
+        _output?.Dispose(); _readback?.Dispose();
+    }
+
+    [StructLayout(LayoutKind.Sequential)] private readonly record struct BlurUniforms(int X, int Y, int Radius, float Pad);
+    [StructLayout(LayoutKind.Sequential)] private readonly record struct LensUniforms(float Amount, float Chromatic, float Soften, float Crop, float Aspect, float ShortSide, float Pad0, float Pad1);
+    [StructLayout(LayoutKind.Sequential)] private readonly record struct DoubleUniforms(int Source, int Blend, int Mirror, float Opacity, float X, float Y, float Scale, float Rotation, float Exposure, float Pad0, float Pad1, float Pad2);
+    [StructLayout(LayoutKind.Sequential)] private readonly record struct BokehUniforms(float X, float Y, float Focus, float Aspect, float Cosine, float Sine, float Transition, float Radius, float Boost, float ShortSide, int FocusShape, int Shape);
+    [StructLayout(LayoutKind.Sequential)] private readonly record struct ZoomUniforms(float X, float Y, float Zoom, float Rotate, float Protect, float Transition, float Aspect, float ShortSide);
+    [StructLayout(LayoutKind.Sequential)] private readonly record struct MotionUniforms(float Angle, float Length, float Protect, float X, float Y, float Size, float ShortSide, float Pad);
+    [StructLayout(LayoutKind.Sequential)] private readonly record struct VignetteUniforms(float Amount, float Size, float Roundness, float Feather, float X, float Y, float Aspect, float Pad);
+    [StructLayout(LayoutKind.Sequential)] private readonly record struct HalationUniforms(float Amount, float Threshold, float Radius, float Hue, float ShortSide, float Pad0, float Pad1, float Pad2);
+    [StructLayout(LayoutKind.Sequential)] private readonly record struct LeakUniforms(int Mode, float Amount, float Angle, float Size, float Hue, float Irregularity, int Count, uint Seed, float Aspect, float ShortSide, uint Pad0, uint Pad1);
+    [StructLayout(LayoutKind.Sequential)] private readonly record struct PlateUniforms(int Type, float Strength, float Ortho, float Hue, float Tint, float Erosion, float Stains, float Uneven, uint Seed, float Aspect, uint Pad0, uint Pad1);
+    [StructLayout(LayoutKind.Sequential)] private readonly record struct BasicUniforms(float Brightness, float Contrast, float Highlights, float Shadows, float Saturation, float Structure, float ShortSide, float Pad);
+    [StructLayout(LayoutKind.Sequential)] private readonly record struct ToneUniforms(float ShadowHue, float ShadowAmount, float HighlightHue, float HighlightAmount, float Balance, float Pad0, float Pad1, float Pad2);
+    [StructLayout(LayoutKind.Sequential)] private readonly record struct DirtUniforms(int Mode, float Dust, float Scratches, float Hairs, int Polarity, float Strength, float Scale, uint Seed, float ShortSide, uint Pad0, uint Pad1, uint Pad2);
+    [StructLayout(LayoutKind.Sequential)] private readonly record struct GrainUniforms(float Amount, float Size, float Roughness, float Color, uint Seed, float ShortSide, uint Pad0, uint Pad1);
+    [StructLayout(LayoutKind.Sequential)] private readonly record struct TextureUniforms(float Scale, float Amount, float Cosine, float Sine, float Hue, float Irregularity, float Density, float ShortSide, int Count, int Polarity, uint Seed, int Leak);
+    [StructLayout(LayoutKind.Sequential)] private readonly record struct MultiUniforms(int Layout, float Divider, Vector2 Pad, Vector4 Cell0, Vector4 Tint0, Vector4 Cell1, Vector4 Tint1, Vector4 Cell2, Vector4 Tint2, Vector4 Cell3, Vector4 Tint3)
+    {
+        public static MultiUniforms From(ModuleParams p)
+        {
+            (Vector4 Cell, Vector4 Tint) Cell(int i)
+            {
+                var seed = p.SeedMultiLens + (uint)i * 747796405u;
+                var dx = (SeedHash.ToUnitFloat(SeedHash.Pcg(seed)) - .5f) * 2 * p.MultiOffset / 100;
+                var dy = (SeedHash.ToUnitFloat(SeedHash.Pcg(seed + 1)) - .5f) * 2 * p.MultiOffset / 100;
+                if (p.MultiLayout == 5) dy += (i % 2 == 0 ? .25f : -.25f) * .3f;
+                var zoom = 1 + (SeedHash.ToUnitFloat(SeedHash.Pcg(seed + 2)) - .5f) * .3f * p.ZoomVar / 100;
+                var exposure = (SeedHash.ToUnitFloat(SeedHash.Pcg(seed + 3)) - .5f) * 1.5f * p.ExposureVar / 100;
+                var (r, g, b) = CpuPipeline.HsvToRgb(SeedHash.ToUnitFloat(SeedHash.Pcg(seed + 4)) * 360, p.ColorVar / 100 * .35f, 1);
+                return (new(dx, dy, zoom, exposure), new(r, g, b, 0));
+            }
+            var a = Cell(0); var b = Cell(1); var c = Cell(2); var d = Cell(3);
+            return new(p.MultiLayout, p.Divider / 100, Vector2.Zero, a.Cell, a.Tint, b.Cell, b.Tint, c.Cell, c.Tint, d.Cell, d.Tint);
+        }
+    }
+}

@@ -16,6 +16,8 @@ public sealed class PreviewService : IDisposable
     private readonly Action<Action> _post;
     private long _requested;
     private long _delivered;
+    private long _configuration;
+    private bool _disposed;
 
     public event Action<RenderResult>? PreviewReady;
     public event Action<string, RenderResult>? ThumbnailReady;
@@ -26,42 +28,102 @@ public sealed class PreviewService : IDisposable
     public bool IsBusy => Interlocked.Read(ref _requested) > Interlocked.Read(ref _delivered);
     public int PendingThumbnails => _scheduler.PendingThumbnails;
 
-    public PreviewService(Func<IPreviewRenderer> factory, Action<Action> post, bool cpuFallback = true)
+    public PreviewService(Func<IPreviewRenderer> factory, Action<Action> post, bool cpuFallback = true,
+        Func<IPreviewRenderer>? fallback = null)
     {
         _post = post;
-        _scheduler = new RenderScheduler(factory, cpuFallback ? () => new CpuFakeRenderer() : null);
-        _scheduler.DeviceReady += (name, sw) => _post(() => DeviceReady?.Invoke(name, sw));
+        _scheduler = new RenderScheduler(factory, cpuFallback ? fallback ?? (() => new CpuFakeRenderer()) : null);
+        _scheduler.DeviceReady += (name, sw) =>
+        {
+            var configuration = Interlocked.Read(ref _configuration);
+            _post(() =>
+            {
+                if (!_disposed && configuration == Interlocked.Read(ref _configuration))
+                    DeviceReady?.Invoke(name, sw);
+            });
+        };
         _scheduler.Notice += msg =>
         {
             AppLog.Warn(msg);
-            _post(() => Notice?.Invoke(msg));
+            PostCurrent(() => Notice?.Invoke(msg));
         };
         _scheduler.RenderFailed += (key, ex) =>
         {
             AppLog.Error($"算圖失敗：{key}", ex);
-            _post(() => Failed?.Invoke(key, ex.Message));
+            PostCurrent(() =>
+            {
+                Interlocked.Exchange(ref _delivered, Interlocked.Read(ref _requested));
+                Failed?.Invoke(key, ex.Message);
+            });
         };
-        _scheduler.PreviewRendered += r => _post(() =>
+        _scheduler.PreviewRendered += r => PostCurrent(() =>
         {
             // 只採用最新的結果；較舊的請求結果直接丟棄
             if (r.Generation < Interlocked.Read(ref _requested)) return;
             Interlocked.Exchange(ref _delivered, r.Generation);
             PreviewReady?.Invoke(r.Result);
         });
-        _scheduler.ThumbnailRendered += (key, r) => _post(() => ThumbnailReady?.Invoke(key, r));
+        _scheduler.ThumbnailRendered += (key, r) => PostCurrent(() => ThumbnailReady?.Invoke(key, r));
+    }
+
+    private void PostCurrent(Action action)
+    {
+        var epoch = _scheduler.Epoch;
+        _post(() =>
+        {
+            if (!_disposed && epoch == _scheduler.Epoch) action();
+        });
     }
 
     /// <summary>Start after the view model has subscribed to initialization and failure events.</summary>
     public void Start() => _scheduler.Start();
 
-    /// <summary>依偏好設定建立 GPU 算圖器的工廠。</summary>
-    public static Func<IPreviewRenderer> GpuFactory(AppSettings settings) => () =>
+    /// <summary>目前的算圖世代：每次重建裝置時推進。</summary>
+    public long Epoch => _scheduler.Epoch;
+
+    /// <summary>
+    /// 以新的算圖器工廠在 GPU 執行緒上重建裝置；事件訂閱保留，舊排隊/結果丟棄。
+    /// 重建完成（或失敗）會再次觸發 <see cref="DeviceReady"/>（失敗時觸發 <see cref="Failed"/>）。
+    /// </summary>
+    public void Reconfigure(Func<IPreviewRenderer> factory, Func<IPreviewRenderer>? fallback = null)
     {
+        Interlocked.Increment(ref _configuration);
+        Interlocked.Exchange(ref _delivered, Interlocked.Increment(ref _requested));
+        _scheduler.ResetRenderer(factory, fallback);
+    }
+
+    /// <summary>最近一次算圖器建立失敗的原因；成功後清除。</summary>
+    public Exception? InitError => _scheduler.InitError;
+
+    /// <summary>
+    /// 依偏好設定建立算圖器的工廠。讀取呼叫時刻的設定值，而非建立工廠時的快照。
+    /// 強制軟體（ForceSoftwareGpu）直接選用 CPU 等效算圖器，不去要求可能不存在的 Dawn 軟體介面卡。
+    /// </summary>
+    public static Func<IPreviewRenderer> GpuFactory(AppSettings settings) => () => CreateRenderer(settings);
+
+    /// <summary>
+    /// 依目前偏好設定建立一次算圖器（後端、材質資料夾、記憶體預算）。
+    /// 強制軟體時直接回傳 CPU 算圖器（IsSoftware=true，與完整管線等效），保證在無軟體 GPU 的 Dawn 建置上仍可算圖。
+    /// </summary>
+    public static IPreviewRenderer CreateRenderer(AppSettings settings)
+    {
+        if (settings.ForceSoftwareGpu) return CreateCpuRenderer(settings);
         var backend = Enum.TryParse<GpuBackend>(settings.GpuBackend, out var b) ? b : GpuBackend.Auto;
-        var renderer = GpuSpikeRenderer.Create(new GpuDeviceOptions { Backend = backend, ForceSoftware = settings.ForceSoftwareGpu });
+        var fx = new EffectRendererOptions
+        {
+            TexturesFolder = string.IsNullOrWhiteSpace(settings.TexturesFolder) ? null : settings.TexturesFolder,
+            MemoryBudgetBytes = settings.GpuMemoryLimitMb > 0 ? (ulong)settings.GpuMemoryLimitMb * 1024UL * 1024UL : 0,
+        };
+        var renderer = GpuSpikeRenderer.Create(new GpuDeviceOptions { Backend = backend, ForceSoftware = false }, fx);
         AppLog.Info($"GPU：{renderer.AdapterInfo.DisplayName}（{renderer.AdapterInfo.Kind}，{renderer.AdapterInfo.Driver}）");
         return renderer;
-    };
+    }
+
+    public static IPreviewRenderer CreateCpuRenderer(AppSettings settings) =>
+        new CpuFakeRenderer(new EffectRendererOptions
+        {
+            TexturesFolder = string.IsNullOrWhiteSpace(settings.TexturesFolder) ? null : settings.TexturesFolder,
+        });
 
     public void RequestPreview(string fileName, SourceImage source, Settings settings) =>
         _scheduler.RequestPreview(fileName, source, settings, Interlocked.Increment(ref _requested));
@@ -69,7 +131,15 @@ public sealed class PreviewService : IDisposable
     public void RequestThumbnail(string fileName, SourceImage source, Settings settings) =>
         _scheduler.RequestThumbnail(fileName, source, settings);
 
-    public void CancelThumbnails() => _scheduler.CancelThumbnails();
+    public void CancelThumbnails()
+    {
+        Interlocked.Exchange(ref _delivered, Interlocked.Increment(ref _requested));
+        _scheduler.CancelThumbnails();
+    }
 
-    public void Dispose() => _scheduler.Dispose();
+    public void Dispose()
+    {
+        _disposed = true;
+        _scheduler.Dispose();
+    }
 }

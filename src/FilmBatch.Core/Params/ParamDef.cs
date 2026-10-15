@@ -43,6 +43,9 @@ public sealed record ParamDef
     public static ParamDef Choice(string key, string label, params ChoiceOption[] options) =>
         new() { Key = key, Label = label, Kind = ParamKind.Choice, Default = options[0].Key, Choices = options };
 
+    public static ParamDef Text(string key, string label, string def = "") =>
+        new() { Key = key, Label = label, Kind = ParamKind.Path, Default = def };
+
     public static ParamDef Path(string key, string label) =>
         new() { Key = key, Label = label, Kind = ParamKind.Path, Default = "" };
 

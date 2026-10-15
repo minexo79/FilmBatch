@@ -1,20 +1,29 @@
-# macOS 封裝由 Mac runner 組裝並以 ad-hoc 簽章供測試；不含正式公證。
+# macOS 封裝由 Mac runner 組裝並以 ad-hoc 簽章供測試；正式散佈另行執行（見 README 發佈說明）。
+# Dawn 重建（降低 macOS 最低系統版本）只在手動觸發時執行，產物供發佈使用（build/build-dawn.sh）。
 name: ci
 
 on:
   push:
     branches: [master]
   pull_request:
+  merge_group:
+    types: [checks_requested]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   desktop:
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: windows-latest
             rid: win-x64
-          # WebGPUSharp 0.5.7 的 Dawn 原生函式庫要求 macOS 26。
+          # WebGPUSharp 0.5.7 內附的 Dawn 原生函式庫宣告 minos 26.0；
+          # 較低 macOS 由 dawn-build 產物（artifacts/dawn/）涵蓋，矩陣 runner 仍反映內附 ABI 的真實需求。
           - os: macos-26
             rid: osx-arm64
           - os: macos-26-intel
@@ -37,7 +46,7 @@ jobs:
       - name: Test
         run: dotnet test FilmBatch.sln -c Release --no-build
 
-      # 發佈 + 冒煙測試（無 GPU 時改用 CPU 算圖，仍會驗證原生函式庫、Trimming 與視窗）
+      # 發佈 + 冒煙測試（無 GPU 時改用 CPU 算圖，仍會驗證原生函式庫與視窗）
       - name: Publish (${{ matrix.rid }}) + smoke
         run: dotnet run build/Build.cs -- --rid ${{ matrix.rid }} --smoke --zip
 
@@ -47,3 +56,51 @@ jobs:
           path: |
             dist/FilmBatch-${{ matrix.rid }}.zip
             dist/smoke-${{ matrix.rid }}.txt
+            dist/smoke-${{ matrix.rid }}.png
+
+  shaders:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Install naga-cli
+        run: cargo install --locked --version 30.0.1 naga-cli
+      - name: Validate embedded WGSL
+        run: dotnet run build/CheckShaders.cs
+
+  # 在分支保護／ruleset 中將 pre-merge 設為必要檢查；任何平台失敗或略過都不放行。
+  pre-merge:
+    if: ${{ always() }}
+    needs: [desktop, shaders]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require all checks
+        env:
+          DESKTOP_RESULT: ${{ needs.desktop.result }}
+          SHADERS_RESULT: ${{ needs.shaders.result }}
+        run: |
+          test "$DESKTOP_RESULT" = success
+          test "$SHADERS_RESULT" = success
+
+  # 可重現的 Dawn 重建：下載產物到本機 artifacts/dawn/ 後再執行 Build.cs。
+  # desktop 工作不會自動下載此產物；不改 Mach-O、不隱藏最低系統需求。
+  dawn-build:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Restore (needs NuGet 內附 Dawn 作 ABI 比對)
+        run: dotnet restore FilmBatch.sln
+      - name: Build Dawn for both macOS architectures
+        run: bash build/build-dawn.sh all
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dawn-macos-minos14
+          path: artifacts/dawn/

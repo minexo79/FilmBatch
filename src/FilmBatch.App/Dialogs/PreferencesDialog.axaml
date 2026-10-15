@@ -9,7 +9,7 @@
         ShowInTaskbar="False" WindowStartupLocation="CenterOwner">
   <!-- 偏好設定（計畫書 2.8） -->
   <StackPanel Margin="16" Spacing="10">
-    <Grid ColumnDefinitions="140,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="8">
+    <Grid ColumnDefinitions="140,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="8">
       <TextBlock Grid.Row="0" Text="預覽背景" VerticalAlignment="Center" />
       <ComboBox Grid.Row="0" Grid.Column="1" ItemsSource="{Binding Backgrounds}" SelectedItem="{Binding Background}" HorizontalAlignment="Stretch" />
 
@@ -43,14 +43,12 @@
       <TextBlock Grid.Row="6" Text="材質庫資料夾" VerticalAlignment="Center" />
       <TextBox Grid.Row="6" Grid.Column="1" Text="{Binding TexturesFolder}" />
 
-      <TextBlock Grid.Row="7" Text="LUT 資料夾" VerticalAlignment="Center" />
-      <TextBox Grid.Row="7" Grid.Column="1" Text="{Binding LutsFolder}" />
-
-      <TextBlock Grid.Row="8" Text="{l:Tr Cmd.Language}" VerticalAlignment="Center" />
-      <ComboBox Grid.Row="8" Grid.Column="1" ItemsSource="{Binding Languages}" SelectedItem="{Binding Language}" Width="160" />
+      <TextBlock Grid.Row="7" Text="{l:Tr Cmd.Language}" VerticalAlignment="Center" />
+      <ComboBox Grid.Row="7" Grid.Column="1" ItemsSource="{Binding Languages}" SelectedItem="{Binding Language}" Width="160" />
+      <TextBlock Grid.Row="8" Grid.Column="1" Classes="secondary small" Text="{Binding ApplyError}" IsVisible="{Binding HasApplyError}" TextWrapping="Wrap" />
     </Grid>
     <TextBlock Classes="secondary small" TextWrapping="Wrap"
-               Text="預覽背景與語言立即生效；GPU 後端、介面卡與代理圖尺寸於下次啟動生效（M3 起即時重建裝置）。" />
+               Text="全部設定關閉對話框時立即生效；算圖器在背景執行緒重建，事件訂閱保留，舊結果自動丟棄。" />
     <Button Name="CloseButton" Classes="accent" Content="{l:Tr Dialog.Close}" IsDefault="True" HorizontalAlignment="Right" />
   </StackPanel>
 </Window>

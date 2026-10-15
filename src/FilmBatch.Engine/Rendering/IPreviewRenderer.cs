@@ -8,43 +8,28 @@ namespace FilmBatch.Engine.Rendering;
 public sealed record RenderResult(int Width, int Height, byte[] Bgra, TimeSpan Elapsed);
 
 /// <summary>
-/// 預覽算圖器。M0 有兩種實作：<see cref="GpuSpikeRenderer"/>（WGSL compute shader）與
-/// <see cref="CpuFakeRenderer"/>（無 GPU 的 UI 測試用）。只能在單一執行緒（GPU 執行緒）上呼叫。
+/// 預覽與匯出共用的算圖器。只能在單一執行緒（GPU 執行緒）上呼叫。
+/// M1 起 <see cref="Render16"/> 為完整 16-bit 路徑；<see cref="Render"/> 為預覽 BGRA8 捷徑。
 /// </summary>
 public interface IPreviewRenderer : IDisposable
 {
     /// <summary>例如「NVIDIA GeForce RTX 4070 · DX12」。</summary>
     string DeviceName { get; }
     bool IsSoftware { get; }
+    /// <summary>預覽：輸出 8-bit BGRA。</summary>
     RenderResult Render(SourceImage source, Settings settings);
+    /// <summary>
+    /// 完整算圖：輸出 16-bit sRGB RGBA（與輸入同位深），供匯出。
+    /// 尊重 <paramref name="cancellationToken"/>（在 pass 之間檢查）；超過 GPU 上限時自動改用 CPU 等效路徑。
+    /// </summary>
+    SourceImage Render16(SourceImage source, Settings settings, CancellationToken cancellationToken = default);
 }
 
-/// <summary>
-/// M0「假算圖器」使用的參數：只實作亮度、飽和與一個可分離高斯模糊（計畫書 2.11 #6）。
-/// 由完整的參數 schema 對應而來，M1 起由真正的模組管線取代。
-/// </summary>
+/// <summary>獨立 GPU benchmark 的參數；產品算圖使用完整的 Settings 管線。</summary>
 [StructLayout(LayoutKind.Sequential)]
 public readonly record struct SpikeParams(float Exposure, float Brightness, float Saturation, float BlurRadiusFraction)
 {
     public bool IsIdentity => Exposure == 0 && Brightness == 0 && Saturation == 0 && BlurRadiusFraction == 0;
-
-    public static SpikeParams From(Settings s)
-    {
-        float exposure = 0, brightness = 0, saturation = 0, blur = 0;
-        if (s.Bool("basic.enabled"))
-        {
-            exposure = (float)s.Number("basic.exposure");
-            brightness = (float)(s.Number("basic.brightness") / 100);
-            saturation = (float)(s.Number("basic.saturation") / 100);
-        }
-        // 底片色彩尚未實作；黑白底片先以去飽和示意
-        if (s.Bool("film.enabled") && s.Text("film.stock") is "trix400" or "hp5")
-            saturation = -1;
-        // 以散景的模糊量驅動高斯模糊（以短邊比例計算，預覽與匯出一致）
-        if (s.Bool("bokeh.enabled"))
-            blur = (float)(s.Number("bokeh.blur") / 100 * 0.03);
-        return new SpikeParams(exposure, brightness, saturation, blur);
-    }
 
     /// <summary>模糊半徑（像素），上限 96 以控制單次 pass 成本。</summary>
     public int BlurRadiusPixels(int shortSide) => Math.Min(96, (int)Math.Round(BlurRadiusFraction * shortSide));

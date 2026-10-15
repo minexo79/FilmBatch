@@ -9,3 +9,31 @@ Dawn (WebGPU)               BSD-3-Clause https://dawn.googlesource.com/dawn
 Magick.NET / ImageMagick    Apache-2.0 / ImageMagick License  https://github.com/dlemstra/Magick.NET
 System.CommandLine          MIT          https://github.com/dotnet/command-line-api
 .NET Runtime                MIT          https://github.com/dotnet/runtime
+Recipe Lab（底片配方資料與測試樣張） MIT https://github.com/voxivoid/recipe-lab-sony-pmca
+  Copyright (c) 2026 André Domingues。內建 77 組配方的原始數值、欄位語意、品牌分組與自訂配方格式 1
+  搬移自 src/com/voxivoid/recipelab/Recipes.java（釘選 commit fd97eec77caf56bb2740a89b503e1037fdb24877，
+  見 src/FilmBatch.Core/Film/recipelab.json 檔頭）。配方名稱中的 Kodak、Fujifilm、Ilford 等為各公司商標，
+  僅用來描述近似的風格，FilmBatch 不宣稱與其有關聯。
+  tests/FilmBatch.Core.Tests/Fixtures/Film/ 的 01、15、17 號 JPEG 為同一 commit 的
+  docs/samples/ 原始檔；僅用於色彩回歸，不作為 FilmBatch 產生的影像。
+
+MIT License (Recipe Lab)
+Copyright (c) 2026 André Domingues
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

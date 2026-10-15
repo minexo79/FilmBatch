@@ -22,6 +22,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 {
     private readonly Action<Action> _post;
     private SettingsClipboard? _clipboard;
+    private bool _resolvingPresetUpdates;
+    private bool _disposed;
+    private long _openGeneration;
+    private long _previewLoadGeneration;
 
     public AppSettings Settings { get; }
     public IDialogService Dialogs { get; }
@@ -29,6 +33,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     public CommandStack Stack { get; } = new();
     public ImageCache Images { get; }
     public PreviewService Renderer { get; }
+    public Func<IPreviewRenderer> RendererFactory { get; private set; }
 
     public PresetLibraryViewModel Presets { get; }
     public FilmstripViewModel Filmstrip { get; }
@@ -81,9 +86,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         Settings = settings;
         Dialogs = dialogs;
         _post = post;
-        Library = new PresetLibrary(SamplePresets.Create());
+        Library = PresetLibrary.Load();
+        RendererFactory = rendererFactory;
         Images = new ImageCache(settings.PreviewLongEdge);
-        Renderer = new PreviewService(rendererFactory, post);
+        Renderer = new PreviewService(rendererFactory, post, fallback: () => PreviewService.CreateCpuRenderer(settings));
 
         Toast = new ToastViewModel(Stack);
         Preview = new PreviewViewModel(this);
@@ -99,6 +105,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             RedoCommand.NotifyCanExecuteChanged();
         };
         Library.Changed += (_, _) => OnLibraryChanged();
+        Library.Error += message => { AppLog.Warn(message); Toast.Show($"預設載入失敗：{message}"); };
+        Library.Watch(_post);
+        if (Library.LoadErrors.Count > 0) Toast.Show($"有 {Library.LoadErrors.Count} 個預設無法載入：{Library.LoadErrors[0]}");
 
         Renderer.DeviceReady += (name, software) =>
         {
@@ -118,7 +127,14 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             Filmstrip.SetThumbnail(file, r);
             UpdateBackgroundText();
         };
-        Renderer.Failed += (file, message) => Filmstrip.SetError(file, message);
+        Renderer.ThumbnailReady += Presets.Hover.OnThumbnailReady;
+        Renderer.Failed += Presets.Hover.OnThumbnailFailed;
+        Renderer.Failed += (file, message) =>
+        {
+            Filmstrip.SetError(file, message);
+            if (file == FocusFile || file == "$init") Preview.IsBusy = false;
+            Toast.Show($"算圖失敗：{message}");
+        };
         Renderer.Start();
     }
 
@@ -143,16 +159,20 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     public async Task OpenFolderAsync(string folder)
     {
-        Renderer.CancelThumbnails();
-        Images.Clear();
+        var generation = ++_openGeneration;
+        // Load first: a corrupt/unreadable target must leave the current project and preview intact.
         var project = await Task.Run(() => Project.Open(folder, SamplePresets.PortraWarm));
+        if (_disposed || generation != _openGeneration) return;
+        Renderer.CancelThumbnails();
+        Presets.Hover.InvalidateCache();
+        Images.Clear();
         if (Service is not null) Service.Project.EntriesChanged -= OnEntriesChanged;
 
         Stack.Clear();
         Service = new ProjectService(project, Library, Stack);
         project.EntriesChanged += OnEntriesChanged;
-        Folder = folder;
-        Settings.LastFolder = folder;
+        Folder = project.Folder;
+        Settings.LastFolder = project.Folder;
         OnPropertyChanged(nameof(HasProject));
         OnPropertyChanged(nameof(WindowTitle));
         AppLog.Info($"開啟資料夾：{folder}（{project.FileNames.Count} 張）");
@@ -164,6 +184,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             OnSelectionChanged([], null);
         }
         NotifyCommands();
+        await ResolvePresetUpdatesAsync();
     }
 
     // ───────────── 選取 ─────────────
@@ -172,6 +193,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     {
         Selection = selection;
         FocusFile = focus ?? selection.LastOrDefault();
+        Presets.Hover.OnFocusChanged();
         SelectionText = Service is null ? Loc.Get("Status.NoProject") : Loc.Format("Status.Selected", selection.Count);
         OnPropertyChanged(nameof(HasSelection));
         Inspector.Refresh();
@@ -182,8 +204,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     private async Task LoadPreviewAsync()
     {
+        var generation = ++_previewLoadGeneration;
         var file = FocusFile;
-        if (Service is null || file is null)
+        var service = Service;
+        if (service is null || file is null)
         {
             Preview.Clear();
             return;
@@ -191,13 +215,14 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         Preview.UpdateOverlay(Selection.Count);
         try
         {
-            var source = await Images.GetPreviewAsync(Service.Project.PathOf(file));
-            if (file != FocusFile) return; // 已切換到其他照片
+            var source = await Images.GetPreviewAsync(service.Project.PathOf(file));
+            if (_disposed || Service != service || file != FocusFile || generation != _previewLoadGeneration) return;
             Preview.SetOriginal(source);
             RequestPreview();
         }
         catch (Exception ex)
         {
+            if (_disposed || Service != service || file != FocusFile || generation != _previewLoadGeneration) return;
             AppLog.Error($"讀取失敗：{file}", ex);
             Filmstrip.SetError(file, ex.Message);
             Preview.Clear();
@@ -224,6 +249,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         Filmstrip.UpdateMarkers(files);
         if (FocusFile is not null && files.Contains(FocusFile))
         {
+            Presets.Hover.InvalidateForPhoto(FocusFile);
             Inspector.Refresh();
             RequestPreview();
         }
@@ -237,13 +263,40 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         Inspector.RefreshPresetOptions();
         if (Sidebar.IsExport) Sidebar.Export.Refresh();
         if (Service is null) return;
-        // 預設內容改變：所有使用者自動同步（未覆寫的欄位）
+        if (Library.IsExternalChange) Service.Project.KeepPresetSnapshots();
+        // Existing projects retain their prior appearance until the user explicitly synchronizes.
+        if (Service.Project.PreserveSnapshots) _post(() => _ = ResolvePresetUpdatesAsync());
         var all = Service.Project.FileNames;
         Filmstrip.UpdateMarkers(all);
         foreach (var f in all) Filmstrip.RequestThumbnail(f);
         Inspector.Refresh();
         RequestPreview();
     }
+
+    private async Task ResolvePresetUpdatesAsync()
+    {
+        if (_resolvingPresetUpdates || _disposed || Service is not { } service) return;
+        _resolvingPresetUpdates = true;
+        try
+        {
+            foreach (var preset in service.Project.PendingPresetUpdates(Library))
+            {
+                var synchronize = await Dialogs.ConfirmAsync("預設庫已更新",
+                    $"「{preset.Name}」與此專案儲存的版本不同。同步會更新使用它的照片；取消則保留原快照。", "同步");
+                if (_disposed || Service != service) return;
+                service.Project.ResolvePresetUpdate(preset, synchronize);
+                if (synchronize) Stack.Clear();
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("預設同步失敗", ex);
+            Toast.Show($"預設同步失敗：{ex.Message}");
+        }
+        finally { _resolvingPresetUpdates = false; }
+    }
+
+    public void SaveProject() => Service?.Project.Save(Library);
 
     private void UpdateBackgroundText()
     {
@@ -446,6 +499,20 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         Preview.SetBackground(bg);
     }
 
+    public void ApplyRenderPreferences()
+    {
+        Settings.Save();
+        RendererFactory = PreviewService.GpuFactory(Settings);
+        Renderer.Reconfigure(RendererFactory,
+            Settings.ForceSoftwareGpu ? null : () => PreviewService.CreateCpuRenderer(Settings));
+        Images.SetPreviewLongEdge(Settings.PreviewLongEdge);
+        Presets.Hover.InvalidateCache();
+        RequestPreview();
+        _ = LoadPreviewAsync();
+        if (Service is { } service)
+            foreach (var file in service.Project.FileNames) Filmstrip.RequestThumbnail(file);
+    }
+
     public void ApplyHideDisabledModules(bool hide)
     {
         Settings.HideDisabledModules = hide;
@@ -465,7 +532,16 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     partial void OnFolderChanged(string? value) => OnPropertyChanged(nameof(WindowTitle));
 
-    public void Dispose() => Renderer.Dispose();
+    public void Dispose()
+    {
+        _disposed = true;
+        ++_openGeneration;
+        if (Service is not null) Service.Project.EntriesChanged -= OnEntriesChanged;
+        Sidebar.Export.Dispose();
+        Presets.DisposeHover();
+        Library.Dispose();
+        Renderer.Dispose();
+    }
 }
 
 [System.Text.Json.Serialization.JsonSerializable(typeof(Dictionary<string, object?>))]

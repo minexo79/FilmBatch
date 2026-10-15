@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!-- 底片校正工具：重跑 tools/film-calibration/README 指令即可復現 creative_styles.json 數值。 -->
+    <AssemblyName>film-calibrate</AssemblyName>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\FilmBatch.Core\FilmBatch.Core.csproj" />
+    <ProjectReference Include="..\..\src\FilmBatch.Engine\FilmBatch.Engine.csproj" />
+  </ItemGroup>
+</Project>

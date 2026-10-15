@@ -36,6 +36,7 @@ public partial class App : Application
                 var dialogs = new DialogService(() => window);
                 var vm = new MainWindowViewModel(settings, dialogs, PreviewService.GpuFactory(settings), a => Dispatcher.UIThread.Post(a));
                 window = new MainWindow(vm);
+                NativeMenus.Install(this, window, vm);
                 desktop.MainWindow = window;
                 desktop.ShutdownRequested += (_, _) => vm.Dispose();
                 HookUnhandledExceptions(vm);

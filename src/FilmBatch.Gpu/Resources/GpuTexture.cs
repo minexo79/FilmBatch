@@ -3,7 +3,7 @@ using WebGpuSharp;
 
 namespace FilmBatch.Gpu.Resources;
 
-public enum GpuTextureFormat { Rgba8Unorm, Rgba16Uint, Rgba16Float, Rgba32Float }
+public enum GpuTextureFormat { Rgba8Unorm, Rgba16Uint, Rgba16Float, Rgba32Float, R32Float }
 
 [Flags]
 public enum GpuTextureUsage { None = 0, CopySrc = 1, CopyDst = 2, Sampled = 4, Storage = 8 }
@@ -15,6 +15,7 @@ public static class GpuTextureFormatExtensions
         GpuTextureFormat.Rgba8Unorm => 4,
         GpuTextureFormat.Rgba16Uint or GpuTextureFormat.Rgba16Float => 8,
         GpuTextureFormat.Rgba32Float => 16,
+        GpuTextureFormat.R32Float => 4,
         _ => throw new ArgumentOutOfRangeException(nameof(f)),
     };
 
@@ -24,8 +25,10 @@ public static class GpuTextureFormatExtensions
         GpuTextureFormat.Rgba16Uint => TextureFormat.RGBA16Uint,
         GpuTextureFormat.Rgba16Float => TextureFormat.RGBA16Float,
         GpuTextureFormat.Rgba32Float => TextureFormat.RGBA32Float,
+        GpuTextureFormat.R32Float => TextureFormat.R32Float,
         _ => throw new ArgumentOutOfRangeException(nameof(f)),
     };
+
 }
 
 /// <summary>2D 紋理與其預設檢視。</summary>

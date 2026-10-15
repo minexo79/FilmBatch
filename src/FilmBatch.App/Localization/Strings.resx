@@ -46,6 +46,19 @@
   <data name="Inspector.HideDisabled" xml:space="preserve"><value>隱藏未啟用模組</value></data>
   <data name="Inspector.ResetModule" xml:space="preserve"><value>重設此模組</value></data>
   <data name="Inspector.CopyModule" xml:space="preserve"><value>只複製此模組</value></data>
+  <data name="Film.Recipe" xml:space="preserve"><value>配方</value></data>
+  <data name="Film.Edited" xml:space="preserve"><value>EDITED</value></data>
+  <data name="Film.ResetToRecipe" xml:space="preserve"><value>重設為配方值</value></data>
+  <data name="Film.SaveAsCustom" xml:space="preserve"><value>另存為自訂配方</value></data>
+  <data name="Film.Import" xml:space="preserve"><value>匯入配方…</value></data>
+  <data name="Film.Export" xml:space="preserve"><value>匯出配方…</value></data>
+  <data name="Film.RecipeName" xml:space="preserve"><value>配方名稱</value></data>
+  <data name="Film.InvalidName" xml:space="preserve"><value>名稱需為 1–24 個字元（英數字與 -.'()&amp;+ 空格）</value></data>
+  <data name="Film.NameTaken" xml:space="preserve"><value>「{0}」已存在</value></data>
+  <data name="Film.UnsupportedEffect" xml:space="preserve"><value>「{0}」效果尚未實作，以關閉算圖</value></data>
+  <data name="Film.UnknownRecipe" xml:space="preserve"><value>未知配方「{0}」，沿用目前欄位值算圖</value></data>
+  <data name="Film.SkippedOne" xml:space="preserve"><value>已略過 {0}</value></data>
+  <data name="Film.SkippedMany" xml:space="preserve"><value>已略過 {0} 個檔案——首先：{1}</value></data>
   <data name="Filmstrip.All" xml:space="preserve"><value>全部</value></data>
   <data name="Filmstrip.OverridesOnly" xml:space="preserve"><value>只顯示有覆寫</value></data>
   <data name="Filmstrip.Unassigned" xml:space="preserve"><value>未指定預設</value></data>
@@ -83,4 +96,10 @@
   <data name="Dialog.ClearOverrides" xml:space="preserve"><value>清除覆寫</value></data>
   <data name="Dialog.Remember" xml:space="preserve"><value>記住我的選擇</value></data>
   <data name="Dialog.AssignTitle" xml:space="preserve"><value>指定預設</value></data>
+  <data name="Menu.Window" xml:space="preserve"><value>視窗(_W)</value></data>
+  <data name="Menu.AboutApp" xml:space="preserve"><value>關於 {0}</value></data>
+  <data name="Menu.Version" xml:space="preserve"><value>版本</value></data>
+  <data name="Menu.AboutText" xml:space="preserve"><value>批次底片效果處理工具</value></data>
+  <data name="Cmd.CloseWindow" xml:space="preserve"><value>關閉視窗</value></data>
+  <data name="Cmd.Minimize" xml:space="preserve"><value>最小化</value></data>
 </root>
