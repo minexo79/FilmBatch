@@ -176,6 +176,65 @@ public sealed class TiffMetadataTests
         finally { Directory.Delete(folder, recursive: true); }
     }
 
+    [Theory]
+    [InlineData(64000, false)]
+    [InlineData(70000, false)]
+    [InlineData(70000, true)]
+    public async Task Export_JpegExifLimit_ReducesOversizedMetadataExplicitly(int size, bool description)
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "filmbatch-large-exif-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var payload = Enumerable.Repeat((byte)'X', size).ToArray();
+            payload[^1] = 0;
+            var source = WithTag(Fixture(false, false), !description,
+                description ? (ushort)270 : (ushort)37500, description ? (ushort)2 : (ushort)7, (uint)size, payload);
+            var path = Path.Combine(folder, "source.tif");
+            File.WriteAllBytes(path, source);
+            using var library = new PresetLibrary(SamplePresets.Create());
+            var service = new ProjectService(Project.Open(folder, SamplePresets.Neutral), library, new CommandStack());
+            foreach (var format in new[] { ExportFormat.Jpeg, ExportFormat.Png16, ExportFormat.Tiff16 })
+            {
+                var summary = await BatchExporter.RunAsync(new ExportRequest
+                {
+                    Service = service, Files = ["source.tif"],
+                    Options = new ExportOptions { Destination = Path.Combine(folder, format.ToString()), Format = format }
+                }, () => new CpuFakeRenderer(), cancellationToken: TestContext.Current.CancellationToken);
+                Assert.Equal(0, summary.Failed);
+                using var output = new MagickImage(Assert.Single(summary.OutputFiles));
+                byte[] raw;
+                if (format == ExportFormat.Tiff16) raw = File.ReadAllBytes(summary.OutputFiles[0]);
+                else
+                {
+                    var profile = output.GetExifProfile();
+                    Assert.NotNull(profile);
+                    var bytes = profile.ToByteArray()!;
+                    if (format == ExportFormat.Jpeg) Assert.InRange(bytes.Length, 1, 65533);
+                    raw = bytes[6..];
+                }
+                AssertInterop(raw);
+                var reduced = format == ExportFormat.Jpeg && size > 65533;
+                var root = BinaryPrimitives.ReadUInt32LittleEndian(raw.AsSpan(4));
+                var exif = DirectoryValue(raw, root, 34665);
+                var retained = FindField(raw, description ? root : exif, description ? (ushort)270 : (ushort)37500);
+                Assert.Equal(reduced, retained == -1);
+                var captureDate = format == ExportFormat.Tiff16
+                    ? output.GetAttribute("exif:DateTimeOriginal")
+                    : output.GetExifProfile()?.GetValue(ExifTag.DateTimeOriginal)?.Value;
+                Assert.Equal(reduced && description ? null : "2026:01:02 03:04:05", captureDate);
+                Assert.Equal(new uint[] { 1, 1 }, new[] { output.Width, output.Height });
+                Assert.Equal(ColorProfiles.SRGB.ToByteArray(), output.GetColorProfile()?.ToByteArray());
+                using var log = JsonDocument.Parse(File.ReadAllText(Path.Combine(folder, ".filmbatch", "export_log.json")));
+                var entry = log.RootElement.GetProperty("Entries")[0];
+                Assert.Equal("ok", entry.GetProperty("Status").GetString());
+                Assert.Equal(reduced, entry.GetProperty("MetadataWarning").ValueKind == JsonValueKind.String);
+            }
+            Assert.Equal(source, File.ReadAllBytes(path));
+        }
+        finally { Directory.Delete(folder, recursive: true); }
+    }
+
     private static int FindField(byte[] tiff, uint directory, ushort tag)
     {
         var count = BinaryPrimitives.ReadUInt16LittleEndian(tiff.AsSpan((int)directory, 2));

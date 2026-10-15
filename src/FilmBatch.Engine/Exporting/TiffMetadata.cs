@@ -16,10 +16,10 @@ internal static class TiffMetadata
     public static ExifProfile Read(string path, uint width, uint height)
     {
         using var file = File.OpenRead(path);
-        return Normalize(file, width, height);
+        return Normalize(file, width, height, omitMakerNote: false);
     }
 
-    public static ExifProfile Normalize(IExifProfile? source, uint width, uint height)
+    public static ExifProfile Normalize(IExifProfile? source, uint width, uint height, bool omitMakerNote = false)
     {
         var bytes = source?.ToByteArray();
         using var file = bytes is null
@@ -27,10 +27,10 @@ internal static class TiffMetadata
             : bytes.AsSpan().StartsWith("Exif\0\0"u8)
                 ? new MemoryStream(bytes, 6, bytes.Length - 6, writable: false)
                 : throw new InvalidDataException("Invalid EXIF profile header.");
-        return Normalize(file, width, height);
+        return Normalize(file, width, height, omitMakerNote);
     }
 
-    private static ExifProfile Normalize(Stream file, uint width, uint height)
+    private static ExifProfile Normalize(Stream file, uint width, uint height, bool omitMakerNote)
     {
         Span<byte> header = stackalloc byte[16];
         file.ReadExactly(header[..8]);
@@ -82,6 +82,7 @@ internal static class TiffMetadata
                 // Source interoperability may describe Adobe RGB (R03), or have a stale pointer.
                 // Our output is sRGB: regenerate this directory instead of following/copying it.
                 if (kind == 34665 && tag == 40965) continue;
+                if (omitMakerNote && kind == 34665 && tag == 37500) continue;
                 var type = (ushort)Number(entryBytes.Slice(2, 2));
                 var components = Number(entryBytes.Slice(4, large ? 8 : 4));
                 var raw = entryBytes.Slice(large ? 12 : 8, large ? 8 : 4);

@@ -314,7 +314,7 @@ public static class BatchExporter
         picture.Depth = 16;
 
         // 中繼資料：保留來源 EXIF（方向重設為 1：像素已轉正），嵌入 sRGB ICC
-        var exif = CopyExifProfile(job.SourcePath, picture, out var metadataWarning);
+        var exif = CopyExifProfile(job.SourcePath, picture, options.Format, out var metadataWarning);
         picture.SetProfile(ColorProfiles.SRGB);
         picture.Orientation = OrientationType.TopLeft;
 
@@ -363,7 +363,8 @@ public static class BatchExporter
         }
     }
 
-    private static ExifProfile CopyExifProfile(string sourcePath, MagickImage picture, out string? metadataWarning)
+    private static ExifProfile CopyExifProfile(string sourcePath, MagickImage picture, ExportFormat format,
+        out string? metadataWarning)
     {
         IExifProfile? source = null;
         metadataWarning = null;
@@ -377,13 +378,22 @@ public static class BatchExporter
             var normalized = source is null && probe.Format is MagickFormat.Tiff or MagickFormat.Tiff64
                 ? TiffMetadata.Read(sourcePath, picture.Width, picture.Height)
                 : TiffMetadata.Normalize(source, picture.Width, picture.Height);
+            // JPEG APP1 has a 16-bit size including its two-byte length, leaving 65533 bytes.
+            // Prefer losing a private MakerNote to silently losing the entire EXIF profile.
+            if (format == ExportFormat.Jpeg && normalized.ToByteArray()!.Length > 65533)
+            {
+                normalized = TiffMetadata.Normalize(normalized, picture.Width, picture.Height, omitMakerNote: true);
+                if (normalized.ToByteArray()!.Length > 65533)
+                    throw new InvalidDataException("JPEG EXIF exceeds the 65533-byte APP1 limit even without MakerNote.");
+                metadataWarning = "JPEG EXIF exceeded the 65533-byte APP1 limit; MakerNote omitted.";
+            }
             picture.SetProfile(normalized);
             return normalized;
         }
         catch (Exception ex) when (ex is MagickException or InvalidDataException or IOException or OverflowException)
         {
             // EXIF 損毀或不支援：輸出仍帶 ICC + 方向 1，不因中繼資料失敗整張
-            metadataWarning = $"{ex.GetType().Name}: {ex.Message}";
+            metadataWarning = $"Source EXIF omitted: {ex.GetType().Name}: {ex.Message}";
             var fresh = TiffMetadata.Normalize((IExifProfile?)null, picture.Width, picture.Height);
             picture.SetProfile((IImageProfile)fresh);
             return fresh;
