@@ -25,6 +25,7 @@ Mac 封裝、較低部署目標的 Dawn 重建及正式簽章參數見 [README](
 | 匯出資料安全 | 拒絕覆寫來源與既有輸出；暫存寫入完成才搬移；取消或失敗不留下假完成檔 |
 | 色彩與中繼資料 | 來源 ICC 先轉換為 sRGB，再進入效果管線；輸出嵌入 sRGB ICC，方向正規化；EXIF 拍攝時間、相機資訊、曝光與 GPS 往返有實際檔案驗證 |
 | TIFF EXIF | Magick.NET 的 TIFF 編碼器不寫 EXIF 子目錄，讀取時也只提供格式化屬性。`TiffMetadata` 讀取有界的 metadata 目錄、補寫輸出目錄，不複製或重編碼像素區塊；回歸涵蓋兩種位元組順序及 classic TIFF／BigTIFF 來源 |
+| 中繼資料異常 | 可解碼的照片不因來源 EXIF 解析失敗而整張匯出失敗；若因此或為符合 JPEG 上限而捨棄或縮減 EXIF，逐張寫入 `.filmbatch/export_log.json` 的 `MetadataWarning`，影像成功輸出的 `Status` 仍為 `ok` |
 | 全部效果模組 | 16 個模組有 CPU 與真正的 WebGPU 算圖路徑；原尺寸輸出保留 16-bit 精度。外部雙重曝光照片、紋理路徑、空紋理庫的程序化效果、每張照片的確定性種子均已串接 |
 | 底片配方 | 77 組 Recipe Lab 配方、12 個品牌群組、格式 1 自訂配方、EDITED／重設與匯入／匯出；曝光使用精確的 1/3 EV，不使用畫面顯示的四捨五入值 |
 | 預設懸停 | 對目前照片實際算圖；有 debounce、有界快取及過期結果排除，不再以文字摘要假裝預覽 |
@@ -46,12 +47,13 @@ Mac 封裝、較低部署目標的 Dawn 重建及正式簽章參數見 [README](
 
 ## 已執行的驗證
 
-- Release 整合測試：Core 90 項、Avalonia Headless 40 項全數通過，無略過；包含保存／重開、匯出安全、真 16-bit、metadata、懸停、即時偏好及 scheduler 狀態轉換。之後將快捷鍵結構斷言換成實際按鍵事件的復原／重做行為檢查，平台測試 2 項通過。TIFF 額外涵蓋大小端序、classic TIFF 與 BigTIFF 的獨立二進位 fixture。
+- Release 整合測試：Core 99 項、Avalonia Headless 40 項全數通過，無略過；包含保存／重開、匯出安全、真 16-bit、metadata、懸停、即時偏好、scheduler 狀態轉換及快捷鍵復原／重做。13 項 TIFF metadata 回歸涵蓋大小端序、classic TIFF／BigTIFF、sRGB interoperability、來源圖層排除、損毀目錄與 JPEG 大型 EXIF。
 - 真正的 CPU 與 Apple M3／Metal 算圖：16 個模組在 128×85 測試影像的最大通道差為 0–1／65535。此為受測場景結果，不是對所有照片的誤差上界。曾發現 halation 中間紋理被重用覆寫，修正後通過。
 - 最終 arm64 與 x64 封裝均通過 GUI 冒煙；x64 在 Apple Silicon 上以 **Rosetta** 執行。視窗、原生函式庫、三張範例照片、預覽、縮圖、編輯／復原、重開保留、懸停、即時代理圖、PNG16 匯出、ICC、來源雜湊、匯出紀錄、Dock 版面與元件展示均通過；結果與內容擷取在 `dist/smoke-osx-{arm64,x64}.{txt,png}`。
 - 實際 metadata 匯出程式：PNG 來源 → TIFF16／PNG16／JPEG，以及 TIFF → PNG 再匯出；拍攝時間、曝光分數、GPS 與 sRGB ICC 保留。
+- 本次 metadata 修正後，兩種 Mac 架構的正式封裝 CLI 各以 9 種來源情境匯出 JPEG／PNG16／TIFF16：有效來源、R03 色域宣告、失效 Interop 位址、Photoshop 圖層、欄位位址越界、不支援的型別、計數溢位、大型 MakerNote、大型描述。停用外部 .NET 查找後全部通過；檢查 R98／0100、ICC、方向與尺寸、拍攝時間、來源未修改、逐張警告，以及 PNG／TIFF 像素與 TIFF ZIP 壓縮。
 - 最終兩份 Mac ZIP 解壓至含空白路徑後，GUI 與 CLI 均通過 `codesign --verify --strict`（GUI 另加 `--deep`），兩份 `.app` 均以 LaunchServices 啟動並完成冒煙。arm64 CPU GUI 與兩種架構的 CLI 也在 `DOTNET_ROOT` 指向不存在的位置、PATH 不含 SDK 時成功執行。
-- 解壓後的 CLI 實際讀取已保存的專案與 YAML 預設，分別走 arm64 CPU 備援與 x64／Rosetta Metal，完成 PNG16、ZIP TIFF16、JPEG 匯出。PNG／TIFF 與預期保存設定的 CPU 像素差分別為 0 與最多 1／65535；尺寸、方向、ICC、拍攝時間、GPS、來源雜湊及無效格式退出碼均通過。GUI 的額外結果在 `dist/smoke-osx-arm64-cpu.txt`、`dist/smoke-osx-{arm64,x64}-extracted.txt`。
+- 此次 metadata 修正前，解壓後的 CLI 另已驗證保存的專案與 YAML 自訂設定，分別走 arm64 CPU 備援與 x64／Rosetta Metal，完成 PNG16、ZIP TIFF16、JPEG 匯出。PNG／TIFF 與預期保存設定的 CPU 像素差分別為 0 與最多 1／65535；尺寸、方向、ICC、拍攝時間、GPS、來源雜湊及無效格式退出碼均通過。本次重新驗證上述 metadata 情境與 GUI 工作流程；GUI 結果在 `dist/smoke-osx-arm64-cpu.txt`、`dist/smoke-osx-{arm64,x64}-extracted.txt`。
 - CI 競態修正獨立提交 `3ce9280`；合併前工作流程獨立提交 `371ad52`。隔離快照的 47 項測試、100 次同步 CPU 初始化／實際像素輸出及失敗閘門情境已驗證；這不代表遠端 GitHub Actions 已執行。
 
 ## 驗證邊界與剩餘限制
@@ -60,7 +62,7 @@ Mac 封裝、較低部署目標的 Dawn 重建及正式簽章參數見 [README](
 2. **正式簽章／公證**：缺少使用者的 Developer ID Application 身分與公證 profile；已完成流程及拒絕路徑，未驗證 Apple 端成功路徑。
 3. **原生互動外觀**：此工作階段沒有螢幕擷取／Apple Events 權限。實際視窗的 Avalonia 內容可擷取，但不含系統選單列與原生標題列；不能聲稱已人工驗證交通燈按鈕、滑鼠手勢及所有 Command 快捷鍵。
 4. **相機模擬與色彩校正**：以校正文件中的實測結果為準；不支援的相機 Picture Effect 會顯示提示，不能解讀為已實作全部 Sony 效果。
-5. **私有中繼資料**：不以原封不動的 metadata 封包備份為目的；移除舊縮圖，更新方向、尺寸與色域。TIFF metadata 上限 16 MiB；影像布局／ICC／XMP 不混入 EXIF。Interoperability 目錄以原始目錄保留，避免經 `ExifProfile.Values` 攤平時遺失；廠商 MakerNote 的私有相對位址不保證可搬移。
+5. **私有中繼資料**：不以原封不動的 metadata 封包備份為目的；移除舊縮圖與 Photoshop 來源圖層，更新方向、尺寸與色域。TIFF metadata 上限 16 MiB；影像布局／ICC／XMP 不混入 EXIF。Interoperability 重建為符合 sRGB 的 R98／0100，不沿用來源 R03 宣告或失效位址。JPEG EXIF 的 APP1 上限為 65,533 位元組，超限先移除 MakerNote；仍過大或來源 EXIF 解析失敗時，只保留新的方向、尺寸與 sRGB 宣告，並寫入 `MetadataWarning`。未移除的廠商 MakerNote，其私有相對位址仍不保證可搬移。
 6. **UI 規範定稿**：功能驗證不取代實際使用者對操作與外觀的驗收。
 
 ## 保留的原型決策

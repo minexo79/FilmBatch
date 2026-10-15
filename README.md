@@ -112,7 +112,8 @@ dotnet run build/Build.cs -- --rid win-x64 --smoke --zip
 - 16 個效果模組共用 CPU／GPU 管線；預覽與原尺寸 16-bit 匯出共用效果設定。超過 GPU 尺寸或記憶體限制時，明確標示改由 CPU 處理。
 - 內建 77 組 Recipe Lab 配方與格式 1 自訂配方匯入／匯出；未支援的相機 Picture Effect 會明確提示，不宣稱完整模擬 Sony 相機。來源與校正狀態見 [配方來源](docs/film-provenance.md)及[色彩校正](docs/film-calibration.md)。
 - 預設懸停顯示實際算圖；GPU、代理圖尺寸、紋理資料夾與記憶體偏好可立即套用。
-- GUI 的照片匯出面板可選範圍、格式、尺寸與命名；輸出保留 EXIF、正規化方向、嵌入 sRGB ICC，避免覆寫來源或既有輸出。
+- GUI 的照片匯出面板可選範圍、格式、尺寸與命名；輸出保留可用的 EXIF 拍攝中繼資料、正規化方向、嵌入 sRGB ICC，避免覆寫來源或既有輸出。
+- EXIF 解析失敗不會阻止可解碼照片的影像匯出；JPEG EXIF 超過 APP1 的 65,533 位元組上限時，先移除 MakerNote，仍超限才改用新的方向、尺寸與 sRGB 宣告。這些捨棄或縮減會記錄於 `.filmbatch/export_log.json` 的逐張 `MetadataWarning` 欄位，不代表完整保留原始 metadata 封包。
 
 ```bash
 dist/osx-arm64/cli/filmbatch-cli export "/path/to/photos" --out "/path/to/output" --format png
