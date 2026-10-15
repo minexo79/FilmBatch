@@ -1,6 +1,6 @@
 # FilmBatch 計畫書：批次底片效果處理工具
 
-> 版本：v0.10（規劃稿）
+> 版本：v0.11（規劃稿）
 > 日期：2026-10-15
 > 定位：獨立的批次類比效果工具。接收任何 RAW 編輯器（例如 RapidRAW）匯出的照片，為每張照片套上底片色彩與類比效果後批次輸出
 > 技術：C# / **.NET 10（LTS）** ＋ **Avalonia UI 12**（Fluent 深色主題、MVVM）＋ **WebGPU（wgpu-native）與 WGSL compute shader 影像引擎**，以 `dotnet publish` 發佈為 Windows / macOS / Linux 原生執行檔
@@ -19,6 +19,7 @@
 | v0.8 | M0 結果：C# WebGPU 綁定定案為 **WebGPUSharp（Dawn）**，取代 9.1 的 Silk.NET 首選（理由見 `docs/adr/0001-webgpu-binding.md`）；標題列與選單列合一（2.2.1）；M0 進度與發現見 `docs/M0-status.md` |
 | v0.9 | **底片色彩全部改為搬移 [Recipe Lab](https://github.com/voxivoid/recipe-lab-sony-pmca)（MIT）的 77 組配方**：移除自有的參數化底片模型、內建 10 款底片與 LUT / HaldCLUT 匯入；`film` 模組改為「配方 + Sony 成像模擬」，參數沿用 Recipe Lab 欄位；自訂配方與 Recipe Lab 的 `.YML` 格式相容；以 Recipe Lab 樣張校正。改寫第 7 章，並同步 1.3、4.2、5、6、8–16 章的相關段落 |
 | v0.10 | 新增**示波器**（直方圖、波形圖、RGB 分量圖）：UI 規格見 2.4.6，算圖時序見 11.3，排入 M3（1.5 週 → 2 週），並補上 1.4、12、14、16.2 的相關段落 |
+| v0.11 | **UI 改版同步（M0 回饋）**：視覺改為扁平、圓角、少框線的現代修圖介面（參考 Lightroom 跨平台版 / RapidRAW）；強調色由琥珀橘改為藍色，琥珀色只標示「被覆寫」；預設庫、照片資訊與模組、照片匯出合併為**右側邊欄**，以外緣的**分頁工具列**切換；匯出對話框改為側邊欄分頁；工具列併入標題列、檢視控制移到底部狀態列；參數列改為兩行式；模組啟用改為眼睛圖示；Dock 不再顯示工具標題列。改寫 2.1–2.5、2.8、2.11，並同步 11.5、13.1 |
 
 ### 目錄
 
@@ -117,8 +118,9 @@ flowchart LR
 | 原則 | 說明 |
 |---|---|
 | **中性灰** | 所有介面灰階的 R = G = B，不帶色偏，避免影響使用者對照片色彩的判斷 |
-| **照片優先** | 預覽區佔最大面積；面板可收合、可停靠、可隱藏（`Tab` 切換全部面板） |
-| **單一強調色** | 只用一個強調色（琥珀橘，帶有底片與暗房的溫暖意象，在中性灰上辨識度高）標示「選取」與「被覆寫」，其餘元件保持低調 |
+| **照片優先** | 預覽區佔最大面積；側邊欄與縮圖列可調整大小、可隱藏（`Tab` 切換全部面板）；工具集中在一個側邊欄，以分頁切換，不同時攤開多個面板 |
+| **扁平、少框線** | 以灰階的明度層次（畫布 ＜ 標題列 / 底列 ＜ 側邊欄 ＜ 輸入框 ＜ 按鈕）區分區塊，不用框線與標題條；圓角柔化控制項；次要動作用外框按鈕或純圖示按鈕，畫面保持安靜 |
+| **克制的強調色** | 只有一個介面強調色（藍色）標示「主要動作」「勾選 / 開啟」與「焦點」；「被覆寫」另以琥珀色小面積標記。選取中的縮圖以亮白外框標示，不用彩色，避免干擾對照片色彩的判斷 |
 | **所見即所算** | 模組面板由上到下依處理階段排列（色彩 → 光學 → 底片 → 表面），面板順序就是運算順序，讓使用者直覺理解效果如何疊加 |
 | **不打斷操作** | 算圖、縮圖產生、匯出都在背景執行，UI 執行緒永不阻塞；錯誤以狀態列或非阻斷提示呈現 |
 | **鍵盤友善** | 常用操作都有快捷鍵；macOS 上 `Ctrl` 自動對應 `⌘` |
@@ -135,10 +137,12 @@ flowchart LR
 - 自訂元件的樣式集中在 `Themes/Controls.axaml`（Avalonia `Styles`，以 class 選擇器套用，例如 `Border.module-header`、`TextBlock.overridden`），不散落在各 View。
 - 所有 XAML 使用**編譯繫結**，繫結錯誤在建置時即可發現，也為日後的 Native AOT / Trimming 鋪路。
 - 已知注意事項：
-  - Fluent 的控制項尺寸偏大（觸控友善），需在 `Controls.axaml` 統一調整 `Slider`、`NumericUpDown`、`ComboBox` 的高度與內距，以符合 28px 參數列高度。
+  - Fluent 的控制項尺寸偏大（觸控友善），需在 `Controls.axaml` 統一調整 `NumericUpDown`、`ComboBox`、`TextBox` 的高度（28px）與內距；圓角以 `ControlCornerRadius`（6px）與 `OverlayCornerRadius`（8px）資源統一設定。
+  - `Slider` 不使用 Fluent 樣板（其上下標題列與刻度列會擠壓圓鈕），改用精簡樣板：2px 中性灰軌道 ＋ 14px 空心圓鈕（深色填色、亮灰外框，滑過時放大 1.15 倍）；軌道不分已填 / 未填段，因為多數參數以中央為零。`ParamSlider` 的點擊換算需配合圓鈕半徑內縮 7px。
   - 「模組停用時內容淡化但仍可調整」不能用 `IsEnabled=false`（會無法操作），改以內容區 `Opacity` + 停用色樣式 class 實作。
-  - `NumericUpDown` 設 `ShowButtonSpinner="False"` 作為參數數值框。
-- 標題列：**標題列與選單列合一**（M0 定案）。主視窗以 `ExtendClientAreaToDecorationsHint` 把內容延伸進標題列，同一列依序為「圖示｜選單｜視窗標題（置中）｜系統按鈕」；空白處以 `WindowDecorationProperties.ElementRole="TitleBar"` 標為原生拖曳區（拖曳移動、雙擊最大化、Windows 貼齊版面皆由系統處理），系統按鈕仍由平台繪製，只隱藏平台繪製的標題文字。macOS 的紅綠燈在左側，圖示與選單需右移讓出位置（跨平台建置時驗證）。對話框維持原生標題列。
+  - `NumericUpDown` 設 `ShowButtonSpinner="False"` 作為參數數值框；參數列上的數值框平常透明、看起來像文字，滑過或編輯時才顯示輸入框底色。
+  - Dock.Avalonia 主題：**不顯示 IDE 式的工具標題列與文件分頁**（`ToolDock.GripMode = Hidden`，於 `DockFactory.InitLayout` 設定，還原舊版面時也套用；另以樣式隱藏 `DocumentTabStrip`），面板看起來像固定欄位。注意 Dock 主題在 `:pointerover` 時會重新顯示標題列，且其內部以 `StaticResource` 別名引用的色彩鍵（例如 `DockBorderSubtleBrush`）必須逐一覆寫才會生效。
+- 標題列：**標題列與選單列合一**（M0 定案）。主視窗以 `ExtendClientAreaToDecorationsHint` 把內容延伸進標題列（高 44px），同一列依序為「圖示｜選單｜視窗標題（置中）｜常用動作按鈕｜系統按鈕」；空白處以 `WindowDecorationProperties.ElementRole="TitleBar"` 標為原生拖曳區（拖曳移動、雙擊最大化、Windows 貼齊版面皆由系統處理），系統按鈕仍由平台繪製，只隱藏平台繪製的標題文字。macOS 的紅綠燈在左側，圖示與選單需右移讓出位置（跨平台建置時驗證）。對話框維持原生標題列。
 
 ```xml
 <!-- FilmBatch.App/Themes/Colors.axaml（節錄） -->
@@ -147,17 +151,22 @@ flowchart LR
   <ResourceDictionary.ThemeDictionaries>
     <ResourceDictionary x:Key="Dark">
       <!-- 覆寫 Fluent 系統資源 -->
-      <Color x:Key="SystemAccentColor">#D98E2B</Color>
-      <Color x:Key="SystemAccentColorLight1">#E6A44A</Color>
-      <Color x:Key="SystemRegionColor">#2D2D2D</Color>
+      <Color x:Key="SystemAccentColor">#3D8EF0</Color>
+      <Color x:Key="SystemAccentColorLight1">#5AA0F3</Color>
+      <Color x:Key="SystemRegionColor">#232323</Color>
       <!-- 本專案色彩 token -->
-      <SolidColorBrush x:Key="FB.WindowBrush"     Color="#2D2D2D"/>
-      <SolidColorBrush x:Key="FB.BaseBrush"       Color="#1E1E1E"/>
-      <SolidColorBrush x:Key="FB.ButtonBrush"     Color="#353535"/>
-      <SolidColorBrush x:Key="FB.TextBrush"       Color="#DCDCDC"/>
-      <SolidColorBrush x:Key="FB.AccentBrush"     Color="#D98E2B"/>
-      <SolidColorBrush x:Key="FB.OverrideBrush"   Color="#D98E2B"/>
+      <SolidColorBrush x:Key="FB.CanvasBrush"     Color="#161616"/>
+      <SolidColorBrush x:Key="FB.WindowBrush"     Color="#1C1C1C"/>
+      <SolidColorBrush x:Key="FB.PanelBrush"      Color="#232323"/>
+      <SolidColorBrush x:Key="FB.BaseBrush"       Color="#2C2C2C"/>
+      <SolidColorBrush x:Key="FB.ButtonBrush"     Color="#333333"/>
+      <SolidColorBrush x:Key="FB.TextBrush"       Color="#E6E6E6"/>
+      <SolidColorBrush x:Key="FB.AccentBrush"     Color="#3D8EF0"/>
+      <SolidColorBrush x:Key="FB.OverrideBrush"   Color="#E8A43C"/>
       <SolidColorBrush x:Key="FB.PresetUpdatedBrush" Color="#5AA9E6"/>
+      <!-- Dock：面板底色與分隔線（含 Dock 內部的別名鍵） -->
+      <SolidColorBrush x:Key="DockSurfacePanelBrush" Color="#232323"/>
+      <SolidColorBrush x:Key="DockBorderSubtleBrush" Color="#161616"/>
       <!-- … 其餘見 Colors.axaml -->
     </ResourceDictionary>
   </ResourceDictionary.ThemeDictionaries>
@@ -166,34 +175,46 @@ flowchart LR
 
 #### 2.2.2 配色規格
 
+介面灰階依明度分層，由暗到亮：**畫布 → 標題列 / 底列 / 縮圖列 → 側邊欄 → 輸入框 → 按鈕**。區塊之間靠明度差區分，面板之間的間隙露出畫布色，不另畫框線。
+
 | 色彩 token（資源鍵） | 色碼 | 用途 |
 |---|---|---|
-| `FB.WindowBrush` | `#2D2D2D` | 視窗與面板背景 |
-| `FB.TextBrush` | `#DCDCDC` | 一般文字、按鈕文字、輸入框文字 |
-| `FB.BaseBrush` | `#1E1E1E` | 輸入框、清單、縮圖列背景 |
-| `FB.AlternateBaseBrush` | `#262626` | 清單交錯列、狀態列 |
-| `FB.ButtonBrush` | `#353535` | 按鈕、模組標題列 |
-| `FB.PlaceholderBrush` | `#7A7A7A` | 提示文字 |
-| `FB.ToolTipBackgroundBrush` / `FB.ToolTipTextBrush` | `#3A3A3A` / `#EAEAEA` | 工具提示 |
-| `FB.BorderLightBrush` / `FB.BorderBrush` | `#4A4A4A` / `#3E3E3E` | 邊框亮部、一般邊框 |
-| `FB.ShadowBrush` | `#1A1A1A` / `#0F0F0F` | 分隔線、陰影 |
-| `FB.AccentBrush`（`SystemAccentColor`） | `#D98E2B` | **強調色**：選取、目前項目、滑桿已填充段 |
-| `FB.AccentTextBrush` | `#111111` | 強調色上的文字 |
+| `FB.CanvasBrush` | `#161616` | 預覽畫布、Dock 面板之間的間隙 |
+| `FB.WindowBrush` | `#1C1C1C` | 視窗、標題列、底部狀態列、縮圖列、側邊欄的分頁工具列、對話框背景 |
+| `FB.PanelBrush` | `#232323` | 側邊欄各分頁的背景 |
+| `FB.BaseBrush` | `#2C2C2C` | 輸入框、下拉選單、工具按鈕群組的底座、摘要卡片、釘選鍵標記 |
+| `FB.AlternateBaseBrush` | `#262626` | 保留（清單交錯列） |
+| `FB.ButtonBrush` / `FB.ButtonHoverBrush` | `#333333` / `#3D3D3D` | 一般按鈕、選取中的清單項目、作用中的分頁、開啟中的切換按鈕 |
+| `FB.HoverOverlayBrush` | 白色 8% 不透明（`#14FFFFFF`） | 滑鼠停留的底色（圖示按鈕、模組標題、清單項目）；疊在任何灰階上都維持中性 |
+| `FB.TextBrush` | `#E6E6E6` | 一般文字、數值、模組名稱、被覆寫的參數名稱 |
+| `FB.SecondaryTextBrush` | `#A0A0A0` | 參數名稱、選單列、底部狀態列文字 |
+| `FB.PlaceholderBrush` | `#7C7C7C` | 提示文字、分組標題、表單欄位標籤、未選取的分頁圖示 |
+| `FB.ToolTipBackgroundBrush` / `FB.ToolTipTextBrush` | `#333333` / `#F0F0F0` | 工具提示、ToastBar |
+| `FB.BorderLightBrush` / `FB.BorderBrush` | `#4A4A4A` / `#2E2E2E` | 外框按鈕、滑過時的縮圖外框 / 輸入框邊框 |
+| `FB.DividerBrush` | `#2C2C2C` | 模組之間、面板標題下方的細分隔線 |
+| `FB.ShadowBrush` / `FB.ShadowDarkBrush` | `#141414` / `#0E0E0E` | 陰影 |
+| `FB.ThumbnailBackBrush` | `#121212` | 縮圖的留白底色 |
+| `FB.SliderTrackBrush` | `#4A4A4A` | 滑桿軌道 |
+| `FB.SliderThumbFillBrush` / `FB.SliderThumbStrokeBrush` | `#232323` / `#E6E6E6` | 滑桿空心圓鈕 |
+| `FB.SelectionRingBrush` | `#F2F2F2` | 選取中縮圖的 2px 外框 |
+| `FB.AccentBrush`（`SystemAccentColor`） | `#3D8EF0` | **強調色**：主要動作按鈕、勾選框與開關的開啟狀態、輸入焦點框、開啟中工具按鈕的圖示、拖曳分隔線與停靠指示 |
+| `FB.AccentHoverBrush` | `#5AA0F3` | 強調色按鈕滑過 |
+| `FB.AccentTextBrush` | `#FFFFFF` | 強調色上的文字 |
 | `FB.WarningTextBrush` | `#FF6B6B` | 警示文字 |
-| `FB.LinkBrush` | `#E6A44A` | 連結 |
-| `FB.DisabledTextBrush` | `#6E6E6E` | 停用狀態文字 |
-| `FB.DisabledAccentBrush` | `#505050` | 停用狀態選取 |
+| `FB.LinkBrush` | `#6AAAF5` | 連結（例如 ToastBar 的「復原」） |
+| `FB.DisabledTextBrush` | `#666666` | 停用狀態文字、停用模組的名稱與眼睛圖示 |
+| `FB.DisabledAccentBrush` | `#4A4A4A` | 停用狀態選取 |
 
 語意色（只用於小面積標記，不作為大面積背景）：
 
 | 用途 | 色碼 |
 |---|---|
-| 參數被覆寫的標記點 ● | `#D98E2B`（同強調色） |
+| 參數被覆寫的標記點 ●、模組的覆寫數（`FB.OverrideBrush`） | `#E8A43C`（琥珀色） |
 | 預設已更新 ⟳ | `#5AA9E6` |
 | 錯誤 | `#E05555` |
 | 成功 | `#6BBF59` |
 
-預覽畫布背景**不屬於主題資源**，由偏好設定切換：深灰 `#1A1A1A`（預設）、中灰 `#808080`（判斷亮度用）、純黑 `#000000`。
+預覽畫布背景**不屬於主題資源**，由偏好設定切換：深灰 `#161616`（預設，與畫布色相同）、中灰 `#808080`（判斷亮度用）、純黑 `#000000`。
 
 #### 2.2.3 字型與尺寸
 
@@ -201,8 +222,11 @@ flowchart LR
 |---|---|
 | 字型 | 以 `FontManagerOptions` 設定預設字型與後備字型：Windows「Microsoft JhengHei UI」、macOS「PingFang TC」、Linux「Noto Sans CJK TC」 |
 | 基本字級 | 13px（約 10pt；數值欄位使用等寬數字 `FontFeatures="tnum"`） |
-| 間距 | 以 4px 為基本單位（4 / 8 / 12 / 16） |
-| 參數列高度 | 28px |
+| 字級層次 | 面板標題 16px SemiBold；模組名稱 14px SemiBold；分組標題與表單欄位標籤 11px SemiBold、字距 0.6；次要資訊與底部狀態列 11px |
+| 間距 | 以 4px 為基本單位（4 / 8 / 12 / 16）；側邊欄內容左右留白 16px |
+| 圓角 | 控制項 6px；工具按鈕群組、選單、摘要卡片 8px；主要動作按鈕與 ToastBar 為膠囊形（16–18px） |
+| 參數列高度 | 滑桿參數列 46px（兩行：名稱與數值 / 滑桿）；下拉與開關參數列 38px；控制項高度 28px |
+| 固定區塊尺寸 | 標題列 44px；底部狀態列 40px；模組標題列 40px；分頁工具列寬 48px（按鈕 36 × 36px） |
 | 視窗最小尺寸 | 1280 × 800 |
 | HiDPI | Avalonia 以 DIP 排版；預覽影像依 `TopLevel.RenderScaling` 決定 GPU 輸出的像素尺寸，避免模糊 |
 
@@ -212,52 +236,76 @@ flowchart LR
 flowchart TB
     subgraph MW["主視窗 MainWindow（最小 1280×800）"]
         direction TB
-        TB["標題列＋選單列（合一）<br/>圖示｜檔案 編輯 檢視 預設｜視窗標題｜系統按鈕<br/>工具按鈕列<br/>開啟資料夾｜復原｜重做｜複製｜貼上｜選擇性貼上｜原圖對比｜縮放｜匯出"]
-        subgraph MID["DockControl（Dock.Avalonia）"]
+        TB["標題列＋選單列（合一，高 44px）<br/>圖示｜檔案 編輯 檢視 預設｜視窗標題｜常用動作：復原 重做｜複製 貼上 選擇性貼上｜開啟資料夾｜偏好設定｜系統按鈕"]
+        subgraph MID["DockControl（Dock.Avalonia，不顯示工具標題列與文件分頁）"]
             direction LR
-            L["左 ToolDock<br/>預設庫<br/>寬 220px，可收合"]
             C["中央 DocumentDock<br/>預覽畫布 + 控制點<br/>佔剩餘空間"]
-            R["右 ToolDock<br/>示波器（頂端，可折疊）<br/>照片資訊 + 模組面板<br/>寬 ≥ 320px"]
+            subgraph R["右 ToolDock：側邊欄（寬約 27%，≥ 340px）"]
+                direction LR
+                RC["分頁內容<br/>示波器（頂端，三個分頁共用，可折疊）<br/>預設庫｜照片資訊與模組｜照片匯出"]
+                RT["分頁工具列<br/>（外緣直列圖示，寬 48px）"]
+            end
         end
-        F["下 ToolDock<br/>縮圖列 Filmstrip，高 120px"]
-        S["狀態列<br/>算圖狀態｜GPU 介面卡｜縮放比例｜選取數量｜背景工作進度"]
+        F["下 ToolDock<br/>縮圖列 Filmstrip（高約 20%）"]
+        S["底部狀態列（高 40px）<br/>左：算圖時間｜GPU 介面卡<br/>中：原圖對比 / 分割｜符合視窗｜100%｜縮放比例<br/>右：選取數量｜背景工作進度"]
         TB ~~~ MID ~~~ F ~~~ S
     end
 ```
 
-- 停靠系統使用 **Dock.Avalonia**（MIT，版本需與 Avalonia 12 對應）：三個工具面板都可拖曳到其他邊、浮動、釘選為自動隱藏或關閉。
-- 版面以 Dock 的序列化功能存成 `layout.json`，視窗位置與大小存入 `settings.json`（見 9.2），下次開啟還原。
+- 停靠系統使用 **Dock.Avalonia**（MIT，版本需與 Avalonia 12 對應），但**不顯示 IDE 式的工具標題列與文件分頁**：面板看起來像固定欄位，不能拖曳到其他邊或浮動；面板之間的分隔線可拖曳調整大小（滑過時以強調色提示）。
+- 工具集中在**一個右側邊欄**，以外緣的分頁工具列切換（見 2.4.2），不同時攤開多個工具面板，讓預覽區保持最大。
+- 版面以 Dock 的序列化功能存成 `layout.json`，視窗位置與大小存入 `settings.json`（見 9.2），下次開啟還原。版面檔的面板組成與目前版本不符時（例如 v0.10 以前「左側預設庫＋右側模組」的版面），改用內建預設版面並寫入 log。
 - 「檢視」選單提供「重設版面」（載入內建預設版面）。
 - `Tab` 隱藏或顯示所有面板，`F` 切換全螢幕預覽（`WindowState.FullScreen`）。
-- 狀態列顯示目前使用的 GPU 介面卡與後端（例如「Apple M2 · Metal」），使用軟體介面卡時以警示色提示。
+- 底部狀態列顯示目前使用的 GPU 介面卡與後端（例如「Apple M2 · Metal」），使用軟體介面卡時以警示色與 ⚠ 圖示提示。中央的檢視控制放在圓角群組底座上，與標題列的工具按鈕群組外觀一致。
 
 ### 2.4 區域規格
 
-#### 2.4.1 工具列
+#### 2.4.1 常用動作與檢視控制
 
-| 按鈕 | 快捷鍵 | 說明 |
-|---|---|---|
-| 開啟資料夾 | `Ctrl/⌘+O` | 以 `StorageProvider.OpenFolderPickerAsync` 選擇照片資料夾，自動載入或建立專案 |
-| 復原 / 重做 | `Ctrl/⌘+Z` / `Ctrl/⌘+Shift+Z` | 專案層級的復原堆疊 |
-| 複製設定 | `Ctrl/⌘+C` | 複製目前照片的設定 |
-| 貼上 | `Ctrl/⌘+V` | 完整貼上到選取照片 |
-| 選擇性貼上 | `Ctrl/⌘+Shift+V` | 開啟選擇性貼上對話框 |
-| 原圖對比 | 按住 `空白鍵`；`Y` 切換左右分割 | 檢視原圖 |
-| 縮放 | `Ctrl/⌘+0` 符合視窗、`Ctrl/⌘+1` 100% | |
-| 匯出 | `Ctrl/⌘+E` | 開啟匯出對話框 |
+沒有獨立的工具列：編輯類動作放在標題列右側，檢視類控制放在底部狀態列中央，兩者都以圓角群組底座（`FB.BaseBrush`）把相關按鈕放在一起。
+
+| 位置 | 按鈕 | 快捷鍵 | 說明 |
+|---|---|---|---|
+| 標題列 | 復原 / 重做 | `Ctrl/⌘+Z` / `Ctrl/⌘+Shift+Z`（Windows 另可 `Ctrl+Y`） | 專案層級的復原堆疊 |
+| 標題列 | 複製設定 | `Ctrl/⌘+C` | 複製目前照片的設定 |
+| 標題列 | 貼上 | `Ctrl/⌘+V` | 完整貼上到選取照片 |
+| 標題列 | 選擇性貼上 | `Ctrl/⌘+Shift+V` | 開啟選擇性貼上對話框 |
+| 標題列 | 開啟資料夾 | `Ctrl/⌘+O` | 以 `StorageProvider.OpenFolderPickerAsync` 選擇照片資料夾，自動載入或建立專案 |
+| 標題列 | 偏好設定（齒輪圖示） | — | 開啟偏好設定對話框 |
+| 底部狀態列 | 原圖對比 / 左右分割 | 按住 `空白鍵`；`Y` 切換左右分割 | 檢視原圖；分割開啟時按鈕圖示以強調色顯示 |
+| 底部狀態列 | 符合視窗 / 100% | `Ctrl/⌘+0` / `Ctrl/⌘+1` | 旁邊顯示目前縮放比例 |
+| 側邊欄 | 照片匯出 | `Ctrl/⌘+E`（或「檔案 → 匯出…」） | 切換到側邊欄的「照片匯出」分頁（見 2.4.7）；面板隱藏或全螢幕時先恢復面板 |
 
 - 快捷鍵以 `KeyBinding` + `KeyGesture` 定義，修飾鍵使用平台熱鍵設定（`PlatformHotkeyConfiguration`），在 macOS 自動對應 `⌘`。macOS 另提供原生選單列（`NativeMenu`）。
-- 圖示使用單色線條圖示（SVG 轉 `StreamGeometry` / `PathIcon`），顏色跟隨 `FB.TextBrush`，停用時跟隨 `FB.DisabledTextBrush`。
+- 圖示使用單色線條圖示（SVG 轉 `StreamGeometry` / `PathIcon`），顏色跟隨 `FB.TextBrush`，停用時跟隨 `FB.DisabledTextBrush`。工具按鈕為透明背景、6px 圓角，滑過時顯示 `FB.HoverOverlayBrush`。
+- 標題列不放「匯出」按鈕：匯出是側邊欄的一個分頁，避免同一個功能有兩個入口外觀。
 
-#### 2.4.2 預設庫（左面板）
+#### 2.4.2 右側邊欄與預設庫分頁
 
-- 以 `TreeView` 呈現：分類 → 預設。每個預設顯示**色彩標籤**、名稱，以及滑鼠停留時的效果縮圖（`ToolTip` 內放縮圖）。
+**側邊欄**（`SidebarView` / `SidebarViewModel`）是右 ToolDock 中唯一的面板，由「分頁內容」與外緣的「分頁工具列」組成（Lightroom 式）：
+
+| 分頁 | 圖示 | 內容 |
+|---|---|---|
+| 預設庫 | 疊放的相片 | 見下方 |
+| 照片資訊與模組（預設分頁） | 滑桿 | 見 2.4.5 |
+| 照片匯出 | 下載箭頭 | 見 2.4.7 |
+
+- 分頁工具列在側邊欄的**外緣**（視窗右側），寬 48px、背景 `FB.WindowBrush`；按鈕為 36 × 36px、8px 圓角的圖示按鈕，以 `RadioButton`（同一 `GroupName`）實作互斥選取。作用中的分頁底色為 `FB.ButtonBrush`、圖示為 `FB.TextBrush`，其餘圖示為 `FB.PlaceholderBrush`；滑鼠停留時於左側顯示分頁名稱的工具提示。
+- 三個分頁的 View 與 ViewModel 常駐，切換時只改變顯示中的分頁（`IsVisible`），保留各自的捲動位置與輸入內容。
+- 示波器（見 2.4.6）位於分頁內容的頂端，三個分頁共用。
+- 切換到「照片匯出」分頁時，重新整理匯出範圍的張數、預設清單與預設目的地。
+
+**預設庫分頁**（`PresetLibraryView`）
+
+- 頂端為面板標題「預設庫」（16px SemiBold），右側「＋」圖示按鈕：以目前照片建立預設。
+- 以 `TreeView` 呈現：分類（SemiBold）→ 預設。每個預設顯示**圓形色彩標籤**、名稱，釘選的預設在右側顯示數字鍵小標記；滑鼠停留 500ms 顯示效果縮圖（`ToolTip` 內放縮圖；M0 原型先顯示參數摘要文字，縮圖於 M3 接上引擎後加入）。選取中的項目以 6px 圓角的 `FB.ButtonBrush` 底色標示。
 - 操作：
   - 拖曳預設到縮圖列或預覽區，指定給該照片（或所有選取照片）。拖放使用 Avalonia `DragDrop`，資料格式為自訂的 `filmbatch/preset-id`。
   - 雙擊：指定給目前選取的照片。
-  - 右鍵選單（`ContextMenu`）：套用到選取照片、重新命名、更改色彩標籤、複製、刪除、在檔案總管中顯示（`ILauncher` 開啟所在資料夾）。
-- 底部按鈕：「＋ 以目前照片建立預設」、「管理…」。
-- 前 9 個「釘選」預設可用數字鍵 `1`–`9` 快速套用。
+  - 右鍵選單（`ContextMenu`）：套用到選取照片、重新命名、更改色彩標籤、釘選、複製、刪除、在檔案總管中顯示（`ILauncher` 開啟所在資料夾）。
+- 底部：外框按鈕「管理…」（開啟預設管理對話框）。
+- 前 9 個「釘選」預設可用數字鍵 `1`–`9` 快速套用（不論目前在哪個分頁）。
 
 #### 2.4.3 預覽畫布（中央）
 
@@ -287,28 +335,31 @@ flowchart TB
 
 | 位置 | 標記 | 意義 |
 |---|---|---|
-| 左下 | 色彩標籤 + 預設名稱縮寫 | 這張照片使用的預設 |
-| 右上 | ● 強調色 | 有單張覆寫 |
+| 左下 | 膠囊形半透明底 ＋ 圓形色彩標籤 ＋ 預設名稱縮寫 | 這張照片使用的預設 |
+| 右上 | ● 琥珀色（`FB.OverrideBrush`） | 有單張覆寫 |
 | 右上 | ⟳ 藍色 | 所用預設已在預設庫中更新，可同步 |
-| 外框 | 強調色 2px | 選取中 |
+| 外框 | 亮白 2px（`FB.SelectionRingBrush`） | 選取中 |
 | 縮圖本身 | — | 套用效果後的結果（背景以 GPU 批次更新） |
 
+- 縮圖為 6px 圓角，留白處為 `FB.ThumbnailBackBrush`；未選取的縮圖略為淡化（不透明度 0.82），滑鼠停留時恢復並顯示 `FB.BorderLightBrush` 外框，選取中的縮圖完全不透明。
 - 自行處理 `Ctrl/⌘` 與 `Shift` 多選、`Ctrl/⌘+A` 全選，行為與檔案總管一致。
-- 上方篩選列：依預設篩選、只顯示有覆寫的照片、只顯示未指定預設的照片（以篩選集合實作，避免整份清單重建）。
+- 上方篩選列（無框線的扁平下拉選單）：依預設篩選、只顯示有覆寫的照片、只顯示未指定預設的照片，右側顯示張數（以篩選集合實作，避免整份清單重建）。
 
-#### 2.4.5 照片資訊與模組面板（右面板）
+#### 2.4.5 照片資訊與模組（側邊欄分頁）
 
 ```mermaid
 flowchart TB
-    RP["右 ToolDock"] --> INFO["照片資訊區（固定在頂部）"]
-    INFO --> I1["檔名、尺寸"]
-    INFO --> I2["指定預設：ComboBox"]
-    INFO --> I3["已覆寫 N 項｜重設此張｜以此張建立預設｜更新回預設"]
+    RP["側邊欄分頁：照片資訊與模組"] --> INFO["照片資訊區（固定在頂部）"]
+    INFO --> I1["檔名（面板標題字級）、尺寸"]
+    INFO --> I2["預設：扁平 ComboBox"]
+    INFO --> I3["外框按鈕：重設此張｜以此張建立預設｜更新回預設"]
+    INFO --> I4["● 已覆寫 N 項（有覆寫時才顯示，琥珀色）"]
     RP --> SC["模組捲動區 ScrollViewer"]
-    SC --> GH["分組標題 × 5<br/>基本｜幾何｜光學｜底片｜表面"]
-    GH --> MS["ModuleSection × 16<br/>（依下方順序排列）"]
-    MS --> H["標題列<br/>▸ 折疊｜☑ 啟用｜名稱｜● 覆寫數｜⋯ 選單"]
+    SC --> GH["分組標題 × 5（小字、可整組折疊）<br/>基本｜幾何｜光學｜底片｜表面"]
+    GH --> MS["ModuleSection × 16<br/>（依下方順序排列，以細線分隔）"]
+    MS --> H["標題列（高 40px）<br/>名稱｜● 覆寫數｜👁 啟用｜⋯ 選單｜⌄ 折疊"]
     MS --> ROWS["ParamRow × N<br/>由 schema 經 DataTemplate 產生"]
+    RP --> FT["底部固定：☐ 隱藏未啟用模組"]
 ```
 
 模組面板依**處理階段**分組，由上到下的順序與第 5 章的運算順序一致：
@@ -331,7 +382,7 @@ flowchart TB
 
 ```mermaid
 flowchart TB
-    SP["右面板頂端：ScopeView<br/>高 120px，可折疊"] --> HD["標題列<br/>模式切換：直方圖｜波形｜分量｜▾ 折疊"]
+    SP["側邊欄頂端：ScopeView<br/>高 120px，可折疊"] --> HD["標題列<br/>模式切換：直方圖｜波形｜分量｜▾ 折疊"]
     SP --> CV["示波器畫面<br/>依模式繪製，含刻度線"]
     SP --> CL["裁切警示<br/>直方圖左右兩端 ▲（暗部 / 亮部）"]
     PV["預覽算圖完成（generation = n）"] --> ST["GPU 統計 pass"] --> RB["讀回統計結果（數 KB）"] --> SP
@@ -343,7 +394,7 @@ flowchart TB
 | **波形圖** | 橫軸對應影像的水平位置，縱軸為亮度（0–100%），以點的密度表示該位置的像素數量 | 看出畫面中「哪一區」過亮或過暗，例如天空、暗角、漏光的範圍 |
 | **RGB 分量圖** | 波形圖的 R、G、B 三通道並排（parade） | 判斷色偏、白平衡與配方的通道曲線差異 |
 
-- **位置**：右面板頂端，固定在照片資訊與模組捲動區之上，不隨捲動移動；可折疊為只剩標題列。模式與折疊狀態存入 `settings.json`。
+- **位置**：右側邊欄分頁內容的頂端，三個分頁（預設庫、照片資訊與模組、照片匯出）共用，切換分頁時保持顯示，不隨捲動移動；可折疊為只剩標題列。模式與折疊狀態存入 `settings.json`。
 - **資料來源**：預覽算圖的最終結果（顯示空間的 sRGB 編碼值，也就是畫面上看到的影像），不是線性光中間值。按住空白鍵看原圖時，示波器同步改為顯示原圖的分布；左右分割對比時顯示調整後的結果。
 - **多選**：以焦點照片計算（與預覽畫布相同）。
 - **裁切警示**：任一通道值為 0 或 255 的像素超過總數 0.1% 時，直方圖對應端的 ▲ 亮起（暗部、亮部分開）；滑鼠停留顯示裁切比例。點擊 ▲ 可在預覽畫布上暫時以色塊標出裁切區域（暗部藍、亮部紅），再點一次取消。
@@ -352,20 +403,43 @@ flowchart TB
 - **更新頻率**：隨預覽每一幀更新，不另外排程；拖曳中預覽降為 800px 時，示波器也以 800px 結果計算。示波器折疊或面板隱藏（`Tab`、全螢幕）時不執行統計 pass。
 - **實作**：自訂控制項 `ScopeView`（不使用 `Image` 控制項），以 `WriteableBitmap` 繪製統計結果；繪製本身在 UI 執行緒只做「把統計值畫成點」，不碰影像像素。
 
+#### 2.4.7 照片匯出（側邊欄分頁）
+
+匯出設定放在側邊欄的分頁中（`ExportPanelView`，ViewModel 為 `ExportViewModel`），而不是對話框：設定時仍看得到預覽與縮圖列，也可以一邊調整選取範圍一邊看張數變化。
+
+```mermaid
+flowchart TB
+    EP["側邊欄分頁：照片匯出"] --> T["面板標題「照片匯出」"]
+    EP --> SC["欄位捲動區（標籤在上、控制項在下）"]
+    SC --> F1["範圍：選取的照片 / 全部 / 依預設（＋預設下拉）"]
+    SC --> F2["格式：JPEG / 16-bit TIFF / 16-bit PNG（JPEG 時顯示品質）"]
+    SC --> F3["尺寸：原尺寸 / 指定長邊（＋像素）"]
+    SC --> F4["目的地、檔名範本"]
+    SC --> F5["中繼資料說明：保留 EXIF、嵌入 sRGB ICC"]
+    EP --> FT["底部固定：摘要卡「將匯出 N 張到 …」＋ 膠囊形「匯出」主要按鈕"]
+```
+
+- 欄位與選項見第 10 章；側邊欄寬度有限，因此每個欄位採「標籤在上、控制項在下」的直向排列，下拉選單撐滿寬度。
+- 摘要卡即時顯示「將匯出 N 張到 …」；切換到本分頁、選取改變或預設庫改變時重新計算。目的地未填時預設為 `<資料夾>/export/`；多選時範圍自動改為「選取的照片」（使用者自行選過的範圍不覆蓋）。
+- 按下「匯出」後工作排入背景佇列（見 10、11.5），進度顯示在底部狀態列右側；分頁本身不鎖住，可立即調整設定準備下一批。
+- 可儲存為匯出預設（M7）。
+
 ### 2.5 自訂元件規格
 
 | 元件 | Avalonia 實作 | 行為規格 |
 |---|---|---|
-| **ParamRow** | `UserControl`：覆寫點 ● ＋ 名稱 ＋ `ParamSlider` ＋ `NumericUpDown` | 被覆寫時名稱粗體、顯示 ●（`Classes.overridden` 繫結）；雙擊名稱重設回預設值；數值框可直接輸入；滑桿與數值框同步 |
+| **ParamRow** | `UserControl`，兩行式（高 46px）：上行「名稱 ● ｜ 數值框（靠右）」，下行整寬 `ParamSlider` | 參數名稱平常為次要文字色；被覆寫時名稱改為主文字色並加粗、名稱後顯示琥珀色 ●（`Classes.overridden` 繫結）；雙擊名稱重設回預設值；數值框平常看起來像文字，滑過顯示底色、編輯時顯示強調色焦點框，可直接輸入；滑桿與數值框同步 |
 | **滑桿滾輪行為** | `ParamSlider : Slider` | **只有在滑桿取得焦點時才處理 `PointerWheelChanged`**，否則不標記 `Handled`，讓事件冒泡給 `ScrollViewer`，避免捲動面板時誤改參數 |
 | **滑桿拖曳** | `ParamSlider` | 拖曳中持續送出預覽請求；放開時合併為一筆復原紀錄；按住 `Shift` 微調（步進 ÷ 10） |
-| **ChoiceRow** | 名稱 ＋ `ComboBox` | 用於底片配方（依品牌分組的下拉選單，含「自訂」分組）、創意風格、照片效果、光圈形狀、版面配置等 |
-| **ModuleSection** | `HeaderedContentControl`（自訂 `ControlTemplate`）：標題列 ＋ 內容區 | 點標題折疊或展開；啟用勾選框關閉時，內容區變為停用色但仍可預先調整；`⋯` 選單提供「重設此模組」「只複製此模組」 |
-| **PresetItem** | `TreeViewItem` 的 `DataTemplate`：色彩標籤 ＋ 名稱 | 可拖曳；停留 500ms（`ToolTip.ShowDelay`）顯示效果縮圖 |
+| **ChoiceRow** | 單行（高 38px）：名稱 ● ＋ 靠右的扁平 `ComboBox`（寬 ≥ 150px） | 用於底片配方（依品牌分組的下拉選單，含「自訂」分組）、創意風格、照片效果、光圈形狀、版面配置等 |
+| **ToggleRow** | 單行（高 38px）：名稱 ● ＋ 靠右的小型 `ToggleSwitch`（不顯示文字） | 用於開關類參數（例如自動裁切） |
+| **ModuleSection** | `HeaderedContentControl`（自訂 `ControlTemplate`）：標題列（高 40px，無底色）＋ 內容區，區塊之間以 `FB.DividerBrush` 細線分隔 | 標題列由左到右：名稱（14px SemiBold）｜● 覆寫數｜👁 啟用｜`⋯` 選單｜⌄ 折疊箭頭；點名稱或箭頭折疊 / 展開，滑過時標題列顯示 `FB.HoverOverlayBrush`；**眼睛圖示**切換模組啟用（關閉時為劃線的眼睛、名稱改為停用色），內容區淡化但仍可預先調整；`⋯` 選單提供「重設此模組」「只複製此模組」 |
+| **SidebarTabRail** | 側邊欄外緣的 `RadioButton`（`Classes="rail"`，自訂 `ControlTemplate`）直列 | 見 2.4.2；作用中的分頁以底色與亮圖示標示 |
+| **PresetItem** | `TreeViewItem` 的 `DataTemplate`：圓形色彩標籤 ＋ 名稱 ＋ 釘選鍵標記 | 可拖曳；停留 500ms（`ToolTip.ShowDelay`）顯示效果縮圖 |
 | **ThumbnailView** | `ListBoxItem` 的 `DataTemplate`：縮圖 ＋ 標記 | 見 2.4.4 |
 | **ControlPoint** | `PreviewCanvas` 內繪製的圓形把手 | 見 2.4.3 |
 | **ScopeView** | 自訂 `Control`，以 `WriteableBitmap` 繪製 GPU 讀回的統計結果 | 直方圖 / 波形 / 分量三種模式、裁切警示 ▲；見 2.4.6 |
-| **ToastBar** | 狀態列上方的非阻斷提示（覆蓋層 `Panel`） | 3 秒後自動消失（`DispatcherTimer`），可附「復原」按鈕（例如「已貼上到 12 張照片｜復原」） |
+| **ToastBar** | 底部狀態列上方置中的膠囊形非阻斷提示（覆蓋層 `Panel`，帶柔和陰影） | 3 秒後自動消失（`DispatcherTimer`），可附「復原」按鈕（例如「已貼上到 12 張照片｜復原」） |
 
 ### 2.6 互動狀態
 
@@ -437,12 +511,11 @@ flowchart TD
 
 ### 2.8 對話框
 
-所有對話框皆為 `Window` + `ShowDialog<TResult>(owner)`，以 ViewModel 回傳結果；確認類詢問以自訂的小型對話框實作。
+所有對話框皆為 `Window` + `ShowDialog<TResult>(owner)`，以 ViewModel 回傳結果，使用原生標題列與 `FB.WindowBrush` 背景；確認類詢問以自訂的小型對話框實作。**匯出不是對話框**，而是側邊欄的「照片匯出」分頁（見 2.4.7）。
 
 | 對話框 | 內容 | 規格 |
 |---|---|---|
 | **選擇性貼上** | 16 個模組的勾選清單（分組：色彩類 / 光學類 / 表面類）、「包含隨機種子」、「貼上時鏡像位置」 | 提供「全選」「全不選」「只選色彩類」快捷按鈕；記住上次的勾選 |
-| **匯出** | 範圍、格式、品質、尺寸、目的地、檔名範本 | 下方即時顯示「將匯出 N 張到 …」；可儲存為匯出預設 |
 | **預設管理** | 預設清單、分類、色彩標籤、匯入 / 匯出 YAML | 刪除預設時顯示「有 N 張照片使用中，將改用專案內快照」 |
 | **偏好設定** | 預覽背景色、預覽代理圖尺寸、GPU 介面卡選擇（多顯卡時）與後端偏好、GPU 記憶體上限、材質庫與自訂配方資料夾、預設參考色溫、語言 | 修改後立即生效（切換介面卡需重新建立 GPU 裝置） |
 | **同步預設** | 列出所用預設已更新的照片，可逐張或全部同步 | 見 4.4 |
@@ -467,8 +540,8 @@ flowchart TD
 |---|---|---|
 | 1 | `Themes/Colors.axaml` + `Themes/Controls.axaml` | Fluent 深色主題 + 自訂資源，依 2.2 的規格實作 |
 | 2 | **元件展示視窗**（Widget Gallery） | 列出所有自訂元件的各種狀態：一般、滑鼠停留、按下、停用、被覆寫、多選，用來檢查主題一致性；以 `--gallery` 參數啟動 |
-| 3 | **可操作原型** | 主視窗、停靠面板、縮圖列、預設庫、模組面板皆可操作；使用範例照片與「假算圖器」，用來驗證互動與流暢度 |
-| 4 | 對話框原型 | 選擇性貼上、匯出、預設管理、偏好設定（尚無實際功能） |
+| 3 | **可操作原型** | 主視窗、側邊欄（預設庫、照片資訊與模組、照片匯出三個分頁）、縮圖列皆可操作；使用範例照片與「假算圖器」，用來驗證互動與流暢度 |
+| 4 | 對話框與匯出分頁原型 | 選擇性貼上、預設管理、偏好設定對話框，以及側邊欄的照片匯出分頁（尚無實際功能） |
 | 5 | 資料流驗證 | 原型已串接第 4 章的三層設定模型與復原堆疊 |
 | 6 | **GPU 技術驗證（spike）** | 「假算圖器」直接以 WGSL compute shader 實作（亮度、飽和、一個可分離高斯模糊），驗證：C# WebGPU 綁定的選型（見 9.1）、上傳 16-bit 影像 → 運算 → 讀回 → `WriteableBitmap` 的完整路徑與延遲、三平台後端（DX12 / Metal / Vulkan）與軟體介面卡 |
 | 7 | **三平台發佈冒煙建置** | 原型以 `dotnet publish` 在三個平台各發佈一次並能啟動，確認 wgpu-native、SkiaSharp、Magick.NET 原生函式庫都能載入（見 9.4） |
@@ -1285,7 +1358,7 @@ flowchart LR
 | 語言 / 執行環境 | **C# 14 / .NET 10（LTS）** | .NET 8 的支援於 2026-11 結束，不採用 |
 | GUI | **Avalonia UI 12.x** | 三平台一致外觀（自繪，Skia 算繪）、HiDPI、MIT 授權 |
 | UI 主題 | Avalonia `FluentTheme`（深色）+ 自訂資源字典 | 依 2.2 配色 |
-| 停靠面板 | **Dock.Avalonia 12.x** | 對應 Avalonia 12 的版本線；可停靠、浮動、序列化版面；MIT 授權 |
+| 停靠面板 | **Dock.Avalonia 12.x** | 對應 Avalonia 12 的版本線；提供可調整大小的版面與版面序列化（v0.11 起不顯示工具標題列，不使用拖曳停靠與浮動，見 2.3）；MIT 授權 |
 | MVVM | **CommunityToolkit.Mvvm** | 原始碼產生器，無反射、對 Trimming 友善；MIT 授權 |
 | 依賴注入 / 記錄 | Microsoft.Extensions.DependencyInjection、Microsoft.Extensions.Logging | 組裝服務、檔案記錄 |
 | **GPU API** | **WebGPU（wgpu-native）** | 跨平台 GPU 抽象：Windows → DX12 / Vulkan、macOS → Metal、Linux → Vulkan；MIT / Apache-2.0 授權 |
@@ -1667,7 +1740,7 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     actor U as 使用者
-    participant D as 匯出對話框
+    participant D as 匯出分頁（側邊欄）
     participant S as ProjectService
     participant Q as ExportQueue
     participant L as 解碼工作者
@@ -1793,7 +1866,7 @@ GPU 讓逐像素運算幾乎不成問題，效能的重點轉為：**減少 CPU�
 | **M4 批次操作** | 完整 / 只貼預設 / 選擇性貼上、多選調整、拖曳套用預設、ToastBar 復原 | 完整批次工作流程 | 1 週 |
 | **M5 光學效果** | 鏡頭變形、焦外成像、縮放旋轉模糊、動態模糊、畫布控制點、100% 檢視的區域算圖 | 光學類模組完成 | 2.5 週 |
 | **M6 合成與表面效果** | 雙重曝光、多格分鏡、灰塵與刮痕、古典版材、材質漏光、材質庫 | 第 6 章全部 16 個模組完成 | 2 週 |
-| **M7 匯出與發佈** | 匯出對話框與三段流水線、分塊匯出、檔名範本、EXIF / ICC、`THIRD_PARTY_NOTICES.md`（Recipe Lab MIT 授權）、三平台 CI 正式發佈（.zip / .dmg / .tar.gz）、Pass 合併優化、Native AOT 評估 | 可發佈的 v1.0 | 2 週 |
+| **M7 匯出與發佈** | 匯出分頁接上三段流水線、分塊匯出、檔名範本、EXIF / ICC、`THIRD_PARTY_NOTICES.md`（Recipe Lab MIT 授權）、三平台 CI 正式發佈（.zip / .dmg / .tar.gz）、Pass 合併優化、Native AOT 評估 | 可發佈的 v1.0 | 2 週 |
 
 ### 13.2 時程
 
