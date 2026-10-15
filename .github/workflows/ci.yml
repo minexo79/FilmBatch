@@ -5,9 +5,16 @@ on:
   push:
     branches: [master]
   pull_request:
+  merge_group:
+    types: [checks_requested]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   desktop:
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -47,3 +54,31 @@ jobs:
           path: |
             dist/FilmBatch-${{ matrix.rid }}.zip
             dist/smoke-${{ matrix.rid }}.txt
+
+  shaders:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Install naga-cli
+        run: cargo install --locked --version 30.0.1 naga-cli
+      - name: Validate embedded WGSL
+        run: dotnet run build/CheckShaders.cs
+
+  # 在分支保護／ruleset 中將 pre-merge 設為必要檢查；任何平台失敗或略過都不放行。
+  pre-merge:
+    if: ${{ always() }}
+    needs: [desktop, shaders]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require all checks
+        env:
+          DESKTOP_RESULT: ${{ needs.desktop.result }}
+          SHADERS_RESULT: ${{ needs.shaders.result }}
+        run: |
+          test "$DESKTOP_RESULT" = success
+          test "$SHADERS_RESULT" = success
