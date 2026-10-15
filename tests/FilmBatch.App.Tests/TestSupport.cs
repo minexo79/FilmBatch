@@ -1,6 +1,5 @@
 using Avalonia;
 using Avalonia.Headless;
-using Avalonia.Media;
 using Avalonia.Threading;
 using FilmBatch.App.Services;
 using FilmBatch.App.ViewModels;
@@ -20,7 +19,7 @@ public static class TestAppBuilder
         AppBuilder.Configure<App>()
             .UseSkia()
             .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false })
-            .With(new FontManagerOptions { DefaultFamilyName = "Microsoft JhengHei UI" });
+            .With(Program.FontOptions());
 }
 
 /// <summary>測試用對話框：回傳預先設定的答案並記錄呼叫。</summary>

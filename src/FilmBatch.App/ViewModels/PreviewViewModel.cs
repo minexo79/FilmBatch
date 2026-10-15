@@ -59,7 +59,7 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
     [ObservableProperty]
     private string _zoomText = "符合視窗";
 
-    public string EmptyText => Loc.Get("Preview.Empty");
+    public string EmptyText => Loc.Format("Preview.Empty", OperatingSystem.IsMacOS() ? "⌘O" : "Ctrl+O");
 
     private string? _controlModule;
 

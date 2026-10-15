@@ -64,7 +64,7 @@
   <data name="Status.Idle" xml:space="preserve"><value>就緒</value></data>
   <data name="Status.SoftwareGpu" xml:space="preserve"><value>（軟體介面卡，效能受影響）</value></data>
   <data name="Preview.MultiOverlay" xml:space="preserve"><value>已選取 {0} 張，調整將套用到全部</value></data>
-  <data name="Preview.Empty" xml:space="preserve"><value>開啟照片資料夾以開始（Ctrl+O）</value></data>
+  <data name="Preview.Empty" xml:space="preserve"><value>開啟照片資料夾以開始（{0}）</value></data>
   <data name="Toast.Undo" xml:space="preserve"><value>復原</value></data>
   <data name="Dialog.OK" xml:space="preserve"><value>確定</value></data>
   <data name="Dialog.Cancel" xml:space="preserve"><value>取消</value></data>

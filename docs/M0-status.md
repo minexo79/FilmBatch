@@ -1,6 +1,6 @@
 # M0 狀態：UI 規範、原型與 GPU spike
 
-> 日期：2026-10-14　範圍：依指示只建置 **Windows**；macOS / Linux 的發佈冒煙建置延後。
+> 更新：2026-10-15。原 Windows M0 原型已加入 macOS `.app`／CLI 封裝；Apple Silicon 原生 Metal 路徑已驗證，Linux 仍未驗證。
 
 ## 使用方式
 
@@ -8,8 +8,9 @@
 dotnet run --project src/FilmBatch.App                 # 原型（檔案 → 開啟範例資料夾）
 dotnet run --project src/FilmBatch.App -- --gallery    # 元件展示視窗
 dotnet run --project src/FilmBatch.Cli -- spike        # GPU spike 量測（--backend Vulkan、--low-power、--width/--height）
-dotnet test FilmBatch.sln                              # Core 28 項 + UI（Headless）14 項
+dotnet test FilmBatch.sln                              # Core 28 項 + UI（Headless）17 項
 dotnet run build/Build.cs -- --rid win-x64 --smoke --zip   # 發佈 + 冒煙測試 + 壓縮
+dotnet run build/Build.cs -- --rid osx-arm64 --smoke --zip # Mac：.app + CLI；Intel 使用 osx-x64
 ```
 
 UI 截圖由 `ThemeSnapshotTests` 產生於 `tests/FilmBatch.App.Tests/bin/Debug/net10.0/snapshots/`。
@@ -24,7 +25,7 @@ UI 截圖由 `ThemeSnapshotTests` 產生於 `tests/FilmBatch.App.Tests/bin/Debug
 | 4 | 對話框原型（選擇性貼上、匯出、預設管理、偏好設定） | 完成；選擇性貼上可實際使用，其餘為原型 | `Dialogs/` |
 | 5 | 資料流：三層設定模型 + 復原堆疊 | 完成 | `src/FilmBatch.Core/` |
 | 6 | GPU spike | 完成（綁定已改選，見 ADR） | `src/FilmBatch.Gpu/`、`docs/adr/0001-webgpu-binding.md` |
-| 7 | 發佈冒煙建置 | **僅 Windows** | `build/Build.cs`、`.github/workflows/ci.yml` |
+| 7 | 發佈冒煙建置 | Windows（原紀錄）＋macOS（見下方驗證紀錄） | `build/Build.cs`、`.github/workflows/ci.yml` |
 | 8 | UI 規範定稿 | **未完成**：需要你實際操作原型後的回饋 | — |
 
 ## 驗收標準（計畫書 16.1）
@@ -35,9 +36,9 @@ UI 截圖由 `ThemeSnapshotTests` 產生於 `tests/FilmBatch.App.Tests/bin/Debug
 - [x] 指定預設、單張微調、三種貼上、復原／重做已串接三層模型（有測試）。
 - [x] 滑桿只在取得焦點時接受滾輪（有 Headless 測試）。
 - [x] 停靠版面重新啟動後還原（`layout.json`；有測試，發佈版冒煙測試也驗證）。
-- [~] GPU spike：Windows DX12 / Vulkan 完整路徑可運作，1600px 拖曳更新約 2–3 ms（遠高於 30 fps）。**軟體介面卡未達成**（Dawn 建置不含軟體介面卡，見 ADR）；無 GPU 時以 CPU 參考實作降級。macOS / Linux 未驗證。
+- [~] GPU spike：Windows DX12 / Vulkan 完整路徑可運作，1600px 拖曳更新約 2–3 ms（原紀錄）；macOS Apple M3 / Metal 已驗證，見 ADR。**軟體介面卡未達成**（Dawn 建置不含軟體介面卡）；無 GPU 時以 CPU 參考實作降級。Linux 未驗證。
 - [x] 已定案 C# WebGPU 綁定並記錄理由（WebGPUSharp / Dawn）。
-- [~] `dotnet publish`：Windows 完成且冒煙測試通過；macOS / Linux 依指示延後。
+- [~] `dotnet publish`：Windows 原紀錄完成；macOS self-contained `.app` 與 CLI 已完成本機封裝和冒煙測試，只有 ad-hoc 簽章、尚未公證。Linux 延後。
 
 ## M0 發現、已採取的處理與待決事項
 
@@ -51,6 +52,21 @@ UI 截圖由 `ThemeSnapshotTests` 產生於 `tests/FilmBatch.App.Tests/bin/Debug
 | `{l:Tr}` 原本用反射繫結，發佈時 trim 分析報錯 | 改為 IObservable 繫結 | — |
 | 全域 Button Padding 會擠掉 Dock 標題列按鈕圖示 | 移除全域樣式 | — |
 | 標題列與選單列合一（需求變更） | 內容延伸進標題列；空白處標為原生拖曳區（已以 `WM_NCHITTEST` 驗證為 HTCAPTION），隱藏平台繪製的標題文字（該元素不在樣式樹中，改以程式隱藏）；計畫書 2.2.1 已更新 | macOS／Linux 的按鈕位置於跨平台建置時驗證 |
+| macOS `codesign` 將 `Contents/MacOS` 內的受控 DLL 也當作巢狀程式碼 | 先逐檔簽署（不含 apphost），最後簽署 `.app`；以 `ditto` 保存延伸屬性 | 正式發行仍需 Developer ID、公證 |
+| Headless 測試固定使用 Windows 字型，在 Mac 無法建立 glyphTypeface | 與 GUI 共用 `Program.FontOptions()`，使用 PingFang TC 與相同後備字型 | — |
+| Mac 偏好設定缺少 Metal、快捷鍵提示固定為 Ctrl | 依平台顯示後端選項、選單手勢、工具提示與空白畫面快捷鍵 | — |
+| WebGPUSharp 0.5.7 的兩個 Mac Dawn 原生檔都宣告 `minos 26.0`（`vtool -show-build`） | `.app` 的 `LSMinimumSystemVersion`、README 與 Mac CI runner 一律使用 macOS 26 | 支援較舊 macOS 需另取得並驗證相容的 Dawn 建置，不能只降低 plist 版本 |
+
+## macOS 驗證紀錄（2026-10-15）
+
+- `dotnet test FilmBatch.sln -c Release`：Core 28、UI 17 全數通過，無略過；包含 Metal 與 CPU 參考結果比對。
+- `osx-arm64` 發佈版冒煙：視窗、Magick.Native、Dawn / Metal、3 張範例照片、預覽、縮圖、參數覆寫／復原、Dock 版面往返、展示視窗均通過。
+- `osx-x64` 也完成封裝、簽章驗證、GUI 全部冒煙項目及 CLI `gpu-info`，執行環境為 Apple Silicon 上的 **Rosetta**，不等於實體 Intel Mac 驗證。
+- ZIP 以 `ditto` 解壓縮至含空白的路徑後，`codesign --verify --deep --strict` 通過；再以 LaunchServices `open -n -W` 啟動冒煙模式通過。驗證時將 `DOTNET_ROOT` 指向不存在的目錄，確認不依賴外部 .NET。
+- GUI 實際開啟含空白路徑的 12 張 TIFF 範例，原生視窗已顯示。此工作階段沒有螢幕擷取／Apple Events 權限，因此不能聲稱已人工驗證原生標題列按鈕或鍵盤互動；Headless 渲染快照不等於原生視窗截圖。
+- CI 已加入 macOS 26 Apple Silicon 與 Intel runner；本機執行不代表 GitHub Actions 已執行。Windows 本次未重跑；實體 Intel Mac、正式簽章／公證仍需各自驗證。較舊 macOS 不在目前封裝支援範圍。
+- 既有 Avalonia / Dock 第三方修剪警告仍存在；不抑制新增警告，發佈版以實際冒煙確認目前使用路徑。
+
 
 ## 尚未納入 M0 的項目（依計畫書屬於後續里程碑）
 

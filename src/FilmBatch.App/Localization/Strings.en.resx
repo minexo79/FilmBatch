@@ -64,7 +64,7 @@
   <data name="Status.Idle" xml:space="preserve"><value>Ready</value></data>
   <data name="Status.SoftwareGpu" xml:space="preserve"><value>(software adapter, slower)</value></data>
   <data name="Preview.MultiOverlay" xml:space="preserve"><value>{0} selected — changes apply to all</value></data>
-  <data name="Preview.Empty" xml:space="preserve"><value>Open a photo folder to begin (Ctrl+O)</value></data>
+  <data name="Preview.Empty" xml:space="preserve"><value>Open a photo folder to begin ({0})</value></data>
   <data name="Toast.Undo" xml:space="preserve"><value>Undo</value></data>
   <data name="Dialog.OK" xml:space="preserve"><value>OK</value></data>
   <data name="Dialog.Cancel" xml:space="preserve"><value>Cancel</value></data>
