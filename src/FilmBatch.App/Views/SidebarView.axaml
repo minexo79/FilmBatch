@@ -3,15 +3,27 @@
              xmlns:vm="using:FilmBatch.App.ViewModels"
              xmlns:v="using:FilmBatch.App.Views"
              xmlns:l="using:FilmBatch.App.Localization"
+             xmlns:c="using:FilmBatch.App.Controls"
              x:Class="FilmBatch.App.Views.SidebarView"
              x:DataType="vm:SidebarViewModel">
   <!-- 右側邊欄：內容區｜外緣圖示工具列（預設庫、照片資訊與模組、照片匯出）。三個分頁常駐，只切換顯示。 -->
   <Grid ColumnDefinitions="*,Auto">
-    <Panel Grid.Column="0">
-      <Panel IsVisible="{Binding IsPresets}"><v:PresetLibraryView DataContext="{Binding Presets}" /></Panel>
-      <Panel IsVisible="{Binding IsInspector}"><v:InspectorView DataContext="{Binding Inspector}" /></Panel>
-      <Panel IsVisible="{Binding IsExport}"><v:ExportPanelView DataContext="{Binding Export}" /></Panel>
-    </Panel>
+    <DockPanel Grid.Column="0">
+      <Expander DockPanel.Dock="Top" Header="{l:Tr Histogram.Title}" IsExpanded="{Binding Preview.HistogramExpanded}"
+                HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Margin="8,0">
+        <StackPanel Spacing="4">
+          <Border Background="{DynamicResource FB.WindowBrush}" Padding="4">
+            <c:HistogramView Name="Histogram" Height="96" Histogram="{Binding Preview.Histogram}" />
+          </Border>
+          <TextBlock Classes="secondary small numeric" Text="{Binding Preview.HistogramClipping}" Margin="4,0,4,8" />
+        </StackPanel>
+      </Expander>
+      <Panel>
+        <Panel IsVisible="{Binding IsPresets}"><v:PresetLibraryView DataContext="{Binding Presets}" /></Panel>
+        <Panel IsVisible="{Binding IsInspector}"><v:InspectorView DataContext="{Binding Inspector}" /></Panel>
+        <Panel IsVisible="{Binding IsExport}"><v:ExportPanelView DataContext="{Binding Export}" /></Panel>
+      </Panel>
+    </DockPanel>
 
     <Border Grid.Column="1" Classes="tab-rail">
       <StackPanel Spacing="4">

@@ -18,6 +18,37 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
     private WriteableBitmap? _front;
     private WriteableBitmap? _back;
     private string? _editSession;
+    private ImageHistogram? _resultHistogram;
+    private ImageHistogram? _originalHistogram;
+
+    public ImageHistogram? Histogram => ShowOriginal ? _originalHistogram : _resultHistogram;
+    public string HistogramClipping => Histogram is { } h
+        ? Loc.Format("Histogram.Clipping", h.ShadowFraction, h.HighlightFraction) : "";
+
+    [ObservableProperty]
+    private bool _histogramExpanded = main.Settings.HistogramExpanded;
+
+    partial void OnHistogramExpandedChanged(bool value)
+    {
+        main.Settings.HistogramExpanded = value;
+        UpdateHistogramCollection();
+    }
+
+    public void UpdateHistogramCollection()
+    {
+        var enabled = HistogramExpanded && !main.PanelsHidden && !main.IsFullScreen;
+        var wasEnabled = main.Renderer.CollectHistogram;
+        main.Renderer.CollectHistogram = enabled;
+        if (enabled && !wasEnabled) main.RequestPreview();
+    }
+
+    private void NotifyHistogram()
+    {
+        OnPropertyChanged(nameof(Histogram));
+        OnPropertyChanged(nameof(HistogramClipping));
+    }
+
+    partial void OnShowOriginalChanged(bool value) => NotifyHistogram();
 
     /// <summary>預覽區浮動工具列（復原、重做、複製、貼上）直接繫結主視窗的命令。</summary>
     public MainWindowViewModel Main => main;
@@ -77,12 +108,14 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
     {
         if (!ReferenceEquals(Source, source))
         {
+            _resultHistogram = _originalHistogram = null;
+            NotifyHistogram();
             Source = source;
             Original = ToBitmap(ImageCache.ToBgra8(source), source.Width, source.Height);
         }
     }
 
-    public void SetResult(RenderResult r)
+    public void SetResult(RenderResult r, ImageHistogram? histogram, ImageHistogram? originalHistogram)
     {
         // 雙緩衝：寫入目前沒在顯示的那一張，再交換
         if (_back is null || _back.PixelSize.Width != r.Width || _back.PixelSize.Height != r.Height)
@@ -90,6 +123,9 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
         Write(_back, r.Bgra, r.Width);
         (_front, _back) = (_back, _front);
         Image = _front;
+        _resultHistogram = histogram;
+        _originalHistogram = originalHistogram;
+        NotifyHistogram();
         IsBusy = main.Renderer.IsBusy;
     }
 
@@ -101,6 +137,8 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
         IsBusy = false;
         OverlayText = null;
         ControlPoint = null;
+        _resultHistogram = _originalHistogram = null;
+        NotifyHistogram();
     }
 
     public void UpdateOverlay(int selectedCount) =>

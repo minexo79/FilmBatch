@@ -1,7 +1,9 @@
+using System.Runtime.InteropServices;
 using FilmBatch.Core.Params;
 using FilmBatch.Engine.Imaging;
 using FilmBatch.Engine.Rendering;
 using FilmBatch.Gpu.Device;
+using ImageMagick;
 
 namespace FilmBatch.Core.Tests;
 
@@ -291,6 +293,172 @@ public sealed class EffectPipelineTests
         Assert.Equal(px[center], focused[center]);
         Assert.Equal(px[center + 1], focused[center + 1]);
         Assert.Equal(px[center + 2], focused[center + 2]);
+    }
+
+    private static Settings LeakSettings(double angle, double size = 40, double amount = 100, double irregularity = 0, int count = 1, double seed = 7) =>
+        ModuleCatalog.Defaults
+            .With("light_leak.enabled", true)
+            .With("light_leak.mode", "procedural")
+            .With("light_leak.amount", amount)
+            .With("light_leak.angle", angle)
+            .With("light_leak.size", size)
+            .With("light_leak.hue", 25.0)
+            .With("light_leak.irregularity", irregularity)
+            .With("light_leak.count", (double)count)
+            .With("light_leak.seed", seed);
+
+    private static (double Left, double Right, double Top, double Bottom) LeakEdgeMeans(ushort[] px, int w, int h)
+    {
+        double Lin(ushort v) => CpuPipeline.SrgbToLinear(v / 65535f);
+        double left = 0, right = 0, top = 0, bottom = 0;
+        for (var y = 0; y < h; y++)
+        {
+            left += Lin(px[(y * w) * 4]);
+            right += Lin(px[(y * w + w - 1) * 4]);
+        }
+        for (var x = 0; x < w; x++)
+        {
+            top += Lin(px[x * 4]);
+            bottom += Lin(px[((h - 1) * w + x) * 4]);
+        }
+        return (left / h, right / h, top / w, bottom / w);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(90)]
+    [InlineData(180)]
+    [InlineData(270)]
+    [InlineData(135)]
+    [InlineData(225)]
+    [InlineData(315)]
+    public void LightLeak_RemainsVisible_AtCardinalAndObliqueAngles(double angle)
+    {
+        // 使用者回報：直幅漏光過 180 度後消失。此測量全圓各角度皆有可觀測增亮（線性光邊緣均值）。
+        foreach (var (w, h) in new[] { (24, 16), (16, 24) })
+        {
+            var src = Flat(w, h, 20000);
+            using var cpu = new CpuFakeRenderer();
+            var ct = TestContext.Current.CancellationToken;
+            var got = cpu.Render16(src, LeakSettings(angle), ct).Rgba16;
+            var edges = LeakEdgeMeans(got, w, h);
+            var peak = Math.Max(Math.Max(edges.Left, edges.Right), Math.Max(edges.Top, edges.Bottom));
+            var linIn = CpuPipeline.SrgbToLinear(20000 / 65535f);
+            Assert.True(peak - linIn > 0.01, $"角度 {angle}° 在 {w}x{h} 最亮邊緣幾乎無漏光（peak={peak:F4}，base={linIn:F4}）");
+        }
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(90)]
+    [InlineData(45)]
+    [InlineData(135)]
+    public void LightLeak_OppositeAngles_MoveToOppositeEdges(double angle)
+    {
+        // 相差 180 度的漏光應落在對側邊緣；以左右/上下邊緣亮度差的方向驗證旋轉語義全圓成立。
+        const int w = 32, h = 32;
+        var src = Flat(w, h, 20000);
+        using var cpu = new CpuFakeRenderer();
+        var ct = TestContext.Current.CancellationToken;
+        var a = LeakEdgeMeans(cpu.Render16(src, LeakSettings(angle), ct).Rgba16, w, h);
+        var b = LeakEdgeMeans(cpu.Render16(src, LeakSettings(angle + 180), ct).Rgba16, w, h);
+        var dxA = a.Right - a.Left;
+        var dxB = b.Right - b.Left;
+        var dyA = a.Bottom - a.Top;
+        var dyB = b.Bottom - b.Top;
+        var dominantX = Math.Abs(dxA) >= Math.Abs(dyA);
+        if (dominantX)
+            Assert.True(dxA * dxB < 0 && Math.Abs(dxA) > 0.002 && Math.Abs(dxB) > 0.002,
+                $"角度 {angle}°/({angle + 180}°) 應落在左右對側（{dxA:F4} vs {dxB:F4}）");
+        else
+            Assert.True(dyA * dyB < 0 && Math.Abs(dyA) > 0.002 && Math.Abs(dyB) > 0.002,
+                $"角度 {angle}°/({angle + 180}°) 應落在上下對側（{dyA:F4} vs {dyB:F4}）");
+    }
+
+    [Fact]
+    public void LightLeak_AnglePeriod_Is360Degrees()
+    {
+        // 0/360 等價；亦驗證 180 兩側對稱鄰角（179/181）皆可見且互為鏡像。
+        const int w = 32, h = 32;
+        var src = Flat(w, h, 20000);
+        using var cpu = new CpuFakeRenderer();
+        var ct = TestContext.Current.CancellationToken;
+        var zero = cpu.Render16(src, LeakSettings(0), ct).Rgba16;
+        var full = cpu.Render16(src, LeakSettings(360), ct).Rgba16;
+        // 0/360 的 cos/sin 在 float32 下可能差 1 ulp，語義等價應在量化容差內。
+        Assert.True(MaxAbsDiff(zero, full) <= 2, $"角度 0/360 應等價，最大差 {MaxAbsDiff(zero, full)}/65535");
+        var below = cpu.Render16(src, LeakSettings(179), ct).Rgba16;
+        var above = cpu.Render16(src, LeakSettings(181), ct).Rgba16;
+        Assert.True(MaxAbsDiff(below, above) > 64, "180 度兩側鄰角應為不同但皆可見的鏡像分佈");
+        var linIn = CpuPipeline.SrgbToLinear(20000 / 65535f);
+        foreach (var px in new[] { below, above })
+        {
+            var edges = LeakEdgeMeans(px, w, h);
+            var peak = Math.Max(Math.Max(edges.Left, edges.Right), Math.Max(edges.Top, edges.Bottom));
+            Assert.True(peak - linIn > 0.01, $"180 度鄰角最亮邊緣幾乎無漏光（peak={peak:F4}）");
+        }
+    }
+
+    [Fact]
+    public void LightLeak_NonSquare_CoversShortAxis()
+    {
+        // 非正方形（橫幅與直幅）下，橫跨畫面的行程以同值正規化，短邊方向仍有可觀測覆蓋。
+        using var cpu = new CpuFakeRenderer();
+        var ct = TestContext.Current.CancellationToken;
+        foreach (var (w, h, angle) in new[] { (48, 16, 0.0), (16, 48, 90.0) })
+        {
+            var src = Flat(w, h, 20000);
+            var got = cpu.Render16(src, LeakSettings(angle), ct).Rgba16;
+            var linIn = CpuPipeline.SrgbToLinear(20000 / 65535f);
+            double lit = 0;
+            var n = w * h;
+            for (var p = 0; p < n; p++)
+                if (CpuPipeline.SrgbToLinear(got[p * 4] / 65535f) - linIn > 0.01) lit++;
+            Assert.True(lit / n > 0.05, $"{w}x{h} 角度 {angle}° 覆蓋過小（{lit / n:P1}）");
+        }
+    }
+
+    [Fact]
+    public void LightLeak_Texture_RotatesOnPortrait_Past180()
+    {
+        var folder = NewTempDir();
+        try
+        {
+            // Asymmetric real texture; portrait input also exercises orientation compensation.
+            const int side = 12;
+            var rgb = new ushort[side * side * 3];
+            for (var y = 0; y < side; y++)
+                for (var x = 0; x < side; x++)
+                    rgb[(y * side + x) * 3] = (ushort)(x < side / 2 ? 50000 : 6000);
+            var path = Path.Combine(folder, "leak.tif");
+            using (var image = new MagickImage())
+            {
+                image.ReadPixels(MemoryMarshal.AsBytes(rgb.AsSpan()),
+                    new PixelReadSettings(side, side, StorageType.Short, PixelMapping.RGB));
+                image.Depth = 16;
+                image.Write(path, MagickFormat.Tiff);
+            }
+            var src = Flat(16, 24, 20000);
+            Settings Tex(double angle) => LeakSettings(angle, size: 100)
+                .With("light_leak.mode", "texture").With("light_leak.texture", path);
+            using var fx = new CpuFakeRenderer(new EffectRendererOptions { TexturesFolder = folder });
+            var ct = TestContext.Current.CancellationToken;
+            var linIn = CpuPipeline.SrgbToLinear(20000 / 65535f);
+            foreach (var angle in new[] { 200.0, 225, 270, 315 })
+            {
+                var got = fx.Render16(src, Tex(angle), ct).Rgba16;
+                double peak = 0;
+                for (var p = 0; p < 16 * 24; p++)
+                    peak = Math.Max(peak, CpuPipeline.SrgbToLinear(got[p * 4] / 65535f));
+                Assert.True(peak - linIn > 0.005, $"材質漏光在直幅角度 {angle}° 幾乎無增亮");
+                var opposite = fx.Render16(src, Tex(angle - 180), ct).Rgba16;
+                Assert.True(MaxAbsDiff(got, opposite) > 64, $"材質漏光角度 {angle}° 未旋轉至對側");
+            }
+            var zero = fx.Render16(src, Tex(0), ct).Rgba16;
+            var full = fx.Render16(src, Tex(360), ct).Rgba16;
+            Assert.True(MaxAbsDiff(zero, full) <= 2, "材質漏光角度 0/360 應等價");
+        }
+        finally { Directory.Delete(folder, recursive: true); }
     }
 
     [Fact]

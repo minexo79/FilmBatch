@@ -8,12 +8,13 @@
     "date": "2026-10-15",
     "samplesCommit": "fd97eec77caf56bb2740a89b503e1037fdb24877",
     "method": "coordinate-descent on mean-DeltaE00 vs sample frames, input=frame01, actual CpuPipeline",
-    "trainMeanDE": 4.854649,
+    "trainMeanDE": 4.847633,
     "trainBaselineMeanDE": 7.003688,
-    "heldoutMeanDE": 5.643511,
+    "heldoutMeanDE": 5.500594,
     "heldoutBaselineMeanDE": 7.179708,
     "heldoutCount": 24,
-    "excluded": "9 overrange + 5 PP3-matrix (union 10) fit-excluded; 8 kelvin direction-check only; 5 supported-effect measured-only"
+    "excluded": "9 overrange + 5 PP3-matrix (union 10) fit-excluded; 8 kelvin direction-check only; 5 supported-effect measured-only",
+    "satMinus3Guard": "0.329012 continues fitted -2/-1 slope (2*0.629012-0.929012); -3 had one train sample (frame 64) so the fit froze the 0.1 initial"
   },
   // 每種創意風格的基底：logit 空間色調曲線 y = sigmoid(k * logit(x) - shift)（0→0、1→1），
   // 擬合的 3x3 矩陣以列歸一投影維持中性灰；未覆蓋的風格保留初值。
@@ -34,8 +35,10 @@
     "sepia":     { "k": 0.913691, "shift": 0.053316, "matrix": [1,0,0, 0,1,0, 0,0,1], "sepia": true }
   },
   // 對比 / 飽和逐格係數：零檔固定為 1，保持單調，單樣本檔位不擬合。
+  // 飽和 -3 例外：train 僅 frame 64 一張，擬合凍結初值 0.1（近灰）；此處以外推守衛 0.329012
+  // （延續擬合後 -2/-1 斜率：2*0.629012-0.929012）取代，推導見 calibration.satMinus3Guard。
   "contrastPerStep": { "-3": 0.66, "-2": 0.989275, "-1": 0.989416, "0": 1, "1": 1.158667, "2": 1.158856, "3": 1.159611 },
-  "saturationPerStep": { "-3": 0.1, "-2": 0.629012, "-1": 0.929012, "0": 1, "1": 1.232604, "2": 1.358308, "3": 1.358883 },
+  "saturationPerStep": { "-3": 0.329012, "-2": 0.629012, "-1": 0.929012, "0": 1, "1": 1.232604, "2": 1.358308, "3": 1.358883 },
   // 白平衡微調：每格 mired / CC 偏移，Kelvin 樣張不參與擬合。
   "amberBlueMiredPerStep": 5.90843,
   "greenMagentaCcPerStep": 3.645058,

@@ -28,6 +28,18 @@
     <ListBox Name="List" Classes="filmstrip" ItemsSource="{Binding Items}" Selection="{Binding Selection}"
              SelectionMode="Multiple" DragDrop.AllowDrop="True"
              ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Disabled">
+      <ListBox.ContextMenu>
+        <ContextMenu Name="PhotoMenu">
+          <MenuItem Name="CopySettingsItem" Header="{l:Tr Cmd.Copy}" Command="{Binding Main.CopyCommand}" />
+          <MenuItem Name="PasteSettingsItem" Header="{l:Tr Cmd.Paste}" Command="{Binding Main.PasteCommand}" />
+          <MenuItem Header="{l:Tr Cmd.PastePresetOnly}" Command="{Binding Main.PastePresetOnlyCommand}" />
+          <MenuItem Header="{l:Tr Cmd.PasteSpecial}" Command="{Binding Main.PasteSpecialCommand}" />
+          <Separator />
+          <MenuItem Name="QuickExportItem" Header="{l:Tr Cmd.QuickExport}" Command="{Binding Main.QuickExportCommand}" />
+          <Separator />
+          <MenuItem Name="ResetPhotoItem" Header="{l:Tr Cmd.ResetSelected}" Command="{Binding Main.ResetPhotoCommand}" />
+        </ContextMenu>
+      </ListBox.ContextMenu>
       <ListBox.ItemsPanel>
         <ItemsPanelTemplate>
           <VirtualizingStackPanel Orientation="Horizontal" />
