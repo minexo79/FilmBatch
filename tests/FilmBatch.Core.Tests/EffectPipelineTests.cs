@@ -56,11 +56,11 @@ public sealed class EffectPipelineTests
             .With("film.effect", "off")
             .With("film.dro", "auto");
 
-    private static GpuSpikeRenderer? TryCreateGpu()
+    private static GpuSpikeRenderer? TryCreateGpu(EffectRendererOptions? options = null)
     {
         try
         {
-            return GpuSpikeRenderer.Create();
+            return GpuSpikeRenderer.Create(effectOptions: options);
         }
         catch (GpuException)
         {
@@ -476,5 +476,56 @@ public sealed class EffectPipelineTests
         var c = cpu.Render16(src, settings, ct).Rgba16;
         var max = MaxAbsDiff(g, c);
         Assert.True(max <= 64, $"GPU 與 CPU 16-bit 差異 {max}/65535");
+    }
+
+    /// <summary>每列不同的漸層：用來檢查列帶讀回沒有錯位或漏列。</summary>
+    private static SourceImage Gradient(int w, int h, string? path = null)
+    {
+        var px = new ushort[w * h * 4];
+        for (var y = 0; y < h; y++)
+        for (var x = 0; x < w; x++)
+        {
+            var i = (y * w + x) * 4;
+            px[i] = (ushort)(4096 + y * 2000);
+            px[i + 1] = (ushort)(8192 + x * 1500);
+            px[i + 2] = (ushort)(30000 - y * 800);
+            px[i + 3] = ushort.MaxValue;
+        }
+        return new SourceImage(w, h, px) { FilePath = path };
+    }
+
+    [Fact]
+    public void Gpu_Export_IgnoresPreviewBudget_AndStaysOnGpu()
+    {
+        // 預算小到任何影像都超過：預覽退回 CPU，但匯出（Render16）仍應走 GPU。
+        using var gpu = TryCreateGpu(new EffectRendererOptions { MemoryBudgetBytes = 1 });
+        Assert.SkipWhen(gpu is null, "沒有可用的 GPU 介面卡");
+        var src = Flat(32, 24, 20000, path: "/tmp/budget.tif");
+        var settings = FilmOnly(1.0).With("grain.enabled", true).With("grain.amount", 80.0);
+        var ct = TestContext.Current.CancellationToken;
+
+        gpu!.Render(src, settings);
+        Assert.StartsWith("CPU", gpu.DeviceName);
+
+        var g = gpu.Render16(src, settings, ct).Rgba16;
+        Assert.DoesNotContain("CPU", gpu.DeviceName);
+        using var cpu = new CpuFakeRenderer();
+        var max = MaxAbsDiff(g, cpu.Render16(src, settings, ct).Rgba16);
+        Assert.True(max <= 64, $"GPU 與 CPU 16-bit 差異 {max}/65535");
+    }
+
+    [Fact]
+    public void Gpu_BandedReadback_MatchesSingleBand()
+    {
+        // 32 px 寬 × 8 B = 256 B/列；上限 5 列 → 24 列分成 5 帶（最後一帶 4 列）。
+        using var banded = TryCreateGpu(new EffectRendererOptions { MaxBandBytes = 32 * 8 * 5 });
+        Assert.SkipWhen(banded is null, "沒有可用的 GPU 介面卡");
+        using var single = TryCreateGpu();
+        var src = Gradient(32, 24, "/tmp/band.tif");
+        var settings = FilmOnly(0.5).With("grain.enabled", true).With("grain.amount", 50.0);
+        var ct = TestContext.Current.CancellationToken;
+
+        Assert.Equal(single!.Render16(src, settings, ct).Rgba16, banded!.Render16(src, settings, ct).Rgba16);
+        Assert.Equal(single.Render(src, settings).Bgra, banded.Render(src, settings).Bgra);
     }
 }
