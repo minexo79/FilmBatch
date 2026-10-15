@@ -29,18 +29,18 @@
       <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="0,0,8,0">
         <Border Classes="tool-group">
           <StackPanel Orientation="Horizontal">
-            <Button Classes="tool" Command="{Binding UndoCommand}" ToolTip.Tip="復原（Ctrl+Z）"><PathIcon Data="{StaticResource Icon.Undo}" /></Button>
-            <Button Classes="tool" Command="{Binding RedoCommand}" ToolTip.Tip="重做（Ctrl+Shift+Z）"><PathIcon Data="{StaticResource Icon.Redo}" /></Button>
+            <Button Classes="tool" Command="{Binding UndoCommand}" ToolTip.Tip="{OnPlatform '復原（Ctrl+Z）', macOS='復原（⌘Z）'}"><PathIcon Data="{StaticResource Icon.Undo}" /></Button>
+            <Button Classes="tool" Command="{Binding RedoCommand}" ToolTip.Tip="{OnPlatform '重做（Ctrl+Shift+Z）', macOS='重做（⌘⇧Z）'}"><PathIcon Data="{StaticResource Icon.Redo}" /></Button>
           </StackPanel>
         </Border>
         <Border Classes="tool-group">
           <StackPanel Orientation="Horizontal">
-            <Button Classes="tool" Command="{Binding CopyCommand}" ToolTip.Tip="複製設定（Ctrl+C）"><PathIcon Data="{StaticResource Icon.Copy}" /></Button>
-            <Button Classes="tool" Command="{Binding PasteCommand}" ToolTip.Tip="貼上（Ctrl+V）"><PathIcon Data="{StaticResource Icon.Paste}" /></Button>
-            <Button Classes="tool" Command="{Binding PasteSpecialCommand}" ToolTip.Tip="選擇性貼上（Ctrl+Shift+V）"><PathIcon Data="{StaticResource Icon.PasteSpecial}" /></Button>
+            <Button Classes="tool" Command="{Binding CopyCommand}" ToolTip.Tip="{OnPlatform '複製設定（Ctrl+C）', macOS='複製設定（⌘C）'}"><PathIcon Data="{StaticResource Icon.Copy}" /></Button>
+            <Button Classes="tool" Command="{Binding PasteCommand}" ToolTip.Tip="{OnPlatform '貼上（Ctrl+V）', macOS='貼上（⌘V）'}"><PathIcon Data="{StaticResource Icon.Paste}" /></Button>
+            <Button Classes="tool" Command="{Binding PasteSpecialCommand}" ToolTip.Tip="{OnPlatform '選擇性貼上（Ctrl+Shift+V）', macOS='選擇性貼上（⌘⇧V）'}"><PathIcon Data="{StaticResource Icon.PasteSpecial}" /></Button>
           </StackPanel>
         </Border>
-        <Button Classes="tool" Command="{Binding OpenFolderCommand}" ToolTip.Tip="開啟資料夾（Ctrl+O）"><PathIcon Data="{StaticResource Icon.Open}" /></Button>
+        <Button Classes="tool" Command="{Binding OpenFolderCommand}" ToolTip.Tip="{OnPlatform '開啟資料夾（Ctrl+O）', macOS='開啟資料夾（⌘O）'}"><PathIcon Data="{StaticResource Icon.Open}" /></Button>
         <Button Classes="tool" Command="{Binding PreferencesCommand}" ToolTip.Tip="偏好設定"><PathIcon Data="{StaticResource Icon.Gear}" /></Button>
       </StackPanel>
 
@@ -48,30 +48,30 @@
       <Border Grid.Column="4" Name="CaptionButtonsSpace" Width="138" Background="Transparent" WindowDecorationProperties.ElementRole="TitleBar" />
     <Menu Grid.Column="1" Name="MainMenu" VerticalAlignment="Center" Background="Transparent">
       <MenuItem Header="{l:Tr Menu.File}">
-        <MenuItem Header="{l:Tr Cmd.OpenFolder}" Command="{Binding OpenFolderCommand}" InputGesture="Ctrl+O" />
+        <MenuItem Header="{l:Tr Cmd.OpenFolder}" Command="{Binding OpenFolderCommand}" InputGesture="{OnPlatform Ctrl+O, macOS=Meta+O}" />
         <MenuItem Header="{l:Tr Cmd.OpenSamples}" Command="{Binding OpenSamplesCommand}" />
         <Separator />
-        <MenuItem Header="{l:Tr Cmd.Export}" Command="{Binding ExportCommand}" InputGesture="Ctrl+E" />
+        <MenuItem Header="{l:Tr Cmd.Export}" Command="{Binding ExportCommand}" InputGesture="{OnPlatform Ctrl+E, macOS=Meta+E}" />
         <Separator />
         <MenuItem Header="{l:Tr Cmd.Preferences}" Command="{Binding PreferencesCommand}" />
         <Separator />
         <MenuItem Header="{l:Tr Cmd.Exit}" Name="ExitItem" />
       </MenuItem>
       <MenuItem Header="{l:Tr Menu.Edit}">
-        <MenuItem Header="{l:Tr Cmd.Undo}" Command="{Binding UndoCommand}" InputGesture="Ctrl+Z" />
-        <MenuItem Header="{l:Tr Cmd.Redo}" Command="{Binding RedoCommand}" InputGesture="Ctrl+Shift+Z" />
+        <MenuItem Header="{l:Tr Cmd.Undo}" Command="{Binding UndoCommand}" InputGesture="{OnPlatform Ctrl+Z, macOS=Meta+Z}" />
+        <MenuItem Header="{l:Tr Cmd.Redo}" Command="{Binding RedoCommand}" InputGesture="{OnPlatform Ctrl+Shift+Z, macOS=Meta+Shift+Z}" />
         <Separator />
-        <MenuItem Header="{l:Tr Cmd.Copy}" Command="{Binding CopyCommand}" InputGesture="Ctrl+C" />
-        <MenuItem Header="{l:Tr Cmd.Paste}" Command="{Binding PasteCommand}" InputGesture="Ctrl+V" />
+        <MenuItem Header="{l:Tr Cmd.Copy}" Command="{Binding CopyCommand}" InputGesture="{OnPlatform Ctrl+C, macOS=Meta+C}" />
+        <MenuItem Header="{l:Tr Cmd.Paste}" Command="{Binding PasteCommand}" InputGesture="{OnPlatform Ctrl+V, macOS=Meta+V}" />
         <MenuItem Header="{l:Tr Cmd.PastePresetOnly}" Command="{Binding PastePresetOnlyCommand}" />
-        <MenuItem Header="{l:Tr Cmd.PasteSpecial}" Command="{Binding PasteSpecialCommand}" InputGesture="Ctrl+Shift+V" />
+        <MenuItem Header="{l:Tr Cmd.PasteSpecial}" Command="{Binding PasteSpecialCommand}" InputGesture="{OnPlatform Ctrl+Shift+V, macOS=Meta+Shift+V}" />
         <Separator />
-        <MenuItem Header="{l:Tr Cmd.SelectAll}" Command="{Binding SelectAllCommand}" InputGesture="Ctrl+A" />
+        <MenuItem Header="{l:Tr Cmd.SelectAll}" Command="{Binding SelectAllCommand}" InputGesture="{OnPlatform Ctrl+A, macOS=Meta+A}" />
       </MenuItem>
       <MenuItem Header="{l:Tr Menu.View}">
         <MenuItem Header="{l:Tr Cmd.SplitCompare}" Command="{Binding ToggleSplitCommand}" InputGesture="Y" />
-        <MenuItem Header="{l:Tr Cmd.ZoomFit}" Command="{Binding ZoomFitCommand}" InputGesture="Ctrl+D0" />
-        <MenuItem Header="{l:Tr Cmd.Zoom100}" Command="{Binding Zoom100Command}" InputGesture="Ctrl+D1" />
+        <MenuItem Header="{l:Tr Cmd.ZoomFit}" Command="{Binding ZoomFitCommand}" InputGesture="{OnPlatform Ctrl+D0, macOS=Meta+D0}" />
+        <MenuItem Header="{l:Tr Cmd.Zoom100}" Command="{Binding Zoom100Command}" InputGesture="{OnPlatform Ctrl+D1, macOS=Meta+D1}" />
         <Separator />
         <MenuItem Header="{l:Tr Cmd.TogglePanels}" Command="{Binding TogglePanelsCommand}" InputGesture="Tab" />
         <MenuItem Header="{l:Tr Cmd.FullScreen}" Command="{Binding ToggleFullScreenCommand}" InputGesture="F" />
@@ -99,8 +99,8 @@
       <Border Grid.Column="1" Classes="tool-group" VerticalAlignment="Center">
         <StackPanel Orientation="Horizontal">
           <ToggleButton Classes="tool" IsChecked="{Binding Preview.IsSplit}" ToolTip.Tip="原圖對比：按住空白鍵；Y 切換左右分割"><PathIcon Data="{StaticResource Icon.Compare}" /></ToggleButton>
-          <Button Classes="tool" Command="{Binding ZoomFitCommand}" ToolTip.Tip="符合視窗（Ctrl+0）"><PathIcon Data="{StaticResource Icon.ZoomFit}" /></Button>
-          <Button Classes="tool" Command="{Binding Zoom100Command}" ToolTip.Tip="100%（Ctrl+1）"><PathIcon Data="{StaticResource Icon.Zoom100}" /></Button>
+          <Button Classes="tool" Command="{Binding ZoomFitCommand}" ToolTip.Tip="{OnPlatform '符合視窗（Ctrl+0）', macOS='符合視窗（⌘0）'}"><PathIcon Data="{StaticResource Icon.ZoomFit}" /></Button>
+          <Button Classes="tool" Command="{Binding Zoom100Command}" ToolTip.Tip="{OnPlatform '100%（Ctrl+1）', macOS='100%（⌘1）'}"><PathIcon Data="{StaticResource Icon.Zoom100}" /></Button>
           <TextBlock Classes="numeric" Text="{Binding Preview.ZoomText}" Margin="6,0,10,0" MinWidth="64" TextAlignment="Center" />
         </StackPanel>
       </Border>

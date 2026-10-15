@@ -29,10 +29,11 @@ public sealed partial class PreferencesViewModel : ObservableObject
 
     public IReadOnlyList<int> ProxySizes { get; } = [1200, 1600, 2048, 2560];
 
-    public IReadOnlyList<Option<string>> Backends { get; } =
-    [
-        new("Auto", "自動（Windows：DX12）"), new("Dx12", "DX12"), new("Vulkan", "Vulkan"),
-    ];
+    public IReadOnlyList<Option<string>> Backends { get; } = OperatingSystem.IsMacOS()
+        ? [new("Auto", "自動（Metal）"), new("Metal", "Metal")]
+        : OperatingSystem.IsWindows()
+            ? [new("Auto", "自動（DX12）"), new("Dx12", "DX12"), new("Vulkan", "Vulkan")]
+            : [new("Auto", "自動（Vulkan）"), new("Vulkan", "Vulkan")];
 
     public IReadOnlyList<Option<string>> Languages { get; } =
         Loc.Languages.Select(l => new Option<string>(l.Code, l.Name)).ToList();

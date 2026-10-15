@@ -5,7 +5,7 @@
 
 ## 決策
 
-採用 **WebGPUSharp 0.5.7（Dawn）**。Windows 預設後端 D3D12，Vulkan 可由偏好設定強制指定。
+採用 **WebGPUSharp 0.5.7（Dawn）**。Windows 預設後端 D3D12，Vulkan 可由偏好設定強制指定；macOS 預設 Metal，偏好設定提供 Auto / Metal。
 
 ## 候選比較（Windows 11，RTX 3060 Laptop + Iris Xe）
 
@@ -15,7 +15,7 @@
 | Evergine WebGPU.NET 2025.9 / 2026.3 | wgpu-native | 目前版本只附 `browser-wasm` 原生檔，沒有桌面平台。**淘汰** |
 | **WebGPUSharp 0.5.7** | Dawn | D3D12、Vulkan 皆可運作；附 win / osx / linux 的 x64 與 arm64 原生檔；目標 .NET 10、支援 Native AOT；API 為受控包裝（貼近 JS WebGPU），不需 unsafe 程式碼。**採用** |
 
-## Spike 量測（`filmbatch spike`，上傳 16-bit → 曝光／亮度／飽和 → 可分離高斯模糊 → BGRA8 → 讀回）
+## Spike 量測（`filmbatch-cli spike`，上傳 16-bit → 曝光／亮度／飽和 → 可分離高斯模糊 → BGRA8 → 讀回）
 
 | 介面卡 · 後端 | 影像 | 首張（含上傳） | 拖曳更新 | 拖曳更新＋模糊 | 與 CPU 參考差異 |
 |---|---|---|---|---|---|
@@ -25,8 +25,11 @@
 | Iris Xe · Vulkan | 1600×1067 | — | 3.0 ms（≈340 fps） | 6.3 ms | 最大 1/255 |
 | RTX 3060 · DX12 | 4000×2667 | 186 ms | 12.0 ms | 19.7 ms | 最大 1/255 |
 | RTX 3060 · DX12 | 6000×4000（24MP） | 684 ms | 37.3 ms | 73.4 ms | 最大 1/255 |
+| Apple M3 · Metal（osx-arm64） | 1600×1067 | 79.2 ms | 2.6 ms（381 fps） | 5.4 ms | 最大 1/255 |
 
 （Silk.NET + Vulkan 的同一測試：1600px 拖曳更新 2.3 ms，與 Dawn 相近。）
+
+Apple M3 數值為 2026-10-15 在 macOS 26.6.2 執行發佈版 `dist/osx-arm64/cli/filmbatch-cli spike --backend Metal` 的單次量測；不是跨機器效能保證。GUI 發佈版也通過影像解碼、預覽與縮圖冒煙測試。
 
 驗收標準「1600px 預覽拖曳時更新 ≥ 30 fps」在硬體介面卡上大幅達成；讀回是完整路徑的一部分，已計入上表。
 
@@ -51,4 +54,4 @@ WebGPUSharp 內附的 Dawn 建置**不提供軟體介面卡**（`forceFallbackAd
 
 ## 尚待驗證
 
-- macOS（Metal）與 Linux（Vulkan / lavapipe）：本次依需求只建置 Windows，跨平台冒煙建置延後。
+- macOS Apple Silicon 的原生 Metal 路徑已驗證；`osx-x64` 封裝在 Rosetta 下通過冒煙，但實體 Intel Mac 與 Linux（Vulkan / lavapipe）仍未驗證。內附 Dawn 的兩個 Mac 架構都宣告 `minos 26.0`；較舊 macOS 需另外的相容原生建置。封裝與執行邊界詳見 [M0 狀態](../M0-status.md)。

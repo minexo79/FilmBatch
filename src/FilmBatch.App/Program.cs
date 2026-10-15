@@ -51,7 +51,7 @@ internal static class Program
             .LogToTrace();
 
     /// <summary>預設字型與後備字型（計畫書 2.2.3）。</summary>
-    private static FontManagerOptions FontOptions()
+    internal static FontManagerOptions FontOptions()
     {
         var (primary, fallbacks) = OperatingSystem.IsWindows() ? ("Microsoft JhengHei UI", new[] { "Microsoft JhengHei", "Segoe UI" })
             : OperatingSystem.IsMacOS() ? ("PingFang TC", new[] { "Heiti TC", "Helvetica Neue" })
