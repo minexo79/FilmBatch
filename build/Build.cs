@@ -17,13 +17,11 @@
 
 using System.Diagnostics;
 using System.Reflection;
-using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.IO.Compression;
 
-var rid = Arg("--rid") ?? (OperatingSystem.IsMacOS()
-    ? $"osx-{RuntimeInformation.OSArchitecture.ToString().ToLowerInvariant()}" : "win-x64");
+var rid = Arg("--rid") ?? (OperatingSystem.IsMacOS() ? "osx-arm64" : "win-x64");
 var smoke = args.Contains("--smoke");
 var zip = args.Contains("--zip");
 var signIdentity = Arg("--sign") ?? Env("FILMBATCH_SIGN_IDENTITY");
@@ -31,14 +29,14 @@ var notaryProfile = Arg("--notary-profile") ?? Env("FILMBATCH_NOTARY_PROFILE");
 var notarize = args.Contains("--notarize") || notaryProfile is not null;
 var root = Path.GetFullPath(Path.Combine(AppContext.GetData("EntryPointFileDirectoryPath") as string ?? ".", ".."));
 var dist = Path.Combine(root, "dist", rid);
-var isMac = rid is "osx-arm64" or "osx-x64";
+var isMac = rid is "osx-arm64";
 var bundle = Path.Combine(dist, "FilmBatch.app");
 var gui = isMac ? Path.Combine(bundle, "Contents", "MacOS") : dist;
 var cli = Path.Combine(dist, "cli");
 
-if (rid is not ("win-x64" or "osx-arm64" or "osx-x64"))
+if (rid is not ("win-x64" or "osx-arm64"))
 {
-    Console.Error.WriteLine($"不支援的 RID：{rid}（支援 win-x64 / osx-arm64 / osx-x64）");
+    Console.Error.WriteLine($"不支援的 RID：{rid}（支援 win-x64 / osx-arm64）");
     return 1;
 }
 if (isMac && !OperatingSystem.IsMacOS())

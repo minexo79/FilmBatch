@@ -59,7 +59,7 @@ dotnet run --project src/FilmBatch.App -- --gallery
 dotnet run build/Build.cs -- --rid win-x64 --zip
 ```
 
-macOS 改用 `osx-arm64` / `osx-x64`。
+macOS（Apple Silicon）改用 `osx-arm64`；不再提供 Intel Mac 建置。
 
 ## 文件
 

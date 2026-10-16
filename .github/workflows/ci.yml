@@ -26,8 +26,6 @@ jobs:
           # 較低 macOS 由 dawn-build 產物（artifacts/dawn/）涵蓋，矩陣 runner 仍反映內附 ABI 的真實需求。
           - os: macos-26
             rid: osx-arm64
-          - os: macos-26-intel
-            rid: osx-x64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -98,8 +96,8 @@ jobs:
           global-json-file: global.json
       - name: Restore (needs NuGet 內附 Dawn 作 ABI 比對)
         run: dotnet restore FilmBatch.sln
-      - name: Build Dawn for both macOS architectures
-        run: bash build/build-dawn.sh all
+      - name: Build Dawn for Apple Silicon
+        run: bash build/build-dawn.sh arm64
       - uses: actions/upload-artifact@v4
         with:
           name: dawn-macos-minos14
