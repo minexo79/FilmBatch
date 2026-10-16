@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Media;
@@ -97,7 +98,11 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
     [ObservableProperty]
     private PhotoExif? _exif;
 
-    private readonly Dictionary<string, PhotoExif> _exifCache = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>
+    /// 拍攝資訊跟著解碼後的來源快取：重新開啟資料夾（或改變代理圖尺寸）會重新解碼，EXIF 也隨之重讀，
+    /// 檔案在外部被改寫後不會沿用舊資訊。
+    /// </summary>
+    private readonly ConditionalWeakTable<SourceImage, PhotoExif> _exifCache = new();
 
     public string EmptyText => Loc.Format("Preview.Empty", OperatingSystem.IsMacOS() ? "⌘O" : "Ctrl+O");
 
@@ -118,27 +123,27 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
             NotifyHistogram();
             Source = source;
             Original = ToBitmap(ImageCache.ToBgra8(source), source.Width, source.Height);
-            _ = LoadExifAsync(source.FilePath);
+            _ = LoadExifAsync(source);
         }
     }
 
     /// <summary>EXIF 只讀檔頭，但仍在背景執行緒讀取；讀完時若已換照片則丟棄。</summary>
-    private async Task LoadExifAsync(string? path)
+    private async Task LoadExifAsync(SourceImage source)
     {
-        if (path is null)
+        if (source.FilePath is not { } path)
         {
             Exif = null;
             return;
         }
-        if (_exifCache.TryGetValue(path, out var cached))
+        if (_exifCache.TryGetValue(source, out var cached))
         {
             Exif = cached;
             return;
         }
         if (Exif?.FileName != Path.GetFileName(path)) Exif = null;
         var exif = await Task.Run(() => PhotoExif.Read(path));
-        _exifCache[path] = exif;
-        if (string.Equals(Source?.FilePath, path, StringComparison.OrdinalIgnoreCase)) Exif = exif;
+        _exifCache.AddOrUpdate(source, exif);
+        if (ReferenceEquals(Source, source)) Exif = exif;
     }
 
     public void SetResult(RenderResult r, ImageHistogram? histogram, ImageHistogram? originalHistogram)

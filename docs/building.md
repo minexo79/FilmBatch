@@ -129,4 +129,4 @@ filmbatch-cli gpu-info
 | 設定、版面、預設、配方與記錄檔 | Windows：`%APPDATA%\FilmBatch\`；macOS：`~/Library/Application Support/FilmBatch/` |
 | 每個照片資料夾的專案與匯出紀錄 | `<照片資料夾>/.filmbatch/` |
 
-macOS 的快捷鍵使用 ⌘（例如 ⌘O、⌘Z、⌘⇧Z），並使用原生選單列。
+macOS 的快捷鍵使用 ⌘（例如 ⌘O、⌘Z、⌘⇧Z），並使用原生選單列：應用程式選單提供「關於」與「偏好設定」（⌘,），切換介面語言時選單列即時更新。

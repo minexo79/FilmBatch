@@ -130,6 +130,26 @@ public partial class LocalizationTests
         }
     }
 
+    /// <summary>設定檔的語言不是支援的代碼（例如手動改成 en-US）時使用預設英文；只差大小寫仍是同一語言。啟動時依此決定介面語言。</summary>
+    [Theory]
+    [InlineData("zh-tw", "zh-TW")]
+    [InlineData("en-US", "en")]
+    [InlineData("ja", "en")]
+    [InlineData("", "en")]
+    public void EffectiveLanguage_UsesSupportedCodeOrDefault(string saved, string expected) =>
+        Assert.Equal(expected, new AppSettings { Language = saved }.EffectiveLanguage);
+
+    [AvaloniaFact]
+    public void Preferences_OpenWithRegionalLanguageSetting()
+    {
+        using var vm = TestEnv.CreateViewModel();
+        vm.Settings.Language = "en-US";
+
+        var preferences = new ViewModels.Dialogs.PreferencesViewModel(vm);
+
+        Assert.Equal("en", preferences.Language.Value);
+    }
+
     /// <summary>開著主視窗時切換成英文：面板文字即時更新（截圖存到 snapshots 供人工檢查）。</summary>
     [AvaloniaFact]
     public async Task SwitchingToEnglish_UpdatesOpenWindowLive()

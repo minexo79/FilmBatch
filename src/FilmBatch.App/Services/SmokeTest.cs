@@ -1,12 +1,15 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Input;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using FilmBatch.App.Localization;
 using FilmBatch.App.Views;
 using FilmBatch.App.Gallery;
 using FilmBatch.App.ViewModels;
@@ -150,6 +153,33 @@ public static class SmokeTest
             Check("來源照片未被改寫", originals.All(pair =>
                 pair.Value.AsSpan().SequenceEqual(HashFile(vm.Service.Project.PathOf(pair.Key)))));
             Check("匯出紀錄已保存", File.Exists(Path.Combine(folder, ".filmbatch", "export_log.json")));
+
+            if (OperatingSystem.IsMacOS())
+            {
+                // 系統實際顯示的應用程式選單（含 Avalonia 附加的 ⌘Q）必須就是放了「偏好設定」的那一個
+                var appMenu = NativeMenu.GetMenu(Application.Current!)?.Items.OfType<NativeMenuItem>().ToList() ?? [];
+                Check("macOS 應用程式選單", appMenu.Any(i => i.Command == vm.PreferencesCommand)
+                    && appMenu.Any(i => Equals(i.Gesture, new KeyGesture(Key.Q, KeyModifiers.Meta))));
+            }
+
+            // 切換介面語言再切回：視窗與原生選單即時更新。原生選單稍後才在 UI 執行緒重建，期間的未處理例外也算失敗。
+            var language = Loc.Instance.Culture;
+            var languageErrors = new List<string>();
+            DispatcherUnhandledExceptionEventHandler recordError = (_, e) => languageErrors.Add(e.Exception.Message);
+            Dispatcher.UIThread.UnhandledException += recordError;
+            try
+            {
+                Loc.Instance.Culture = CultureInfo.GetCultureInfo(language.Name == "zh-TW" ? "en" : "zh-TW");
+                await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+                var fileMenu = NativeMenu.GetMenu(window)?.Items.OfType<NativeMenuItem>().FirstOrDefault()?.Header;
+                Check("切換介面語言", languageErrors.Count == 0 && (!OperatingSystem.IsMacOS() || fileMenu == Loc.Get("Menu.File")),
+                    string.Join("；", languageErrors));
+            }
+            finally
+            {
+                Loc.Instance.Culture = language;
+                Dispatcher.UIThread.UnhandledException -= recordError;
+            }
 
             // 擷取實際視窗的 Avalonia 內容；不含系統選單列／標題列的合成器畫面。
             await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
