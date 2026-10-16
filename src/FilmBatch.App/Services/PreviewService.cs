@@ -18,8 +18,15 @@ public sealed class PreviewService : IDisposable
     private long _delivered;
     private long _configuration;
     private bool _disposed;
+    private volatile bool _collectHistogram = true;
+    private SourceImage? _source;
+    // Only the render worker touches the original-statistics cache.
+    private SourceImage? _histogramSource;
+    private ImageHistogram? _originalHistogram;
 
-    public event Action<RenderResult>? PreviewReady;
+    public bool CollectHistogram { get => _collectHistogram; set => _collectHistogram = value; }
+
+    public event Action<RenderResult, ImageHistogram?, ImageHistogram?>? PreviewReady;
     public event Action<string, RenderResult>? ThumbnailReady;
     public event Action<string, bool>? DeviceReady;
     public event Action<string>? Notice;
@@ -56,13 +63,28 @@ public sealed class PreviewService : IDisposable
                 Failed?.Invoke(key, ex.Message);
             });
         };
-        _scheduler.PreviewRendered += r => PostCurrent(() =>
+        _scheduler.PreviewRendered += r =>
         {
-            // 只採用最新的結果；較舊的請求結果直接丟棄
-            if (r.Generation < Interlocked.Read(ref _requested)) return;
-            Interlocked.Exchange(ref _delivered, r.Generation);
-            PreviewReady?.Invoke(r.Result);
-        });
+            if (r.Generation != Interlocked.Read(ref _requested)) return;
+            ImageHistogram? histogram = null, original = null;
+            if (_collectHistogram)
+            {
+                histogram = ImageHistogram.FromBgra8(r.Result.Bgra);
+                var source = Volatile.Read(ref _source);
+                if (!ReferenceEquals(source, _histogramSource))
+                {
+                    _originalHistogram = source is null ? null : ImageHistogram.FromRgba16(source.Rgba16);
+                    _histogramSource = source;
+                }
+                original = _originalHistogram;
+            }
+            PostCurrent(() =>
+            {
+                if (r.Generation != Interlocked.Read(ref _requested)) return;
+                Interlocked.Exchange(ref _delivered, r.Generation);
+                PreviewReady?.Invoke(r.Result, histogram, original);
+            });
+        };
         _scheduler.ThumbnailRendered += (key, r) => PostCurrent(() => ThumbnailReady?.Invoke(key, r));
     }
 
@@ -125,15 +147,24 @@ public sealed class PreviewService : IDisposable
             TexturesFolder = string.IsNullOrWhiteSpace(settings.TexturesFolder) ? null : settings.TexturesFolder,
         });
 
-    public void RequestPreview(string fileName, SourceImage source, Settings settings) =>
+    public void RequestPreview(string fileName, SourceImage source, Settings settings)
+    {
+        Volatile.Write(ref _source, source);
         _scheduler.RequestPreview(fileName, source, settings, Interlocked.Increment(ref _requested));
+    }
+
+    public void CancelPreview()
+    {
+        Interlocked.Exchange(ref _delivered, Interlocked.Increment(ref _requested));
+        Volatile.Write(ref _source, null);
+    }
 
     public void RequestThumbnail(string fileName, SourceImage source, Settings settings) =>
         _scheduler.RequestThumbnail(fileName, source, settings);
 
     public void CancelThumbnails()
     {
-        Interlocked.Exchange(ref _delivered, Interlocked.Increment(ref _requested));
+        CancelPreview();
         _scheduler.CancelThumbnails();
     }
 

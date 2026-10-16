@@ -29,17 +29,22 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
 
     let u = (f32(pos.x) + 0.5) / f32(size.x);
     let v = (f32(pos.y) + 0.5) / f32(size.y);
+    let cu = u - 0.5;
+    let cv = v - 0.5;
     let dirX = cos(p.angle);
     let dirY = sin(p.angle);
+    // 置中、邊緣參考的投影（與 CPU LightLeak 同式）：sMax 為中心到該方向邊緣的距離，
+    // perp 平移 sMax 使全圓非負（含雜湊索引與值雜訊定義）。
+    let sMax = 0.5 * (abs(dirX) + abs(dirY));
+    let range = sMax * 2.0;
 
     var leak = 0.0;
     for (var ci = 0; ci < p.count; ci++) {
         let s = p.seed + u32(ci) * 911u;
         let off = (pcg_unit(s) - 0.5) * p.irregularity * 0.4;
-        let along = u * dirX + v * dirY + off;
-        let perp = u * -dirY + v * dirX;
-        let d = 1.0 - along;
-        let wob = (pcg_unit(s + 2u + u32(perp * 7.0)) - 0.5) * p.irregularity * 0.3;
+        let along = cu * dirX + cv * dirY + off;
+        let perp = cu * -dirY + cv * dirX + sMax;
+        let d = (sMax - along) / range;
         let e = exp(-d * d / (p.size * p.size * 0.35));
         let noise = value_noise1(perp * 3.0, s + 3u) * p.irregularity;
         let m = e * (0.7 + 0.3 * noise);

@@ -220,6 +220,38 @@ public sealed class GpuDevice : IDisposable
         ThrowIfError("讀回");
     }
 
+    /// <summary>
+    /// 讀回 <paramref name="count"/> 個元素到 <paramref name="destination"/> 的 <paramref name="offset"/> 起點
+    /// （分段讀回大影像用）。
+    /// </summary>
+    public void ReadBuffer<T>(GpuBuffer buffer, T[] destination, int offset, int count) where T : unmanaged
+    {
+        WaitIdle();
+        buffer.Handle.MapSync(MapMode.Read, 0, (nuint)buffer.Size, 10_000);
+        try
+        {
+            buffer.Handle.GetConstMappedRange<T>(span => span[..count].CopyTo(destination.AsSpan(offset, count)));
+        }
+        finally
+        {
+            buffer.Handle.Unmap();
+        }
+        ThrowIfError("讀回");
+    }
+
+    /// <summary>
+    /// 在 OutOfMemory error scope 內配置資源；配置失敗時回傳錯誤訊息（null 表示成功）。
+    /// 大尺寸匯出用來偵測顯示記憶體不足，再由呼叫端決定改用 CPU。
+    /// </summary>
+    public string? TryAllocate(Action allocate)
+    {
+        string? message = null;
+        Device.PushErrorScope(ErrorFilter.OutOfMemory);
+        try { allocate(); }
+        finally { (_, message) = Device.PopErrorScopeSync(RequestTimeoutNs); }
+        return string.IsNullOrEmpty(message) ? null : message;
+    }
+
     /// <summary>等待佇列中的工作全部完成。</summary>
     public void WaitIdle() => Queue.OnSubmittedWorkSync(RequestTimeoutNs);
 

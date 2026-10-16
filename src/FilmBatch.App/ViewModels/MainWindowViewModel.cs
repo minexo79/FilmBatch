@@ -96,8 +96,14 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         Presets = new PresetLibraryViewModel(this);
         Filmstrip = new FilmstripViewModel(this);
         Inspector = new InspectorViewModel(this);
-        Sidebar = new SidebarViewModel(Presets, Inspector, new ExportViewModel(this));
+        Sidebar = new SidebarViewModel(Presets, Inspector, new ExportViewModel(this), Preview);
+        Sidebar.Export.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(ExportViewModel.IsExporting))
+                QuickExportCommand.NotifyCanExecuteChanged();
+        };
         Preview.SetBackground(settings.PreviewBackground);
+        Preview.UpdateHistogramCollection();
 
         Stack.Changed += (_, _) =>
         {
@@ -116,9 +122,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             if (software) Toast.Show($"{name} {Loc.Get("Status.SoftwareGpu")}");
         };
         Renderer.Notice += msg => Toast.Show(msg);
-        Renderer.PreviewReady += r =>
+        Renderer.PreviewReady += (r, histogram, originalHistogram) =>
         {
-            Preview.SetResult(r);
+            Preview.SetResult(r, histogram, originalHistogram);
             LastRenderText = $"{r.Elapsed.TotalMilliseconds:F1} ms";
             UpdateBackgroundText();
         };
@@ -191,6 +197,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     public void OnSelectionChanged(IReadOnlyList<string> selection, string? focus)
     {
+        if (FocusFile != (focus ?? selection.LastOrDefault())) Preview.Clear();
         Selection = selection;
         FocusFile = focus ?? selection.LastOrDefault();
         Presets.Hover.OnFocusChanged();
@@ -205,6 +212,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private async Task LoadPreviewAsync()
     {
         var generation = ++_previewLoadGeneration;
+        Renderer.CancelPreview();
         var file = FocusFile;
         var service = Service;
         if (service is null || file is null)
@@ -483,6 +491,17 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private Task Preferences() => Dialogs.ShowPreferencesAsync(new PreferencesViewModel(this));
 
+    // ───────────── 說明 ─────────────
+
+    [RelayCommand]
+    private Task About() => Dialogs.ShowAboutAsync(new AboutViewModel(GpuName));
+
+    [RelayCommand]
+    private Task OpenGitHub() => Dialogs.OpenUriAsync(AboutViewModel.RepositoryUrl);
+
+    [RelayCommand]
+    private Task ReportIssue() => Dialogs.OpenUriAsync(AboutViewModel.IssuesUrl);
+
     /// <summary>切換到側邊欄的「照片匯出」分頁（Ctrl+E、檔案 → 匯出）。</summary>
     [RelayCommand]
     private void Export()
@@ -490,6 +509,21 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         IsFullScreen = false;
         PanelsHidden = false;
         Sidebar.Active = SidePanel.Export;
+    }
+
+    private bool CanQuickExport() => CanEditSelection() && !Sidebar.Export.IsExporting;
+
+    [RelayCommand(CanExecute = nameof(CanQuickExport))]
+    private async Task QuickExport()
+    {
+        if (!CanQuickExport()) return;
+        Export();
+        Sidebar.Export.Scope = ExportScope.Selected;
+        Sidebar.Export.Refresh();
+        if (Sidebar.Export.CanExport)
+            await Sidebar.Export.StartExportCommand.ExecuteAsync(null);
+        else if (Sidebar.Export.LastError is { } error)
+            Toast.Show(error);
     }
 
     /// <summary>偏好設定變更預覽背景。</summary>
@@ -528,9 +562,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         CreatePresetCommand.NotifyCanExecuteChanged();
         UpdatePresetCommand.NotifyCanExecuteChanged();
         ResetPhotoCommand.NotifyCanExecuteChanged();
+        QuickExportCommand.NotifyCanExecuteChanged();
     }
 
     partial void OnFolderChanged(string? value) => OnPropertyChanged(nameof(WindowTitle));
+    partial void OnPanelsHiddenChanged(bool value) => Preview.UpdateHistogramCollection();
+    partial void OnIsFullScreenChanged(bool value) => Preview.UpdateHistogramCollection();
 
     public void Dispose()
     {
@@ -545,6 +582,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 }
 
 [System.Text.Json.Serialization.JsonSerializable(typeof(Dictionary<string, object?>))]
+[System.Text.Json.Serialization.JsonSerializable(typeof(int))]
 [System.Text.Json.Serialization.JsonSerializable(typeof(Guid?))]
 [System.Text.Json.Serialization.JsonSerializable(typeof(Dictionary<string, string>))]
 internal sealed partial class ClipboardJson : System.Text.Json.Serialization.JsonSerializerContext;

@@ -58,6 +58,8 @@ public sealed partial class FilmstripViewModel : ObservableObject
     private readonly List<ThumbnailViewModel> _all = [];
     private bool _syncingSelection;
 
+    public MainWindowViewModel Main => _main;
+
     public ObservableCollection<ThumbnailViewModel> Items { get; } = [];
     public SelectionModel<ThumbnailViewModel> Selection { get; } = new() { SingleSelect = false };
 
@@ -86,6 +88,10 @@ public sealed partial class FilmstripViewModel : ObservableObject
     [ObservableProperty]
     private string _countText = "";
 
+    /// <summary>尚未開啟資料夾：縮圖列顯示「按兩下選擇資料夾」的提示。</summary>
+    [ObservableProperty]
+    private bool _hasFolder;
+
     public FilmstripViewModel(MainWindowViewModel main)
     {
         _main = main;
@@ -97,6 +103,7 @@ public sealed partial class FilmstripViewModel : ObservableObject
     {
         _byName.Clear();
         _all.Clear();
+        HasFolder = true;
         foreach (var f in project.FileNames)
         {
             var vm = new ThumbnailViewModel(f);
@@ -227,6 +234,25 @@ public sealed partial class FilmstripViewModel : ObservableObject
         if (i < 0) return;
         Selection.Clear();
         Selection.Select(i);
+    }
+
+    /// <summary>右鍵點選已選照片保留多選範圍；未選照片則單獨選取，並以點選照片為複製來源。</summary>
+    public void SelectContextTarget(ThumbnailViewModel thumbnail)
+    {
+        var index = Items.IndexOf(thumbnail);
+        if (index < 0) return;
+        _syncingSelection = true;
+        try
+        {
+            if (!Selection.IsSelected(index))
+            {
+                Selection.Clear();
+                Selection.Select(index);
+            }
+            Selection.AnchorIndex = index;
+        }
+        finally { _syncingSelection = false; }
+        OnSelectionChanged();
     }
 
     private void OnSelectionChanged()

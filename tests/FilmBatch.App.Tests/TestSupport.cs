@@ -55,6 +55,13 @@ public sealed class FakeDialogs : IDialogService
     public Task<bool> ConfirmAsync(string title, string message, string confirmText) => Task.FromResult(ConfirmAnswer);
     public Task<string?> PromptAsync(string title, string label, string initial) => Task.FromResult(PromptAnswer);
     public void ShowGallery() { }
+    public Task ShowAboutAsync(AboutViewModel vm) => Task.CompletedTask;
+    public List<string> OpenedUris { get; } = [];
+    public Task OpenUriAsync(string uri)
+    {
+        OpenedUris.Add(uri);
+        return Task.CompletedTask;
+    }
 }
 
 public static class TestEnv

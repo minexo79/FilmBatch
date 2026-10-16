@@ -13,6 +13,10 @@
   <data name="Cmd.OpenFolder" xml:space="preserve"><value>Open Folder…</value></data>
   <data name="Cmd.OpenSamples" xml:space="preserve"><value>Open Sample Folder</value></data>
   <data name="Cmd.Export" xml:space="preserve"><value>Export…</value></data>
+  <data name="Cmd.QuickExport" xml:space="preserve"><value>Quick Export Selected Photos</value></data>
+  <data name="Cmd.ResetSelected" xml:space="preserve"><value>Reset Selected Photos</value></data>
+  <data name="Histogram.Title" xml:space="preserve"><value>Histogram · RGB / Luminance</value></data>
+  <data name="Histogram.Clipping" xml:space="preserve"><value>Shadow clipping {0:P1}　Highlight clipping {1:P1}</value></data>
   <data name="Cmd.Preferences" xml:space="preserve"><value>Preferences…</value></data>
   <data name="Cmd.Exit" xml:space="preserve"><value>Exit</value></data>
   <data name="Cmd.Undo" xml:space="preserve"><value>Undo</value></data>
@@ -97,9 +101,42 @@
   <data name="Dialog.Remember" xml:space="preserve"><value>Remember my choice</value></data>
   <data name="Dialog.AssignTitle" xml:space="preserve"><value>Assign Preset</value></data>
   <data name="Menu.Window" xml:space="preserve"><value>_Window</value></data>
-  <data name="Menu.AboutApp" xml:space="preserve"><value>About {0}</value></data>
   <data name="Menu.Version" xml:space="preserve"><value>Version</value></data>
   <data name="Menu.AboutText" xml:space="preserve"><value>Batch film-effect processor</value></data>
   <data name="Cmd.CloseWindow" xml:space="preserve"><value>Close Window</value></data>
   <data name="Cmd.Minimize" xml:space="preserve"><value>Minimize</value></data>
+  <data name="Cmd.About" xml:space="preserve"><value>About FilmBatch</value></data>
+  <data name="Cmd.OpenGitHub" xml:space="preserve"><value>GitHub Repository</value></data>
+  <data name="Cmd.ReportIssue" xml:space="preserve"><value>Report an Issue</value></data>
+  <data name="About.VersionInfo" xml:space="preserve"><value>Version Information</value></data>
+  <data name="About.Runtime" xml:space="preserve"><value>Runtime</value></data>
+  <data name="About.OS" xml:space="preserve"><value>Operating System</value></data>
+  <data name="About.Packages" xml:space="preserve"><value>Third-Party Packages</value></data>
+  <data name="About.Package" xml:space="preserve"><value>Package</value></data>
+  <data name="About.License" xml:space="preserve"><value>License</value></data>
+  <data name="About.Native" xml:space="preserve"><value>Native library</value></data>
+  <data name="About.CopyInfo" xml:space="preserve"><value>Copy Version Info</value></data>
+  <data name="About.NoticeHint" xml:space="preserve"><value>Full license notices are in THIRD-PARTY-NOTICES.txt in the installation folder.</value></data>
+  <data name="Pref.Section.General" xml:space="preserve"><value>General</value></data>
+  <data name="Pref.Section.Preview" xml:space="preserve"><value>Preview</value></data>
+  <data name="Pref.Section.Gpu" xml:space="preserve"><value>GPU &amp; Performance</value></data>
+  <data name="Pref.Section.Folders" xml:space="preserve"><value>Folders</value></data>
+  <data name="Pref.Language.Desc" xml:space="preserve"><value>Interface language; applies immediately</value></data>
+  <data name="Pref.Background" xml:space="preserve"><value>Preview Background</value></data>
+  <data name="Pref.Background.Desc" xml:space="preserve"><value>Canvas color behind the photo; does not affect exports</value></data>
+  <data name="Pref.ProxySize" xml:space="preserve"><value>Preview Proxy Size</value></data>
+  <data name="Pref.ProxySize.Desc" xml:space="preserve"><value>Long edge in pixels used for preview rendering; larger is sharper but slower</value></data>
+  <data name="Pref.CurrentGpu" xml:space="preserve"><value>Current GPU</value></data>
+  <data name="Pref.Adapters" xml:space="preserve"><value>Available Adapters</value></data>
+  <data name="Pref.Backend" xml:space="preserve"><value>GPU Backend</value></data>
+  <data name="Pref.Backend.Desc" xml:space="preserve"><value>Graphics API used for rendering; switch if you hit driver issues</value></data>
+  <data name="Pref.ForceSoftware" xml:space="preserve"><value>Force Software Adapter</value></data>
+  <data name="Pref.ForceSoftware.Desc" xml:space="preserve"><value>Bypass the hardware GPU (slower); for troubleshooting</value></data>
+  <data name="Pref.GpuMemory" xml:space="preserve"><value>GPU Memory Limit</value></data>
+  <data name="Pref.GpuMemory.Desc" xml:space="preserve"><value>Video memory available to textures and caches</value></data>
+  <data name="Pref.Textures" xml:space="preserve"><value>Texture Library Folder</value></data>
+  <data name="Pref.Textures.Desc" xml:space="preserve"><value>Textures for light leaks, dust &amp; scratches and photo plates; procedural effects are used when empty</value></data>
+  <data name="Pref.Browse" xml:space="preserve"><value>Browse…</value></data>
+  <data name="Pref.ApplyNote" xml:space="preserve"><value>Settings apply when this window closes; GPU settings rebuild the renderer in the background.</value></data>
+  <data name="Filmstrip.OpenHint" xml:space="preserve"><value>Double-click here to choose a photo folder</value></data>
 </root>

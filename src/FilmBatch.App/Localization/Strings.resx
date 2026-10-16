@@ -13,6 +13,10 @@
   <data name="Cmd.OpenFolder" xml:space="preserve"><value>開啟資料夾…</value></data>
   <data name="Cmd.OpenSamples" xml:space="preserve"><value>開啟範例資料夾</value></data>
   <data name="Cmd.Export" xml:space="preserve"><value>匯出…</value></data>
+  <data name="Cmd.QuickExport" xml:space="preserve"><value>快速匯出選取照片</value></data>
+  <data name="Cmd.ResetSelected" xml:space="preserve"><value>重設選取照片</value></data>
+  <data name="Histogram.Title" xml:space="preserve"><value>直方圖 · RGB / 亮度</value></data>
+  <data name="Histogram.Clipping" xml:space="preserve"><value>暗部裁切 {0:P1}　亮部裁切 {1:P1}</value></data>
   <data name="Cmd.Preferences" xml:space="preserve"><value>偏好設定…</value></data>
   <data name="Cmd.Exit" xml:space="preserve"><value>結束</value></data>
   <data name="Cmd.Undo" xml:space="preserve"><value>復原</value></data>
@@ -97,9 +101,42 @@
   <data name="Dialog.Remember" xml:space="preserve"><value>記住我的選擇</value></data>
   <data name="Dialog.AssignTitle" xml:space="preserve"><value>指定預設</value></data>
   <data name="Menu.Window" xml:space="preserve"><value>視窗(_W)</value></data>
-  <data name="Menu.AboutApp" xml:space="preserve"><value>關於 {0}</value></data>
   <data name="Menu.Version" xml:space="preserve"><value>版本</value></data>
   <data name="Menu.AboutText" xml:space="preserve"><value>批次底片效果處理工具</value></data>
   <data name="Cmd.CloseWindow" xml:space="preserve"><value>關閉視窗</value></data>
   <data name="Cmd.Minimize" xml:space="preserve"><value>最小化</value></data>
+  <data name="Cmd.About" xml:space="preserve"><value>關於 FilmBatch</value></data>
+  <data name="Cmd.OpenGitHub" xml:space="preserve"><value>GitHub 專案頁面</value></data>
+  <data name="Cmd.ReportIssue" xml:space="preserve"><value>回報問題</value></data>
+  <data name="About.VersionInfo" xml:space="preserve"><value>版本資訊</value></data>
+  <data name="About.Runtime" xml:space="preserve"><value>執行環境</value></data>
+  <data name="About.OS" xml:space="preserve"><value>作業系統</value></data>
+  <data name="About.Packages" xml:space="preserve"><value>第三方套件</value></data>
+  <data name="About.Package" xml:space="preserve"><value>套件</value></data>
+  <data name="About.License" xml:space="preserve"><value>授權</value></data>
+  <data name="About.Native" xml:space="preserve"><value>原生函式庫</value></data>
+  <data name="About.CopyInfo" xml:space="preserve"><value>複製版本資訊</value></data>
+  <data name="About.NoticeHint" xml:space="preserve"><value>完整的授權聲明見安裝目錄中的 THIRD-PARTY-NOTICES.txt。</value></data>
+  <data name="Pref.Section.General" xml:space="preserve"><value>一般</value></data>
+  <data name="Pref.Section.Preview" xml:space="preserve"><value>預覽</value></data>
+  <data name="Pref.Section.Gpu" xml:space="preserve"><value>GPU 與效能</value></data>
+  <data name="Pref.Section.Folders" xml:space="preserve"><value>資料夾</value></data>
+  <data name="Pref.Language.Desc" xml:space="preserve"><value>介面顯示的語言，切換後立即套用</value></data>
+  <data name="Pref.Background" xml:space="preserve"><value>預覽背景</value></data>
+  <data name="Pref.Background.Desc" xml:space="preserve"><value>預覽畫布的底色，不影響匯出結果</value></data>
+  <data name="Pref.ProxySize" xml:space="preserve"><value>預覽代理圖尺寸</value></data>
+  <data name="Pref.ProxySize.Desc" xml:space="preserve"><value>預覽算圖使用的長邊像素；越大越清晰，也越耗資源</value></data>
+  <data name="Pref.CurrentGpu" xml:space="preserve"><value>目前使用的 GPU</value></data>
+  <data name="Pref.Adapters" xml:space="preserve"><value>可用的介面卡</value></data>
+  <data name="Pref.Backend" xml:space="preserve"><value>GPU 後端</value></data>
+  <data name="Pref.Backend.Desc" xml:space="preserve"><value>算圖使用的圖形 API；遇到驅動程式問題時可切換</value></data>
+  <data name="Pref.ForceSoftware" xml:space="preserve"><value>強制使用軟體介面卡</value></data>
+  <data name="Pref.ForceSoftware.Desc" xml:space="preserve"><value>不使用硬體 GPU，速度較慢，用於排除問題</value></data>
+  <data name="Pref.GpuMemory" xml:space="preserve"><value>GPU 記憶體上限</value></data>
+  <data name="Pref.GpuMemory.Desc" xml:space="preserve"><value>紋理與快取可使用的顯示記憶體</value></data>
+  <data name="Pref.Textures" xml:space="preserve"><value>材質庫資料夾</value></data>
+  <data name="Pref.Textures.Desc" xml:space="preserve"><value>漏光、灰塵與刮痕、古典版材使用的材質；沒有材質時改用程序化效果</value></data>
+  <data name="Pref.Browse" xml:space="preserve"><value>瀏覽…</value></data>
+  <data name="Pref.ApplyNote" xml:space="preserve"><value>設定於關閉此視窗時套用；GPU 相關設定會在背景重建算圖器。</value></data>
+  <data name="Filmstrip.OpenHint" xml:space="preserve"><value>在這裡按兩下以選擇照片資料夾</value></data>
 </root>
