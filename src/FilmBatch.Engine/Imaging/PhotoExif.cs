@@ -21,16 +21,17 @@ public sealed record PhotoExif(
         {
             using var image = new MagickImage();
             image.Ping(path);
-            // 以屬性讀取：JPEG 由 EXIF profile 展開、TIFF 由解碼器直接寫入，兩者都是 exif:* 名稱
+            // JPEG 的 EXIF profile 展開成 exif:*；TIFF 的 EXIF 子目錄同樣是 exif:*，
+            // 但 IFD0 的 Make／Model／DateTime 由 TIFF 解碼器寫成 tiff:make／tiff:model／tiff:timestamp
             string? Attr(params string[] keys) => keys
                 .Select(k => image.GetAttribute(k)?.Trim().TrimEnd('\0').Trim())
                 .FirstOrDefault(v => !string.IsNullOrEmpty(v));
 
-            var taken = ParseDate(Attr("exif:DateTimeOriginal", "exif:DateTimeDigitized", "exif:DateTime"));
+            var taken = ParseDate(Attr("exif:DateTimeOriginal", "exif:DateTimeDigitized", "exif:DateTime", "tiff:timestamp"));
             return new PhotoExif(
                 name,
                 taken ?? FileTime(path),
-                CameraName(Attr("exif:Make"), Attr("exif:Model")),
+                CameraName(Attr("exif:Make", "tiff:make"), Attr("exif:Model", "tiff:model")),
                 Attr("exif:LensModel", "exif:Lens"),
                 ParseInt(Attr("exif:PhotographicSensitivity", "exif:ISOSpeedRatings")),
                 ParseRational(Attr("exif:ExposureTime")),
@@ -42,10 +43,22 @@ public sealed record PhotoExif(
         }
     }
 
-    /// <summary>「1/250 s」或「2 s」。</summary>
-    public string? ShutterText => ExposureSeconds is not { } t || t <= 0 ? null
-        : t < 1 ? $"1/{Math.Round(1 / t):0} s"
-        : $"{t.ToString("0.#", CultureInfo.InvariantCulture)} s";
+    /// <summary>
+    /// 1/4 秒以下寫成「1/250 s」（分母四捨五入）；更慢的快門只有倒數為整數時（1/2、1/3）才寫成分數，
+    /// 其餘照實顯示秒數（0.6 s、0.8 s、2 s），不把 0.6 秒四捨五入成 1/2 秒。
+    /// </summary>
+    public string? ShutterText
+    {
+        get
+        {
+            if (ExposureSeconds is not { } t || t <= 0) return null;
+            var reciprocal = 1 / t;
+            var denominator = Math.Round(reciprocal);
+            return denominator >= 2 && (t <= 0.25 || Math.Abs(reciprocal - denominator) < 0.01 * denominator)
+                ? $"1/{denominator:0} s"
+                : $"{t.ToString("0.#", CultureInfo.InvariantCulture)} s";
+        }
+    }
 
     public string? ApertureText => FNumber is { } f && f > 0 ? $"f/{f.ToString("0.#", CultureInfo.InvariantCulture)}" : null;
 
