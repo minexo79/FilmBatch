@@ -19,7 +19,20 @@ public sealed class AppSettings
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Language { get; set; }
 
-    public string EffectiveLanguage => Language ?? DefaultLanguage;
+    /// <summary>
+    /// 實際使用的介面語言（啟動與偏好設定共用）：未選過，或設定檔中的值不是支援的語言代碼
+    /// （例如手動改成 en-US）時使用 <see cref="DefaultLanguage"/>；只差大小寫仍視為同一語言。
+    /// </summary>
+    public string EffectiveLanguage
+    {
+        get
+        {
+            foreach (var (code, _) in Localization.Loc.Languages)
+                if (string.Equals(code, Language, StringComparison.OrdinalIgnoreCase)) return code;
+            return DefaultLanguage;
+        }
+    }
+
     public PreviewBackground PreviewBackground { get; set; } = PreviewBackground.DarkGray;
     public int PreviewLongEdge { get; set; } = 1600;
     public string GpuBackend { get; set; } = "Auto";
