@@ -62,6 +62,7 @@
   <data name="Film.UnsupportedEffect" xml:space="preserve"><value>「{0}」效果尚未實作，以關閉算圖</value></data>
   <data name="Film.UnknownRecipe" xml:space="preserve"><value>未知配方「{0}」，沿用目前欄位值算圖</value></data>
   <data name="Film.SkippedOne" xml:space="preserve"><value>已略過 {0}</value></data>
+  <data name="Film.FileError" xml:space="preserve"><value>{0}：{1}</value></data>
   <data name="Film.SkippedMany" xml:space="preserve"><value>已略過 {0} 個檔案——首先：{1}</value></data>
   <data name="Filmstrip.All" xml:space="preserve"><value>全部</value></data>
   <data name="Filmstrip.OverridesOnly" xml:space="preserve"><value>只顯示有覆寫</value></data>

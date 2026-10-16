@@ -78,13 +78,13 @@ public static class CustomRecipeFile
             var version = int.Parse(formatText);
             if (version != FormatVersion)
                 return CustomRecipeParseResult.Fail(version > FormatVersion
-                    ? $"made by a newer Recipe Lab (format {version})"
+                    ? CoreText.Format("Recipe.Error.NewerFormat", version)
                     : Bad("format", formatText));
         }
 
         var name = kv.GetValueOrDefault("name", "").Trim();
         if (name.Length == 0) name = Stem(fileName).Trim();
-        if (!IsValidName(name)) return CustomRecipeParseResult.Fail($"name: {name} is not allowed");
+        if (!IsValidName(name)) return CustomRecipeParseResult.Fail(Bad("name", name));
 
         var style = "standard";
         if (kv.TryGetValue("style", out var styleText) && styleText.Length > 0)
@@ -184,7 +184,7 @@ public static class CustomRecipeFile
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            return new(entries, [folder + ": cannot be read: " + ex.Message]);
+            return new(entries, [CoreText.Format("Recipe.Skip.CannotRead", folder, ex.Message)]);
         }
         Array.Sort(files, StringComparer.OrdinalIgnoreCase);
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -198,26 +198,26 @@ public static class CustomRecipeFile
             {
                 if (new FileInfo(path).Length > MaxBytes)
                 {
-                    skipped.Add(file + ": too large to be a recipe");
+                    skipped.Add(CoreText.Format("Recipe.Skip.TooLarge", file));
                     continue;
                 }
                 text = File.ReadAllText(path);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                skipped.Add(file + ": cannot be read: " + ex.Message);
+                skipped.Add(CoreText.Format("Recipe.Skip.CannotRead", file, ex.Message));
                 continue;
             }
             var parsed = Parse(text, file);
             if (!parsed.Success)
             {
-                skipped.Add(file + ": " + parsed.Error);
+                skipped.Add(CoreText.Format("Recipe.Skip.Reason", file, parsed.Error));
                 continue;
             }
             var recipe = parsed.Recipe!;
             if (!names.Add(recipe.Name))
             {
-                skipped.Add(file + ": " + recipe.Name + " is already loaded");
+                skipped.Add(CoreText.Format("Recipe.Skip.AlreadyLoaded", file, recipe.Name));
                 continue;
             }
             entries.Add(new(recipe, file, path));
@@ -267,7 +267,7 @@ public static class CustomRecipeFile
 
     private static string Signed(int value) => value > 0 ? "+" + value : value.ToString();
 
-    private static string Bad(string key, object value) => $"{key}: {value} is not allowed";
+    private static string Bad(string key, object value) => CoreText.Format("Recipe.Error.NotAllowed", key, value);
 
     private static string Stem(string fileName)
     {
@@ -287,13 +287,13 @@ public static class CustomRecipeFile
             var trimmed = raw.Trim();
             if (trimmed.Length == 0 || trimmed.StartsWith('#') || trimmed is "---" or "...") continue;
             var colon = IndexOfEntryColon(raw);
-            if (colon < 0) throw new InvalidDataException($"line {n + 1} is not a YAML key: value");
+            if (colon < 0) throw new InvalidDataException(CoreText.Format("Recipe.Error.NotKeyValue", n + 1));
             var key = raw[..colon].Trim();
-            if (!IsKey(key)) throw new InvalidDataException($"line {n + 1} is not a YAML key: value");
+            if (!IsKey(key)) throw new InvalidDataException(CoreText.Format("Recipe.Error.NotKeyValue", n + 1));
             var scalar = Scalar(raw[(colon + 1)..]);
-            if (scalar is null) throw new InvalidDataException($"line {n + 1} is not a YAML key: value");
+            if (scalar is null) throw new InvalidDataException(CoreText.Format("Recipe.Error.NotKeyValue", n + 1));
             key = key.ToLowerInvariant();
-            if (!kv.TryAdd(key, scalar)) throw new InvalidDataException($"{key} is set twice");
+            if (!kv.TryAdd(key, scalar)) throw new InvalidDataException(CoreText.Format("Recipe.Error.SetTwice", key));
         }
         return kv;
     }

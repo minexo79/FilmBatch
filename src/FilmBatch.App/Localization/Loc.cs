@@ -16,7 +16,7 @@ public sealed class Loc : INotifyPropertyChanged
 
     private CultureInfo _culture = CultureInfo.GetCultureInfo(Services.AppSettings.DefaultLanguage);
 
-    private Loc() => Core.CoreText.English = _culture.TwoLetterISOLanguageName == "en";
+    private Loc() => SyncLibraryCultures(_culture);
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -28,10 +28,17 @@ public sealed class Loc : INotifyPropertyChanged
             if (Equals(_culture, value)) return;
             _culture = value;
             Strings.Culture = value;
-            Core.CoreText.English = value.TwoLetterISOLanguageName == "en";
+            SyncLibraryCultures(value);
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs("Item[]"));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Culture)));
         }
+    }
+
+    /// <summary>Core 與 Gpu 各自有資源檔（顯示給使用者的錯誤訊息），跟著介面語言切換。</summary>
+    private static void SyncLibraryCultures(CultureInfo culture)
+    {
+        Core.CoreText.Culture = culture;
+        Gpu.Localization.GpuText.Culture = culture;
     }
 
     /// <summary>macOS 上優先使用 <c>key.Mac</c>（快速鍵寫法不同的提示文字）。</summary>

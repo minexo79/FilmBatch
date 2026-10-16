@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
+using FilmBatch.Gpu.Localization;
 
 namespace FilmBatch.Gpu.ShaderSystem;
 
@@ -49,7 +50,7 @@ public sealed partial class ShaderLibrary
         var actual = _assembly.GetManifestResourceNames()
             .FirstOrDefault(n => string.Equals(n.Replace('\\', '/'), name, StringComparison.Ordinal));
         using var s = (actual is null ? null : _assembly.GetManifestResourceStream(actual))
-            ?? throw new FileNotFoundException($"找不到嵌入的 shader：{name}");
+            ?? throw new FileNotFoundException(GpuText.Format("Gpu.ShaderNotFound", name));
         using var r = new StreamReader(s, Encoding.UTF8);
         return r.ReadToEnd();
     }

@@ -36,6 +36,48 @@ public partial class LocalizationTests
         Assert.Empty(en.Where(e => Cjk().IsMatch(e.Value)).Select(e => e.Key));
     }
 
+    private static Dictionary<string, string> Entries(System.Resources.ResourceManager resources, CultureInfo culture) =>
+        resources.GetResourceSet(culture, createIfNotExists: true, tryParents: false)!
+            .Cast<DictionaryEntry>().ToDictionary(e => (string)e.Key, e => (string)e.Value!);
+
+    /// <summary>Core（配方解析）與 Gpu（裝置錯誤）的資源檔：英文涵蓋每個 key 且不含中文。</summary>
+    [Fact]
+    public void LibraryResources_CoverEveryKey_WithoutChinese()
+    {
+        foreach (var resources in new[] { Core.CoreText.ResourceManager, Gpu.Localization.GpuText.ResourceManager })
+        {
+            var zh = Entries(resources, CultureInfo.InvariantCulture);
+            var en = Entries(resources, CultureInfo.GetCultureInfo("en"));
+            Assert.NotEmpty(zh);
+            Assert.Empty(zh.Keys.Except(en.Keys));
+            Assert.Empty(en.Where(e => Cjk().IsMatch(e.Value)).Select(e => e.Key));
+        }
+    }
+
+    /// <summary>切換介面語言時，Core 的配方錯誤與 Gpu 的錯誤訊息跟著切換。</summary>
+    [AvaloniaFact]
+    public void SwitchingLanguage_UpdatesLibraryMessages()
+    {
+        var previous = Loc.Instance.Culture;
+        try
+        {
+            Loc.Instance.Culture = CultureInfo.GetCultureInfo("en");
+            var en = Core.Film.CustomRecipeFile.Parse("saturation: +9", "BAD.YML").Error!;
+            Assert.Equal("saturation: +9 is not allowed", en);
+            Assert.Equal("No usable GPU adapter was found.", Gpu.Localization.GpuText.Get("Gpu.NoAdapter"));
+
+            Loc.Instance.Culture = CultureInfo.GetCultureInfo("zh-TW");
+            var zh = Core.Film.CustomRecipeFile.Parse("saturation: +9", "BAD.YML").Error!;
+            Assert.Contains("saturation", zh);
+            Assert.Matches(Cjk(), zh);
+            Assert.Matches(Cjk(), Gpu.Localization.GpuText.Get("Gpu.NoAdapter"));
+        }
+        finally
+        {
+            Loc.Instance.Culture = previous;
+        }
+    }
+
     // 切換語言會通知已開啟的視窗，必須在 UI 執行緒上執行。
     [AvaloniaFact]
     public void EnglishCatalogLabels_HaveNoChinese()

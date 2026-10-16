@@ -1,4 +1,5 @@
 using FilmBatch.Gpu.Device;
+using FilmBatch.Gpu.Localization;
 using FilmBatch.Gpu.Resources;
 using WebGpuSharp;
 
@@ -68,7 +69,7 @@ public sealed class ComputeKernel : IDisposable
 
         var (status, message) = device.PopErrorScopeSync(10_000_000_000);
         if (pipeline is null || !string.IsNullOrEmpty(message))
-            throw new GpuException($"建立 compute pipeline（{Label}）失敗：{status} {message}");
+            throw new GpuException(GpuText.Format("Gpu.PipelineFailed", Label, status, message));
         Pipeline = pipeline;
     }
 

@@ -217,12 +217,12 @@ public sealed partial class FilmRecipeViewModel : ObservableObject
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            _main.Toast.Show($"{Path.GetFileName(path)}: {ex.Message}");
+            _main.Toast.Show(Loc.Format("Film.FileError", Path.GetFileName(path), ex.Message));
             return;
         }
         if (!parsed.Success)
         {
-            _main.Toast.Show($"{Path.GetFileName(path)}: {parsed.Error}");
+            _main.Toast.Show(Loc.Format("Film.FileError", Path.GetFileName(path), parsed.Error ?? ""));
             return;
         }
         var recipe = parsed.Recipe!;

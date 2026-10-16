@@ -62,6 +62,7 @@
   <data name="Film.UnsupportedEffect" xml:space="preserve"><value>“{0}” is not implemented yet; rendered as off</value></data>
   <data name="Film.UnknownRecipe" xml:space="preserve"><value>Unknown recipe “{0}”; rendering current field values</value></data>
   <data name="Film.SkippedOne" xml:space="preserve"><value>Skipped {0}</value></data>
+  <data name="Film.FileError" xml:space="preserve"><value>{0}: {1}</value></data>
   <data name="Film.SkippedMany" xml:space="preserve"><value>Skipped {0} files — first: {1}</value></data>
   <data name="Filmstrip.All" xml:space="preserve"><value>All</value></data>
   <data name="Filmstrip.OverridesOnly" xml:space="preserve"><value>With overrides</value></data>

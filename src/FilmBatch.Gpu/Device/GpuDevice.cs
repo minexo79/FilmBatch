@@ -1,4 +1,5 @@
 using System.Text;
+using FilmBatch.Gpu.Localization;
 using FilmBatch.Gpu.Resources;
 using FilmBatch.Gpu.ShaderSystem;
 using WebGpuSharp;
@@ -56,8 +57,8 @@ public sealed class GpuDevice : IDisposable
             },
         };
         Device = adapter.RequestDeviceSync(in desc, RequestTimeoutNs)
-            ?? throw new GpuException("無法建立 GPU 裝置。");
-        Queue = Device.GetQueue() ?? throw new GpuException("無法取得 GPU 佇列。");
+            ?? throw new GpuException(GpuText.Get("Gpu.DeviceFailed"));
+        Queue = Device.GetQueue() ?? throw new GpuException(GpuText.Get("Gpu.QueueFailed"));
     }
 
     /// <summary>綁定與原生函式庫版本（顯示於 log 與 gpu-info）。</summary>
@@ -68,7 +69,7 @@ public sealed class GpuDevice : IDisposable
     public static GpuDevice Create(GpuDeviceOptions? options = null)
     {
         options ??= new GpuDeviceOptions();
-        var instance = WebGPU.CreateInstance() ?? throw new GpuException("無法建立 WebGPU instance。");
+        var instance = WebGPU.CreateInstance() ?? throw new GpuException(GpuText.Get("Gpu.InstanceFailed"));
 
         Adapter? adapter = null;
         if (!options.ForceSoftware)
@@ -77,8 +78,8 @@ public sealed class GpuDevice : IDisposable
         adapter ??= RequestAdapter(instance, options.Backend, options.LowPower, fallback: true);
         if (adapter == null)
             throw new GpuException(options.ForceSoftware
-                ? "找不到軟體 GPU 介面卡（目前的 Dawn 建置未包含軟體介面卡）。"
-                : "找不到可用的 GPU 介面卡。");
+                ? GpuText.Get("Gpu.NoSoftwareAdapter")
+                : GpuText.Get("Gpu.NoAdapter"));
 
         return new GpuDevice(instance, adapter, QueryInfo(adapter));
     }
@@ -88,7 +89,7 @@ public sealed class GpuDevice : IDisposable
     /// </summary>
     public static IReadOnlyList<GpuAdapterInfo> EnumerateAdapters(GpuBackend backend = GpuBackend.Auto)
     {
-        var instance = WebGPU.CreateInstance() ?? throw new GpuException("無法建立 WebGPU instance。");
+        var instance = WebGPU.CreateInstance() ?? throw new GpuException(GpuText.Get("Gpu.InstanceFailed"));
         GpuBackend[] backends = backend != GpuBackend.Auto ? [backend]
             : OperatingSystem.IsWindows() ? [GpuBackend.Dx12, GpuBackend.Vulkan]
             : OperatingSystem.IsMacOS() ? [GpuBackend.Metal]
@@ -166,7 +167,7 @@ public sealed class GpuDevice : IDisposable
     internal void ThrowIfError(string context)
     {
         var err = Interlocked.Exchange(ref _pendingError, null);
-        if (err != null) throw new GpuException($"{context}：{err}");
+        if (err != null) throw new GpuException(GpuText.Format("Gpu.ErrorIn", context, err));
     }
 
     // ───────────── 資源建立 ─────────────
@@ -195,7 +196,7 @@ public sealed class GpuDevice : IDisposable
         };
         var size = new Extent3D { Width = texture.Width, Height = texture.Height, DepthOrArrayLayers = 1 };
         Queue.WriteTexture(in dst, data, in layout, in size);
-        ThrowIfError("上傳紋理");
+        ThrowIfError(GpuText.Get("Gpu.Context.UploadTexture"));
     }
 
     public void WriteBuffer<T>(GpuBuffer buffer, ReadOnlySpan<T> data, ulong offset = 0) where T : unmanaged
@@ -217,7 +218,7 @@ public sealed class GpuDevice : IDisposable
         {
             buffer.Handle.Unmap();
         }
-        ThrowIfError("讀回");
+        ThrowIfError(GpuText.Get("Gpu.Context.Readback"));
     }
 
     /// <summary>
@@ -236,7 +237,7 @@ public sealed class GpuDevice : IDisposable
         {
             buffer.Handle.Unmap();
         }
-        ThrowIfError("讀回");
+        ThrowIfError(GpuText.Get("Gpu.Context.Readback"));
     }
 
     /// <summary>

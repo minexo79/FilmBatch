@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="Gpu.InstanceFailed" xml:space="preserve"><value>無法建立 WebGPU instance。</value></data>
+  <data name="Gpu.DeviceFailed" xml:space="preserve"><value>無法建立 GPU 裝置。</value></data>
+  <data name="Gpu.QueueFailed" xml:space="preserve"><value>無法取得 GPU 佇列。</value></data>
+  <data name="Gpu.NoSoftwareAdapter" xml:space="preserve"><value>找不到軟體 GPU 介面卡（目前的 Dawn 建置未包含軟體介面卡）。</value></data>
+  <data name="Gpu.NoAdapter" xml:space="preserve"><value>找不到可用的 GPU 介面卡。</value></data>
+  <data name="Gpu.ErrorIn" xml:space="preserve"><value>{0}：{1}</value></data>
+  <data name="Gpu.Context.UploadTexture" xml:space="preserve"><value>上傳紋理</value></data>
+  <data name="Gpu.Context.Readback" xml:space="preserve"><value>讀回</value></data>
+  <data name="Gpu.Context.CreateBuffer" xml:space="preserve"><value>建立緩衝區 {0}</value></data>
+  <data name="Gpu.Context.CreateTexture" xml:space="preserve"><value>建立紋理 {0}</value></data>
+  <data name="Gpu.Context.CreateBindGroup" xml:space="preserve"><value>建立 bind group（{0}）</value></data>
+  <data name="Gpu.Context.FinishCommands" xml:space="preserve"><value>結束指令編碼</value></data>
+  <data name="Gpu.BufferFailed" xml:space="preserve"><value>無法建立緩衝區 {0}</value></data>
+  <data name="Gpu.TextureFailed" xml:space="preserve"><value>無法建立紋理 {0}</value></data>
+  <data name="Gpu.TextureViewFailed" xml:space="preserve"><value>無法建立紋理檢視 {0}</value></data>
+  <data name="Gpu.BindGroupFailed" xml:space="preserve"><value>無法建立 bind group（{0}）</value></data>
+  <data name="Gpu.ResourceCountMismatch" xml:space="preserve"><value>{0}: 需要 {1} 個資源，收到 {2} 個。</value></data>
+  <data name="Gpu.UnsupportedResource" xml:space="preserve"><value>不支援的資源型別：{0}</value></data>
+  <data name="Gpu.CommandError" xml:space="preserve"><value>GPU 指令錯誤：{0} {1}</value></data>
+  <data name="Gpu.PipelineFailed" xml:space="preserve"><value>建立 compute pipeline（{0}）失敗：{1} {2}</value></data>
+  <data name="Gpu.ShaderNotFound" xml:space="preserve"><value>找不到嵌入的 shader：{0}</value></data>
+</root>
