@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- RAW 解碼與顯影：移植自 LightCraft（lightcraft-raw 等，MIT OR Apache-2.0）。純 C#，不依賴 UI、GPU 與 Magick.NET -->
+  <PropertyGroup>
+    <IsTrimmable>true</IsTrimmable>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="FilmBatch.Raw.Tests" />
+  </ItemGroup>
+</Project>

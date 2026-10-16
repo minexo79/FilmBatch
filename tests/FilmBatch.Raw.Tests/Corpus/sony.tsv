@@ -1,0 +1,40 @@
+# CC0 Sony RAW samples (raw.pixls.us / rawdb.dnglab.org), from LightCraft f34c7a8a xtask RAW_SAMPLES.
+# raw_fnv1a64: FNV-1a-64 of the decoded u16 sensor samples (row-major, little-endian, incl. masked borders) as LightCraft decodes them.
+# name	sha256	width	height	cpp	raw_fnv1a64	url
+arw-sony-a7rm4a-compressed.arw	690c774f1d7bc1db3fa8c2489762743d8e7586e50b6f65d0b6a61cb467972c67	9600	6376	1	25ceb548dde4111e	https://raw.pixls.us/getfile.php/4822/nice/Sony%20-%20ILCE-7RM4A%20-%2014bit%2014bit%20compressed%20%283:2%29.ARW
+arw-sony-a9m2-compressed.arw	161c2a9da2b5f1e50be6117a0b4da0ce249660b5d7de13568d301c4034716b97	6048	4024	1	221c610ccea499e8	https://raw.pixls.us/getfile.php/3989/nice/Sony%20-%20ILCE-9M2%20-%2014bit%2014bit%20compressed%20%283:2%29.ARW
+arw-sony-a7m3-compressed.arw	250784580ea527442c09004417bb0eead484f2bf3ee8f9121a776ac65bb50d0f	6048	4024	1	181116dd35e46a65	https://raw.pixls.us/getfile.php/2414/nice/Sony%20-%20ILCE-7M3%20-%2014bit%2014bit%20compressed%20%283:2%29.ARW
+arw-sony-a7m3-uncompressed.arw	ece80551abf64949dbe826985a80f1d9b265401ee4ea6b989e1829549616fdcd	6048	4024	1	82ae0d35b1d991b6	https://raw.pixls.us/getfile.php/2418/nice/Sony%20-%20ILCE-7M3%20-%2014bit%2014bit%20uncompressed%20%283:2%29.ARW
+arw-sony-a7m4-14bit.arw	639a6d4db881f1359e3ea7e1137b314e59417d24e6d4d862b7202111a2c823b2	4736	3132	1	3fae07d9aae9284e	https://raw.pixls.us/getfile.php/6936/nice/Sony%20-%20ILCE-7M4%20-%2014bit%20%283:2%29.ARW
+arw-sony-a7m4-lossless-l.arw	851b43c2116c4139104a5036f83ac3b6a148789b2142214dd7192c13972b25b6	7168	5120	1	f1d446b5bedc90ee	https://raw.pixls.us/data/Sony/ILCE-7M4/ILCE-7M4_DSC06674_FullFrame-LossLess-Compressed-Large.ARW
+arw-sony-a7m4-lossless-m.arw	d453005714327addd75bcb99c1c6223173dc92f2a59542d82e6761ef0e0e7571	5120	3584	3	63cceece884fd45d	https://raw.pixls.us/data/Sony/ILCE-7M4/ILCE-7M4_DSC06675_FullFrame-LossLess-Compressed-Medium.ARW
+arw-sony-a7m4-lossless-s.arw	cbbd0930c7d8706dff84c68a2004454266e6fd0d8354f5f76a106b5d776e0223	3584	2560	3	d49102c6ffee0c7e	https://raw.pixls.us/data/Sony/ILCE-7M4/ILCE-7M4_DSC06676_FullFrame-LossLess-Compressed-Small.ARW
+arw-sony-a7cr-lossless-l.arw	3e1642f3a1ae7c9f93228c5f09f27e362608e6a4ca1b3e5d8dd9eb8fae576997	9728	6656	1	6350226955819191	https://raw.pixls.us/data/Sony/ILCE-7CR/DSC00795.ARW
+arw-sony-a7cr-lossless-m.arw	5bcba4acc52a5b902074581b4a2f5fb3c79ec56bd0fdc1746b9e2c0f9d3e9c88	6656	4608	3	9f5948ea6deac3ad	https://raw.pixls.us/data/Sony/ILCE-7CR/DSC00796.ARW
+arw-sony-a7cr-compressed.arw	f5096e8fbccf0842c8a57763cabd2836608f019eb7fd54f7b22260c2f5bc4da5	9600	6376	1	a087254ccbb38707	https://raw.pixls.us/data/Sony/ILCE-7CR/DSC00798.ARW
+arw-sony-a7cm2-lossless-l.arw	342d893bd71fd050c273df181e3039d3f12d88947b0662de5de5325c84cc449b	7168	5120	1	5a248a18565e974b	https://raw.pixls.us/data/Sony/ILCE-7CM2/DSC02431.ARW
+arw-sony-a7cm2-compressed-m.arw	002c86d38a16b08a2438780728b4fda8efcc745fa6c26231dad6af67b383b11e	4736	3132	1	fb26fa66ca87d44e	https://raw.pixls.us/data/Sony/ILCE-7CM2/DSC02436.ARW
+arw-sony-a99m2.arw	be898847ac6da485874d95469bf274df1f8f77f8b8542460464f0f393981b2d2	8000	5320	1	85ac2bd125f91f01	https://raw.pixls.us/data/Sony/ILCA-99M2/BR_00086.ARW
+arw-sony-a7rm4-14bit-compressed.arw	e6dafe42643f69ab9d1fd00414b7a1f5104df354bb589201600ac934b29b5e4a	9600	6376	1	b0714a5854162572	https://raw.pixls.us/getfile.php/3480/nice/Sony%20-%20ILCE-7RM4%20-%2014bit%2014bit%20compressed%20%283:2%29.ARW
+arw-sony-rx100m3.arw	cb81392e3a8810231ce341fb45de3e4d1b9e2f87bc47f3c314d084041ccfd138	5504	3672	1	be880ad009731272	https://raw.pixls.us/data/Sony/DSC-RX100M3/DSC00734.ARW
+arw-sony-rx100.arw	579a485b5126a25cbd55cbd5dadfa7d09cf021c99cc7d4869f9e56e3f759390b	5504	3672	1	2885f18293ce0425	https://raw.pixls.us/data/Sony/DSC-RX100/DSC00838.ARW
+arw-sony-a7rm2-12bit-uncompressed.arw	71e0888396ef52c7e6a990b4e72ebb4d8413a1fc1c35bada449870539cef6e39	8000	5320	1	54de3d1d382feb2e	https://raw.pixls.us/data/Sony/ILCE-7RM2/12-bit-uncompressed.ARW
+arw-sony-a500.arw	1407fb596a391df67c15b90026a1a76702a2e7386dbdff2f0815b903ea49cead	4288	2858	1	21a5344e643ee07d	https://raw.pixls.us/data/Sony/DSLR-A500/DSC02421.ARW
+arw-sony-a700.arw	3159e28892bf0771d01525cd4b6190f9c15bbb19fa2fab6d2515ced0594e8f40	4288	2856	1	5577748440eec84d	https://raw.pixls.us/data/Sony/DSLR-A700/DSC07249.ARW
+arw-sony-a33.arw	1a59856394f10d4fadb40f5ab9c6d1c89f473f4dbcdefd216fbbbbf1ad8d21f9	4608	3072	1	ce3920e70da214b4	https://raw.pixls.us/data/Sony/SLT-A33/DSC01867.ARW
+arw-sony-a3500-5600k.arw	04c4fe04425c3e6fff7c8af0f811923c35e750300373357bd54342150c5505d8	5504	3656	1	5afd0981f1c625ac	https://raw.pixls.us/data/Sony/ILCE-3500/DSC06923.ARW
+arw-sony-a7s-shade.arw	7cc338a0abc8fdad32d61006f1f8f412297b93e040c7efba572eb2bd8f8e8be2	4288	2848	1	39441d1e6576dcbc	https://raw.pixls.us/data/Sony/ILCE-7S/DSC04125.ARW
+arw-sony-a7sm2-16x9.arw	46044fb6a9c805f2b4915cd4970316b4d04b0566bcf5287afaad3ef648d7a3db	4288	2848	1	daa839ba9e81e076	https://raw.pixls.us/data/Sony/ILCE-7SM2/DSC01005.ARW
+arw-sony-a580-16x9.arw	5b0924d39151239dce19e92e08318f4f62a5a8ac276bd7180ec8463d2cfee709	4928	3280	1	6af3235fe3ee2072	https://raw.pixls.us/data/Sony/DSLR-A580/RAW_SONY_A580.ARW
+arw-sony-a900-packed12.arw	ac7c1532df77c321e8010aa1be60c1b9f245b1ac0db6f38fe617a73aae81af50	6080	4048	1	2dc2490e60c6f3b6	https://raw.pixls.us/data/Sony/DSLR-A900/_DSC7969.ARW
+arw-sony-ilce7rm6-apsc-land-lossless.arw	7aaf0b3941509d7364a6f03844783155ebc912d246d1c456e5cdb4693ec09fbc	6656	4608	1	66ff3bc9ad1b5488	https://rawdb.dnglab.org/api/download/Sony/ILCE-7RM6/raw_modes/ILCE-7RM6_APSC_land_RAW.ARW
+arw6-sony-ilce7rm6-apsc-land-hq.arw	b60a7e752d2a8102ccbe6eebcfdbf533c6b0f2545739090873e9e8eb32cc0637	6592	4372	1	a95c7edbd7c20f15	https://rawdb.dnglab.org/api/download/Sony/ILCE-7RM6/arw6/ILCE-7RM6_APSC_land_RAW-C-HD.ARW
+arw6-sony-ilce7rm6-ff-land-c.arw	d900d6cbe838be864269ad54de4a33fcac7eb3a3d4f91009739f770b8f85a23b	10016	6672	1	d1a23dccf4b88dbc	https://rawdb.dnglab.org/api/download/Sony/ILCE-7RM6/arw6/ILCE-7RM6_FF_land_RAW-C.ARW
+arw-sony-zv-1m2.arw	2a45845a93ab5e428868366d6575a264818b184541b1c114ab4de980872a7184	5504	3672	1	25c409f4ae515ada	https://raw.pixls.us/getfile.php/8461/nice/Sony%20-%20ZV-1M2%20-%2012bit%20%283:2%29.ARW
+arw-sony-zv-e10m2.arw	49db06da969cf3894cf070d9171fe0ed4d0f125e16a87b5eba7eaec27cd75595	6656	4608	1	47e5b9b23912b2ac	https://raw.pixls.us/getfile.php/8021/nice/Sony%20-%20ZV-E10M2%20-%2012bit%20%284:3%29.ARW
+arw-sony-dsc-rx1rm3.arw	6ef9956b343051748a6a16ba9ba7bd0d314a4ae0b4f8d8e2f1c13b4a1e50cfb8	9600	6376	1	15a11634d24c0ba2	https://raw.pixls.us/getfile.php/8544/nice/Sony%20-%20DSC-RX1RM3%20-%2014bit%20uncompressed%20%283:2%29.ARW
+arw-sony-ilce-1m2.arw	7def3c8d80537f79af199052c6e13d86750203122dcb94888ada65291dabb793	8672	5784	1	7e88f7b58759d3e9	https://raw.pixls.us/getfile.php/7827/nice/Sony%20-%20ILCE-1M2%20-%2014bit%20uncompressed%20%283:2%29.ARW
+arw-sony-dsc-rx100m7a.arw	80adbc5b1cb3342058d5998cf2eda1e6b408565169462d6d26dfe02f0c140b30	5504	3672	1	d3070cab69e7be05	https://raw.pixls.us/getfile.php/8096/nice/Sony%20-%20DSC-RX100M7A%20-%2012bit%20%283:2%29.ARW
+arw-sony-ilce-7m5.arw	8c35cd1ab0ca36b487ae50ae5e0333a8e967122700fce5678e1e5b97561896a4	7168	5120	1	337c89f0d11a3153	https://raw.pixls.us/getfile.php/8845/nice/Sony%20-%20ILCE-7M5%20-%2014bit%20%284:3%29.ARW
+arw-sony-ilme-fx2.arw	924a6e4efd5c068883dd7de2bf2a2d155c7c13bdde668232077bdf9d92a201a8	7040	4688	1	0897d0872ac8b8a5	https://raw.pixls.us/getfile.php/8807/nice/Sony%20-%20ILME-FX2%20-%2014bit%20uncompressed%20%283:2%29.ARW
+arw-sony-ilce-6400a.arw	a8a45e9b6c437eba6724fcda24c3efd084c05389711b955d84b2af67635e241b	6048	4024	1	538bbd8597837d07	https://raw.pixls.us/getfile.php/7826/nice/Sony%20-%20ILCE-6400A%20-%2014bit%20%283:2%29.ARW
