@@ -8,9 +8,13 @@ FilmBatch 的底片色彩配方搬移自 [Recipe Lab](https://github.com/voxivoi
 | 項目 | 內容 |
 |---|---|
 | 檔案 | `src/com/voxivoid/recipelab/Recipes.java`（配方表 `Recipes.ALL`）、`docs/DEVELOPMENT.md`（格式 1）、`docs/SAMPLES.md`（樣張說明） |
-| Commit | `fd97eec77caf56bb2740a89b503e1037fdb24877`（2026-10-14，HEAD） |
+| Commit | `6d70495e62d4a9ec15a9c5cfcf835e775ff9c8cc`（tag **v1.7.0**，2026-10-13；最後一個 MIT 版本） |
 | 轉出 | `src/FilmBatch.Core/Film/recipelab.json`（77 筆，key 與計畫書 7.4 表格一致；數值一字不改） |
 | 自訂格式讀寫 | `src/FilmBatch.Core/Film/CustomRecipeFile.cs`（對應上游 `RecipeFormats` / `RecipeFormatV1` / `CustomRecipes`） |
+
+**授權版本限制**：上游自 v1.8.0（commit `836b277`）起改為 GPL-3.0。FilmBatch 只使用 **v1.7.0（MIT）**
+的內容，請勿跟進 v1.8.0 之後的版本。v1.8.0 之後的修改（例如 #108 posterization-mono）只影響相機端執行，
+配方數值與樣張與 v1.7.0 相同，不需移植。
 
 跟進上游時：以同一 commit 重新轉出 `recipelab.json` 並更新此處與檔頭的 commit；
 `key` 不變的配方維持相容（專案檔已記錄實際欄位值）。

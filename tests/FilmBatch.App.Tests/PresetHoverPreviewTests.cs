@@ -21,7 +21,7 @@ public class PresetHoverPreviewTests
         await TestEnv.OpenSamplesAsync(vm).WaitAsync(TestContext.Current.CancellationToken);
         var file = vm.FocusFile!;
         var before = vm.Service!.Project[file];
-        var item = PresetByName(vm, "鮮豔");
+        var item = PresetByName(vm, "Vivid");
 
         using var renderer = new CpuFakeRenderer();
         Assert.True(vm.Presets.Hover.TryRenderNow(item, renderer));

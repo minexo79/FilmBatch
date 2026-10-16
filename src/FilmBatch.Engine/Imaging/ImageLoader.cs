@@ -1,3 +1,4 @@
+using FilmBatch.Core;
 using ImageMagick;
 
 namespace FilmBatch.Engine.Imaging;
@@ -57,7 +58,7 @@ public static class ImageLoader
         image.Depth = 16;
         using var pixels = image.GetPixelsUnsafe();
         var data = pixels.ToShortArray(PixelMapping.RGBA)
-            ?? throw new InvalidDataException($"無法讀取像素：{path}");
+            ?? throw new InvalidDataException(CoreText.T($"無法讀取像素：{path}", $"Could not read pixels: {path}"));
         return new SourceImage((int)image.Width, (int)image.Height, data)
         {
             FilePath = Path.GetFullPath(path),

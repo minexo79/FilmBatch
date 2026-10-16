@@ -10,7 +10,7 @@ namespace FilmBatch.App.ViewModels.Dialogs;
 public sealed partial class ModuleCheckViewModel(ModuleSchema schema, bool isChecked) : ObservableObject
 {
     public ModuleSchema Schema { get; } = schema;
-    public string Label => Schema.Label;
+    public string Label => Localization.Loc.ModuleLabel(Schema);
 
     [ObservableProperty]
     private bool _isChecked = isChecked;
@@ -40,7 +40,7 @@ public sealed partial class SelectivePasteViewModel : ObservableObject
         var firstTime = last.Count == 0;
         Groups = new(ModuleCatalog.Modules
             .GroupBy(m => m.PasteCategory)
-            .Select(g => new ModuleCheckGroupViewModel(ModuleSchema.PasteCategoryLabel(g.Key),
+            .Select(g => new ModuleCheckGroupViewModel(Localization.Loc.PasteCategoryLabel(g.Key),
                 g.Select(m => new ModuleCheckViewModel(m, firstTime || last.Contains(m.Key))))));
         IncludeSeeds = settings.SelectivePasteIncludeSeeds;
         MirrorPositions = settings.SelectivePasteMirror;

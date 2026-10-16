@@ -34,7 +34,8 @@ public sealed class PresetLibrary : IDisposable
         var library = new PresetLibrary(folder);
         if (initialize)
             foreach (var preset in SamplePresets.Create()) library.Save(preset);
-        else library.Reload();
+        else
+            library.Reload();
         return library;
     }
 

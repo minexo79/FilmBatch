@@ -54,7 +54,7 @@
                   <TextBlock Text="{l:Tr Pref.Background}" />
                   <TextBlock Classes="settings-desc" Text="{l:Tr Pref.Background.Desc}" />
                 </StackPanel>
-                <ComboBox Grid.Column="1" Classes="settings-control" ItemsSource="{Binding Backgrounds}" SelectedItem="{Binding Background}" />
+                <ComboBox Grid.Column="1" Classes="settings-control" ItemsSource="{Binding Backgrounds}" SelectedItem="{Binding Background}" DisplayMemberBinding="{Binding Label, x:DataType=d:OptionBase}" />
               </Grid>
               <Border Classes="settings-divider" />
               <Grid Classes="settings-row" ColumnDefinitions="*,Auto">
@@ -99,7 +99,7 @@
                   <TextBlock Text="{l:Tr Pref.Backend}" />
                   <TextBlock Classes="settings-desc" Text="{l:Tr Pref.Backend.Desc}" />
                 </StackPanel>
-                <ComboBox Grid.Column="1" Classes="settings-control" ItemsSource="{Binding Backends}" SelectedItem="{Binding Backend}" />
+                <ComboBox Grid.Column="1" Classes="settings-control" ItemsSource="{Binding Backends}" SelectedItem="{Binding Backend}" DisplayMemberBinding="{Binding Label, x:DataType=d:OptionBase}" />
               </Grid>
               <Border Classes="settings-divider" />
               <Grid Classes="settings-row" ColumnDefinitions="*,Auto">

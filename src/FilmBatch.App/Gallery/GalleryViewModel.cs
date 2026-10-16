@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
+using FilmBatch.App.Localization;
 using FilmBatch.App.ViewModels;
 using FilmBatch.Core.Params;
 using FilmBatch.Engine.Rendering;
@@ -62,7 +63,7 @@ public sealed class GalleryViewModel : IParamHost
         ThumbnailViewModel Thumb(string name, bool overrides, bool updated, string? error, string color) => new(name)
         {
             Bitmap = error is null ? Sample : null,
-            PresetLabel = "Portra 暖…",
+            PresetLabel = "Portra …",
             PresetBrush = new SolidColorBrush(Color.Parse(color)),
             HasOverrides = overrides,
             PresetUpdated = updated,
@@ -70,11 +71,11 @@ public sealed class GalleryViewModel : IParamHost
         };
         Thumbnails =
         [
-            Thumb("一般", false, false, null, "#D98E2B"),
-            Thumb("有覆寫", true, false, null, "#D98E2B"),
-            Thumb("預設已更新", false, true, null, "#5AA9E6"),
-            Thumb("覆寫＋已更新", true, true, null, "#6BBF59"),
-            Thumb("讀檔失敗", false, false, "無法解碼：檔案損毀", "#7A7A7A"),
+            Thumb(Loc.Get("Gallery.Thumb.Normal"), false, false, null, "#D98E2B"),
+            Thumb(Loc.Get("Gallery.Thumb.Overrides"), true, false, null, "#D98E2B"),
+            Thumb(Loc.Get("Gallery.Thumb.Updated"), false, true, null, "#5AA9E6"),
+            Thumb(Loc.Get("Gallery.Thumb.Both"), true, true, null, "#6BBF59"),
+            Thumb(Loc.Get("Gallery.Thumb.Failed"), false, false, Loc.Get("Gallery.Thumb.FailedReason"), "#7A7A7A"),
         ];
         PresetItems = FilmBatch.Core.Presets.SamplePresets.Create().Take(4)
             .Select((p, i) => new PresetItemViewModel(p) { PinKey = (i + 1).ToString() }).ToList();
@@ -106,5 +107,5 @@ public sealed record GallerySwatch(string Token, string Hex)
 {
     public IBrush Brush { get; } = new SolidColorBrush(Color.Parse(Hex));
     public bool IsNeutral => Color.Parse(Hex) is var c && c.R == c.G && c.G == c.B;
-    public string Check => IsNeutral ? "R = G = B" : "彩色";
+    public string Check => IsNeutral ? "R = G = B" : Loc.Get("Gallery.Chromatic");
 }

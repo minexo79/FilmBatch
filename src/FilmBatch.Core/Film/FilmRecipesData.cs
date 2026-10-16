@@ -9,7 +9,8 @@ namespace FilmBatch.Core.Film;
 internal static class FilmRecipesData
 {
     public const string SourceRepo = "https://github.com/voxivoid/recipe-lab-sony-pmca";
-    public const string SourceCommit = "fd97eec77caf56bb2740a89b503e1037fdb24877";
+    /// <summary>上游 tag v1.7.0（最後一個 MIT 版本；v1.8.0 起改為 GPL-3.0，勿跟進）。</summary>
+    public const string SourceCommit = "6d70495e62d4a9ec15a9c5cfcf835e775ff9c8cc";
     public const int Count = 77;
 
     private static IReadOnlyList<FilmRecipe>? _cache;

@@ -17,4 +17,9 @@
     <dockFluent:DockFluentTheme />
     <StyleInclude Source="avares://FilmBatch/Themes/Controls.axaml" />
   </Application.Styles>
+  <!-- macOS 應用程式選單的根：Avalonia 在初始化完成前就匯出它，之後換根不會生效。
+       NativeMenus 只在開頭插入「關於」與「偏好設定」；其他平台忽略 -->
+  <NativeMenu.Menu>
+    <NativeMenu />
+  </NativeMenu.Menu>
 </Application>

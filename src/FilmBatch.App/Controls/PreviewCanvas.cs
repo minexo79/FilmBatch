@@ -107,6 +107,8 @@ public class PreviewCanvas : Control
             _spinAngle = (_spinAngle + 18) % 360;
             InvalidateVisual();
         });
+        // 「原圖／效果」標籤直接畫在畫布上，切換語言時重畫。
+        Localization.Loc.OnCultureChanged(this, static c => c.InvalidateVisual());
     }
 
     private void UpdateSpinner()
@@ -154,8 +156,8 @@ public class PreviewCanvas : Control
                 var bottom = Math.Min(Bounds.Height, dest.Bottom);
                 ctx.DrawLine(SplitShadow, new Point(x, top), new Point(x, bottom));
                 ctx.DrawLine(SplitPen, new Point(x, top), new Point(x, bottom));
-                DrawLabel(ctx, "原圖", new Point(x - 8, top + 8), alignRight: true);
-                DrawLabel(ctx, "效果", new Point(x + 8, top + 8), alignRight: false);
+                DrawLabel(ctx, Localization.Loc.Get("Preview.Original"), new Point(x - 8, top + 8), alignRight: true);
+                DrawLabel(ctx, Localization.Loc.Get("Preview.Effect"), new Point(x + 8, top + 8), alignRight: false);
             }
 
             if (ControlPoint is { } p && !ShowOriginal)
@@ -177,7 +179,7 @@ public class PreviewCanvas : Control
         if (!string.IsNullOrEmpty(OverlayText))
             DrawLabel(ctx, OverlayText, new Point(10, 10), alignRight: false);
         if (ShowOriginal && Original is not null)
-            DrawLabel(ctx, "原圖", new Point(10, string.IsNullOrEmpty(OverlayText) ? 10 : 36), alignRight: false);
+            DrawLabel(ctx, Localization.Loc.Get("Preview.Original"), new Point(10, string.IsNullOrEmpty(OverlayText) ? 10 : 36), alignRight: false);
 
         if (IsBusy) DrawSpinner(ctx, new Point(Bounds.Width - SpinnerRightInset, SpinnerTop));
     }

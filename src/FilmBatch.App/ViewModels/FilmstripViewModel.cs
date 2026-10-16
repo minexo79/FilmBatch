@@ -66,8 +66,10 @@ public sealed partial class FilmstripViewModel : ObservableObject
     public IReadOnlyList<FilmstripFilter> FilterKinds { get; } = Enum.GetValues<FilmstripFilter>();
     public IReadOnlyList<Dialogs.Option<FilmstripFilter>> FilterOptions { get; } =
     [
-        new(FilmstripFilter.All, "全部"), new(FilmstripFilter.OverridesOnly, "只顯示有覆寫"),
-        new(FilmstripFilter.Unassigned, "未指定預設"), new(FilmstripFilter.ByPreset, "依預設"),
+        Dialogs.Option<FilmstripFilter>.Localized(FilmstripFilter.All, "Filmstrip.All"),
+        Dialogs.Option<FilmstripFilter>.Localized(FilmstripFilter.OverridesOnly, "Filmstrip.OverridesOnly"),
+        Dialogs.Option<FilmstripFilter>.Localized(FilmstripFilter.Unassigned, "Filmstrip.Unassigned"),
+        Dialogs.Option<FilmstripFilter>.Localized(FilmstripFilter.ByPreset, "Filmstrip.ByPreset"),
     ];
 
     public Dialogs.Option<FilmstripFilter> SelectedFilterOption
@@ -97,6 +99,7 @@ public sealed partial class FilmstripViewModel : ObservableObject
         _main = main;
         Selection.Source = Items;
         Selection.SelectionChanged += (_, _) => OnSelectionChanged();
+        Localization.Loc.OnCultureChanged(this, static vm => vm.UpdateCountText());
     }
 
     public void Load(Project project)
@@ -221,9 +224,13 @@ public sealed partial class FilmstripViewModel : ObservableObject
         {
             _syncingSelection = false;
         }
-        CountText = visible.Count == _all.Count ? $"{_all.Count} 張" : $"{visible.Count} / {_all.Count} 張";
+        UpdateCountText();
         OnSelectionChanged();
     }
+
+    private void UpdateCountText() => CountText = Items.Count == _all.Count
+        ? Localization.Loc.Format("Filmstrip.Count", _all.Count)
+        : Localization.Loc.Format("Filmstrip.CountFiltered", Items.Count, _all.Count);
 
     public void SelectAll() => Selection.SelectAll();
 

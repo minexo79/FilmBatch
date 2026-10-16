@@ -23,12 +23,12 @@ internal sealed class EffectAssets(EffectRendererOptions options)
         if (parameters.DoubleOn && parameters.Opacity > 0 && parameters.DoubleSource != 0)
         {
             if (string.IsNullOrWhiteSpace(parameters.DoublePath))
-                throw new InvalidDataException("雙重曝光需要來源路徑。");
+                throw new InvalidDataException(CoreText.T("雙重曝光需要來源路徑。", "Double exposure needs a source path."));
             var path = parameters.DoublePath;
             if (!Path.IsPathRooted(path))
             {
                 var folder = source.FilePath is null ? null : Path.GetDirectoryName(source.FilePath);
-                if (folder is null) throw new InvalidDataException("相對素材路徑需要照片的來源路徑。");
+                if (folder is null) throw new InvalidDataException(CoreText.T("相對素材路徑需要照片的來源路徑。", "A relative asset path needs the photo's source path."));
                 path = Path.Combine(folder, path);
             }
             parameters.DoubleAsset = Load(path, edge);
@@ -61,7 +61,7 @@ internal sealed class EffectAssets(EffectRendererOptions options)
     {
         path = Path.GetFullPath(path);
         var info = new FileInfo(path);
-        if (!info.Exists) throw new FileNotFoundException("找不到效果素材。", path);
+        if (!info.Exists) throw new FileNotFoundException(CoreText.T("找不到效果素材。", "Effect asset not found."), path);
         var key = (path, edge);
         if (_images.TryGetValue(key, out var cached) && cached.Stamp == info.LastWriteTimeUtc.Ticks && cached.Length == info.Length)
             return cached.Image;

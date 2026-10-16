@@ -13,7 +13,7 @@ public sealed class DialogService(Func<Window?> owner) : IDialogService
 
     public async Task<string?> PickFolderAsync(string? startFolder)
     {
-        var options = new FolderPickerOpenOptions { Title = "選擇照片資料夾", AllowMultiple = false };
+        var options = new FolderPickerOpenOptions { Title = Localization.Loc.Get("Dialog.ChoosePhotoFolder"), AllowMultiple = false };
         if (startFolder is not null && Directory.Exists(startFolder))
             options.SuggestedStartLocation = await Owner.StorageProvider.TryGetFolderFromPathAsync(startFolder);
         var result = await Owner.StorageProvider.OpenFolderPickerAsync(options);

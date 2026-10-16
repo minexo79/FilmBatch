@@ -34,6 +34,7 @@ public sealed class PreviewService : IDisposable
 
     public bool IsBusy => Interlocked.Read(ref _requested) > Interlocked.Read(ref _delivered);
     public int PendingThumbnails => _scheduler.PendingThumbnails;
+    public string? DeviceName => _scheduler.DeviceName;
 
     public PreviewService(Func<IPreviewRenderer> factory, Action<Action> post, bool cpuFallback = true,
         Func<IPreviewRenderer>? fallback = null)

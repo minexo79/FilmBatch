@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Media;
@@ -91,7 +92,17 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
     private Point? _controlPoint;
 
     [ObservableProperty]
-    private string _zoomText = "符合視窗";
+    private string _zoomText = Loc.Get("Cmd.ZoomFit");
+
+    /// <summary>右下角拍攝資訊（檔名、日期、相機、鏡頭、ISO／快門／光圈）；沒有照片時為 null。</summary>
+    [ObservableProperty]
+    private PhotoExif? _exif;
+
+    /// <summary>
+    /// 拍攝資訊跟著解碼後的來源快取：重新開啟資料夾（或改變代理圖尺寸）會重新解碼，EXIF 也隨之重讀，
+    /// 檔案在外部被改寫後不會沿用舊資訊。
+    /// </summary>
+    private readonly ConditionalWeakTable<SourceImage, PhotoExif> _exifCache = new();
 
     public string EmptyText => Loc.Format("Preview.Empty", OperatingSystem.IsMacOS() ? "⌘O" : "Ctrl+O");
 
@@ -112,7 +123,27 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
             NotifyHistogram();
             Source = source;
             Original = ToBitmap(ImageCache.ToBgra8(source), source.Width, source.Height);
+            _ = LoadExifAsync(source);
         }
+    }
+
+    /// <summary>EXIF 只讀檔頭，但仍在背景執行緒讀取；讀完時若已換照片則丟棄。</summary>
+    private async Task LoadExifAsync(SourceImage source)
+    {
+        if (source.FilePath is not { } path)
+        {
+            Exif = null;
+            return;
+        }
+        if (_exifCache.TryGetValue(source, out var cached))
+        {
+            Exif = cached;
+            return;
+        }
+        if (Exif?.FileName != Path.GetFileName(path)) Exif = null;
+        var exif = await Task.Run(() => PhotoExif.Read(path));
+        _exifCache.AddOrUpdate(source, exif);
+        if (ReferenceEquals(Source, source)) Exif = exif;
     }
 
     public void SetResult(RenderResult r, ImageHistogram? histogram, ImageHistogram? originalHistogram)
@@ -134,6 +165,7 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
         Source = null;
         Image = null;
         Original = null;
+        Exif = null;
         IsBusy = false;
         OverlayText = null;
         ControlPoint = null;
@@ -147,13 +179,32 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
     public void ZoomFit() => Zoom = 0;
     public void Zoom100() => Zoom = 1;
 
-    partial void OnZoomChanged(double value) => ZoomText = value <= 0 ? "符合視窗" : $"{value * 100:F0}%";
+    private double? _fitScale;
+
+    partial void OnZoomChanged(double value)
+    {
+        _fitScale = null;
+        UpdateZoomText();
+    }
 
     /// <summary>由畫布回報實際縮放倍率（符合視窗時）。</summary>
     public void ReportFitScale(double scale)
     {
-        if (Zoom <= 0) ZoomText = $"符合視窗（{scale * 100:F0}%）";
+        if (Zoom > 0) return;
+        _fitScale = scale;
+        UpdateZoomText();
     }
+
+    /// <summary>切換語言後重算縮放與直方圖裁切文字。</summary>
+    public void RefreshLocalizedText()
+    {
+        UpdateZoomText();
+        OnPropertyChanged(nameof(HistogramClipping));
+        OnPropertyChanged(nameof(EmptyText));
+    }
+
+    private void UpdateZoomText() => ZoomText = Zoom > 0 ? $"{Zoom * 100:F0}%"
+        : _fitScale is { } s ? Loc.Format("Preview.FitScale", $"{s * 100:F0}%") : Loc.Get("Cmd.ZoomFit");
 
     // ───────────── 控制點 ─────────────
 

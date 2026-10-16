@@ -1,3 +1,4 @@
+using FilmBatch.Core;
 using System.Text;
 
 namespace FilmBatch.Engine.Exporting;
@@ -21,7 +22,7 @@ public static class ExportFileNames
     public static string RenderTemplate(string template, string baseName, string presetName, int index)
     {
         if (string.IsNullOrWhiteSpace(template))
-            throw new InvalidDataException("檔名範本不可為空。");
+            throw new InvalidDataException(CoreText.T("檔名範本不可為空。", "The file name template cannot be empty."));
         var sb = new StringBuilder(template.Length + 16);
         for (var i = 0; i < template.Length; i++)
         {
@@ -31,28 +32,32 @@ public static class ExportFileNames
                 continue;
             }
             var end = template.IndexOf('}', i + 1);
-            if (end < 0) throw new InvalidDataException($"檔名範本缺少 '}}'：{template}");
+            if (end < 0) throw new InvalidDataException(CoreText.T($"檔名範本缺少 '}}'：{template}", $"File name template is missing '}}': {template}"));
             var token = template.Substring(i + 1, end - i - 1);
             sb.Append(token switch
             {
                 "name" => baseName,
                 "preset" => presetName,
-                "ext" => throw new InvalidDataException("範本不可包含 {ext}（副檔名由格式決定）。"),
+                "ext" => throw new InvalidDataException(CoreText.T("範本不可包含 {ext}（副檔名由格式決定）。", "The template cannot contain {ext} (the extension comes from the format).")),
                 "index" => index.ToString(),
                 var t when t.StartsWith("index:", StringComparison.Ordinal) => FormatIndex(index, t["index:".Length..]),
-                _ => throw new InvalidDataException($"未知的檔名 token：{{{token}}}（可用 name、preset、index、index:000）。"),
+                _ => throw new InvalidDataException(CoreText.T(
+                    $"未知的檔名 token：{{{token}}}（可用 name、preset、index、index:000）。",
+                    $"Unknown file name token: {{{token}}} (available: name, preset, index, index:000).")),
             });
             i = end;
         }
         var rendered = sb.ToString();
-        if (rendered.Length == 0) throw new InvalidDataException("檔名範本展開後為空。");
+        if (rendered.Length == 0) throw new InvalidDataException(CoreText.T("檔名範本展開後為空。", "The file name template expands to an empty name."));
         return Sanitize(rendered);
     }
 
     private static string FormatIndex(int index, string format)
     {
         if (format.Length == 0 || format.Any(c => c != '0'))
-            throw new InvalidDataException($"無效的 index 格式：{{index:{format}}}（只支援 0 填充，如 {{index:000}}）。");
+            throw new InvalidDataException(CoreText.T(
+                $"無效的 index 格式：{{index:{format}}}（只支援 0 填充，如 {{index:000}}）。",
+                $"Invalid index format: {{index:{format}}} (only zero padding such as {{index:000}} is supported)."));
         return index.ToString().PadLeft(format.Length, '0');
     }
 
@@ -90,7 +95,7 @@ public static class ExportFileNames
         while (taken.Contains(candidate) || File.Exists(Path.Combine(destination, candidate)))
         {
             n++;
-            if (n > 9999) throw new IOException("輸出檔名碰撞過多，無法配置安全檔名。");
+            if (n > 9999) throw new IOException(CoreText.T("輸出檔名碰撞過多，無法配置安全檔名。", "Too many output file name collisions; cannot allocate a safe name."));
             candidate = $"{stem}_{n:000}{extension}";
         }
         taken.Add(candidate);

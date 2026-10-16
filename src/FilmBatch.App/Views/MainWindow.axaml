@@ -73,33 +73,24 @@
     </Menu>
     </Grid>
 
-    <!-- ───── 底列：左｜算圖狀態與 GPU；中｜檢視控制（膠囊群組）；右｜選取數量與背景工作 ───── -->
-    <Grid DockPanel.Dock="Bottom" Classes="bottombar" ColumnDefinitions="*,Auto,*" IsVisible="{Binding !IsFullScreen}">
+    <!-- ───── 底列：左｜算圖狀態與 GPU；右｜選取數量與背景工作（檢視控制移至預覽區下方中央） ───── -->
+    <Grid DockPanel.Dock="Bottom" Classes="bottombar" ColumnDefinitions="*,*" IsVisible="{Binding !IsFullScreen}">
       <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="16" Margin="14,0" VerticalAlignment="Center">
-        <TextBlock Classes="numeric" Text="{Binding LastRenderText}" ToolTip.Tip="最近一次預覽算圖時間" />
+        <TextBlock Classes="numeric" Text="{Binding LastRenderText}" ToolTip.Tip="{l:Tr Tip.LastRender}" />
         <StackPanel Orientation="Horizontal" Spacing="4">
           <PathIcon Data="{StaticResource Icon.Warning}" Width="11" Height="11" Foreground="{DynamicResource FB.WarningTextBrush}" IsVisible="{Binding IsSoftwareGpu}" />
           <TextBlock Text="{Binding GpuName}" Classes.warning="{Binding IsSoftwareGpu}" TextTrimming="CharacterEllipsis" MaxWidth="320" />
         </StackPanel>
       </StackPanel>
 
-      <Border Grid.Column="1" Classes="tool-group" VerticalAlignment="Center">
-        <StackPanel Orientation="Horizontal">
-          <ToggleButton Classes="tool" IsChecked="{Binding Preview.IsSplit}" ToolTip.Tip="原圖對比：按住空白鍵；Y 切換左右分割"><PathIcon Data="{StaticResource Icon.Compare}" /></ToggleButton>
-          <Button Classes="tool" Command="{Binding ZoomFitCommand}" ToolTip.Tip="{OnPlatform '符合視窗（Ctrl+0）', macOS='符合視窗（⌘0）'}"><PathIcon Data="{StaticResource Icon.ZoomFit}" /></Button>
-          <Button Classes="tool" Command="{Binding Zoom100Command}" ToolTip.Tip="{OnPlatform '100%（Ctrl+1）', macOS='100%（⌘1）'}"><PathIcon Data="{StaticResource Icon.Zoom100}" /></Button>
-          <TextBlock Classes="numeric" Text="{Binding Preview.ZoomText}" Margin="6,0,10,0" MinWidth="64" TextAlignment="Center" />
-        </StackPanel>
-      </Border>
-
-      <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="12" Margin="14,0" HorizontalAlignment="Right" VerticalAlignment="Center">
+      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" Margin="14,0" HorizontalAlignment="Right" VerticalAlignment="Center">
         <TextBlock Text="{Binding SelectionText}" />
         <Button Classes="icon" Padding="6,2" Background="Transparent">
           <TextBlock Text="{Binding BackgroundText}" />
           <Button.Flyout>
             <Flyout>
               <StackPanel Width="260" Spacing="4">
-                <TextBlock FontWeight="SemiBold" Text="背景工作" />
+                <TextBlock FontWeight="SemiBold" Text="{l:Tr Status.BackgroundTasks}" />
                 <TextBlock Classes="small" Text="{Binding BackgroundText}" />
                 <TextBlock Classes="small" Text="{Binding Sidebar.Export.StatusText}" />
               </StackPanel>

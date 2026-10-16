@@ -16,6 +16,8 @@ public partial class FilmstripView : UserControl
         // ListBox 會處理按下事件（選取），DoubleTapped 手勢不一定產生；改在通道階段看 ClickCount
         List.AddHandler(PointerPressedEvent, OnPointerPressed, RoutingStrategies.Tunnel);
         List.AddHandler(ContextRequestedEvent, OnContextRequested, RoutingStrategies.Tunnel);
+        // 縮圖列只能橫向捲動；把一般滑鼠滾輪的直向位移轉成橫向捲動
+        List.AddHandler(PointerWheelChangedEvent, OnPointerWheelChanged, RoutingStrategies.Tunnel);
     }
 
     private MainWindowViewModel? Main => this.FindAncestorOfType<Window>()?.DataContext as MainWindowViewModel;
@@ -35,6 +37,19 @@ public partial class FilmstripView : UserControl
         if (ThumbAt(e.Source) is { } thumbnail && DataContext is FilmstripViewModel vm)
             vm.SelectContextTarget(thumbnail);
         // Prevent ListBox's pointer selection from replacing an existing multi-selection.
+        e.Handled = true;
+    }
+
+    private const double WheelStep = 80;
+
+    private void OnPointerWheelChanged(object? sender, PointerWheelEventArgs e)
+    {
+        if (List.FindDescendantOfType<ScrollViewer>() is not { } scroller) return;
+        // 觸控板的橫向手勢（Delta.X）交給 ScrollViewer 原生處理
+        if (e.Delta.Y == 0 || Math.Abs(e.Delta.X) > Math.Abs(e.Delta.Y)) return;
+        var maxX = Math.Max(0, scroller.Extent.Width - scroller.Viewport.Width);
+        var x = Math.Clamp(scroller.Offset.X - e.Delta.Y * WheelStep, 0, maxX);
+        scroller.Offset = scroller.Offset.WithX(x);
         e.Handled = true;
     }
 

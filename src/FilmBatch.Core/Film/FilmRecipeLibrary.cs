@@ -8,8 +8,6 @@ namespace FilmBatch.Core.Film;
 /// </summary>
 public sealed class FilmRecipeLibrary
 {
-    public const string CustomGroupName = "自訂";
-
     public static readonly IReadOnlyList<string> BrandsInOrder =
     [
         "Sony", "Fuji Sim", "Fuji Film", "Kodak", "Cine", "Ricoh GR", "Leica",

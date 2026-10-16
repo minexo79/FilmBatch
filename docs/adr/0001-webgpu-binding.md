@@ -54,4 +54,4 @@ WebGPUSharp 內附的 Dawn 建置**不提供軟體介面卡**（`forceFallbackAd
 
 ## 尚待驗證
 
-- macOS Apple Silicon 的原生 Metal 路徑已驗證；`osx-x64` 封裝在 Rosetta 下通過冒煙，但實體 Intel Mac 與 Linux（Vulkan / lavapipe）仍未驗證。內附 Dawn 的兩個 Mac 架構都宣告 `minos 26.0`；較舊 macOS 需另外的相容原生建置。封裝與執行邊界詳見 [M0 狀態](../M0-status.md)。
+- macOS Apple Silicon 的原生 Metal 路徑已驗證；`osx-x64` 封裝在 Rosetta 下通過冒煙，但實體 Intel Mac 與 Linux（Vulkan / lavapipe）仍未驗證。內附 Dawn 的兩個 Mac 架構都宣告 `minos 26.0`；較舊 macOS 需另外的相容原生建置。

@@ -96,7 +96,7 @@
                               </StackPanel>
                               <ComboBox Grid.Column="1" Classes="flat" MinWidth="150" VerticalAlignment="Center"
                                         ItemsSource="{Binding Options}" SelectedItem="{Binding Selected}"
-                                        DisplayMemberBinding="{Binding Label, x:DataType=p:ChoiceOption}" />
+                                        DisplayMemberBinding="{Binding Label, x:DataType=vm:ChoiceItem}" />
                             </Grid>
                           </DataTemplate>
                           <DataTemplate DataType="vm:ToggleParamViewModel">
@@ -114,7 +114,7 @@
                                 <TextBlock Classes="param-name" Classes.overridden="{Binding IsOverridden}" Text="{Binding Label}" />
                                 <Ellipse Classes="override-dot" IsVisible="{Binding IsOverridden}" />
                               </StackPanel>
-                              <TextBox Grid.Column="1" Text="{Binding Value}" Width="150" VerticalAlignment="Center" PlaceholderText="相對路徑" />
+                              <TextBox Grid.Column="1" Text="{Binding Value}" Width="150" VerticalAlignment="Center" PlaceholderText="{l:Tr Inspector.RelativePath}" />
                             </Grid>
                           </DataTemplate>
                         </ItemsControl.DataTemplates>

@@ -209,7 +209,7 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             AppLog.Error("儲存專案失敗", ex);
-            _vm.Toast.Show($"無法儲存專案：{ex.Message}（已取消關閉）");
+            _vm.Toast.Show(Loc.Format("Toast.SaveProjectFailed", ex.Message));
             e.Cancel = true;
             return;
         }

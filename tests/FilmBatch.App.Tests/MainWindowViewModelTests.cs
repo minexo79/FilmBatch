@@ -115,7 +115,7 @@ public class MainWindowViewModelTests
         };
         vm.Filmstrip.SelectOnly(files[3]);
         await vm.PasteSpecialCommand.ExecuteAsync(null);
-        Assert.Equal(SamplePresets.PortraWarm, vm.Service.Project[files[3]].PresetId);
+        Assert.Equal(SamplePresets.Neutral, vm.Service.Project[files[3]].PresetId);
         Assert.Equal(60, vm.Service.SettingsFor(files[3]).Number("grain.amount"));
         Assert.Equal(0, vm.Service.SettingsFor(files[3]).Number("basic.exposure"));
         Assert.Equal(["grain"], vm.Settings.SelectivePasteModules); // 記住上次的勾選
@@ -195,5 +195,44 @@ public class MainWindowViewModelTests
         Assert.Equal(presetId, reopened.Service!.Project[file].PresetId);
         Assert.Equal(1.75, reopened.Service.SettingsFor(file).Number("basic.exposure"));
         Assert.Equal("測試預設", reopened.Library.Get(presetId!.Value)!.Name);
+    }
+
+    /// <summary>照片在外部被改寫後重新開啟資料夾：預覽重新解碼，拍攝資訊也必須改讀新檔案，不能沿用舊的 EXIF。</summary>
+    [AvaloniaFact]
+    public async Task ReopenFolder_ShowsExifOfRewrittenPhoto()
+    {
+        using var vm = TestEnv.CreateViewModel();
+        var folder = Path.Combine(Path.GetTempPath(), "filmbatch-tests", "exif-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        var path = Path.Combine(folder, "photo.jpg");
+        WriteJpeg(path, "Body A", "2025:04:03 17:42:09");
+        await Open(vm, folder);
+        TestEnv.PumpUntil(() => vm.Preview.Exif?.Camera == "Review Body A");
+
+        WriteJpeg(path, "Body B", "2025:04:04 08:15:00");
+        await Open(vm, folder);
+        // 拍攝資訊在背景讀取：等到改用新檔案的資訊
+        TestEnv.PumpUntil(() => vm.Preview.Exif?.Camera == "Review Body B", 5000);
+
+        Assert.Equal("2025-04-04 08:15", vm.Preview.Exif!.TakenText);
+    }
+
+    private static async Task Open(ViewModels.MainWindowViewModel vm, string folder)
+    {
+        var opening = vm.OpenFolderAsync(folder);
+        TestEnv.PumpUntil(() => opening.IsCompleted);
+        await opening;
+        TestEnv.PumpUntil(() => vm.Preview.Image is not null && !vm.Renderer.IsBusy);
+    }
+
+    private static void WriteJpeg(string path, string model, string taken)
+    {
+        using var image = new ImageMagick.MagickImage(ImageMagick.MagickColors.SteelBlue, 64, 48);
+        var exif = new ImageMagick.ExifProfile();
+        exif.SetValue(ImageMagick.ExifTag.Make, "Review");
+        exif.SetValue(ImageMagick.ExifTag.Model, model);
+        exif.SetValue(ImageMagick.ExifTag.DateTimeOriginal, taken);
+        image.SetProfile(exif);
+        image.Write(path, ImageMagick.MagickFormat.Jpeg);
     }
 }

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="Gpu.InstanceFailed" xml:space="preserve"><value>Could not create the WebGPU instance.</value></data>
+  <data name="Gpu.DeviceFailed" xml:space="preserve"><value>Could not create the GPU device.</value></data>
+  <data name="Gpu.QueueFailed" xml:space="preserve"><value>Could not get the GPU queue.</value></data>
+  <data name="Gpu.NoSoftwareAdapter" xml:space="preserve"><value>No software GPU adapter was found (the current Dawn build does not include one).</value></data>
+  <data name="Gpu.NoAdapter" xml:space="preserve"><value>No usable GPU adapter was found.</value></data>
+  <data name="Gpu.ErrorIn" xml:space="preserve"><value>{0}: {1}</value></data>
+  <data name="Gpu.Context.UploadTexture" xml:space="preserve"><value>Uploading texture</value></data>
+  <data name="Gpu.Context.Readback" xml:space="preserve"><value>Reading back</value></data>
+  <data name="Gpu.Context.CreateBuffer" xml:space="preserve"><value>Creating buffer {0}</value></data>
+  <data name="Gpu.Context.CreateTexture" xml:space="preserve"><value>Creating texture {0}</value></data>
+  <data name="Gpu.Context.CreateBindGroup" xml:space="preserve"><value>Creating bind group ({0})</value></data>
+  <data name="Gpu.Context.FinishCommands" xml:space="preserve"><value>Finishing command encoding</value></data>
+  <data name="Gpu.BufferFailed" xml:space="preserve"><value>Could not create buffer {0}</value></data>
+  <data name="Gpu.TextureFailed" xml:space="preserve"><value>Could not create texture {0}</value></data>
+  <data name="Gpu.TextureViewFailed" xml:space="preserve"><value>Could not create texture view {0}</value></data>
+  <data name="Gpu.BindGroupFailed" xml:space="preserve"><value>Could not create bind group ({0})</value></data>
+  <data name="Gpu.ResourceCountMismatch" xml:space="preserve"><value>{0}: expected {1} resources, got {2}.</value></data>
+  <data name="Gpu.UnsupportedResource" xml:space="preserve"><value>Unsupported resource type: {0}</value></data>
+  <data name="Gpu.CommandError" xml:space="preserve"><value>GPU command error: {0} {1}</value></data>
+  <data name="Gpu.PipelineFailed" xml:space="preserve"><value>Failed to create compute pipeline ({0}): {1} {2}</value></data>
+  <data name="Gpu.ShaderNotFound" xml:space="preserve"><value>Embedded shader not found: {0}</value></data>
+</root>
