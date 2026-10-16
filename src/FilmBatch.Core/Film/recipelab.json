@@ -2,7 +2,8 @@
   "source": {
     "repo": "https://github.com/voxivoid/recipe-lab-sony-pmca",
     "file": "src/com/voxivoid/recipelab/Recipes.java",
-    "commit": "fd97eec77caf56bb2740a89b503e1037fdb24877",
+    "tag": "v1.7.0",
+    "commit": "6d70495e62d4a9ec15a9c5cfcf835e775ff9c8cc",
     "license": "MIT",
     "copyright": "Copyright (c) 2026 André Domingues"
   },

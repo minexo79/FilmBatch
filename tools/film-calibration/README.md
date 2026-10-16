@@ -8,7 +8,7 @@
 
 ```sh
 git clone --no-checkout https://github.com/voxivoid/recipe-lab-sony-pmca /tmp/recipe-lab-calibration
-git -C /tmp/recipe-lab-calibration checkout fd97eec77caf56bb2740a89b503e1037fdb24877
+git -C /tmp/recipe-lab-calibration checkout 6d70495e62d4a9ec15a9c5cfcf835e775ff9c8cc
 ```
 
 ## 重現擬合

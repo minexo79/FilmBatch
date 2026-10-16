@@ -5,7 +5,7 @@
 
 ## 來源與方法
 
-- [Recipe Lab 樣張](https://github.com/voxivoid/recipe-lab-sony-pmca/tree/fd97eec77caf56bb2740a89b503e1037fdb24877/docs/samples)：77 張 900×600 JPEG，釘選 commit `fd97eec77caf56bb2740a89b503e1037fdb24877`。MIT 授權與作者聲明見 `THIRD-PARTY-NOTICES.txt`。
+- [Recipe Lab 樣張](https://github.com/voxivoid/recipe-lab-sony-pmca/tree/6d70495e62d4a9ec15a9c5cfcf835e775ff9c8cc/docs/samples)：77 張 900×600 JPEG，釘選 tag v1.7.0（commit `6d70495e62d4a9ec15a9c5cfcf835e775ff9c8cc`）。MIT 授權與作者聲明見 `THIRD-PARTY-NOTICES.txt`。
 - 以樣張 01 `FACTORY (ST)` 為輸入，使用正式 `ImageLoader`、`FilmParameters` 與 `CpuPipeline`，在 128×85 比較每張目標照片的平均 CIEDE2000 色差。
 - 初始係數保存於 `tools/film-calibration/initial-styles.json`；不以目前內嵌的已校正表冒充原始基線。完整重現指令見[工具說明](../tools/film-calibration/README.md)。
 - 依風格分層，30 張訓練、24 張保留驗證。**保留驗證集不參與任何擬合或最後重擬合**。

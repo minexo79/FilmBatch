@@ -33,7 +33,7 @@ public sealed class AboutViewModel
         Package("YamlDotNet", "YamlDotNet", "MIT", "https://github.com/aaubry/YamlDotNet"),
         Package("System.IO.Hashing", "System.IO.Hashing", "MIT", "https://github.com/dotnet/runtime"),
         new(".NET Runtime", Environment.Version.ToString(), "MIT", "https://github.com/dotnet/runtime"),
-        new("Recipe Lab", "fd97eec", "MIT", "https://github.com/voxivoid/recipe-lab-sony-pmca"),
+        new("Recipe Lab", "v1.7.0", "MIT", "https://github.com/voxivoid/recipe-lab-sony-pmca"),
     ];
 
     public AboutViewModel(string gpuName) => Gpu = gpuName;
