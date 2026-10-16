@@ -10,7 +10,7 @@
   <Grid ColumnDefinitions="*,Auto">
     <DockPanel Grid.Column="0">
       <Expander DockPanel.Dock="Top" Header="{l:Tr Histogram.Title}" IsExpanded="{Binding Preview.HistogramExpanded}"
-                HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Margin="8,0">
+                HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Margin="8">
         <StackPanel Spacing="4">
           <Border Background="{DynamicResource FB.WindowBrush}" Padding="4">
             <c:HistogramView Name="Histogram" Height="96" Histogram="{Binding Preview.Histogram}" />
