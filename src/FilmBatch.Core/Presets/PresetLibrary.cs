@@ -34,8 +34,31 @@ public sealed class PresetLibrary : IDisposable
         var library = new PresetLibrary(folder);
         if (initialize)
             foreach (var preset in SamplePresets.Create()) library.Save(preset);
-        else library.Reload();
+        else
+        {
+            library.Reload();
+            library.RenameLegacySamples();
+        }
         return library;
+    }
+
+    /// <summary>舊版以中文命名的範例預設改用英文名稱；使用者改過名稱或分類的不動。</summary>
+    private void RenameLegacySamples()
+    {
+        foreach (var sample in SamplePresets.Create())
+        {
+            if (Get(sample.Id) is not { } current
+                || !SamplePresets.LegacyNames.TryGetValue(sample.Id, out var legacy)
+                || current.Name != legacy.Name || current.Category != legacy.Category) continue;
+            try
+            {
+                Save(current with { Name = sample.Name, Category = sample.Category });
+            }
+            catch (IOException ex)
+            {
+                Error?.Invoke(ex.Message);
+            }
+        }
     }
 
     public Preset? Get(Guid id) => _presets.FirstOrDefault(preset => preset.Id == id);

@@ -27,7 +27,7 @@
               <StackPanel Width="280" Spacing="6">
                 <Image Source="{Binding HoverPreview}" Width="264" Height="160" Stretch="Uniform"
                        IsVisible="{Binding HasHoverPreview}" />
-                <TextBlock Classes="secondary small" Text="算圖中…" IsVisible="{Binding HoverLoading}" />
+                <TextBlock Classes="secondary small" Text="{l:Tr Presets.Rendering}" IsVisible="{Binding HoverLoading}" />
                 <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" />
               </StackPanel>
             </ToolTip.Tip>

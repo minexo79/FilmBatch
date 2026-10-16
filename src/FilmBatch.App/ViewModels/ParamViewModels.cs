@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using FilmBatch.App.Localization;
 using FilmBatch.Core.Params;
 
 namespace FilmBatch.App.ViewModels;
@@ -23,8 +24,12 @@ public abstract partial class ParamViewModel(string moduleKey, ParamDef def, IPa
     private bool _loading;
 
     public ParamDef Def { get; } = def;
+    public string ModuleKey { get; } = moduleKey;
     public string FlatKey { get; } = $"{moduleKey}.{def.Key}";
-    public string Label => Def.Label;
+    public string Label => Loc.ParamLabel(ModuleKey, Def);
+
+    /// <summary>切換語言後更新顯示名稱。</summary>
+    public virtual void RefreshLabels() => OnPropertyChanged(nameof(Label));
     protected IParamHost Host { get; } = host;
 
     /// <summary>此參數被目前照片覆寫（名稱粗體 + ●）。</summary>
@@ -118,11 +123,17 @@ public sealed partial class SliderParamViewModel(string moduleKey, ParamDef def,
 /// <summary>選項參數：未知值（如自訂配方 key）保留顯示，不強制跳回首項。</summary>
 public sealed partial class ChoiceParamViewModel(string moduleKey, ParamDef def, IParamHost host) : ParamViewModel(moduleKey, def, host)
 {
-    private ChoiceOption? _selected;
+    private ChoiceItem? _selected;
 
-    public IReadOnlyList<ChoiceOption> Options => Def.Choices;
+    public IReadOnlyList<ChoiceItem> Options { get; } = def.Choices.Select(c => new ChoiceItem(moduleKey, def.Key, c)).ToList();
 
-    public ChoiceOption? Selected
+    public override void RefreshLabels()
+    {
+        base.RefreshLabels();
+        foreach (var o in Options) o.RefreshLabel();
+    }
+
+    public ChoiceItem? Selected
     {
         get => _selected;
         set
@@ -145,6 +156,18 @@ public sealed partial class ChoiceParamViewModel(string moduleKey, ParamDef def,
         OnPropertyChanged(nameof(HasUnknownValue));
         SetProperty(ref _selected, match ?? Options[0], nameof(Selected));
     }
+}
+
+/// <summary>選項參數的一個選項；顯示名稱依目前語言。</summary>
+public sealed class ChoiceItem(string moduleKey, string paramKey, ChoiceOption option) : ObservableObject
+{
+    public ChoiceOption Option { get; } = option;
+    public string Key => Option.Key;
+    public string Label => Loc.ChoiceLabel(moduleKey, paramKey, Option);
+
+    public void RefreshLabel() => OnPropertyChanged(nameof(Label));
+
+    public override string ToString() => Label;
 }
 
 public sealed partial class ToggleParamViewModel(string moduleKey, ParamDef def, IParamHost host) : ParamViewModel(moduleKey, def, host)

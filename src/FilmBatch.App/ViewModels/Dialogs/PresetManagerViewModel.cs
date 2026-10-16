@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using FilmBatch.App.Localization;
 using FilmBatch.Core.Presets;
 
 namespace FilmBatch.App.ViewModels.Dialogs;
@@ -9,7 +10,7 @@ public sealed partial class PresetRowViewModel(Preset preset, int users) : Obser
 {
     public Preset Preset { get; private set; } = preset;
     public int Users { get; } = users;
-    public string UsersText => Users > 0 ? $"{Users} 張使用中" : "";
+    public string UsersText => Users > 0 ? Loc.Format("Presets.UsersText", Users) : "";
 
     [ObservableProperty]
     private string _name = preset.Name;
@@ -65,19 +66,19 @@ public sealed partial class PresetManagerViewModel : ObservableObject
     [RelayCommand]
     private async Task Import()
     {
-        var path = await _main.Dialogs.PickFileAsync("匯入預設 YAML", ["*.yaml", "*.yml"]);
+        var path = await _main.Dialogs.PickFileAsync(Loc.Get("Presets.ImportTitle"), ["*.yaml", "*.yml"]);
         if (path is null) return;
         try
         {
             var preset = PresetFile.Read(path);
             if (_main.Library.Get(preset.Id) is { } existing
-                && !await _main.Dialogs.ConfirmAsync("更新預設", $"取代預設「{existing.Name}」？原專案仍保留快照。", "取代")) return;
+                && !await _main.Dialogs.ConfirmAsync(Loc.Get("Presets.ReplaceTitle"), Loc.Format("Presets.ReplaceMessage", existing.Name), Loc.Get("Presets.Replace"))) return;
             _main.Library.Save(preset);
             Reload();
             Selected = Rows.FirstOrDefault(row => row.Preset.Id == preset.Id);
-            _main.Toast.Show($"已匯入預設「{preset.Name}」");
+            _main.Toast.Show(Loc.Format("Presets.Imported", preset.Name));
         }
-        catch (Exception ex) { _main.Toast.Show($"匯入失敗：{ex.Message}"); }
+        catch (Exception ex) { _main.Toast.Show(Loc.Format("Toast.ImportFailed", ex.Message)); }
     }
 
     [RelayCommand(CanExecute = nameof(CanDelete))]
@@ -86,16 +87,16 @@ public sealed partial class PresetManagerViewModel : ObservableObject
         if (Selected is not { } row) return;
         var invalidCharacters = Path.GetInvalidFileNameChars();
         var name = string.Concat(row.Name.Select(character => invalidCharacters.Contains(character) ? '_' : character));
-        var path = await _main.Dialogs.SaveFileAsync("匯出預設 YAML", name + ".yaml", ["*.yaml", "*.yml"]);
+        var path = await _main.Dialogs.SaveFileAsync(Loc.Get("Presets.ExportTitle"), name + ".yaml", ["*.yaml", "*.yml"]);
         if (path is null) return;
         try
         {
             if (!new[] { ".yaml", ".yml" }.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase))
-                throw new InvalidDataException("預設檔副檔名必須是 .yaml 或 .yml。");
+                throw new InvalidDataException(Loc.Get("Presets.BadExtension"));
             PresetFile.Write(path, row.ToPreset());
-            _main.Toast.Show($"已匯出預設：{path}");
+            _main.Toast.Show(Loc.Format("Presets.Exported", path));
         }
-        catch (Exception ex) { _main.Toast.Show($"匯出失敗：{ex.Message}"); }
+        catch (Exception ex) { _main.Toast.Show(Loc.Format("Toast.ExportFailed", ex.Message)); }
     }
 
     private bool CanDelete() => Selected is not null;
@@ -105,9 +106,9 @@ public sealed partial class PresetManagerViewModel : ObservableObject
     {
         if (Selected is not { } row) return;
         var message = row.Users > 0
-            ? $"有 {row.Users} 張照片使用中，將改用專案內快照。此操作無法復原。"
-            : $"刪除預設「{row.Name}」？此操作無法復原。";
-        if (!await _main.Dialogs.ConfirmAsync("刪除預設", message, "刪除")) return;
+            ? Loc.Format("Presets.DeleteInUse", row.Users, row.Name)
+            : Loc.Format("Presets.DeleteConfirm", row.Name);
+        if (!await _main.Dialogs.ConfirmAsync(Loc.Get("Presets.Delete"), message, Loc.Get("Presets.Delete"))) return;
         _main.Library.Delete(row.Preset.Id);
         Rows.Remove(row);
     }

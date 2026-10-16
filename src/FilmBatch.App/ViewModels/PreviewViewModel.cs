@@ -91,7 +91,7 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
     private Point? _controlPoint;
 
     [ObservableProperty]
-    private string _zoomText = "符合視窗";
+    private string _zoomText = Loc.Get("Cmd.ZoomFit");
 
     public string EmptyText => Loc.Format("Preview.Empty", OperatingSystem.IsMacOS() ? "⌘O" : "Ctrl+O");
 
@@ -147,13 +147,32 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
     public void ZoomFit() => Zoom = 0;
     public void Zoom100() => Zoom = 1;
 
-    partial void OnZoomChanged(double value) => ZoomText = value <= 0 ? "符合視窗" : $"{value * 100:F0}%";
+    private double? _fitScale;
+
+    partial void OnZoomChanged(double value)
+    {
+        _fitScale = null;
+        UpdateZoomText();
+    }
 
     /// <summary>由畫布回報實際縮放倍率（符合視窗時）。</summary>
     public void ReportFitScale(double scale)
     {
-        if (Zoom <= 0) ZoomText = $"符合視窗（{scale * 100:F0}%）";
+        if (Zoom > 0) return;
+        _fitScale = scale;
+        UpdateZoomText();
     }
+
+    /// <summary>切換語言後重算縮放與直方圖裁切文字。</summary>
+    public void RefreshLocalizedText()
+    {
+        UpdateZoomText();
+        OnPropertyChanged(nameof(HistogramClipping));
+        OnPropertyChanged(nameof(EmptyText));
+    }
+
+    private void UpdateZoomText() => ZoomText = Zoom > 0 ? $"{Zoom * 100:F0}%"
+        : _fitScale is { } s ? Loc.Format("Preview.FitScale", $"{s * 100:F0}%") : Loc.Get("Cmd.ZoomFit");
 
     // ───────────── 控制點 ─────────────
 

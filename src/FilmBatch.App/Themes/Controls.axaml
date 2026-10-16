@@ -7,7 +7,8 @@
 -->
 <Styles xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:c="using:FilmBatch.App.Controls">
+        xmlns:c="using:FilmBatch.App.Controls"
+        xmlns:l="using:FilmBatch.App.Localization">
 
   <Styles.Resources>
     <ResourceDictionary>
@@ -447,7 +448,7 @@
                   <TextBlock Classes="numeric small" Text="{TemplateBinding OverrideCount}" Foreground="{DynamicResource FB.OverrideBrush}" />
                 </StackPanel>
                 <ToggleButton Grid.Column="2" Name="PART_Enabled" Classes="module-toggle" IsChecked="{TemplateBinding IsModuleEnabled, Mode=TwoWay}"
-                              Focusable="False" ToolTip.Tip="啟用／停用此模組">
+                              Focusable="False" ToolTip.Tip="{l:Tr Tip.ToggleModule}">
                   <Panel>
                     <PathIcon Classes="on" Data="{StaticResource Icon.Eye}" />
                     <PathIcon Classes="off" Data="{StaticResource Icon.EyeOff}" />

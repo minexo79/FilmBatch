@@ -58,7 +58,7 @@ public static class PresetFile
             : DateTimeOffset.Parse(updatedText, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
         return new Preset
         {
-            Id = id, Name = name, Category = Scalar(root, "category", "未分類"),
+            Id = id, Name = name, Category = Scalar(root, "category", "Uncategorized"),
             ColorLabel = Scalar(root, "color_label", "#7A7A7A"), PipelineVersion = version,
             Pinned = pinned, UpdatedAt = updated, Settings = new Settings(values),
         };

@@ -111,9 +111,17 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             RedoCommand.NotifyCanExecuteChanged();
         };
         Library.Changed += (_, _) => OnLibraryChanged();
-        Library.Error += message => { AppLog.Warn(message); Toast.Show($"預設載入失敗：{message}"); };
+        Library.Error += message => { AppLog.Warn(message); Toast.Show(Loc.Format("Toast.PresetLoadFailed", message)); };
         Library.Watch(_post);
-        if (Library.LoadErrors.Count > 0) Toast.Show($"有 {Library.LoadErrors.Count} 個預設無法載入：{Library.LoadErrors[0]}");
+        if (Library.LoadErrors.Count > 0) Toast.Show(Loc.Format("Toast.PresetsLoadFailed", Library.LoadErrors.Count, Library.LoadErrors[0]));
+        Loc.OnCultureChanged(this, static vm =>
+        {
+            vm.SelectionText = vm.Service is null ? Loc.Get("Status.NoProject") : Loc.Format("Status.Selected", vm.Selection.Count);
+            vm.UpdateBackgroundText();
+            vm.Preview.RefreshLocalizedText();
+            if (vm.Renderer.DeviceName is { } device) vm.GpuName = device;
+            if (vm.FocusFile is not null) vm.Preview.UpdateOverlay(vm.Selection.Count);
+        });
 
         Renderer.DeviceReady += (name, software) =>
         {
@@ -139,7 +147,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         {
             Filmstrip.SetError(file, message);
             if (file == FocusFile || file == "$init") Preview.IsBusy = false;
-            Toast.Show($"算圖失敗：{message}");
+            Toast.Show(Loc.Format("Toast.RenderFailed", message));
         };
         Renderer.Start();
     }
@@ -158,7 +166,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private async Task OpenSamples()
     {
         var folder = Path.Combine(AppPaths.Root, "samples");
-        Toast.Show("正在準備範例照片…");
+        Toast.Show(Loc.Get("Toast.PreparingSamples"));
         await Task.Run(() => SampleImages.Generate(folder));
         await OpenFolderAsync(folder);
     }
@@ -186,7 +194,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         Filmstrip.Load(project);
         if (project.FileNames.Count == 0)
         {
-            Toast.Show("此資料夾沒有支援的照片（TIFF、JPEG、PNG）");
+            Toast.Show(Loc.Get("Toast.NoSupportedPhotos"));
             OnSelectionChanged([], null);
         }
         NotifyCommands();
@@ -289,8 +297,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         {
             foreach (var preset in service.Project.PendingPresetUpdates(Library))
             {
-                var synchronize = await Dialogs.ConfirmAsync("預設庫已更新",
-                    $"「{preset.Name}」與此專案儲存的版本不同。同步會更新使用它的照片；取消則保留原快照。", "同步");
+                var synchronize = await Dialogs.ConfirmAsync(Loc.Get("Dialog.PresetChanged"),
+                    Loc.Format("Dialog.PresetChangedMessage", preset.Name), Loc.Get("Dialog.Sync"));
                 if (_disposed || Service != service) return;
                 service.Project.ResolvePresetUpdate(preset, synchronize);
                 if (synchronize) Stack.Clear();
@@ -299,7 +307,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         catch (Exception ex)
         {
             AppLog.Error("預設同步失敗", ex);
-            Toast.Show($"預設同步失敗：{ex.Message}");
+            Toast.Show(Loc.Format("Toast.PresetSyncFailed", ex.Message));
         }
         finally { _resolvingPresetUpdates = false; }
     }
@@ -309,7 +317,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private void UpdateBackgroundText()
     {
         var pending = Renderer.PendingThumbnails;
-        BackgroundText = pending > 0 ? Loc.Format("Status.Background", $"縮圖 {pending}") : Loc.Get("Status.Idle");
+        BackgroundText = pending > 0 ? Loc.Format("Status.Background", Loc.Format("Status.Thumbnails", pending)) : Loc.Get("Status.Idle");
     }
 
     // ───────────── 編輯 ─────────────
@@ -331,7 +339,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         if (Service is null || FocusFile is null) return;
         _clipboard = Service.Copy(FocusFile);
         _moduleOnly = null;
-        Toast.Show($"已複製「{FocusFile}」的設定");
+        Toast.Show(Loc.Format("Toast.CopiedPhoto", FocusFile));
         ClipboardJsonChanged?.Invoke(this, SerializeClipboard(_clipboard));
         NotifyCommands();
     }
@@ -359,7 +367,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         if (Service is null || FocusFile is null) return;
         _clipboard = Service.Copy(FocusFile);
         _moduleOnly = moduleKey;
-        Toast.Show($"已複製「{ModuleCatalog.Module(moduleKey).Label}」模組的設定");
+        Toast.Show(Loc.Format("Toast.CopiedModule", Loc.ModuleLabel(ModuleCatalog.Module(moduleKey))));
         NotifyCommands();
     }
 
@@ -372,7 +380,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             options = options with { Mode = PasteMode.Selective, Modules = new HashSet<string> { m } };
         var targets = Selection;
         if (Service.Paste(_clipboard, targets, options))
-            Toast.Show($"已貼上到 {targets.Count} 張照片", canUndo: true);
+            Toast.Show(Loc.Format("Toast.Pasted", targets.Count), canUndo: true);
     }
 
     /// <summary>設定剪貼簿同時以 JSON 寫入系統剪貼簿（View 訂閱後寫入）。</summary>
@@ -412,7 +420,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             }
         }
         if (Service.AssignPreset(targets, presetId, keep))
-            Toast.Show($"已將「{Library.Get(presetId)?.Name}」指定給 {targets.Count} 張照片", canUndo: true);
+            Toast.Show(Loc.Format("Toast.Assigned", Library.Get(presetId)?.Name ?? "", targets.Count), canUndo: true);
     }
 
     /// <summary>拖放預設到縮圖：放在選取範圍內的縮圖上 → 套用到所有選取照片，否則只套用該張（計畫書 2.7.1）。</summary>
@@ -434,11 +442,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private async Task CreatePreset()
     {
         if (Service is null || FocusFile is null) return;
-        var name = await Dialogs.PromptAsync(Loc.Get("Cmd.CreatePreset"), "名稱", Path.GetFileNameWithoutExtension(FocusFile));
+        var name = await Dialogs.PromptAsync(Loc.Get("Cmd.CreatePreset"), Loc.Get("Presets.Col.Name"), Path.GetFileNameWithoutExtension(FocusFile));
         if (string.IsNullOrWhiteSpace(name)) return;
         var current = Service.PresetFor(Service.Project[FocusFile].PresetId);
-        Service.CreatePresetFromPhoto(FocusFile, name.Trim(), current?.Category ?? "未分類", current?.ColorLabel ?? "#7A7A7A");
-        Toast.Show($"已建立預設「{name.Trim()}」", canUndo: true);
+        Service.CreatePresetFromPhoto(FocusFile, name.Trim(), current?.Category ?? "Uncategorized", current?.ColorLabel ?? "#7A7A7A");
+        Toast.Show(Loc.Format("Toast.PresetCreated", name.Trim()), canUndo: true);
     }
 
     [RelayCommand(CanExecute = nameof(CanEditSelection))]
@@ -450,10 +458,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         var users = Service.CountUsing(preset.Id);
         // 會影響多張照片且無法復原：需要確認（計畫書 2.9）
         if (!await Dialogs.ConfirmAsync(Loc.Get("Inspector.UpdatePreset"),
-                $"把此張的 {entry.Overrides.Count} 項調整更新回「{preset.Name}」？\n共有 {users} 張照片使用此預設，此操作無法復原。", "更新"))
+                Loc.Format("Dialog.UpdatePresetMessage", entry.Overrides.Count, preset.Name, users), Loc.Get("Dialog.Update")))
             return;
         Service.UpdatePresetFromPhoto(FocusFile);
-        Toast.Show($"已更新預設「{preset.Name}」");
+        Toast.Show(Loc.Format("Toast.PresetUpdated", preset.Name));
     }
 
     [RelayCommand(CanExecute = nameof(CanEditSelection))]

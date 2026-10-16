@@ -30,7 +30,7 @@
         </Button>
         <Button Classes="outline pill" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
                 Command="{Binding CancelExportCommand}" IsVisible="{Binding IsExporting}">
-          <TextBlock Text="取消" VerticalAlignment="Center" />
+          <TextBlock Text="{l:Tr Dialog.Cancel}" VerticalAlignment="Center" />
         </Button>
       </StackPanel>
     </Border>
@@ -38,47 +38,47 @@
     <ScrollViewer HorizontalScrollBarVisibility="Disabled">
       <StackPanel Margin="16,8,16,16" Spacing="18">
         <StackPanel Classes="field">
-          <TextBlock Classes="field-label" Text="範圍" />
-          <ComboBox Classes="flat" HorizontalAlignment="Stretch" ItemsSource="{Binding Scopes}" SelectedItem="{Binding SelectedScope}" />
+          <TextBlock Classes="field-label" Text="{l:Tr Export.Field.Scope}" />
+          <ComboBox Classes="flat" HorizontalAlignment="Stretch" ItemsSource="{Binding Scopes}" SelectedItem="{Binding SelectedScope}" DisplayMemberBinding="{Binding Label, x:DataType=d:OptionBase}" />
           <ComboBox Classes="flat" HorizontalAlignment="Stretch" ItemsSource="{Binding Presets}" SelectedItem="{Binding Preset}"
-                    IsVisible="{Binding IsByPreset}" PlaceholderText="選擇預設" />
+                    IsVisible="{Binding IsByPreset}" PlaceholderText="{l:Tr Common.ChoosePreset}" />
         </StackPanel>
 
         <StackPanel Classes="field">
-          <TextBlock Classes="field-label" Text="格式" />
+          <TextBlock Classes="field-label" Text="{l:Tr Export.Field.Format}" />
           <ComboBox Classes="flat" HorizontalAlignment="Stretch" ItemsSource="{Binding Formats}" SelectedItem="{Binding SelectedFormat}" />
           <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding IsJpeg}">
-            <TextBlock Classes="param-name" Text="品質" />
+            <TextBlock Classes="param-name" Text="{l:Tr Export.Field.Quality}" />
             <NumericUpDown Grid.Column="1" Value="{Binding Quality}" Minimum="1" Maximum="100" Width="72" />
           </Grid>
         </StackPanel>
 
         <StackPanel Classes="field">
-          <TextBlock Classes="field-label" Text="尺寸" />
-          <ComboBox Classes="flat" HorizontalAlignment="Stretch" ItemsSource="{Binding Sizes}" SelectedItem="{Binding SelectedSize}" />
+          <TextBlock Classes="field-label" Text="{l:Tr Export.Field.Size}" />
+          <ComboBox Classes="flat" HorizontalAlignment="Stretch" ItemsSource="{Binding Sizes}" SelectedItem="{Binding SelectedSize}" DisplayMemberBinding="{Binding Label, x:DataType=d:OptionBase}" />
           <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding IsLongEdge}">
-            <TextBlock Classes="param-name" Text="長邊（px）" />
+            <TextBlock Classes="param-name" Text="{l:Tr Export.Field.LongEdge}" />
             <NumericUpDown Grid.Column="1" Value="{Binding LongEdge}" Minimum="100" Maximum="20000" Width="88" />
           </Grid>
         </StackPanel>
 
         <StackPanel Classes="field">
-          <TextBlock Classes="field-label" Text="目的地" />
+          <TextBlock Classes="field-label" Text="{l:Tr Export.Field.Destination}" />
           <Grid ColumnDefinitions="*,Auto">
             <TextBox Text="{Binding Destination}" />
-            <Button Grid.Column="1" Classes="outline" Margin="8,0,0,0" Content="…" Command="{Binding BrowseDestinationCommand}" ToolTip.Tip="選擇資料夾" />
+            <Button Grid.Column="1" Classes="outline" Margin="8,0,0,0" Content="…" Command="{Binding BrowseDestinationCommand}" ToolTip.Tip="{l:Tr Common.ChooseFolder}" />
           </Grid>
         </StackPanel>
 
         <StackPanel Classes="field">
-          <TextBlock Classes="field-label" Text="檔名範本" />
+          <TextBlock Classes="field-label" Text="{l:Tr Export.Field.FileName}" />
           <TextBox Text="{Binding FileNameTemplate}" PlaceholderText="{}{name}_{preset}" />
-          <TextBlock Classes="secondary small" Text="可用：{name} {preset} {index} {index:000}" TextWrapping="Wrap" />
+          <TextBlock Classes="secondary small" Text="{l:Tr Export.FileNameHint}" TextWrapping="Wrap" />
         </StackPanel>
 
         <StackPanel Classes="field">
-          <TextBlock Classes="field-label" Text="中繼資料" />
-          <TextBlock Classes="secondary small" Text="保留 EXIF（方向重設為 1），嵌入 sRGB ICC" TextWrapping="Wrap" />
+          <TextBlock Classes="field-label" Text="{l:Tr Export.Field.Metadata}" />
+          <TextBlock Classes="secondary small" Text="{l:Tr Export.MetadataNote}" TextWrapping="Wrap" />
         </StackPanel>
       </StackPanel>
     </ScrollViewer>

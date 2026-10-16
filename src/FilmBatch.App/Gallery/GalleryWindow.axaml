@@ -1,23 +1,24 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:l="using:FilmBatch.App.Localization"
         xmlns:g="using:FilmBatch.App.Gallery"
         xmlns:vm="using:FilmBatch.App.ViewModels"
         xmlns:c="using:FilmBatch.App.Controls"
         xmlns:p="using:FilmBatch.Core.Params"
         x:Class="FilmBatch.App.Gallery.GalleryWindow"
         x:DataType="g:GalleryViewModel"
-        Title="FilmBatch 元件展示視窗" Width="1180" Height="860">
+        Title="{l:Tr Gallery.WindowTitle}" Width="1180" Height="860">
   <!--
     元件展示視窗（計畫書 2.11 #2）：列出所有自訂元件的各種狀態，用來檢查主題一致性。
     一般／停用／被覆寫／多選為靜態展示；滑鼠停留與按下請直接以滑鼠操作檢查。以 gallery 參數（雙連字號）啟動。
   -->
   <ScrollViewer>
     <StackPanel Margin="20" Spacing="22">
-      <TextBlock FontSize="18" FontWeight="SemiBold" Text="元件展示視窗" />
+      <TextBlock FontSize="18" FontWeight="SemiBold" Text="{l:Tr Cmd.Gallery}" />
 
       <!-- ───── 配色 ───── -->
       <StackPanel Spacing="8">
-        <TextBlock Classes="group-title" Text="配色 TOKEN（2.2.2）— 灰階必須為 R = G = B" />
+        <TextBlock Classes="group-title" Text="{l:Tr Gallery.Colors}" />
         <ItemsControl ItemsSource="{Binding Swatches}">
           <ItemsControl.ItemsPanel>
             <ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate>
@@ -41,15 +42,15 @@
 
       <!-- ───── 按鈕與輸入 ───── -->
       <StackPanel Spacing="8">
-        <TextBlock Classes="group-title" Text="按鈕與輸入元件（一般／強調／停用；停留與按下請以滑鼠檢查）" />
+        <TextBlock Classes="group-title" Text="{l:Tr Gallery.Inputs}" />
         <WrapPanel>
-          <Button Content="一般按鈕" Margin="0,0,8,8" />
-          <Button Classes="accent" Content="強調按鈕" Margin="0,0,8,8" />
-          <Button Content="停用按鈕" IsEnabled="False" Margin="0,0,8,8" />
-          <Button Classes="tool" ToolTip.Tip="工具列按鈕"><PathIcon Data="{StaticResource Icon.Open}" /></Button>
-          <Button Classes="tool" IsEnabled="False" ToolTip.Tip="停用的工具列按鈕"><PathIcon Data="{StaticResource Icon.Undo}" /></Button>
-          <ToggleButton Classes="tool" IsChecked="True" ToolTip.Tip="已切換"><PathIcon Data="{StaticResource Icon.Compare}" /></ToggleButton>
-          <ToggleButton Classes="tool" ToolTip.Tip="未切換"><PathIcon Data="{StaticResource Icon.Compare}" /></ToggleButton>
+          <Button Content="{l:Tr Gallery.Button}" Margin="0,0,8,8" />
+          <Button Classes="accent" Content="{l:Tr Gallery.AccentButton}" Margin="0,0,8,8" />
+          <Button Content="{l:Tr Gallery.DisabledButton}" IsEnabled="False" Margin="0,0,8,8" />
+          <Button Classes="tool" ToolTip.Tip="{l:Tr Gallery.ToolButton}"><PathIcon Data="{StaticResource Icon.Open}" /></Button>
+          <Button Classes="tool" IsEnabled="False" ToolTip.Tip="{l:Tr Gallery.DisabledToolButton}"><PathIcon Data="{StaticResource Icon.Undo}" /></Button>
+          <ToggleButton Classes="tool" IsChecked="True" ToolTip.Tip="{l:Tr Gallery.ToggledOn}"><PathIcon Data="{StaticResource Icon.Compare}" /></ToggleButton>
+          <ToggleButton Classes="tool" ToolTip.Tip="{l:Tr Gallery.ToggledOff}"><PathIcon Data="{StaticResource Icon.Compare}" /></ToggleButton>
         </WrapPanel>
         <WrapPanel>
           <ComboBox SelectedIndex="0" Width="140" Margin="0,0,8,8">
@@ -57,25 +58,25 @@
             <ComboBoxItem Content="Ektar 100" />
           </ComboBox>
           <ComboBox SelectedIndex="0" Width="140" IsEnabled="False" Margin="0,0,8,8">
-            <ComboBoxItem Content="停用" />
+            <ComboBoxItem Content="{l:Tr Gallery.Disabled}" />
           </ComboBox>
-          <TextBox Width="160" PlaceholderText="提示文字" Margin="0,0,8,8" />
-          <TextBox Width="160" Text="停用" IsEnabled="False" Margin="0,0,8,8" />
+          <TextBox Width="160" PlaceholderText="{l:Tr Gallery.Placeholder}" Margin="0,0,8,8" />
+          <TextBox Width="160" Text="{l:Tr Gallery.Disabled}" IsEnabled="False" Margin="0,0,8,8" />
           <NumericUpDown Width="70" Value="42" Margin="0,0,8,8" />
-          <CheckBox Content="勾選" IsChecked="True" Margin="0,0,8,8" />
-          <CheckBox Content="未勾選" Margin="0,0,8,8" />
-          <CheckBox Content="停用" IsEnabled="False" IsChecked="True" Margin="0,0,8,8" />
+          <CheckBox Content="{l:Tr Gallery.Checked}" IsChecked="True" Margin="0,0,8,8" />
+          <CheckBox Content="{l:Tr Gallery.Unchecked}" Margin="0,0,8,8" />
+          <CheckBox Content="{l:Tr Gallery.Disabled}" IsEnabled="False" IsChecked="True" Margin="0,0,8,8" />
         </WrapPanel>
       </StackPanel>
 
       <!-- ───── 參數列 ───── -->
       <Grid ColumnDefinitions="*,24,*">
         <StackPanel Spacing="4">
-          <TextBlock Classes="group-title" Text="ParamRow：一般／被覆寫（● + 粗體）／停用" />
+          <TextBlock Classes="group-title" Text="{l:Tr Gallery.ParamRow}" />
           <c:ParamRow DataContext="{Binding NormalParam}" />
           <c:ParamRow DataContext="{Binding OverriddenParam}" />
           <c:ParamRow DataContext="{Binding NormalParam}" IsEnabled="False" />
-          <TextBlock Classes="small secondary" Text="ParamSlider：滑桿取得焦點後才接受滾輪；按住 Shift 微調。" />
+          <TextBlock Classes="small secondary" Text="{l:Tr Gallery.ParamSlider}" />
         </StackPanel>
         <StackPanel Grid.Column="2" Spacing="4">
           <TextBlock Classes="group-title" Text="ChoiceRow／Toggle" />
@@ -85,7 +86,7 @@
               <Ellipse Classes="override-dot" IsVisible="{Binding IsOverridden}" />
             </StackPanel>
             <ComboBox Grid.Column="1" Classes="flat" MinWidth="150" VerticalAlignment="Center" ItemsSource="{Binding Options}" SelectedItem="{Binding Selected}"
-                      DisplayMemberBinding="{Binding Label, x:DataType=p:ChoiceOption}" />
+                      DisplayMemberBinding="{Binding Label, x:DataType=vm:ChoiceItem}" />
           </Grid>
           <Grid ColumnDefinitions="*,Auto" Classes="param-line" DataContext="{Binding ToggleParam}" x:DataType="vm:ToggleParamViewModel">
             <TextBlock Classes="param-name" Text="{Binding Label}" />
@@ -96,7 +97,7 @@
 
       <!-- ───── 模組區塊 ───── -->
       <StackPanel Spacing="8">
-        <TextBlock Classes="group-title" Text="ModuleSection：啟用＋覆寫／停用（內容淡化但仍可調整）／折疊" />
+        <TextBlock Classes="group-title" Text="{l:Tr Gallery.ModuleSection}" />
         <Grid ColumnDefinitions="*,16,*,16,*">
           <ContentControl Grid.Column="0" Content="{Binding EnabledModule}" ContentTemplate="{StaticResource GalleryModuleTemplate}" />
           <ContentControl Grid.Column="2" Content="{Binding DisabledModule}" ContentTemplate="{StaticResource GalleryModuleTemplate}" />
@@ -106,7 +107,7 @@
 
       <!-- ───── 縮圖 ───── -->
       <StackPanel Spacing="8">
-        <TextBlock Classes="group-title" Text="ThumbnailView：一般／有覆寫 ●／預設已更新 ⟳／讀檔失敗；多選（第 1、2 張選取中）" />
+        <TextBlock Classes="group-title" Text="{l:Tr Gallery.Thumbnail}" />
         <ListBox Name="Thumbs" Classes="filmstrip" ItemsSource="{Binding Thumbnails}" SelectionMode="Multiple" Height="112" CornerRadius="8">
           <ListBox.ItemsPanel>
             <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
@@ -139,7 +140,7 @@
       <!-- ───── 預設、提示、畫布 ───── -->
       <Grid ColumnDefinitions="260,24,*">
         <StackPanel Spacing="8">
-          <TextBlock Classes="group-title" Text="PresetItem（色彩標籤＋名稱＋釘選鍵）" />
+          <TextBlock Classes="group-title" Text="{l:Tr Gallery.PresetItem}" />
           <ListBox Classes="presets" ItemsSource="{Binding PresetItems}" SelectedIndex="1" Background="Transparent">
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="vm:PresetItemViewModel">
@@ -154,11 +155,11 @@
           <TextBlock Classes="group-title" Text="ToastBar" Margin="0,8,0,0" />
           <Border Classes="toast" HorizontalAlignment="Left">
             <StackPanel Orientation="Horizontal" Spacing="12">
-              <TextBlock Text="已貼上到 12 張照片" VerticalAlignment="Center" Foreground="{DynamicResource FB.ToolTipTextBrush}" />
-              <Button Content="復原" Background="Transparent" BorderThickness="0" Foreground="{DynamicResource FB.LinkBrush}" Padding="4,0" />
+              <TextBlock Text="{l:Tr Gallery.ToastSample}" VerticalAlignment="Center" Foreground="{DynamicResource FB.ToolTipTextBrush}" />
+              <Button Content="{l:Tr Toast.Undo}" Background="Transparent" BorderThickness="0" Foreground="{DynamicResource FB.LinkBrush}" Padding="4,0" />
             </StackPanel>
           </Border>
-          <TextBlock Classes="group-title" Text="狀態列（軟體介面卡警示）" Margin="0,8,0,0" />
+          <TextBlock Classes="group-title" Text="{l:Tr Gallery.StatusBar}" Margin="0,8,0,0" />
           <Border Classes="statusbar">
             <StackPanel Orientation="Horizontal" Spacing="4" Margin="8,0">
               <PathIcon Data="{StaticResource Icon.Warning}" Width="11" Height="11" Foreground="{DynamicResource FB.WarningTextBrush}" />
@@ -167,9 +168,9 @@
           </Border>
         </StackPanel>
         <StackPanel Grid.Column="2" Spacing="8">
-          <TextBlock Classes="group-title" Text="PreviewCanvas：左右分割、控制點（可拖曳）、多選疊字、算圖中指示" />
+          <TextBlock Classes="group-title" Text="{l:Tr Gallery.PreviewCanvas}" />
           <c:PreviewCanvas Name="Canvas" Height="260" Image="{Binding Sample}" Original="{Binding SampleOriginal}"
-                           IsSplit="True" SplitPosition="0.4" IsBusy="True" OverlayText="已選取 3 張，調整將套用到全部"
+                           IsSplit="True" SplitPosition="0.4" IsBusy="True" OverlayText="{l:Tr Gallery.OverlaySample}"
                            ControlPoint="0.65,0.45" CanvasBackground="#161616" />
         </StackPanel>
       </Grid>
@@ -181,8 +182,8 @@
       <c:ModuleSection Header="{Binding Label}" IsExpanded="{Binding IsExpanded}" IsModuleEnabled="{Binding IsModuleEnabled}" OverrideCount="{Binding OverrideCount}">
         <c:ModuleSection.HeaderFlyout>
           <MenuFlyout>
-            <MenuItem Header="重設此模組" />
-            <MenuItem Header="只複製此模組" />
+            <MenuItem Header="{l:Tr Inspector.ResetModule}" />
+            <MenuItem Header="{l:Tr Inspector.CopyModule}" />
           </MenuFlyout>
         </c:ModuleSection.HeaderFlyout>
         <ItemsControl ItemsSource="{Binding Params}">

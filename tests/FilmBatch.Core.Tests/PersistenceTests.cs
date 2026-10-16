@@ -36,6 +36,23 @@ public sealed class PersistenceTests : IDisposable
         Assert.Equal(new byte[] { 1, 2, 3, 4 }, File.ReadAllBytes(Path.Combine(Photos, "照片 01.tif")));
     }
 
+    [Fact]
+    public void LegacyChineseSamplePresets_AreRenamed_UnlessUserEdited()
+    {
+        var ektar = Guid.Parse("a81b0c4e-2d3f-4b5a-9c6d-7e8f90a1b2c3");
+        using (var old = PresetLibrary.Load(Presets))
+        {
+            old.Save(old.Get(SamplePresets.PortraWarm)! with { Name = "Portra 暖調 + 漏光", Category = "人像" });
+            old.Save(old.Get(ektar)! with { Name = "我的 Ektar", Category = "風景" });
+        }
+
+        using var library = PresetLibrary.Load(Presets);
+        Assert.Equal(("Portra Warm + Light Leak", "Portrait"), (library.Get(SamplePresets.PortraWarm)!.Name, library.Get(SamplePresets.PortraWarm)!.Category));
+        Assert.Equal("我的 Ektar", library.Get(ektar)!.Name);
+        using var again = PresetLibrary.Load(Presets);
+        Assert.Equal("Portra Warm + Light Leak", again.Get(SamplePresets.PortraWarm)!.Name);
+    }
+
     [Theory]
     [InlineData("{ broken")]
     [InlineData("{\"pipeline_version\":2,\"default_preset_id\":\"00000000-0000-0000-0000-000000000000\",\"preset_snapshots\":{},\"photos\":{}}")]

@@ -1,3 +1,4 @@
+using FilmBatch.Core;
 using FilmBatch.Core.Params;
 using FilmBatch.Engine.Imaging;
 using FilmBatch.Engine.Rendering;
@@ -29,6 +30,9 @@ public sealed class RenderScheduler : IDisposable
 
     /// <summary>算圖器建立完成（或改用備援）。參數為裝置名稱與是否為軟體介面卡。</summary>
     public event Action<string, bool>? DeviceReady;
+
+    /// <summary>目前算圖器的裝置名稱（CPU 備援的名稱依目前語言；切換語言時重新讀取）。</summary>
+    public string? DeviceName => Volatile.Read(ref _renderer)?.DeviceName;
     public event Action<PreviewRendered>? PreviewRendered;
     public event Action<string, RenderResult>? ThumbnailRendered;
     /// <summary>需要告知使用者的訊息（例如 GPU 重新初始化）。</summary>
@@ -209,7 +213,7 @@ public sealed class RenderScheduler : IDisposable
             catch (Exception ex) when (attempt == 0)
             {
                 // 裝置遺失或驅動程式重置：重建裝置並重新上傳後重試一次
-                Notice?.Invoke($"GPU 已重新初始化（{ex.Message}）");
+                Notice?.Invoke(CoreText.T($"GPU 已重新初始化（{ex.Message}）", $"GPU reinitialized ({ex.Message})"));
                 InitRenderer();
                 if (_renderer is null) return null;
             }
@@ -244,7 +248,7 @@ public sealed class RenderScheduler : IDisposable
         {
             try
             {
-                Notice?.Invoke($"無法建立 GPU 裝置，改用 CPU 算圖：{primaryError?.Message}");
+                Notice?.Invoke(CoreText.T($"無法建立 GPU 裝置，改用 CPU 算圖：{primaryError?.Message}", $"Could not create a GPU device; rendering on the CPU: {primaryError?.Message}"));
                 next = _fallback();
             }
             catch (Exception fallbackError)

@@ -12,7 +12,14 @@ public enum AssignOverridesChoice { Ask, Keep, Clear }
 /// <summary>偏好設定與視窗狀態（settings.json，計畫書 8.1）。</summary>
 public sealed class AppSettings
 {
-    public string Language { get; set; } = "zh-TW";
+    /// <summary>未在偏好設定選過語言時使用的介面語言。</summary>
+    public const string DefaultLanguage = "en";
+
+    /// <summary>使用者選擇的介面語言；null 表示未選過（跟隨 <see cref="DefaultLanguage"/>，不寫入設定檔）。</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Language { get; set; }
+
+    public string EffectiveLanguage => Language ?? DefaultLanguage;
     public PreviewBackground PreviewBackground { get; set; } = PreviewBackground.DarkGray;
     public int PreviewLongEdge { get; set; } = 1600;
     public string GpuBackend { get; set; } = "Auto";

@@ -34,7 +34,7 @@ public static class BatchExporter
                 SourcePath = project.PathOf(file),
                 Settings = service.SettingsFor(file),
                 Seed = project.SeedFor(file),
-                PresetName = preset?.Name ?? "未命名",
+                PresetName = preset?.Name ?? CoreText.T("未命名", "Untitled"),
                 Index = index,
                 PipelineVersion = project.PipelineVersion,
             });
@@ -45,11 +45,15 @@ public static class BatchExporter
     public static void ValidateOptions(ExportOptions options)
     {
         if (string.IsNullOrWhiteSpace(options.Destination))
-            throw new InvalidDataException("請選擇匯出目的地。");
+            throw new InvalidDataException(CoreText.T("請選擇匯出目的地。", "Choose an export destination."));
         if (options.Format == ExportFormat.Jpeg && (options.Quality is < 1 or > 100))
-            throw new InvalidDataException($"JPEG 品質必須為 1–100（目前 {options.Quality}）。");
+            throw new InvalidDataException(CoreText.T(
+                $"JPEG 品質必須為 1–100（目前 {options.Quality}）。",
+                $"JPEG quality must be 1–100 (currently {options.Quality})."));
         if (options.Size == ExportSize.LongEdge && options.LongEdgePx is < 100 or > 20000)
-            throw new InvalidDataException($"長邊必須為 100–20000 px（目前 {options.LongEdgePx}）。");
+            throw new InvalidDataException(CoreText.T(
+                $"長邊必須為 100–20000 px（目前 {options.LongEdgePx}）。",
+                $"Long edge must be 100–20000 px (currently {options.LongEdgePx})."));
         // 範本語法預檢（以佔位值展開一次；{ext} 與未知 token 在此報錯）
         ExportFileNames.RenderTemplate(options.FileNameTemplate, "name", "preset", 1);
     }
@@ -83,7 +87,7 @@ public static class BatchExporter
         var destination = Path.GetFullPath(options.Destination);
         // 安全：目的地不可指向專案內 .filmbatch
         if (IsInsideFilmbatch(destination))
-            throw new InvalidDataException("目的地不可是 .filmbatch 專案資料夾。");
+            throw new InvalidDataException(CoreText.T("目的地不可是 .filmbatch 專案資料夾。", "The destination cannot be the .filmbatch project folder."));
         Directory.CreateDirectory(destination);
 
         // 預先配置輸出路徑（同批不碰撞、既有不覆寫）
@@ -105,7 +109,9 @@ public static class BatchExporter
         var sources = new HashSet<string>(jobs.Select(j => Path.GetFullPath(j.SourcePath)), comparer);
         foreach (var o in outputs)
             if (sources.Contains(Path.GetFullPath(o)))
-                throw new InvalidDataException($"輸出路徑與來源檔相同，已拒絕以保護原檔：{o}");
+                throw new InvalidDataException(CoreText.T(
+                    $"輸出路徑與來源檔相同，已拒絕以保護原檔：{o}",
+                    $"Output path is the same as a source file; refused to protect the original: {o}"));
 
         var entries = new ExportLogEntry[jobs.Count];
         var outputFiles = new List<string>();
@@ -194,7 +200,7 @@ public static class BatchExporter
     {
         ct.ThrowIfCancellationRequested();
         if (!File.Exists(job.SourcePath))
-            throw new FileNotFoundException($"找不到來源照片：{job.FileName}", job.SourcePath);
+            throw new FileNotFoundException(CoreText.T($"找不到來源照片：{job.FileName}", $"Source photo not found: {job.FileName}"), job.SourcePath);
 
         // 1. 全解析度解碼（EXIF 已轉正；FilePath 供算圖器解析相對素材/種子）
         var source = ImageLoader.LoadFull(job.SourcePath);
@@ -305,7 +311,7 @@ public static class BatchExporter
     {
         ct.ThrowIfCancellationRequested();
         if (File.Exists(outputPath))
-            throw new IOException($"輸出檔已存在，拒絕覆寫：{outputPath}");
+            throw new IOException(CoreText.T($"輸出檔已存在，拒絕覆寫：{outputPath}", $"Output file already exists; refusing to overwrite: {outputPath}"));
 
         using var picture = new MagickImage();
         var settings = new PixelReadSettings((uint)image.Width, (uint)image.Height, StorageType.Short, PixelMapping.RGBA);
@@ -358,7 +364,7 @@ public static class BatchExporter
             try { if (File.Exists(tmp)) File.Delete(tmp); } catch (IOException) { }
             // 搬移後若輸出已存在（競態）視為拒絕覆寫
             if (File.Exists(outputPath))
-                throw new IOException($"輸出檔已存在，拒絕覆寫：{outputPath}");
+                throw new IOException(CoreText.T($"輸出檔已存在，拒絕覆寫：{outputPath}", $"Output file already exists; refusing to overwrite: {outputPath}"));
             throw;
         }
     }

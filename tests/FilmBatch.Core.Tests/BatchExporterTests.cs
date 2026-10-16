@@ -222,10 +222,10 @@ public class BatchExporterTests
         var dest = Path.Combine(folder, "export");
         // 先放一個會碰撞的舊檔
         Directory.CreateDirectory(dest);
-        File.WriteAllText(Path.Combine(dest, "DSC_0012_Portra 暖調 + 漏光.jpg"), "old");
+        File.WriteAllText(Path.Combine(dest, "DSC_0012_Portra Warm + Light Leak.jpg"), "old");
         var summary = await Run(svc, ["DSC_0012.tif", "DSC_0013.tif"], Jpeg(dest), TestContext.Current.CancellationToken);
         Assert.Equal(0, summary.Failed);
-        Assert.Equal("old", File.ReadAllText(Path.Combine(dest, "DSC_0012_Portra 暖調 + 漏光.jpg")));
+        Assert.Equal("old", File.ReadAllText(Path.Combine(dest, "DSC_0012_Portra Warm + Light Leak.jpg")));
         Assert.EndsWith("_001.jpg", summary.OutputFiles[0]);
         // 既有來源檔 untouched（比較位元組；export 期間新產生的 .filmbatch 不影響）
         foreach (var f in sourcePaths)

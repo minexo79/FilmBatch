@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using FilmBatch.App.Localization;
 using FilmBatch.Core.Params;
 
 namespace FilmBatch.App.ViewModels;
@@ -16,8 +17,15 @@ public sealed partial class ModuleSectionViewModel : ObservableObject
 
     public ModuleSchema Schema { get; }
     public string Key => Schema.Key;
-    public string Label => Schema.Label;
+    public string Label => Loc.ModuleLabel(Schema);
     public ObservableCollection<ParamViewModel> Params { get; }
+
+    /// <summary>切換語言後更新模組與參數名稱。</summary>
+    public void RefreshLabels()
+    {
+        OnPropertyChanged(nameof(Label));
+        foreach (var p in Params) p.RefreshLabels();
+    }
 
     [ObservableProperty]
     private bool _isExpanded;
@@ -91,7 +99,9 @@ public sealed partial class ModuleSectionViewModel : ObservableObject
 public sealed partial class ModuleGroupViewModel(ModuleGroup group, IEnumerable<ModuleSectionViewModel> modules) : ObservableObject
 {
     public ModuleGroup Group { get; } = group;
-    public string Label { get; } = ModuleSchema.GroupLabel(group);
+    public string Label => Loc.GroupLabel(Group);
+
+    public void RefreshLabel() => OnPropertyChanged(nameof(Label));
     public ObservableCollection<ModuleSectionViewModel> Modules { get; } = new(modules);
 
     [ObservableProperty]

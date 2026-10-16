@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using FilmBatch.App.Localization;
 using FilmBatch.App.Services;
 using FilmBatch.Core.Projects;
 using FilmBatch.Engine.Exporting;
@@ -19,7 +20,12 @@ public sealed partial class ExportViewModel : ObservableObject
     private CancellationTokenSource? _cts;
     private int _runId;
 
-    public IReadOnlyList<Option<ExportScope>> Scopes { get; } = [new(ExportScope.Selected, "選取的照片"), new(ExportScope.All, "全部"), new(ExportScope.ByPreset, "依預設")];
+    public IReadOnlyList<Option<ExportScope>> Scopes { get; } =
+    [
+        Option<ExportScope>.Localized(ExportScope.Selected, "Export.Scope.Selected"),
+        Option<ExportScope>.Localized(ExportScope.All, "Export.Scope.All"),
+        Option<ExportScope>.Localized(ExportScope.ByPreset, "Export.Scope.ByPreset"),
+    ];
     public IReadOnlyList<Option<Engine.Exporting.ExportFormat>> Formats { get; } =
     [
         new(Engine.Exporting.ExportFormat.Jpeg, "JPEG"),
@@ -28,8 +34,8 @@ public sealed partial class ExportViewModel : ObservableObject
     ];
     public IReadOnlyList<Option<Engine.Exporting.ExportSize>> Sizes { get; } =
     [
-        new(Engine.Exporting.ExportSize.Original, "原尺寸"),
-        new(Engine.Exporting.ExportSize.LongEdge, "指定長邊"),
+        Option<Engine.Exporting.ExportSize>.Localized(Engine.Exporting.ExportSize.Original, "Export.Size.Original"),
+        Option<Engine.Exporting.ExportSize>.Localized(Engine.Exporting.ExportSize.LongEdge, "Export.Size.LongEdge"),
     ];
 
     public Option<ExportScope> SelectedScope { get => Scopes.First(o => o.Value == Scope); set { if (value is not null) Scope = value.Value; } }
@@ -75,8 +81,16 @@ public sealed partial class ExportViewModel : ObservableObject
     [ObservableProperty]
     private double _progressValue;
 
-    [ObservableProperty]
-    private string _statusText = "就緒";
+    private Func<string> _status = static () => Loc.Get("Export.Status.Ready");
+
+    /// <summary>目前狀態；以產生函式保存，切換語言時重算。</summary>
+    public string StatusText => _status();
+
+    private void SetStatus(Func<string> status)
+    {
+        _status = status;
+        OnPropertyChanged(nameof(StatusText));
+    }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanExport))]
@@ -97,6 +111,12 @@ public sealed partial class ExportViewModel : ObservableObject
         _destination = "";
         _scope = ExportScope.All;
         Refresh();
+        Loc.OnCultureChanged(this, static vm =>
+        {
+            vm.OnPropertyChanged(nameof(Summary));
+            vm.OnPropertyChanged(nameof(StatusText));
+            if (!vm.IsExporting) vm.Validate();
+        });
     }
 
     /// <summary>
@@ -124,7 +144,7 @@ public sealed partial class ExportViewModel : ObservableObject
     };
 
     /// <summary>下方即時顯示「將匯出 N 張到 …」。</summary>
-    public string Summary => $"將匯出 {Count} 張到 {Destination}";
+    public string Summary => Loc.Format("Export.Summary", Count, Destination);
 
     partial void OnScopeChanged(ExportScope value) => Validate();
     partial void OnPresetChanged(PresetItemViewModel? value) => Validate();
@@ -141,7 +161,7 @@ public sealed partial class ExportViewModel : ObservableObject
         {
             BatchExporter.ValidateOptions(ToOptions(Path.Combine(Path.GetTempPath(), "filmbatch-validate")));
             if (Count == 0 && _main.Service is not null)
-                throw new InvalidDataException(Scope == ExportScope.ByPreset && Preset is null ? "請先選擇預設。" : "沒有符合的照片。");
+                throw new InvalidDataException(Loc.Get(Scope == ExportScope.ByPreset && Preset is null ? "Export.Error.NoPreset" : "Export.Error.NoPhotos"));
             LastError = null;
         }
         catch (Exception ex)
@@ -163,13 +183,13 @@ public sealed partial class ExportViewModel : ObservableObject
     /// <summary>目前規劃的匯出檔名清單（SmokeTest/測試檢查用）。</summary>
     public IReadOnlyList<string> PlannedFiles()
     {
-        var svc = _main.Service ?? throw new InvalidDataException("尚未開啟照片資料夾。");
+        var svc = _main.Service ?? throw new InvalidDataException(Loc.Get("Export.Error.NoFolder"));
         return Scope switch
         {
             ExportScope.Selected => _main.Selection.Count > 0 ? _main.Selection
-                : throw new InvalidDataException("尚未選取照片。"),
+                : throw new InvalidDataException(Loc.Get("Export.Error.NoSelection")),
             ExportScope.ByPreset => Preset is null
-                ? throw new InvalidDataException("請先選擇預設。")
+                ? throw new InvalidDataException(Loc.Get("Export.Error.NoPreset"))
                 : svc.Project.FileNames.Where(f => svc.Project[f].PresetId == Preset.Id).ToList(),
             _ => svc.Project.FileNames,
         };
@@ -179,9 +199,9 @@ public sealed partial class ExportViewModel : ObservableObject
     public Task<BatchExportSummary> ExportAsync(
         IProgress<BatchExportProgress>? progress = null, CancellationToken ct = default)
     {
-        var svc = _main.Service ?? throw new InvalidDataException("尚未開啟照片資料夾。");
+        var svc = _main.Service ?? throw new InvalidDataException(Loc.Get("Export.Error.NoFolder"));
         var files = PlannedFiles();
-        if (files.Count == 0) throw new InvalidDataException("沒有符合的照片。");
+        if (files.Count == 0) throw new InvalidDataException(Loc.Get("Export.Error.NoPhotos"));
         var options = ToOptions(Destination);
         BatchExporter.ValidateOptions(options);
         var request = new ExportRequest { Service = svc, Files = files, Options = options };
@@ -197,16 +217,16 @@ public sealed partial class ExportViewModel : ObservableObject
         IsExporting = true;
         ProgressValue = 0;
         LastError = null;
-        StatusText = "準備匯出…";
+        SetStatus(static () => Loc.Get("Export.Status.Preparing"));
         StartExportCommand.NotifyCanExecuteChanged();
         CancelExportCommand.NotifyCanExecuteChanged();
         var progress = new Progress<BatchExportProgress>(p =>
         {
             if (run != _runId || !IsExporting) return;
             ProgressValue = p.Total == 0 ? 0 : 100.0 * p.Done / p.Total;
-            StatusText = p.Failed == 0
-                ? $"匯出中 {p.Done}/{p.Total}：{p.CurrentFile}"
-                : $"匯出中 {p.Done}/{p.Total}（失敗 {p.Failed}）：{p.CurrentFile}";
+            SetStatus(() => p.Failed == 0
+                ? Loc.Format("Export.Status.Progress", p.Done, p.Total, p.CurrentFile)
+                : Loc.Format("Export.Status.ProgressFailed", p.Done, p.Total, p.Failed, p.CurrentFile));
         });
         BatchExportSummary summary;
         try
@@ -218,7 +238,7 @@ public sealed partial class ExportViewModel : ObservableObject
         catch (OperationCanceledException)
         {
             // Task.Run 在啟動前即取消時才會走到此處：同樣以已取消狀態呈現。
-            if (run == _runId) StatusText = "已取消";
+            if (run == _runId) SetStatus(static () => Loc.Get("Export.Status.Cancelled"));
             return;
         }
         catch (Exception ex)
@@ -226,7 +246,7 @@ public sealed partial class ExportViewModel : ObservableObject
             if (run == _runId)
             {
                 LastError = ex.Message;
-                StatusText = $"失敗：{ex.Message}";
+                SetStatus(() => Loc.Format("Export.Status.Failed", ex.Message));
             }
             return;
         }
@@ -241,20 +261,20 @@ public sealed partial class ExportViewModel : ObservableObject
                 CancelExportCommand.NotifyCanExecuteChanged();
             }
         }
-        var status = summary.Cancelled
-            ? $"已取消：完成 {summary.Succeeded} 張"
+        Func<string> status = () => summary.Cancelled
+            ? Loc.Format("Export.Status.CancelledDone", summary.Succeeded)
             : summary.Failed == 0
-                ? $"完成：成功 {summary.Succeeded} 張"
-                : $"完成：成功 {summary.Succeeded} 張、失敗 {summary.Failed} 張";
+                ? Loc.Format("Export.Status.Done", summary.Succeeded)
+                : Loc.Format("Export.Status.DoneFailed", summary.Succeeded, summary.Failed);
         var errors = summary.Failed > 0
             ? string.Join("\n", summary.Errors.Select(e => $"{e.Key}：{e.Value}")) : null;
-        AppLog.Info($"匯出：{status}（到 {Destination}）");
+        AppLog.Info($"匯出：{status()}（到 {Destination}）");
         if (run != _runId) return;
         LastSummary = summary;
         ProgressValue = 100;
-        StatusText = status;
+        SetStatus(status);
         if (errors is not null) LastError = errors;
-        _main.Toast.Show(status);
+        _main.Toast.Show(status());
     }
 
     [RelayCommand(CanExecute = nameof(IsExporting))]
