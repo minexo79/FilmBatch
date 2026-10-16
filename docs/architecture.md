@@ -497,4 +497,5 @@ flowchart TB
 
 - [building.md](building.md)：建置、測試、CI 與發佈
 - [adr/0001-webgpu-binding.md](adr/0001-webgpu-binding.md)：WebGPU 綁定選型
+- [adr/0002-ai-denoise.md](adr/0002-ai-denoise.md)：AI 降噪（提議中）
 - [film-provenance.md](film-provenance.md)、[film-calibration.md](film-calibration.md)：配方來源與色彩校正
