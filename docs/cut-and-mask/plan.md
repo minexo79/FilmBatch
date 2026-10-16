@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 在 `cut-and-mask` 分支依序加入 ① 裁切（含拉直、比例、翻轉）② 局部遮罩（顏色、線性、筆刷、多邊形、圓形，每個遮罩可調基本參數與曲線）③ 可調整的細部曲線（全域 RGB / 單色版 / 色相曲線）。
+**Goal:** 在 `dev-cutandmask` 分支依序加入 ① 裁切（含拉直、比例、翻轉）② 局部遮罩（顏色、線性、筆刷、多邊形、圓形，每個遮罩可調基本參數與曲線）③ 可調整的細部曲線（全域 RGB / 單色版 / 色相曲線）。
 
 **Architecture:** 三個功能都沿用既有的「扁平 `Settings` → `ModuleParams` → CPU / GPU 雙管線」架構。裁切是一般的純量模組，在解碼後的第一個 pass 就把影像變成裁切後的畫框；曲線與遮罩是結構化資料，以兩個新的 `ParamKind`（`Curve`、`MaskStack`）存成**正規化的文字值**，因此三層覆寫、復原、預設、貼上、存檔全部不用改模型。遮罩的局部調整在線性段一次套用（幾何效果之前），全域曲線放在顯示段的基本調整之後。
 
@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- 分支：`cut-and-mask`（由 `ai-denoise` 的 `00b2443` 分出）。
+- 分支：`dev-cutandmask`（由 `ai-denoise` 的 `00b2443` 分出）。
 - 相依方向不變：Core 不引用 Avalonia / GPU；App 不直接呼叫 Gpu（見 architecture.md 2.1）。
 - 新模組關閉或參數為預設值時，輸出必須與輸入**逐位元相同**（identity 測試）。
 - 每個 CPU 演算法都要有對應的 GPU 實作，並以 `Gpu_MatchesCpu_*` 測試比對（無 GPU 時自動略過）。
