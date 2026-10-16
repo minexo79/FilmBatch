@@ -175,7 +175,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     {
         var generation = ++_openGeneration;
         // Load first: a corrupt/unreadable target must leave the current project and preview intact.
-        var project = await Task.Run(() => Project.Open(folder, SamplePresets.PortraWarm));
+        var project = await Task.Run(() => Project.Open(folder, SamplePresets.Neutral));
         if (_disposed || generation != _openGeneration) return;
         Renderer.CancelThumbnails();
         Presets.Hover.InvalidateCache();

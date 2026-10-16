@@ -115,7 +115,7 @@ public class MainWindowViewModelTests
         };
         vm.Filmstrip.SelectOnly(files[3]);
         await vm.PasteSpecialCommand.ExecuteAsync(null);
-        Assert.Equal(SamplePresets.PortraWarm, vm.Service.Project[files[3]].PresetId);
+        Assert.Equal(SamplePresets.Neutral, vm.Service.Project[files[3]].PresetId);
         Assert.Equal(60, vm.Service.SettingsFor(files[3]).Number("grain.amount"));
         Assert.Equal(0, vm.Service.SettingsFor(files[3]).Number("basic.exposure"));
         Assert.Equal(["grain"], vm.Settings.SelectivePasteModules); // 記住上次的勾選

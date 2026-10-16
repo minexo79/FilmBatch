@@ -8,20 +8,6 @@ public static class SamplePresets
     public static readonly Guid Neutral = Guid.Parse("00000000-0000-4000-8000-000000000001");
     public static readonly Guid PortraWarm = Guid.Parse("3f2a9c1e-8b4d-4e2a-9f1c-0a7b6d5e4c3b");
 
-    /// <summary>
-    /// 舊版範例預設的中文名稱與分類（以 Id 對應）。預設庫載入時，名稱與分類都未被使用者改過的
-    /// 範例預設會改成目前的英文名稱（見 <see cref="PresetLibrary.Load"/>）。
-    /// </summary>
-    internal static readonly IReadOnlyDictionary<Guid, (string Name, string Category)> LegacyNames = new Dictionary<Guid, (string, string)>
-    {
-        [Neutral] = ("中性（無效果）", "基本"),
-        [PortraWarm] = ("Portra 暖調 + 漏光", "人像"),
-        [Guid.Parse("a81b0c4e-2d3f-4b5a-9c6d-7e8f90a1b2c3")] = ("Ektar 鮮豔", "風景"),
-        [Guid.Parse("b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e")] = ("Tri-X 高反差", "黑白"),
-        [Guid.Parse("c3d4e5f6-a7b8-4c9d-8e1f-2a3b4c5d6e7f")] = ("夜景 CineStill", "夜景"),
-        [Guid.Parse("d4e5f6a7-b8c9-4d0e-9f2a-3b4c5d6e7f80")] = ("夢幻散景", "人像"),
-    };
-
     private static Settings S(params (string Key, ParamValue Value)[] values) =>
         new(values.Select(v => new KeyValuePair<string, ParamValue>(v.Key, v.Value)));
 
