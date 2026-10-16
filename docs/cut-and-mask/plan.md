@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 在 `dev-cutandmask` 分支依序加入 ① 裁切（含拉直、比例、翻轉）② 局部遮罩（顏色、線性、筆刷、多邊形、圓形，每個遮罩可調基本參數與曲線）③ 可調整的細部曲線（全域 RGB / 單色版 / 色相曲線）。
+**Goal:** 在 `dev-cutandmask` 分支依序加入 ① 裁切（含拉直、比例、翻轉）② 局部遮罩（顏色、線性、筆刷、多邊形、圓形，每個遮罩可調基本參數與曲線）③ 可調整的細部曲線（參數式四區段 + RGB / 單色版點曲線）。
 
-**Architecture:** 三個功能都沿用既有的「扁平 `Settings` → `ModuleParams` → CPU / GPU 雙管線」架構。裁切是一般的純量模組，在解碼後的第一個 pass 就把影像變成裁切後的畫框；曲線與遮罩是結構化資料，以兩個新的 `ParamKind`（`Curve`、`MaskStack`）存成**正規化的文字值**，因此三層覆寫、復原、預設、貼上、存檔全部不用改模型。遮罩的局部調整在線性段一次套用（幾何效果之前），全域曲線放在顯示段的基本調整之後。
+**Architecture:** 三個功能都沿用既有的「扁平 `Settings` → `ModuleParams` → CPU / GPU 雙管線」架構。裁切是一般的純量模組，在解碼後的第一個 pass 就把影像變成裁切後的畫框；曲線與遮罩是結構化資料，以兩個新的 `ParamKind`（`Curve`、`MaskStack`）存成**正規化的文字值**，因此三層覆寫、復原、預設、貼上、存檔全部不用改模型。遮罩分兩步：先把每個圖層算成一張**透明度圖**（可快取），再以透明度圖套用局部調整，位置在線性段、幾何效果之前；全域曲線放在顯示段的基本調整之後。部分作法參考 [LightCraft](https://github.com/storytold/lightcraft)（見 D7）。
 
 **Tech Stack:** C# / .NET 10、Avalonia 12、CommunityToolkit.Mvvm、WebGPUSharp（Dawn）+ WGSL、xUnit（含 Avalonia.Headless）。
 
@@ -31,9 +31,9 @@
 
 | 階段 | 功能 | 內容 |
 |---|---|---|
-| **Phase 1** | 裁切 | 自由 / 固定比例裁切框、拉直（−45°～45°）、90° 旋轉、水平 / 垂直翻轉、三分線、自動限制在影像內；匯出與縮圖反映裁切 |
-| **Phase 2** | 遮罩 | 最多 8 個遮罩圖層；每個圖層由最多 8 個形狀以「加 / 減 / 交集」組合；形狀類型：**顏色範圍、線性漸層、筆刷、多邊形、圓形（橢圓）**；每個圖層可調**基本參數**（曝光、色溫、色調、亮度、對比、亮部、暗部、飽和度）與**曲線**；圖層不透明度、反轉、紅色疊色檢視 |
-| **Phase 3** | 細部曲線 | 全域 `curves` 模組：RGB 主曲線 + R / G / B 單色版曲線、RGB / 明度兩種套用模式、色相對色相 / 飽和度 / 明度與明度對飽和度曲線；完整曲線編輯器（直方圖底圖、精確數值、鍵盤微調、曲線範本） |
+| **Phase 1** | 裁切 | 自由 / 固定比例裁切框、拉直（−45°～45°）、90° 旋轉、水平 / 垂直翻轉、三分線、自動限制在影像內（**先移回影像內，移不進去才縮小**）；匯出與縮圖反映裁切 |
+| **Phase 2** | 遮罩 | 最多 8 個遮罩圖層；每個圖層由最多 8 個形狀以「加 / 減 / 交集」組合；形狀類型：**顏色範圍（OkLab、可多點取樣、一個「精細度」滑桿）、線性漸層、筆刷、多邊形、圓形（橢圓）**；每個圖層可調**基本參數**（曝光、色溫、色調、亮度、對比、亮部、暗部、飽和度）與**曲線**；圖層不透明度、反轉、紅色疊色檢視 |
+| **Phase 3** | 細部曲線 | 全域 `curves` 模組：**參數式曲線**（亮部 / 亮調 / 暗調 / 陰影四個滑桿 + 三個分界點）＋ RGB 主曲線 + R / G / B 單色版點曲線、RGB / 明度兩種套用模式；完整曲線編輯器（直方圖底圖、精確數值、鍵盤微調、曲線範本）。色相曲線列為**選做**（Task 3.5） |
 
 > **依賴說明**：遮罩「裡面可調整曲線」需要曲線的資料型別、LUT 烘焙與編輯器。為了維持使用者指定的順序，Phase 2 的 **Task 2.1 先做「曲線核心」最小版**（資料型別、單調樣條、LUT、只有主曲線的編輯器），Phase 3 在同一套元件上擴充成完整的細部曲線。
 
@@ -43,6 +43,8 @@
 - 遮罩內的「細節提取 / 清晰度」等需要模糊核心的局部參數（每個圖層多一次模糊，成本高；列為後續）。
 - 透視校正（keystone）、內容感知填補。
 - 遮罩的「範圍遮罩」以明度 / 顏色限制其他形狀（Lightroom 的 Range Mask）——本版以「顏色形狀 + 交集」達成同樣效果。
+- 遮罩的「邊緣精修」（LightCraft 的 Refine Edges，引導濾波讓遮罩貼齊物體邊緣）、筆刷的「自動遮罩」與壓力感應——列為後續。
+- 色相曲線若時程不夠就延後（Task 3.5 選做）；它與日後的 HSL 混色器功能重疊。
 
 ### 0.3 時程估計
 
@@ -76,7 +78,7 @@
 flowchart LR
     D["decode_rgba16<br/>來源全幅"] --> C["geometry/crop<br/>旋轉 90°、翻轉、拉直、裁切"]
     C --> BL["基本調整（線性）"]
-    BL --> L["local/local_adjust × N<br/>遮罩圖層（Phase 2）"]
+    BL --> L["local/mask_eval → local/local_apply<br/>每個遮罩圖層各一組（Phase 2）"]
     L --> G["① 幾何：鏡頭變形 → 多格分鏡"]
     G --> O["② 光學 …"]
     O --> F["③ 底片 …"]
@@ -97,11 +99,28 @@ flowchart LR
 | 遮罩形狀 | **定向後、裁切前**影像的正規化座標 → 重新裁切時遮罩跟著畫面內容走，不會跑掉 |
 | 其他模組的 `center_x/y` | 裁切後畫框的正規化座標（行為不變） |
 
-遮罩在 `local_adjust` 中評估時，以裁切變換把「輸出像素」映射回「定向座標」再算形狀。
+遮罩在 `mask_eval` 中評估時，以裁切變換把「輸出像素」映射回「定向座標」再算形狀（LightCraft 也是把形狀存在定向影像座標，再經整條幾何變換映到輸出像素）。
 
-### D4. 局部調整一次在線性段完成
+### D4. 局部調整分兩步：先算透明度圖，再套用
 
-每個遮罩圖層一個 pass：線性 → 曝光 / 色溫 / 色調 → 轉 sRGB → 亮度 / 對比 / 亮部 / 暗部 / 飽和度 → 圖層曲線 LUT → 轉回線性，再以遮罩值與原像素混合。放在幾何效果之前，之後的底片、光暈、顆粒都疊在局部調整的結果上（「先修圖、再模擬底片」）。
+1. **`mask_eval`**：把一個圖層的所有形狀依「加 / 減 / 交集」組合、反轉、乘不透明度，寫成一張單通道**透明度圖**（輸出尺寸）。
+2. **`local_apply`**：線性 → 曝光 / 色溫 / 色調 → 轉 sRGB → 亮度 / 對比 / 亮部 / 暗部 / 飽和度 → 圖層曲線 LUT → 轉回線性，再以透明度圖與原像素混合。
+
+分開的好處（LightCraft 的作法）：
+
+- 拖曳圖層的調整滑桿時**不必重算遮罩**，只重跑 `local_apply`。
+- 紅色疊色直接拿透明度圖來畫，不必在調整 shader 裡塞疊色邏輯。
+- 遮罩數學只有一份（`mask_eval`），調整數學只有一份（`local_apply`），各自好測。
+
+透明度圖的快取規則：
+
+| 情況 | 作法 |
+|---|---|
+| 預覽、圖層只含線性 / 圓形 / 多邊形 / 筆刷 | 每個圖層一張 `r32float` 紋理（最多 8 張），key = 圖層形狀內容 + 裁切變換 + 輸出尺寸的雜湊；key 不變就沿用 |
+| 預覽、圖層含顏色形狀 | 每次算圖都重算（顏色形狀依賴上游像素；一個 pass，成本低） |
+| 匯出（`Render16`） | 不快取；所有圖層共用**一張**暫存透明度紋理，逐層「算 → 套」，避免 24 MP × 8 張的記憶體 |
+
+位置放在幾何效果之前，之後的底片、光暈、顆粒都疊在局部調整的結果上（「先修圖、再模擬底片」）。
 
 編輯遮罩時，預覽**暫停鏡頭變形與多格分鏡**（這兩者會移動像素，使畫布座標對不上），並在離開遮罩工具時恢復；裁切工具啟用時則暫停裁切、顯示全幅。這兩個「暫停」只影響預覽請求，不寫入照片設定。
 
@@ -109,17 +128,31 @@ flowchart LR
 
 | 形狀 | GPU 作法 |
 |---|---|
-| 線性、圓形、顏色 | shader 內解析計算（uniform / storage buffer） |
-| 多邊形 | 頂點放 storage buffer（每圖層 ≤ 64 點），shader 內 winding 測試 + 到邊距離做羽化 |
-| 筆刷 | CPU 依筆觸點陣化成單通道遮罩（輸出尺寸的 1/2，以筆觸內容雜湊快取），上傳成 `r32float` 紋理，shader 雙線性取樣 |
+| 線性、圓形 | shader 內解析計算（storage buffer 中的形狀參數） |
+| 顏色 | 像素轉 **OkLab**，與每個取樣色算距離（a、b 全權重、L 權重 ¼），取最近者；以「精細度」換算的容許距離做 smoothstep（見 Task 2.4） |
+| 多邊形 | 頂點放 storage buffer（每圖層 ≤ 64 點），shader 內偶奇規則 + 到邊距離做羽化 |
+| 筆刷 | CPU 只把筆觸**展開成 dab 清單**（沿路徑每 ¼ 半徑一個圓心），放進 storage buffer；shader 對每個像素依序累加 / 擦除 dab。不做 CPU 點陣化、不上傳紋理 |
 
-CPU 參考實作用同一份數學（筆刷共用同一個點陣化函式），一致性測試比對兩者。
+CPU 參考實作用同一份數學（dab 展開共用 `BrushDabs.Expand`），一致性測試比對兩者。dab 數量多時，GPU 端先以**每一筆的包圍盒**剔除（像素不在包圍盒內就跳過整筆），再逐 dab 計算。
 
 ### D6. 相容性
 
 - 新模組 `crop`、`local`、`curves` 預設關閉，舊專案外觀不變。
 - 舊版程式開啟含新 key 的專案會因 `Unknown parameter` 失敗：在 `ProjectStorage` 把專案格式版本 +1，舊版顯示「專案由較新版本建立」而不是損毀訊息（Task 1.1 內處理）。
 - 選擇性貼上新增「裁切」「局部調整」兩個分類，**全部貼上（Ctrl+V）預設不含這兩類**（裁切與遮罩通常只屬於單張照片，與 Lightroom 同步設定的預設一致）。
+
+### D7. 參考 LightCraft 的地方
+
+[LightCraft](https://github.com/storytold/lightcraft)（Rust、Apache-2.0）是開源的非破壞式修圖器。它沒有「預設 + 覆寫」三層模型，設定是一整份 struct，所以**資料模型不照搬**（維持 D1）；以下四點採用它的作法：
+
+| # | 採用的作法 | LightCraft 出處 | 本計畫位置 |
+|---|---|---|---|
+| 1 | 裁切框超出影像時，**先往影像中心移動**，移不進去才等比縮小 | `crates/geom/src/crop.rs` `constrained` | Task 1.2 |
+| 2 | 顏色遮罩用 **OkLab 距離、可多點取樣、只有一個「精細度」滑桿** | `crates/pipeline/src/masks.rs` `color_range_tolerance` | Task 2.2、2.4、2.7、2.8 |
+| 3 | 遮罩**先算成透明度圖再套用**；筆刷**在 GPU 讀 dab 清單** | `crates/pipeline/src/masks.rs`、`crates/gpu/src/wgsl/mask.wgsl` | D4、D5、Task 2.4–2.6 |
+| 4 | 全域曲線加入**參數式四區段**（亮部 / 亮調 / 暗調 / 陰影 + 三個分界點），與點曲線組合 | `crates/pipeline/src/finish.rs` `curve_luts` | Task 3.2 |
+
+**授權**：只參考作法與公式，不複製原始碼。若移植了具體常數或公式（例如顏色容許距離的係數、參數式曲線的視窗函式），在該檔案註解註明來源，並在 `THIRD-PARTY-NOTICES.txt` 加一段 LightCraft（Apache-2.0）的說明。
 
 ---
 
@@ -135,15 +168,17 @@ CPU 參考實作用同一份數學（筆刷共用同一個點陣化函式），�
 | Modify | `src/FilmBatch.Core/Projects/PhotoOperations.cs`、`SettingsClipboard.cs` | 新貼上分類、遮罩鏡像 |
 | Modify | `src/FilmBatch.Core/Projects/ProjectStorage.cs` | 專案格式版本 +1 |
 | Create | `src/FilmBatch.Core/Curves/ToneCurve.cs` | 曲線資料、parse / 序列化、單調樣條烘焙 |
-| Create | `src/FilmBatch.Core/Curves/HueCurve.cs` | 週期性色相曲線（Phase 3） |
+| Create | `src/FilmBatch.Core/Curves/ParametricCurve.cs` | 參數式四區段曲線烘焙（Phase 3） |
+| Create | `src/FilmBatch.Core/Curves/HueCurve.cs` | 週期性色相曲線（Phase 3，選做） |
 | Create | `src/FilmBatch.Core/Curves/CurvePresets.cs` | 曲線範本（Phase 3） |
 | Create | `src/FilmBatch.Core/Masks/MaskModels.cs` | `MaskStack`、`MaskLayer`、各形狀 record、`LocalAdjust` |
 | Create | `src/FilmBatch.Core/Masks/MaskStackCodec.cs` | JSON 正規化序列化、限制檢查 |
 | Create | `src/FilmBatch.Core/Masks/MaskEdits.cs` | 純函式：新增 / 刪除 / 移動圖層與形狀、設定調整值、鏡像 |
 | Create | `src/FilmBatch.Engine/Rendering/CropGeometry.cs` | 裁切仿射變換、限制在影像內 |
 | Create | `src/FilmBatch.Engine/Rendering/MaskMath.cs` | 各形狀遮罩值（CPU，與 WGSL 同演算法） |
-| Create | `src/FilmBatch.Engine/Rendering/BrushRasterizer.cs` | 筆觸點陣化（CPU / GPU 共用） |
-| Create | `src/FilmBatch.Engine/Rendering/LocalAdjustments.cs` | CPU 局部調整 pass |
+| Create | `src/FilmBatch.Engine/Rendering/BrushDabs.cs` | 筆觸展開成 dab 清單（CPU / GPU 共用） |
+| Create | `src/FilmBatch.Engine/Rendering/OkLab.cs` | 線性 sRGB ↔ OkLab（顏色遮罩與取色共用） |
+| Create | `src/FilmBatch.Engine/Rendering/LocalAdjustments.cs` | CPU 遮罩評估（透明度圖）與局部調整套用 |
 | Create | `src/FilmBatch.Engine/Rendering/RenderOverlay.cs` | 預覽專用的疊色 / 暫停選項（不進 Settings） |
 | Modify | `src/FilmBatch.Engine/Rendering/ModuleParams.cs` | 解析 crop / local / curves；短邊改用裁切後尺寸 |
 | Modify | `src/FilmBatch.Engine/Rendering/CpuPipeline.cs` | 插入 crop、local、curves |
@@ -151,8 +186,10 @@ CPU 參考實作用同一份數學（筆刷共用同一個點陣化函式），�
 | Modify | `src/FilmBatch.Engine/Rendering/IPreviewRenderer.cs`、`GpuSpikeRenderer.cs`、`CpuFakeRenderer.cs` | `RenderOverlay?` 參數；紋理上限檢查 |
 | Modify | `src/FilmBatch.Engine/Exporting/BatchExporter.cs` | 以算圖結果尺寸（裁切後）縮放與寫 EXIF 尺寸 |
 | Create | `src/FilmBatch.Gpu/Shaders/v1/geometry/crop.wgsl` | 裁切取樣 |
-| Create | `src/FilmBatch.Gpu/Shaders/v1/local/local_adjust.wgsl` | 遮罩評估 + 局部調整 |
+| Create | `src/FilmBatch.Gpu/Shaders/v1/local/mask_eval.wgsl` | 一個圖層的所有形狀 → 透明度圖 |
+| Create | `src/FilmBatch.Gpu/Shaders/v1/local/local_apply.wgsl` | 以透明度圖套用局部調整與圖層曲線 |
 | Create | `src/FilmBatch.Gpu/Shaders/v1/local/mask_shapes.wgsl` | 形狀函式（被 include） |
+| Create | `src/FilmBatch.Gpu/Shaders/v1/common/oklab.wgsl` | OkLab 轉換（被 include） |
 | Create | `src/FilmBatch.Gpu/Shaders/v1/color/curves.wgsl` | 全域曲線（Phase 3） |
 | Create | `src/FilmBatch.App/Controls/Tools/ICanvasTool.cs`、`CanvasMapping.cs` | 畫布工具介面與座標換算 |
 | Create | `src/FilmBatch.App/Controls/Tools/CropTool.cs` | 裁切框互動與繪製 |
@@ -168,7 +205,8 @@ CPU 參考實作用同一份數學（筆刷共用同一個點陣化函式），�
 | Modify | `src/FilmBatch.App/Views/InspectorView.axaml`、`PreviewView.axaml`、`SidebarView.axaml` | 曲線 DataTemplate、裁切工具列、遮罩分頁 |
 | Modify | `src/FilmBatch.App/Themes/Icons.axaml`、`Controls.axaml` | 新圖示與樣式 |
 | Modify | `src/FilmBatch.App/Localization/Strings.resx`、`Strings.en.resx` | 文字 |
-| Test | `tests/FilmBatch.Core.Tests/ToneCurveTests.cs`、`MaskStackCodecTests.cs`、`MaskEditsTests.cs`、`CropGeometryTests.cs`、`MaskMathTests.cs`、`LocalPipelineTests.cs`、`CurvesPipelineTests.cs` | 新測試 |
+| Modify | `THIRD-PARTY-NOTICES.txt` | 若移植 LightCraft 的公式 / 常數，加註 Apache-2.0 說明（D7） |
+| Test | `tests/FilmBatch.Core.Tests/ToneCurveTests.cs`、`ParametricCurveTests.cs`、`MaskStackCodecTests.cs`、`MaskEditsTests.cs`、`CropGeometryTests.cs`、`MaskMathTests.cs`、`LocalPipelineTests.cs`、`CurvesPipelineTests.cs` | 新測試 |
 | Test | `tests/FilmBatch.App.Tests/CropToolTests.cs`、`MasksPanelTests.cs`、`CurveEditorTests.cs` | ViewModel / 控制項測試 |
 
 ---
@@ -292,7 +330,7 @@ git commit -m "Add crop module schema and crop/local paste categories"
   - `readonly record struct CropParams(bool On, double Cx, double Cy, double W, double H, double AngleDeg, int Quarter, bool FlipH, bool FlipV)`
   - `readonly record struct Affine2(double M00, double M01, double M02, double M10, double M11, double M12)`，方法 `(double X, double Y) Apply(double x, double y)`、`Affine2 Then(Affine2 next)`、`Affine2 Inverse()`
   - `readonly record struct CropTransform(int OutWidth, int OutHeight, Affine2 OutToSource, Affine2 OutToOriented, int OrientedWidth, int OrientedHeight)`
-  - `static class CropGeometry`：`CropTransform Compute(int srcW, int srcH, CropParams c)`、`bool FitsInside(int srcW, int srcH, CropParams c)`、`CropParams Constrain(int srcW, int srcH, CropParams c)`、`double AspectRatio(string key, bool portrait, int orientedW, int orientedH)`（`free` 回傳 `double.NaN`）
+  - `static class CropGeometry`：`CropTransform Compute(int srcW, int srcH, CropParams c)`、`bool FitsInside(int srcW, int srcH, CropParams c)`、`CropParams Constrain(int srcW, int srcH, CropParams c)`（先移動、再縮小）、`double AspectRatio(string key, bool portrait, int orientedW, int orientedH)`（`free` 回傳 `double.NaN`）
 
 座標慣例：像素中心為 `(x + 0.5, y + 0.5)`；`OutToSource` 把輸出像素座標映到來源像素座標。
 
@@ -346,6 +384,17 @@ public sealed class CropGeometryTests
         Assert.True(CropGeometry.FitsInside(400, 300, fixedC));
         Assert.Equal(c.W / c.H, fixedC.W / fixedC.H, 6);   // 等比縮小，比例不變
         Assert.True(fixedC.W > 0.7);                        // 不會縮過頭
+    }
+
+    [Fact]
+    public void SmallCropNearEdge_IsMovedInside_NotShrunk()   // LightCraft 的「先移動、再縮小」
+    {
+        var c = Full with { Cx = 0.95, Cy = 0.5, W = 0.3, H = 0.3, AngleDeg = 5 };
+        Assert.False(CropGeometry.FitsInside(400, 300, c));
+        var fixedC = CropGeometry.Constrain(400, 300, c);
+        Assert.True(CropGeometry.FitsInside(400, 300, fixedC));
+        Assert.Equal((0.3, 0.3), (fixedC.W, fixedC.H));     // 大小不變
+        Assert.True(fixedC.Cx < 0.95 && fixedC.Cx > 0.7);   // 只往中心移到剛好放得下
     }
 
     [Theory]
@@ -440,18 +489,35 @@ public static class CropGeometry
         return true;
     }
 
-    /// <summary>先把中心夾回 0–1，若仍超出影像就以二分搜尋等比縮小寬高（比例不變）。</summary>
+    /// <summary>
+    /// 讓裁切框留在影像內（作法參考 LightCraft 的 <c>CropGeometry::constrained</c>）：
+    /// ① 已在影像內就不動；② 沿「目前中心 → 影像中心」的路徑找第一個放得下的位置（大小不變）；
+    /// ③ 移到中心仍放不下（通常是拉直角度太大），才在影像中心以二分搜尋等比縮小寬高（比例不變）。
+    /// </summary>
     public static CropParams Constrain(int srcW, int srcH, CropParams c)
     {
-        c = c with { Cx = Math.Clamp(c.Cx, c.W / 2, 1 - c.W / 2), Cy = Math.Clamp(c.Cy, c.H / 2, 1 - c.H / 2) };
         if (FitsInside(srcW, srcH, c)) return c;
-        double lo = 0, hi = 1;
+        // ② 先移動：二分搜尋「往中心走多少比例」剛好放得下，讓框停在最靠近使用者拖到的位置
+        var centered = c with { Cx = 0.5, Cy = 0.5 };
+        if (FitsInside(srcW, srcH, centered))
+        {
+            double lo = 0, hi = 1;   // hi 一定放得下
+            for (var i = 0; i < 40; i++)
+            {
+                var mid = (lo + hi) / 2;
+                var cand = c with { Cx = c.Cx + (0.5 - c.Cx) * mid, Cy = c.Cy + (0.5 - c.Cy) * mid };
+                if (FitsInside(srcW, srcH, cand)) hi = mid; else lo = mid;
+            }
+            return c with { Cx = c.Cx + (0.5 - c.Cx) * hi, Cy = c.Cy + (0.5 - c.Cy) * hi };
+        }
+        // ③ 再縮小
+        double s0 = 0, s1 = 1;
         for (var i = 0; i < 40; i++)
         {
-            var mid = (lo + hi) / 2;
-            if (FitsInside(srcW, srcH, c with { W = c.W * mid, H = c.H * mid })) lo = mid; else hi = mid;
+            var mid = (s0 + s1) / 2;
+            if (FitsInside(srcW, srcH, centered with { W = c.W * mid, H = c.H * mid })) s0 = mid; else s1 = mid;
         }
-        return c with { W = Math.Max(0.02, c.W * lo), H = Math.Max(0.02, c.H * lo) };
+        return centered with { W = Math.Max(0.02, c.W * s0), H = Math.Max(0.02, c.H * s0) };
     }
 
     public static double AspectRatio(string key, bool portrait, int orientedW, int orientedH)
@@ -703,7 +769,7 @@ public interface ICanvasTool
 - `CropToolViewModel`（`ObservableObject`）：
   - `[ObservableProperty] bool isActive`、`CropParams Working`、`string Aspect`、`bool Portrait`
   - `[RelayCommand] Begin()`、`Apply()`、`Cancel()`、`RotateLeft()`、`RotateRight()`、`FlipHorizontal()`、`FlipVertical()`、`Reset()`、`SwapOrientation()`
-  - `void DragHandle(CropHandle handle, Point delta, bool fromCenter)`、`void DragMove(Point delta)`、`void DragRotate(double deltaDeg)`——全部在內部呼叫 `CropGeometry.Constrain`
+  - `void DragHandle(CropHandle handle, Point delta, bool fromCenter)`、`void DragMove(Point delta)`、`void DragRotate(double deltaDeg)`。`DragMove` 與 `DragRotate` 呼叫 `CropGeometry.Constrain`（拖出邊界時框會停在邊上、拉直時先移動再縮小）；`DragHandle` 則是把**被拖曳的那一邊**夾在影像內（不移動整個框，否則拉把手會變成推框），夾完再呼叫 `Constrain` 處理旋轉造成的超出
   - 建構子注入 `Action<Settings> commit`（一次寫入多個 `crop.*` 鍵，包成一筆復原紀錄）與 `Func<(int W, int H)> sourceSize`
 - `CropTool : ICanvasTool`：繪製全幅影像上的裁切框（框外以半透明黑遮住）、8 個把手、三分線（拖曳時）、拉直時改顯示細格線；框內拖曳 = 移動、把手 = 改大小（`Alt` 以中心縮放、固定比例時鎖比例）、框外拖曳 = 旋轉。
 
@@ -1042,9 +1108,13 @@ public sealed record PolygonShape(IReadOnlyList<MaskPoint> Points, double Feathe
 /// <summary>Size 為筆刷直徑（短邊比例）；Hardness 0–1；Flow 0–1。</summary>
 public sealed record BrushStroke(double Size, double Hardness, double Flow, bool Erase, IReadOnlyList<MaskPoint> Points);
 public sealed record BrushShape(IReadOnlyList<BrushStroke> Strokes) : MaskShape;
-/// <summary>顏色範圍：取樣色（顯示 sRGB 的 HSL，H 0–360、S/L 0–1）與容許範圍。</summary>
-public sealed record ColorShape(double Hue, double Sat, double Lum,
-    double HueRange, double SatRange, double LumRange, double Smoothness) : MaskShape;
+/// <summary>
+/// 顏色範圍（作法參考 LightCraft 的 ColorRange）：1–5 個 OkLab 取樣色，像素與「最近的」取樣色比距離；
+/// Refine 0–100 是唯一的滑桿，決定容許距離（見 Task 2.4）。預設 50。
+/// </summary>
+public sealed record ColorShape(IReadOnlyList<OkLabColor> Samples, double Refine = 50) : MaskShape;
+/// <summary>OkLab 色彩：L 0–1，A / B 約 −0.4–0.4。由局部調整 pass 輸入影像（線性 sRGB）轉換而來。</summary>
+public readonly record struct OkLabColor(double L, double A, double B);
 public readonly record struct MaskPoint(double X, double Y);
 
 /// <summary>圖層的基本參數，數值範圍與 basic 模組相同（−100–100、曝光 −3–3 EV）。</summary>
@@ -1066,7 +1136,8 @@ public sealed record MaskLayer(string Id, string Name, IReadOnlyList<MaskShape> 
 
 public sealed record MaskStack(IReadOnlyList<MaskLayer> Layers)
 {
-    public const int MaxLayers = 8, MaxShapesPerLayer = 8, MaxPolygonPoints = 64, MaxBrushPointsPerLayer = 20_000, MaxTextLength = 512 * 1024;
+    public const int MaxLayers = 8, MaxShapesPerLayer = 8, MaxPolygonPoints = 64, MaxColorSamples = 5,
+        MaxBrushPointsPerLayer = 20_000, MaxTextLength = 512 * 1024;
     public static MaskStack Empty { get; } = new([]);
 }
 
@@ -1098,7 +1169,7 @@ public sealed class MaskStackCodecTests
     private static MaskStack Sample() => new([
         new MaskLayer("l1", "天空", [
             new LinearShape(0.5, 0, 0.5, 0.45),
-            new ColorShape(210, 0.5, 0.6, 25, 0.4, 0.4, 0.3) { Combine = MaskCombine.Intersect },
+            new ColorShape([new(0.72, -0.03, -0.09), new(0.80, -0.02, -0.06)], 60) { Combine = MaskCombine.Intersect },
         ]) { Adjust = new(Exposure: -0.5, Saturation: 15), Curve = "0,0;0.5,0.45;1,1" },
         new MaskLayer("l2", "人物", [
             new RadialShape(0.4, 0.55, 0.2, 0.3, 15, 0.5),
@@ -1130,6 +1201,16 @@ public sealed class MaskStackCodecTests
         Assert.Equal((1.0, 0.0, 1.0), (r.Cx, r.Cy, r.Feather));
     }
 
+    [Fact]
+    public void Normalize_ColorShape_KeepsAtMostFiveSamples_AndClampsRefine()
+    {
+        var samples = Enumerable.Range(0, 7).Select(i => new OkLabColor(0.1 * i, 0, 0)).ToList();
+        var layer = new MaskLayer("l", "x", [new ColorShape(samples, 140)]);
+        var c = (ColorShape)MaskStackCodec.Normalize(new MaskStack([layer])).Layers[0].Shapes[0];
+        Assert.Equal(MaskStack.MaxColorSamples, c.Samples.Count);
+        Assert.Equal(100, c.Refine);
+    }
+
     [Theory]
     [InlineData("{")]
     [InlineData("{\"v\":99,\"layers\":[]}")]
@@ -1153,7 +1234,7 @@ public sealed class MaskStackCodecTests
 - [ ] **Step 2:** Run `dotnet test tests/FilmBatch.Core.Tests --filter "FullyQualifiedName~MaskStackCodecTests"` → FAIL
 - [ ] **Step 3: 實作**
   - `MaskStackCodec` 以 `System.Text.Json` 搭配 **source generator**（`[JsonSerializable(typeof(MaskStackDto))]`，`PropertyNamingPolicy = CamelCase`，`DefaultIgnoreCondition = WhenWritingDefault`），避免反射以保留日後 AOT / trimming 的可能。外層包一個 `{ "v": 1, "layers": [...] }` 的 DTO。
-  - `Normalize`：所有座標夾到 0–1；半徑 0.001–2；羽化 0–1（Radial）或 0–0.5（Polygon）；色相 0–360、範圍 0–180；不透明度 0–1；`Id` 為空時以 `Guid.NewGuid().ToString("N")[..8]` 補上（只在 `MaskEdits` 新增時產生，`Normalize` 不產生新 id，避免同一內容兩次正規化不同）；數值四捨五入四位小數；多邊形少於 3 點的形狀移除；筆刷點超過上限時以 Ramer–Douglas–Peucker（ε = 0.0005）簡化。
+  - `Normalize`：所有座標夾到 0–1；半徑 0.001–2；羽化 0–1（Radial）或 0–0.5（Polygon）；顏色取樣保留前 5 個、L 夾 0–1、A / B 夾 −0.5–0.5，Refine 夾 0–100，沒有取樣色的顏色形狀移除；不透明度 0–1；`Id` 為空時以 `Guid.NewGuid().ToString("N")[..8]` 補上（只在 `MaskEdits` 新增時產生，`Normalize` 不產生新 id，避免同一內容兩次正規化不同）；數值四捨五入四位小數；多邊形少於 3 點的形狀移除；筆刷點超過上限時以 Ramer–Douglas–Peucker（ε = 0.0005）簡化。
   - `TryParse` 先檢查長度 ≤ `MaxTextLength`。
 - [ ] **Step 4:** Run `dotnet test` → PASS
 - [ ] **Step 5:** 文字 `Module.local`、`Param.local.masks` → Commit `git commit -am "Add mask stack model, codec and local module schema"`
@@ -1236,10 +1317,10 @@ public sealed class MaskEditsTests
 
 ---
 
-### Task 2.4：遮罩數學與筆刷點陣化（CPU）
+### Task 2.4：遮罩數學、OkLab 與筆刷 dab（CPU）
 
 **Files:**
-- Create: `src/FilmBatch.Engine/Rendering/MaskMath.cs`、`BrushRasterizer.cs`
+- Create: `src/FilmBatch.Engine/Rendering/MaskMath.cs`、`OkLab.cs`、`BrushDabs.cs`
 - Test: `tests/FilmBatch.Core.Tests/MaskMathTests.cs`
 
 **Interfaces:**
@@ -1252,18 +1333,35 @@ public static class MaskMath
     public static float Linear(LinearShape s, double px, double py, double aspect);
     public static float Radial(RadialShape s, double px, double py, double aspect);
     public static float Polygon(PolygonShape s, double px, double py, double aspect);
-    /// <summary>r, g, b 為顯示 sRGB 0–1。</summary>
+    /// <summary>r, g, b 為線性 sRGB（局部調整 pass 的輸入像素）。</summary>
     public static float Color(ColorShape s, float r, float g, float b);
+    /// <summary>Refine 0–100 → OkLab 容許距離（作法參考 LightCraft 的 color_range_tolerance）。</summary>
+    public static float ColorTolerance(double refine);
     public static float Combine(float acc, float shape, MaskCombine mode);   // Add: max；Subtract: acc·(1−s)；Intersect: acc·s
     public static float SmoothStep(float e0, float e1, float x);
 }
 
-public static class BrushRasterizer
+public static class OkLab
 {
-    /// <summary>把整個 BrushShape 點陣化成 width×height 的 0–1 遮罩（定向座標系、可為縮小解析度）。</summary>
-    public static float[] Rasterize(BrushShape shape, int width, int height);
-    /// <summary>筆觸內容雜湊，作為快取 key（GPU 端上傳紋理的快取也用它）。</summary>
-    public static ulong Hash(BrushShape shape, int width, int height);
+    /// <summary>線性 sRGB（0–1，先夾範圍）→ OkLab。與 common/oklab.wgsl 使用相同係數（Björn Ottosson 公開的矩陣）。</summary>
+    public static OkLabColor FromLinearSrgb(float r, float g, float b);
+}
+
+/// <summary>一個 dab 的圓心（定向像素座標）。</summary>
+public readonly record struct Dab(float X, float Y);
+/// <summary>一筆的 dab 範圍、參數（Radius / Hard 為像素，Flow 0–1）與包圍盒（定向像素座標，已含半徑）。</summary>
+public readonly record struct DabStroke(int Start, int Count, float Radius, float Hard, float Flow, bool Erase,
+    float MinX, float MinY, float MaxX, float MaxY);
+public sealed record BrushDabList(IReadOnlyList<Dab> Dabs, IReadOnlyList<DabStroke> Strokes);
+
+public static class BrushDabs
+{
+    /// <summary>沿每一筆的路徑每 ¼ 半徑放一個 dab（與 LightCraft 相同的間距），單點筆觸放一個。</summary>
+    public static BrushDabList Expand(BrushShape shape, int orientedW, int orientedH);
+    /// <summary>CPU 參考：把 dab「蓋印」到 w×h 的透明度圖（輸出像素經 outToOriented 映到定向像素）。</summary>
+    public static void Rasterize(BrushDabList list, Affine2 outToOriented, int w, int h, float[] alpha);
+    /// <summary>單一像素的值（GPU 的逐像素算法；測試以它比對 Rasterize）。</summary>
+    public static float Evaluate(BrushDabList list, float ox, float oy);
 }
 ```
 
@@ -1274,8 +1372,10 @@ public static class BrushRasterizer
 | 線性 | 以像素座標（x 乘 aspect）計算 `t = dot(p − p0, d) / dot(d, d)`，`m = 1 − smoothstep(0, 1, t)` |
 | 圓形 | 平移到中心、旋轉 −angle、除以半徑（短邊單位）得 `r`；`inner = 1 − feather`；`m = 1 − smoothstep(inner, 1, r)`（feather = 0 時 `m = r ≤ 1 ? 1 : 0`） |
 | 多邊形 | 偶奇規則判斷內外；`d` = 到最近邊的距離（短邊單位）；`sd = inside ? d : −d`；`m = smoothstep(−f/2, f/2, sd)`，`f = 0` 時硬邊 |
-| 筆刷 | 沿筆觸每 `size × 0.15` 的間距放一個圓形 dab（`hardness` 決定實心比例，邊緣 smoothstep）；繪製：`m = max(m, dab·flow)`；擦除：`m = m·(1 − dab·flow)`；依筆觸順序處理 |
-| 顏色 | 像素轉 HSL；`dh` = 環狀色相距離；`wh = 1 − smoothstep(HueRange, HueRange + 180·Smoothness, dh)`，再以 `smoothstep(0.02, 0.12, min(S, Sat))` 淡化低飽和時的色相權重；`ws`、`wl` 同理（範圍 0–1、平滑寬度 = Smoothness）；`m = wh·ws·wl` |
+| 筆刷 | 每一筆：`keep = 1`；對每個 dab，`dd` = 像素到圓心的距離，`dd > R` 跳過；`a = dd ≤ H ? 1 : 1 − smoothstep(H, R, dd)`（`R` = 半徑、`H = R·Hardness`）；`keep *= 1 − a·Flow`；這一筆的值 `sa = 1 − keep`。繪製：`m = max(m, sa)`；擦除：`m = m·(1 − sa)`；依筆觸順序處理（與 LightCraft 相同的累加方式） |
+| 顏色 | 像素（線性 sRGB）轉 OkLab；`d = min over samples √(ΔA² + ΔB² + 0.25·ΔL²)`；`tol = 0.015 + 0.06·Refine/100`；`m = 1 − smoothstep(tol/2, tol, d)` |
+
+> **顏色容許距離的來源與校正**：`0.015 + 0.06·refine` 與「L 權重 ¼」來自 LightCraft（它的原始碼註解記錄了舊係數會「整張照片都被選到」的問題，即 issue #157）。LightCraft 的輸入是場景線性影像，取色前先做 `v / (1 + v)` 的色調映射；FilmBatch 的輸入已是顯示用影像，所以**直接**轉 OkLab，不做這一步。係數由下方的 `Color_*` 測試鎖定；若在直接轉換下測試不成立，只調整係數並更新註解，不改公式結構。程式碼註解須註明來源（D7）。
 
 圖層遮罩：`acc = 0`；依序 `acc = Combine(acc, shape.Invert ? 1 − s : s, shape.Combine)`（第一個形狀不論模式都視為 Add）；`layer.Invert` 時 `acc = 1 − acc`；最後乘 `Opacity`。
 
@@ -1319,25 +1419,69 @@ public sealed class MaskMathTests
         Assert.Equal(0.5f, MaskMath.Polygon(s, 0.2, 0.5, 1), 2);
     }
 
+    private static float Lin(int srgb8) => CpuPipeline.SrgbToLinear(srgb8 / 255f);
+
+    private static ColorShape Sampled(int r, int g, int b, double refine) =>
+        new([OkLab.FromLinearSrgb(Lin(r), Lin(g), Lin(b))], refine);
+
+    private static float Pick(ColorShape s, int r, int g, int b) => MaskMath.Color(s, Lin(r), Lin(g), Lin(b));
+
     [Fact]
-    public void Color_MatchesSampledHue_RejectsOpposite()
+    public void Color_SelectsSampledColor_RejectsOtherHue()
     {
-        var s = new ColorShape(210, 0.6, 0.5, 20, 0.5, 0.5, 0.2);
-        Assert.True(MaskMath.Color(s, 0.2f, 0.5f, 0.8f) > 0.9f);   // 藍
-        Assert.Equal(0f, MaskMath.Color(s, 0.8f, 0.5f, 0.2f), 3);   // 橘
+        var s = Sampled(60, 110, 190, 50);                 // 藍
+        Assert.True(Pick(s, 60, 110, 190) > 0.99f);
+        Assert.True(Pick(s, 63, 112, 187) > 0.9f);         // 很接近的藍
+        Assert.Equal(0f, Pick(s, 200, 120, 50), 3);        // 橘
+    }
+
+    [Theory]
+    [InlineData(0.0)]
+    [InlineData(50.0)]
+    [InlineData(85.0)]
+    public void Color_TealGreyDoesNotSelectNeutralLightGrey(double refine)   // LightCraft issue #157 的情境
+    {
+        var s = Sampled(120, 150, 155, refine);
+        Assert.True(Pick(s, 120, 150, 155) > 0.95f);
+        Assert.True(Pick(s, 200, 198, 195) < 0.05f);
     }
 
     [Fact]
-    public void Brush_EraseRemovesPaint_AndIsDeterministic()
+    public void Color_MultipleSamples_UseNearest()
+    {
+        var blue = OkLab.FromLinearSrgb(Lin(60), Lin(110), Lin(190));
+        var orange = OkLab.FromLinearSrgb(Lin(200), Lin(120), Lin(50));
+        var s = new ColorShape([blue, orange], 50);
+        Assert.True(Pick(s, 200, 120, 50) > 0.99f);
+        Assert.True(Pick(s, 60, 110, 190) > 0.99f);
+        Assert.Equal(0f, Pick(s, 60, 170, 70), 3);         // 綠：兩個都不像
+    }
+
+    [Fact]
+    public void Brush_EraseRemovesPaint()
     {
         // Size 為直徑（短邊比例）：50 px 影像上繪製半徑 10 px、擦除半徑 2.5 px
         var paint = new BrushStroke(0.4, 1, 1, false, [new(0.5, 0.5)]);
         var erase = paint with { Erase = true, Size = 0.1 };
-        var mask = BrushRasterizer.Rasterize(new BrushShape([paint, erase]), 50, 50);
-        Assert.Equal(0f, mask[25 * 50 + 25], 3);                      // 中心被擦掉
-        Assert.True(mask[25 * 50 + 25 + 7] > 0.9f);                   // 外圈仍在
-        Assert.Equal(BrushRasterizer.Hash(new BrushShape([paint, erase]), 50, 50),
-                     BrushRasterizer.Hash(new BrushShape([paint, erase]), 50, 50));
+        var list = BrushDabs.Expand(new BrushShape([paint, erase]), 50, 50);
+        var alpha = new float[50 * 50];
+        BrushDabs.Rasterize(list, Affine2.Identity, 50, 50, alpha);
+        Assert.Equal(0f, alpha[25 * 50 + 25], 3);          // 中心被擦掉
+        Assert.True(alpha[25 * 50 + 25 + 7] > 0.9f);       // 外圈仍在
+    }
+
+    [Fact]
+    public void Brush_DabSpacing_AndRasterizeMatchesPerPixelEvaluate()   // CPU 蓋印 ＝ GPU 逐像素算法
+    {
+        var stroke = new BrushStroke(0.12, 0.4, 0.6, false, [new(0.2, 0.3), new(0.5, 0.5), new(0.8, 0.4)]);
+        var list = BrushDabs.Expand(new BrushShape([stroke]), 64, 48);
+        foreach (var (a, b) in list.Dabs.Zip(list.Dabs.Skip(1)))
+            Assert.True(MathF.Sqrt((a.X - b.X) * (a.X - b.X) + (a.Y - b.Y) * (a.Y - b.Y)) <= list.Strokes[0].Radius / 4 + 1e-3f);
+        var alpha = new float[64 * 48];
+        BrushDabs.Rasterize(list, Affine2.Identity, 64, 48, alpha);
+        for (var y = 0; y < 48; y += 3)
+            for (var x = 0; x < 64; x += 3)
+                Assert.Equal(BrushDabs.Evaluate(list, x + 0.5f, y + 0.5f), alpha[y * 64 + x], 4);
     }
 
     [Theory]
@@ -1350,27 +1494,32 @@ public sealed class MaskMathTests
 ```
 
 - [ ] **Step 2:** Run `dotnet test tests/FilmBatch.Core.Tests --filter "FullyQualifiedName~MaskMathTests"` → FAIL
-- [ ] **Step 3:** 依上表實作（全部用 `float` 運算以對齊 GPU；多邊形距離用逐邊的點到線段距離）。
+- [ ] **Step 3:** 依上表實作。全部用 `float` 運算以對齊 GPU；多邊形距離用逐邊的點到線段距離；`Rasterize` 對每個 dab 只走它包圍盒內的像素，但結果必須與 `Evaluate` 相同（同一筆內 `keep` 相乘，筆與筆之間依序 max / 擦除）。
 - [ ] **Step 4:** Run → PASS
-- [ ] **Step 5:** Commit `git commit -am "Add CPU mask shape math and brush rasterizer"`
+- [ ] **Step 5:** Commit `git commit -am "Add CPU mask math with OkLab color range and brush dabs"`
 
 ---
 
-### Task 2.5：CPU 局部調整 pass
+### Task 2.5：CPU 遮罩評估與局部調整
 
 **Files:**
 - Create: `src/FilmBatch.Engine/Rendering/LocalAdjustments.cs`
-- Modify: `src/FilmBatch.Engine/Rendering/ModuleParams.cs`（`LocalOn`、`Masks`：解析後、去除 `IsNoOp` 的圖層、預先烘焙每層曲線 LUT）
+- Modify: `src/FilmBatch.Engine/Rendering/ModuleParams.cs`（`LocalOn`、`Masks`：解析後、去除 `IsNoOp` 的圖層、預先烘焙每層曲線 LUT、展開筆刷 dab）
 - Modify: `src/FilmBatch.Engine/Rendering/CpuPipeline.cs`（基本調整線性段之後呼叫）
 - Create: `src/FilmBatch.Engine/Rendering/RenderOverlay.cs`
 - Test: `tests/FilmBatch.Core.Tests/LocalPipelineTests.cs`
 
 **Interfaces:**
-- Consumes: `MaskMath`、`BrushRasterizer`、`ToneCurve.Bake`、`CropTransform.OutToOriented`
+- Consumes: `MaskMath`、`OkLab`、`BrushDabs`、`ToneCurve.Bake`、`CropTransform.OutToOriented`
 - Produces:
 
 ```csharp
-public sealed record PreparedMaskLayer(MaskLayer Layer, float[] CurveLut);
+/// <summary>已解析、可直接算圖的圖層。Key 為「形狀內容 + 裁切變換 + 輸出尺寸」的雜湊，供透明度圖快取。</summary>
+public sealed record PreparedMaskLayer(MaskLayer Layer, float[] CurveLut, IReadOnlyList<BrushDabList?> Dabs, ulong Key)
+{
+    /// <summary>含顏色形狀的圖層依賴上游像素，透明度圖不能跨算圖重用。</summary>
+    public bool DependsOnPixels => Layer.Shapes.Any(s => s is ColorShape);
+}
 // ModuleParams
 public bool LocalOn { get; init; }
 public IReadOnlyList<PreparedMaskLayer> Masks { get; init; } = [];
@@ -1380,22 +1529,24 @@ public sealed record RenderOverlay(string? MaskOverlayLayerId = null, bool Suspe
 
 public static class LocalAdjustments
 {
-    /// <summary>就地套用所有遮罩圖層。linear 為線性 RGBA float（輸出尺寸）。</summary>
-    public static void Apply(float[] linear, int w, int h, ModuleParams p, RenderOverlay? overlay, CancellationToken ct);
-    /// <summary>單一圖層在每個輸出像素的遮罩值（供測試與疊色）。</summary>
-    public static float[] EvaluateMask(PreparedMaskLayer layer, float[] linear, int w, int h, ModuleParams p);
+    /// <summary>步驟 1：一個圖層 → 透明度圖（w×h，0–1）。linear 為線性 RGBA float（輸出尺寸），只在有顏色形狀時讀取。</summary>
+    public static void EvaluateMask(PreparedMaskLayer layer, float[] linear, int w, int h, ModuleParams p, float[] alpha);
+    /// <summary>步驟 2：以透明度圖就地套用一個圖層的調整與曲線。</summary>
+    public static void ApplyLayer(float[] linear, int w, int h, PreparedMaskLayer layer, float[] alpha);
+    /// <summary>依序處理所有圖層；需要疊色時回傳該圖層的透明度圖（否則 null）。</summary>
+    public static float[]? Apply(float[] linear, int w, int h, ModuleParams p, RenderOverlay? overlay, CancellationToken ct);
 }
 ```
 
-- 每像素調整順序（與 `local_adjust.wgsl` 相同）：
+- **步驟 1（`EvaluateMask`）**：輸出像素中心經 `CropT.OutToOriented` 得到定向像素座標，再除以 `OrientedWidth/Height` 得 0–1；`aspect = OrientedWidth / OrientedHeight`。線性 / 圓形 / 多邊形逐像素計算；筆刷以 `BrushDabs.Rasterize` 蓋印到暫存平面後再組合；顏色形狀讀 `linear` 的像素轉 OkLab。依 Task 2.4 的規則組合、反轉、乘不透明度。
+- **步驟 2（`ApplyLayer`）**，每像素順序（與 `local_apply.wgsl` 相同）：
   1. 線性：`rgb *= 2^Exposure`；色溫 / 色調使用 `basic` 線性段同一組係數（把 `CpuPipeline` 內的色溫 / 色調計算抽成 `internal static` 的單像素函式共用，不複製）。
   2. 轉 sRGB；亮度、對比、亮部、暗部、飽和度使用 `basic` 顯示段的同一組單像素函式（同樣抽出共用；不含細節提取）。
   3. 曲線：`c = lut[c·1023]`（線性內插）分別套 R、G、B。
-  4. 轉回線性；`out = mix(orig, adjusted, mask)`。
-- 遮罩座標：輸出像素中心經 `CropT.OutToOriented` 得到定向像素座標，再除以 `OrientedWidth/Height` 得 0–1；`aspect = OrientedWidth / OrientedHeight`。
-- 筆刷：以定向尺寸的 1/2 點陣化，雙線性取樣；同一張照片的同一筆刷內容以 `BrushRasterizer.Hash` 快取於 `ModuleParams` 之外的 `BrushMaskCache`（`ConditionalWeakTable` 或 LRU 8 筆），避免拖曳其他滑桿時重算。
-- 顏色形狀：以進入此 pass 的影像（線性轉 sRGB）評估；同一圖層內的顏色形狀以「圖層開始時」的像素評估（不受前面圖層影響的順序問題：圖層依序套用，每層看到前一層的結果——與 Lightroom 相同）。
-- `overlay.MaskOverlayLayerId` 符合時：在套用完所有圖層後，`out = mix(out, (1, 0.1, 0.1) 線性, 0.5·mask)`。
+  4. 轉回線性；`out = mix(orig, adjusted, alpha)`。
+- 圖層依序處理，每層看到前一層的結果（與 Lightroom、LightCraft 相同）；所以第 N 層的顏色形狀是以「套用完前 N−1 層」的像素評估。
+- CPU 端不做跨算圖的透明度圖快取（CPU 算圖器主要用於匯出與無 GPU 環境）；快取只在 GPU 預覽（Task 2.6）。
+- 疊色：`Apply` 回傳 `overlay.MaskOverlayLayerId` 圖層的透明度圖，`CpuPipeline` 在**最後編碼前**做 `out = mix(out, (1, 0.1, 0.1), 0.5·alpha)`（疊在最終結果上，使用者看到的紅色才不會被底片色彩改掉）。
 
 - [ ] **Step 1: 寫失敗的測試**
 
@@ -1462,56 +1613,92 @@ public sealed class LocalPipelineTests
         var s = WithMasks(stack).With("local.enabled", false);
         Assert.Equal(src.Rgba16, CpuPipeline.Process(src, s, null, default).Rgba16);
     }
+
+    [Fact]
+    public void ColorLayer_SeesResultOfPreviousLayer()
+    {
+        // 第 1 層把整張變亮，第 2 層取樣的是「原本的」灰色 → 變亮後就不再被選到
+        var grey = OkLab.FromLinearSrgb(0.2f, 0.2f, 0.2f);
+        var (stack, a) = MaskEdits.AddLayer(MaskStack.Empty, new RadialShape(0.5, 0.5, 2, 2, 0, 0), "brighten");
+        stack = MaskEdits.UpdateLayer(stack, a, l => l with { Adjust = new(Exposure: 1.5) });
+        (stack, var b) = MaskEdits.AddLayer(stack, new ColorShape([grey], 30), "grey");
+        stack = MaskEdits.UpdateLayer(stack, b, l => l with { Adjust = new(Exposure: -3) });
+        var src = Flat(8, 8, (ushort)(CpuPipeline.LinearToSrgb(0.2f) * 65535));
+        var p = ModuleParams.From(src, WithMasks(stack));
+        var linear = Enumerable.Repeat(0.2f, 8 * 8 * 4).ToArray();
+        LocalAdjustments.ApplyLayer(linear, 8, 8, p.Masks[0], Enumerable.Repeat(1f, 64).ToArray());
+        var alpha = new float[64];
+        LocalAdjustments.EvaluateMask(p.Masks[1], linear, 8, 8, p, alpha);
+        Assert.All(alpha, v => Assert.True(v < 0.05f));
+    }
+
+    [Fact]
+    public void OverlayAlpha_IsReturnedOnlyForRequestedLayer()
+    {
+        var (stack, id) = MaskEdits.AddLayer(MaskStack.Empty, new LinearShape(0, 0, 0, 1), "a");
+        stack = MaskEdits.UpdateLayer(stack, id, l => l with { Adjust = new(Exposure: 0.5) });
+        var src = Flat(8, 8, 20000);
+        var p = ModuleParams.From(src, WithMasks(stack));
+        var linear = Enumerable.Repeat(0.1f, 8 * 8 * 4).ToArray();
+        Assert.NotNull(LocalAdjustments.Apply((float[])linear.Clone(), 8, 8, p, new RenderOverlay(id), default));
+        Assert.Null(LocalAdjustments.Apply((float[])linear.Clone(), 8, 8, p, null, default));
+    }
 }
 ```
 
 - [ ] **Step 2:** Run `dotnet test tests/FilmBatch.Core.Tests --filter "FullyQualifiedName~LocalPipelineTests"` → FAIL
-- [ ] **Step 3:** 實作；`IPreviewRenderer.Render` / `Render16` 增加選用參數 `RenderOverlay? overlay = null`，`CpuFakeRenderer` 傳給 `CpuPipeline.Process`（新增多載）。`overlay.SuspendGeometry` 時 `ModuleParams` 視為 `lens_distortion` 與 `multi_lens` 關閉；`SuspendCrop` 時視為 `crop` 關閉。
+- [ ] **Step 3:** 實作；`IPreviewRenderer.Render` / `Render16` 增加選用參數 `RenderOverlay? overlay = null`，`CpuFakeRenderer` 傳給 `CpuPipeline.Process`（新增多載）。`overlay.SuspendGeometry` 時 `ModuleParams` 視為 `lens_distortion` 與 `multi_lens` 關閉；`SuspendCrop` 時視為 `crop` 關閉。`Render16`（匯出）忽略 overlay。
 - [ ] **Step 4:** Run `dotnet test` → PASS（既有 basic 模組測試必須仍通過，證明抽出的共用函式沒改數學）
-- [ ] **Step 5:** Commit `git commit -am "Add CPU local adjustment pass driven by mask layers"`
+- [ ] **Step 5:** Commit `git commit -am "Add CPU mask evaluation and local adjustment application"`
 
 ---
 
-### Task 2.6：GPU 局部調整
+### Task 2.6：GPU 遮罩評估、套用與透明度圖快取
 
 **Files:**
-- Create: `src/FilmBatch.Gpu/Shaders/v1/local/mask_shapes.wgsl`、`local/local_adjust.wgsl`
+- Create: `src/FilmBatch.Gpu/Shaders/v1/common/oklab.wgsl`、`local/mask_shapes.wgsl`、`local/mask_eval.wgsl`、`local/local_apply.wgsl`
 - Modify: `src/FilmBatch.Engine/Rendering/GpuEffectPipeline.cs`
 - Modify: `src/FilmBatch.Engine/Rendering/GpuSpikeRenderer.cs`（`RenderOverlay` 傳遞）
-- Test: `tests/FilmBatch.Core.Tests/LocalPipelineTests.cs`（`Gpu_MatchesCpu_Local*`）
+- Test: `tests/FilmBatch.Core.Tests/LocalPipelineTests.cs`（`Gpu_MatchesCpu_Local*`、快取測試）
 
 **Interfaces:**
 - Produces（`GpuEffectPipeline.cs` 底部）：
 
 ```csharp
 [StructLayout(LayoutKind.Sequential)]
-private readonly record struct LocalUniforms(
+private readonly record struct MaskEvalUniforms(
     // 輸出 → 定向（CropTransform.OutToOriented）
     float M00, float M01, float M02, float OrientedW,
     float M10, float M11, float M12, float OrientedH,
-    // 調整
+    float Opacity, int Invert, int ShapeCount, int StrokeCount);        // 48 位元組
+
+[StructLayout(LayoutKind.Sequential)]
+private readonly record struct LocalApplyUniforms(
     float Exposure, float Temperature, float Tint, float Brightness,
     float Contrast, float Highlights, float Shadows, float Saturation,
-    // 圖層
-    float Opacity, int Invert, int ShapeCount, int Overlay,
-    int HasBrush, int HasCurve, float _pad0, float _pad1);   // 96 位元組
+    int HasCurve, float _pad0, float _pad1, float _pad2);               // 48 位元組
 
-// storage buffer：每個形狀 16 個 float（type、combine、invert、參數…），多邊形頂點另一個 storage buffer
+// 形狀 storage：每個形狀 16 個 float（type、combine、invert、資料起點、資料長度、參數…）
 [StructLayout(LayoutKind.Sequential)]
-private struct ShapeGpu { public float Type, Combine, Invert, VertexStart, VertexCount, A, B, C, D, E, F, G, H, I, J, K; }
+private struct ShapeGpu { public float Type, Combine, Invert, DataStart, DataCount, A, B, C, D, E, F, G, H, I, J, K; }
+// 資料 storage（array<f32>）：多邊形頂點、OkLab 取樣色、筆刷的 stroke 記錄（Start、Count、R、H、Flow、Erase、bbox×4）與 dab 圓心
 ```
 
-- binding：`0` 輸入紋理、`1` 輸出 storage、`2` uniform、`3` 形狀 storage（`array<Shape, 8>`）、`4` 多邊形頂點 storage（`array<vec2f>`）、`5` 筆刷遮罩紋理（`r32float`，無筆刷時綁 1×1 黑色）、`6` 曲線 LUT storage（`array<f32, 1024>`）、`7` sampler。
-- 每個非 no-op 圖層派送一次 `local_adjust`（ping-pong 用 `Apply`，不需新的工作紋理）。
-- 筆刷紋理：GPU 端以 `BrushRasterizer.Hash` 為 key 快取 `GpuTexture`（每個 pipeline 最多 8 張，超出 LRU 釋放），只在雜湊變更時重新上傳。
-- 曲線 LUT 與形狀 buffer 每層一份，`GpuBuffer` 以最大容量預先配置並重用。
+- **`mask_eval`** binding：`0` 輸入影像（只有顏色形狀會讀）、`1` 透明度輸出（`texture_storage_2d<r32float, write>`）、`2` `MaskEvalUniforms`、`3` 形狀 storage、`4` 資料 storage。筆刷在 shader 內逐像素計算：先比對每一筆的包圍盒，像素不在框內就跳過整筆，再逐 dab 累加（Task 2.4 的公式）。
+- **`local_apply`** binding：`0` 輸入影像、`1` 輸出 storage、`2` `LocalApplyUniforms`、`3` 透明度圖（`texture_2d<f32>`）、`4` 曲線 LUT storage（`array<f32, 1024>`）。
+- **透明度圖快取**（D4）：
+  - `GpuEffectPipeline` 持有 `MaskAlphaCache`：最多 8 張 `r32float` 紋理，`Dictionary<ulong, GpuTexture>` 以 `PreparedMaskLayer.Key` 為鍵，LRU 釋放；輸出尺寸改變時全部清空。
+  - 預覽（`Render`）：`DependsOnPixels == false` 且快取命中 → 跳過 `mask_eval`；否則派送 `mask_eval` 寫入快取紋理。
+  - 匯出（`Render16`）：不使用快取，所有圖層共用一張暫存 `r32float`，逐層「`mask_eval` → `local_apply`」。
+  - 疊色：在 `encode_bgra8` 前加一個小 pass（或擴充 `encode_bgra8` 的 uniform）以選取圖層的透明度圖混合紅色；只在預覽且 `overlay.MaskOverlayLayerId` 有值時執行。
+- `local_apply` 以既有的 `Apply`（ping-pong）派送，不佔用新的工作紋理；透明度圖是另外配置的紋理。
 
 - [ ] **Step 1: 寫失敗的測試**
 
 ```csharp
 public static TheoryData<string> LocalCases => new()
 {
-    "linear", "radial", "polygon", "brush", "color", "combined", "inverted-curve",
+    "linear", "radial", "polygon", "brush", "color", "color-multi", "combined", "inverted-curve",
 };
 
 [Theory]
@@ -1525,14 +1712,27 @@ public void Gpu_MatchesCpu_Local(string name)
     var gpuOut = RenderGpu16(gpu, src, s);
     Assert.True(MaxAbsDiff(cpu.Rgba16, gpuOut.Rgba16) <= 96);
 }
+
+[Fact]
+public void Gpu_AlphaCache_ReusedWhenOnlyAdjustChanges()
+{
+    using var gpu = TryCreateGpu(); SkipWhenNoGpu(gpu);
+    var (stack, id) = MaskEdits.AddLayer(MaskStack.Empty, new RadialShape(0.5, 0.5, 0.3, 0.3, 0, 0.5), "a");
+    var pipeline = CreatePipeline(gpu);                    // 以既有 GPU 測試建立 GpuEffectPipeline 的方式為準
+    var src = ColorField(64, 64);
+    pipeline.Render(src, WithMasks(MaskEdits.UpdateLayer(stack, id, l => l with { Adjust = new(Exposure: 0.5) })));
+    var evals = pipeline.Stats.MaskEvalDispatches;
+    pipeline.Render(src, WithMasks(MaskEdits.UpdateLayer(stack, id, l => l with { Adjust = new(Exposure: 0.8) })));
+    Assert.Equal(evals, pipeline.Stats.MaskEvalDispatches);   // 只改調整值：不重算遮罩
+}
 ```
 
-> `LocalCase(name)` 在測試檔中建構對應的 `MaskStack`（每種形狀一層，`combined` 為「圓形 Add + 筆刷 Subtract + 顏色 Intersect」，`inverted-curve` 為反轉圖層 + 非恆等曲線），調整值皆非零。`ColorField` 為新的輔助方法。
+> `LocalCase(name)` 在測試檔中建構對應的 `MaskStack`（每種形狀一層，`color-multi` 為三個取樣色，`combined` 為「圓形 Add + 筆刷 Subtract + 顏色 Intersect」，`inverted-curve` 為反轉圖層 + 非恆等曲線），調整值皆非零。`ColorField` 為新的輔助方法。`GpuEffectPipeline.Stats`（`internal`，以 `InternalsVisibleTo` 給測試）只記錄派送次數。
 
-- [ ] **Step 2:** Run `dotnet test tests/FilmBatch.Core.Tests --filter "FullyQualifiedName~Gpu_MatchesCpu_Local"` → FAIL / SKIP
-- [ ] **Step 3:** 寫 shader：`mask_shapes.wgsl` 逐一對應 `MaskMath` 的函式（`mask_linear`、`mask_radial`、`mask_polygon`、`mask_color`、`mask_combine`），`local_adjust.wgsl` 以 `#include "local/mask_shapes.wgsl"`、`#include "common/color.wgsl"`，並 include `linear/basic_linear.wgsl` / `linear/basic_display.wgsl` 中的單像素函式（若這兩支目前不是函式形式，先抽成 `common/basic_pixel.wgsl` 並讓原 shader 改用它——數學不變，以既有的 `Gpu_MatchesCpu_*` 測試證明）。執行 `dotnet run build/CheckShaders.cs`。
+- [ ] **Step 2:** Run `dotnet test tests/FilmBatch.Core.Tests --filter "FullyQualifiedName~Gpu_"` → FAIL / SKIP
+- [ ] **Step 3:** 寫 shader：`mask_shapes.wgsl` 逐一對應 `MaskMath` / `BrushDabs.Evaluate`（`mask_linear`、`mask_radial`、`mask_polygon`、`mask_color`、`mask_brush`、`mask_combine`），`oklab.wgsl` 對應 `OkLab.FromLinearSrgb`；`local_apply.wgsl` include `linear/basic_linear.wgsl` / `linear/basic_display.wgsl` 中的單像素函式（若這兩支目前不是函式形式，先抽成 `common/basic_pixel.wgsl` 並讓原 shader 改用它——數學不變，以既有的 `Gpu_MatchesCpu_*` 測試證明）。執行 `dotnet run build/CheckShaders.cs`。
 - [ ] **Step 4:** 管線接線；Run `dotnet test` → PASS
-- [ ] **Step 5:** Commit `git commit -am "Add GPU local adjustment pass with mask shapes"`
+- [ ] **Step 5:** Commit `git commit -am "Add GPU mask evaluation, local apply and alpha cache"`
 
 ---
 
@@ -1541,12 +1741,13 @@ public void Gpu_MatchesCpu_Local(string name)
 **Files:**
 - Create: `src/FilmBatch.App/Controls/Tools/MaskTools.cs`（`LinearMaskTool`、`RadialMaskTool`、`PolygonMaskTool`、`BrushMaskTool`、`ColorPickTool`）
 - Modify: `src/FilmBatch.App/Controls/Tools/CanvasMapping.cs`（加入裁切變換）
-- Test: `tests/FilmBatch.App.Tests/MasksPanelTests.cs`（工具部分以純邏輯方法測試）
+- Create: `src/FilmBatch.Engine/Rendering/LocalSampler.cs`（顏色取樣）
+- Test: `tests/FilmBatch.App.Tests/MasksPanelTests.cs`（工具部分以純邏輯方法測試）、`tests/FilmBatch.Core.Tests/LocalPipelineTests.cs`（`LocalSampler`）
 
 **Interfaces:**
 - `CanvasMapping` 擴充：`CanvasMapping(Rect ImageRect, CropTransform Crop)`；`Point ToOriented(Point canvas)`（畫布 → 輸出 0–1 → 輸出像素 → `OutToOriented` → 定向 0–1）、`Point FromOriented(Point oriented)`（反向，用 `OutToOriented.Inverse()`）、`double ShortSidePixels`（短邊在畫布上的像素長度，用來畫半徑 / 筆刷大小）。
 - 每個工具建構子注入 `MaskEditorViewModel`（Task 2.8）並只呼叫它的方法：`BeginShapeEdit()`、`PreviewShape(MaskShape)`（拖曳中，`mergeKey` 非 null）、`CommitShape(MaskShape)`（放開）、`CommitStroke(BrushStroke)`。
-- `ColorPickTool` 透過 `Func<Point, (float R, float G, float B)?> samplePreview` 從目前預覽點陣圖取 3×3 平均色（顯示 sRGB）。
+- `ColorPickTool` 透過 `Func<Point, OkLabColor?> sampleAt`（參數為定向 0–1 座標）取樣。取樣色**不能**從預覽點陣圖讀：預覽已經套過底片色彩等效果，與遮罩評估時看到的像素不同。改由 Engine 新增的 `LocalSampler.Sample(SourceImage proxy, Settings s, int layerIndex, double ox, double oy) → OkLabColor`：在預覽代理圖上只對取樣點周圍 3×3 像素執行「裁切取樣 → 基本調整（線性）→ 前 `layerIndex` 個圖層」（這些步驟都是逐像素運算，計算量極小，可在 UI 執行緒直接呼叫），平均後轉 OkLab。LightCraft 也是用類似的專用函式取色（`pipeline/src/lib.rs` 中取「曝光後的場景色」）。`LocalSampler` 的測試：取樣結果與 `CpuPipeline` 跑到同一階段的像素一致。
 
 | 工具 | 建立 | 編輯 |
 |---|---|---|
@@ -1554,7 +1755,7 @@ public void Gpu_MatchesCpu_Local(string name)
 | 圓形 | 拖曳：從中心拉出半徑（`Shift` 正圓） | 中心點移動、4 個把手改兩軸半徑、外圈把手旋轉、內圈虛線表示羽化起點（可拖曳改羽化） |
 | 多邊形 | 逐點點擊；點回第一點或 `Enter` 閉合；`Backspace` 刪最後一點；`Esc` 放棄 | 拖曳頂點、點邊新增頂點、`Alt`+點頂點刪除；羽化在面板滑桿調整 |
 | 筆刷 | 拖曳繪製；放開時把整筆（簡化後的點）`CommitStroke`，一筆一個復原紀錄 | `Alt` 暫時切換為擦除；`[` / `]` 調大小；游標顯示內外兩圈（大小 / 硬度） |
-| 顏色 | 點擊取樣；`Shift`+拖曳擴大範圍 | 面板滑桿調色相 / 飽和 / 明度範圍與平滑度；再次點擊重新取樣 |
+| 顏色 | 點擊取樣（取代全部取樣色） | `Shift`+點擊**加入**取樣色（最多 5 個）；`Alt`+點擊移除最接近的取樣色；面板只有「精細度」一個滑桿；取樣色以色塊列在面板上，可點 × 刪除 |
 
 - [ ] **Step 1: 寫失敗的測試**（以工具的純邏輯方法測試，不靠像素點擊）
 
@@ -1646,7 +1847,7 @@ public sealed class MaskAdjustHost(MaskEditorViewModel editor) : IParamHost { �
   - `Refresh()`：`Project.EntriesChanged` 時重建 `Layers`（保持選取的 layerId / shapeIndex）。
   - 多選：遮罩只編輯焦點照片；面板頂端顯示「只編輯目前照片」提示。
 - `MaskLayerViewModel`：名稱（可重新命名）、可見、反轉、不透明度、`Adjust` 的 8 個 `SliderParamViewModel`（`ParamViewModel.Create("local", def, MaskAdjustHost)`）、一個 `CurveParamViewModel`（flatKey `local.masks/{id}/curve`）。
-- `MaskShapeViewModel`：類型圖示、組合模式（+ / − / ∩ 分段按鈕）、反轉、類型專屬參數（圓形：羽化；多邊形：羽化；筆刷：大小 / 硬度 / 流量 / 擦除——這些是「下一筆」的設定，存在 `AppSettings` 而非照片；顏色：色相 / 飽和 / 明度範圍、平滑度、取樣色色塊）。
+- `MaskShapeViewModel`：類型圖示、組合模式（+ / − / ∩ 分段按鈕）、反轉、類型專屬參數（圓形：羽化；多邊形：羽化；筆刷：大小 / 硬度 / 流量 / 擦除——這些是「下一筆」的設定，存在 `AppSettings` 而非照片；顏色：取樣色色塊列表（每個可刪除）＋「精細度」一個滑桿，滑桿下方一行說明「數值越大，選取越接近的顏色範圍越寬」）。
 - 預覽：遮罩分頁開啟時，`RequestPreview` 送 `RenderOverlay(SuspendGeometry: true, MaskOverlayLayerId: ShowOverlay ? SelectedLayer?.Id : null)`；`PreviewService` 把 overlay 傳給 `RenderScheduler.RequestPreview`（新增參數）。縮圖與匯出永遠不帶 overlay。
 - 版面（側邊欄分頁，由上到下）：
   1. 標題列：「局部調整」＋ 模組開關（眼睛圖示，對應 `local.enabled`）＋ 疊色切換（`O`）
@@ -1733,14 +1934,14 @@ public sealed class MasksPanelTests
 ### Task 2.9：遮罩的效能與邊界
 
 **Files:**
-- Modify: `src/FilmBatch.Engine/Rendering/GpuEffectPipeline.cs`、`BrushRasterizer.cs`
+- Modify: `src/FilmBatch.Engine/Rendering/GpuEffectPipeline.cs`、`BrushDabs.cs`、`src/FilmBatch.Cli/Program.cs`
 - Test: `tests/FilmBatch.Core.Tests/LocalPipelineTests.cs`
 
-- [ ] **Step 1:** 寫測試：8 層 × 8 形狀（含 20,000 點筆刷）在 CPU 上對 512×512 影像算圖不丟例外、輸出確定性（兩次結果相同）；`MaskStack` 文字超過 `MaxTextLength` 時 `Coerce` 回傳空字串且 `ProjectService.SetValue` 顯示 toast `Masks.TooLarge`（App 測試）。
+- [ ] **Step 1:** 寫測試：8 層 × 8 形狀（含 20,000 點筆刷）在 CPU 上對 512×512 影像算圖不丟例外、輸出確定性（兩次結果相同）；`MaskStack` 文字超過 `MaxTextLength` 時 `Coerce` 回傳空字串且 `ProjectService.SetValue` 顯示 toast `Masks.TooLarge`（App 測試）；拖曳一個圓形遮罩（只改它的中心）時，其他沒變的圖層透明度圖快取命中（`Stats.MaskEvalDispatches` 只增加 1）。
 - [ ] **Step 2:** Run → FAIL
-- [ ] **Step 3:** 實作：筆刷點陣化改為「只重畫新增的筆觸」（快取上一個雜湊前綴的結果）；`filmbatch-cli spike` 新增 `--masks` 情境以量測 4K 預覽的 pass 時間，目標 8 層 < 16 ms（RTX 3060 等級）。
+- [ ] **Step 3:** 實作：`BrushDabs.Expand` 的結果以筆刷內容雜湊快取在 `ModuleParams` 之外（LRU 8 筆），畫新的一筆時只展開新增的那筆；GPU 端筆刷 dab 數超過 65,536 時，先以 CPU `Rasterize` 成透明度圖再上傳（退路，避免單一 pass 太久觸發驅動逾時）；`filmbatch-cli spike` 新增 `--masks` 情境以量測 4K 預覽的 pass 時間，目標：快取命中時 8 層套用 < 16 ms、全部重算 < 40 ms（RTX 3060 等級）。
 - [ ] **Step 4:** Run → PASS；記錄基準數字到 PR 描述。
-- [ ] **Step 5:** Commit `git commit -am "Cache brush rasterization and add mask performance bounds"`
+- [ ] **Step 5:** Commit `git commit -am "Bound mask cost with dab caching and large-brush fallback"`
 
 ---
 
@@ -1841,11 +2042,134 @@ public sealed class CurvesPipelineTests
 
 ---
 
-### Task 3.2：完整曲線編輯器
+### Task 3.2：參數式曲線（亮部 / 亮調 / 暗調 / 陰影 + 三個分界點）
+
+> 作法參考 LightCraft 的 `curve_luts`（`crates/pipeline/src/finish.rs`）：四個區段滑桿產生一條基礎曲線，點曲線再疊在它上面。比起拉點，四個滑桿是最常用、最不容易調壞的曲線操作。
+
+**Files:**
+- Create: `src/FilmBatch.Core/Curves/ParametricCurve.cs`
+- Modify: `src/FilmBatch.Core/Params/ModuleCatalog.cs`（`curves` 模組加 7 個參數）、`src/FilmBatch.Engine/Rendering/ModuleParams.cs`（烘焙 LUT 時先套參數式）
+- Modify: `THIRD-PARTY-NOTICES.txt`（D7）
+- Test: `tests/FilmBatch.Core.Tests/ParametricCurveTests.cs`、`CurvesPipelineTests.cs`
+
+**Interfaces:**
+- 新增 flat keys（插在 `curves.mode` 之後、`curves.master` 之前）：
+
+```csharp
+Float("highlights", "亮部", 0, -100, 100),
+Float("lights", "亮調", 0, -100, 100),
+Float("darks", "暗調", 0, -100, 100),
+Float("shadows", "陰影", 0, -100, 100),
+Float("split_shadows", "陰影分界", 25, 5, 45, 1, "%"),
+Float("split_mid", "中間分界", 50, 30, 70, 1, "%"),
+Float("split_highlights", "亮部分界", 75, 55, 95, 1, "%"),
+```
+
+- Produces:
+
+```csharp
+namespace FilmBatch.Core.Curves;
+
+public readonly record struct ParametricCurve(double Highlights, double Lights, double Darks, double Shadows,
+    double SplitShadows = 25, double SplitMid = 50, double SplitHighlights = 75)
+{
+    public bool IsIdentity => Highlights == 0 && Lights == 0 && Darks == 0 && Shadows == 0;
+    /// <summary>分界點保持遞增且至少相隔 5%（使用者拖過頭時夾回）。</summary>
+    public ParametricCurve Normalized();
+    /// <summary>烘焙成 LUT（0–1），保證單調。</summary>
+    public float[] Bake(int size = ToneCurve.LutSize);
+}
+
+public static class CurveLuts
+{
+    /// <summary>參數式 ∘ 主曲線 ∘ 通道曲線，烘焙成 master / R / G / B 四條 LUT（與 LightCraft 相同的組合順序）。</summary>
+    public static float[] Compose(ParametricCurve parametric, ToneCurve master, ToneCurve red, ToneCurve green, ToneCurve blue);
+}
+```
+
+公式（每個區段 `(a, b, amount)` = `(0, s1, shadows)`、`(s1, s2, darks)`、`(s2, s3, lights)`、`(s3, 1, highlights)`，`s` 為分界點 / 100）：
+
+```text
+center = (a + b) / 2
+half   = (b − a) · 0.75 + 0.05
+t      = clamp((x − center) / half, −1, 1)
+window = 0.5 + 0.5 · cos(π · t)
+d     += amount / 100 · 0.22 · window
+y      = clamp(x + d · 4x(1 − x), 0, 1)        // 4x(1−x)：黑點與白點固定不動
+y[i]   = max(y[i], y[i−1])                      // 保證單調
+```
+
+組合：`base = Parametric`；`masterLut = Master ∘ base`；`channelLut[c] = Channel[c] ∘ masterLut`。`ModuleParams.CurveLuts` 改存「已組合好」的四條 LUT，shader 不變（Task 3.1 的 `curves.wgsl` 只要改成直接查 channel LUT；RGB 模式查 `channelLut[c]`、明度模式以 `masterLut` 處理明度後再套 `Channel[c]`）。
+
+- [ ] **Step 1: 寫失敗的測試**
+
+```csharp
+public sealed class ParametricCurveTests
+{
+    [Fact]
+    public void Zero_IsIdentity()
+    {
+        var lut = new ParametricCurve(0, 0, 0, 0).Bake(5);
+        Assert.Equal(new[] { 0f, 0.25f, 0.5f, 0.75f, 1f }, lut);
+    }
+
+    [Fact]
+    public void Shadows_LiftsLowEnd_KeepsBlackAndWhitePoints()
+    {
+        var lut = new ParametricCurve(0, 0, 0, 60).Bake();
+        Assert.Equal(0f, lut[0]);
+        Assert.Equal(1f, lut[^1]);
+        Assert.True(lut[128] > 128 / 1023f + 0.02f);          // 約 12% 亮度處被提亮
+        Assert.Equal(900 / 1023f, lut[900], 3);                // 亮部幾乎不動
+    }
+
+    [Fact]
+    public void Highlights_Negative_DarkensTopEnd()
+    {
+        var lut = new ParametricCurve(-80, 0, 0, 0).Bake();
+        Assert.True(lut[900] < 900 / 1023f - 0.02f);
+        Assert.Equal(100 / 1023f, lut[100], 3);
+    }
+
+    [Fact]
+    public void Extreme_StaysMonotone()
+    {
+        var lut = new ParametricCurve(100, -100, 100, -100).Bake();
+        for (var i = 1; i < lut.Length; i++) Assert.True(lut[i] >= lut[i - 1]);
+    }
+
+    [Fact]
+    public void Splits_AreKeptOrdered()
+    {
+        var p = new ParametricCurve(0, 0, 0, 0, 45, 40, 50).Normalized();
+        Assert.True(p.SplitShadows + 5 <= p.SplitMid && p.SplitMid + 5 <= p.SplitHighlights);
+    }
+
+    [Fact]
+    public void Compose_AppliesParametricBeforePointCurves()
+    {
+        var invert = ToneCurve.Create([new(0, 1), new(1, 0)]);
+        var luts = CurveLuts.Compose(new ParametricCurve(0, 0, 0, 60), invert, ToneCurve.Identity, ToneCurve.Identity, ToneCurve.Identity);
+        var param = new ParametricCurve(0, 0, 0, 60).Bake();
+        Assert.Equal(1 - param[128], luts[128], 3);            // master(param(x))
+    }
+}
+```
+
+`CurvesPipelineTests` 加：`curves.shadows = 50` 時暗部像素變亮、亮部像素不變；只設參數式（點曲線恆等）時 `CurvesOn = true`；`Gpu_MatchesCpu_Curves` 加一組參數式非零的情境。
+
+- [ ] **Step 2:** Run `dotnet test tests/FilmBatch.Core.Tests --filter "FullyQualifiedName~ParametricCurveTests|FullyQualifiedName~CurvesPipelineTests"` → FAIL
+- [ ] **Step 3:** 實作；`ParametricCurve.cs` 檔頭註解註明公式來源（LightCraft，Apache-2.0），並在 `THIRD-PARTY-NOTICES.txt` 加 LightCraft 段落。
+- [ ] **Step 4:** Run `dotnet test` → PASS
+- [ ] **Step 5:** 文字 `Param.curves.highlights/lights/darks/shadows/split_*` → Commit `git commit -am "Add parametric region curve composed with point curves"`
+
+---
+
+### Task 3.3：完整曲線編輯器
 
 **Files:**
 - Modify: `src/FilmBatch.App/Controls/CurveEditor.cs`
-- Create: `src/FilmBatch.App/ViewModels/CurvesModuleViewModel.cs`（把 `curves` 的 4 條曲線合成一個帶通道分頁的編輯器）
+- Create: `src/FilmBatch.App/ViewModels/CurvesModuleViewModel.cs`（把 `curves` 的參數式滑桿與 4 條點曲線合成一個帶通道分頁的編輯器）
 - Modify: `src/FilmBatch.App/ViewModels/ModuleSectionViewModel.cs`（`curves` 模組用自訂內容而不是 4 個獨立參數列）、`Views/InspectorView.axaml`
 - Test: `tests/FilmBatch.App.Tests/CurveEditorTests.cs`
 
@@ -1853,7 +2177,8 @@ public sealed class CurvesPipelineTests
 
 | 功能 | 說明 |
 |---|---|
-| 通道分頁 | RGB / 紅 / 綠 / 藍；非作用中通道以淡色顯示在背後；有修改的通道分頁加琥珀色小點（「被覆寫」語意一致） |
+| 參數式 / 點曲線切換 | 編輯器上方兩個分段按鈕：「區段」（參數式）與「點」。區段模式下圖表下方顯示四個滑桿（亮部 / 亮調 / 暗調 / 陰影，沿用 `ParamRow`），圖表底部有三個可拖曳的分界點三角形；圖表畫的是組合後的曲線，並以淡色帶標示目前滑鼠所在的區段（與 Lightroom、LightCraft 的參數式曲線相同的操作方式） |
+| 通道分頁 | 點模式下：RGB / 紅 / 綠 / 藍；非作用中通道以淡色顯示在背後；有修改的通道分頁加琥珀色小點（「被覆寫」語意一致） |
 | 直方圖底圖 | 使用 `PreviewViewModel` 既有的直方圖資料，依通道顯示對應分佈 |
 | 精確數值 | 選取點時顯示「輸入 / 輸出」數值框（0–255 顯示，內部 0–1），可直接輸入 |
 | 鍵盤 | 方向鍵移動選取點 1/255（`Shift` 10/255），`Tab` 切換點，`Delete` 刪除 |
@@ -1897,16 +2222,56 @@ public void TargetedSample_AddsPointAtLuminance()
     Assert.True(ToneCurve.TryParse(host.Last.Value.AsText, out var c));
     Assert.Contains(c.Points, p => Math.Abs(p.X - 0.25) < 0.01);
 }
+
+[Fact]
+public void RegionMode_SliderAndSplitDrag_WriteParametricKeys()
+{
+    var host = new RecordingParamHost();
+    var vm = new CurvesModuleViewModel(host, ModuleCatalog.Defaults);
+    vm.Mode = CurveEditMode.Regions;
+    vm.Regions.Single(p => p.Def.Key == "shadows").Value = 40;
+    Assert.Equal("curves.shadows", host.Last.Key);
+    vm.DragSplit(CurveSplit.Mid, 0.62, isFinal: true);
+    Assert.Equal("curves.split_mid", host.Last.Key);
+    Assert.Equal(62, host.Last.Value.AsNumber, 3);
+}
 ```
 
 - [ ] **Step 2:** Run → FAIL
-- [ ] **Step 3:** 實作；遮罩圖層的曲線（Task 2.8）同樣改用新的編輯器（遮罩只有主曲線，所以隱藏通道分頁——`CurveEditor.ShowChannels = false`）。
+- [ ] **Step 3:** 實作；遮罩圖層的曲線（Task 2.8）同樣改用新的編輯器（遮罩只有主曲線，所以隱藏通道分頁與「區段」模式——`CurveEditor.ShowChannels = false`、`ShowRegions = false`）。
 - [ ] **Step 4:** Run `dotnet test` → PASS；`--gallery` 加曲線編輯器各狀態；實際操作檢查直方圖、鍵盤、取樣。
-- [ ] **Step 5:** 文字 → Commit `git commit -am "Expand curve editor with channels, histogram, precise input and targeted sampling"`
+- [ ] **Step 5:** 文字（`Curves.Mode.Regions`、`Curves.Mode.Points`、通道名稱）→ Commit `git commit -am "Expand curve editor with regions, channels, histogram, precise input and targeted sampling"`
 
 ---
 
-### Task 3.3：色相曲線（色相對色相 / 飽和度 / 明度，明度對飽和度）
+### Task 3.4：曲線範本
+
+**Files:**
+- Create: `src/FilmBatch.Core/Curves/CurvePresets.cs`
+- Modify: `CurvesModuleViewModel.cs`、`CurveEditor` 工具列（範本下拉）
+- Test: `tests/FilmBatch.Core.Tests/ToneCurveTests.cs`
+
+**Interfaces:**
+- `public sealed record CurvePreset(string Key, string Label, string Points)`；`CurvePresets.All`：
+  - `linear`：`0,0;1,1`
+  - `medium-contrast`：`0,0;0.25,0.21;0.75,0.79;1,1`
+  - `strong-contrast`：`0,0;0.25,0.17;0.75,0.84;1,1`
+  - `film-fade`：`0,0.06;0.25,0.24;0.75,0.78;1,0.96`
+  - `matte`：`0,0.12;0.2,0.18;0.8,0.85;1,0.94`
+  - `cross-low`：`0,0.04;0.5,0.5;1,0.94`（套到藍色版，其他版恆等）
+- 範本只是一次性帶入目前通道的值（與底片配方相同的「原子帶入、之後可改」語意），不存範本 key。
+
+- [ ] **Step 1:** 測試：每個範本可 parse 且 `Serialize()` 與定義字串相同；`ApplyPreset("film-fade")` 只寫目前通道的 key，一筆復原紀錄。
+- [ ] **Step 2:** Run → FAIL
+- [ ] **Step 3:** 實作；文字 `CurvePreset.*`。
+- [ ] **Step 4:** Run → PASS
+- [ ] **Step 5:** Commit `git commit -am "Add tone curve presets"`
+
+---
+
+### Task 3.5（選做）：色相曲線（色相對色相 / 飽和度 / 明度，明度對飽和度）
+
+> 時程不夠時延後。LightCraft 沒有色相曲線，而是用 8 色 HSL 混色器處理同樣的需求；日後若加入 HSL 混色器，可改為不做這個 Task。
 
 **Files:**
 - Create: `src/FilmBatch.Core/Curves/HueCurve.cs`
@@ -1959,31 +2324,6 @@ GPU 一致性：在 `Gpu_MatchesCpu_Curves` 加一組四條色相曲線皆非中
 
 ---
 
-### Task 3.4：曲線範本
-
-**Files:**
-- Create: `src/FilmBatch.Core/Curves/CurvePresets.cs`
-- Modify: `CurvesModuleViewModel.cs`、`CurveEditor` 工具列（範本下拉）
-- Test: `tests/FilmBatch.Core.Tests/ToneCurveTests.cs`
-
-**Interfaces:**
-- `public sealed record CurvePreset(string Key, string Label, string Points)`；`CurvePresets.All`：
-  - `linear`：`0,0;1,1`
-  - `medium-contrast`：`0,0;0.25,0.21;0.75,0.79;1,1`
-  - `strong-contrast`：`0,0;0.25,0.17;0.75,0.84;1,1`
-  - `film-fade`：`0,0.06;0.25,0.24;0.75,0.78;1,0.96`
-  - `matte`：`0,0.12;0.2,0.18;0.8,0.85;1,0.94`
-  - `cross-low`：`0,0.04;0.5,0.5;1,0.94`（套到藍色版，其他版恆等）
-- 範本只是一次性帶入目前通道的值（與底片配方相同的「原子帶入、之後可改」語意），不存範本 key。
-
-- [ ] **Step 1:** 測試：每個範本可 parse 且 `Serialize()` 與定義字串相同；`ApplyPreset("film-fade")` 只寫目前通道的 key，一筆復原紀錄。
-- [ ] **Step 2:** Run → FAIL
-- [ ] **Step 3:** 實作；文字 `CurvePreset.*`。
-- [ ] **Step 4:** Run → PASS
-- [ ] **Step 5:** Commit `git commit -am "Add tone curve presets"`
-
----
-
 # 收尾
 
 ### Task 4.1：文件與冒煙測試
@@ -1992,6 +2332,7 @@ GPU 一致性：在 `Gpu_MatchesCpu_Curves` 加一組四條色相曲線皆非中
 - Modify: `docs/plan.md`（版本 v0.12：1.4 移除「局部調整、筆刷遮罩」的不做項目；5.2 處理順序加 crop / local / curves；5.3 模組清單；版本變更表）
 - Modify: `docs/architecture.md`（名詞速查加「遮罩圖層、形狀、定向座標」；4.1 新 ParamKind；4.6 處理順序表；4.10 畫布工具與遮罩面板；5 修改食譜加「新增一種遮罩形狀」；6 測試對照）
 - Modify: `README.md`（功能清單）
+- Modify: `THIRD-PARTY-NOTICES.txt`（確認 Task 2.4、3.2 移植 LightCraft 公式的說明已加入）
 - Modify: `src/FilmBatch.App/Services/SmokeTest.cs`（`--smoke` 流程加：設定裁切、新增一個圓形遮罩、設定一條曲線、匯出一張，檢查輸出尺寸）
 
 - [ ] **Step 1:** 更新文件（「新增一種遮罩形狀」食譜：`MaskModels` 加 record + `JsonDerivedType` → `MaskStackCodec.Normalize` → `MaskMath` → `mask_shapes.wgsl` + `ShapeGpu` 打包 → `MaskTools` 工具 → `MaskShapeViewModel` 參數 → 文字 → 測試）。
@@ -2014,15 +2355,15 @@ dotnet run build/CheckShaders.cs
 
 | # | 標準 |
 |---|---|
-| A1 | 裁切：自由 / 8 種比例、拉直 ±45° 自動內縮、90° 旋轉、翻轉；`Esc` 取消、`Enter` 套用；一次復原還原整個裁切 |
+| A1 | 裁切：自由 / 8 種比例、拉直 ±45° 自動內縮、90° 旋轉、翻轉；拖出邊界時框先移回影像內、放不下才縮小；`Esc` 取消、`Enter` 套用；一次復原還原整個裁切 |
 | A2 | 裁切後暗角、漏光、顆粒、多格分鏡以裁切後畫框計算；縮圖、預覽、匯出（含 CLI）尺寸一致 |
-| A3 | 五種遮罩形狀皆可建立與編輯；同一圖層的形狀可加 / 減 / 交集；圖層可反轉、調不透明度、隱藏、複製、排序 |
+| A3 | 五種遮罩形狀皆可建立與編輯；顏色遮罩可多點取樣（最多 5 個）、只用一個「精細度」滑桿；同一圖層的形狀可加 / 減 / 交集；圖層可反轉、調不透明度、隱藏、複製、排序 |
 | A4 | 每個遮罩圖層可調 8 個基本參數與曲線；`O` 顯示紅色疊色 |
 | A5 | 重新裁切後，遮罩仍貼在原本的畫面內容上 |
 | A6 | 遮罩、曲線、裁切皆可復原 / 重做、存於專案、可存成預設；選擇性貼上可選擇是否帶入，鏡像貼上會鏡像幾何 |
-| A7 | 全域曲線：RGB / 紅 / 綠 / 藍、RGB / 明度模式、4 條色相曲線、直方圖底圖、精確數值、鍵盤、預覽取樣、範本 |
+| A7 | 全域曲線：參數式四區段 + 分界點、RGB / 紅 / 綠 / 藍點曲線、RGB / 明度模式、直方圖底圖、精確數值、鍵盤、預覽取樣、範本 |
 | A8 | 所有新模組關閉或為預設值時逐位元 identity；CPU / GPU 一致性測試通過；`CheckShaders` 通過 |
-| A9 | 4K 預覽、8 個遮罩圖層時拖曳滑桿仍流暢（單次算圖 < 50 ms，RTX 3060 等級） |
+| A9 | 4K 預覽、8 個遮罩圖層時拖曳滑桿仍流暢（單次算圖 < 50 ms，RTX 3060 等級）；只改圖層調整值時不重算遮罩 |
 | A10 | 英文介面無中文殘留（`LocalizationTests`） |
 
 ## 風險與對策
@@ -2034,5 +2375,8 @@ dotnet run build/CheckShaders.cs
 | 舊版程式開啟新專案 | 專案格式版本 +1，舊版顯示明確訊息（D6） |
 | 抽出 basic 的單像素函式時改到數學 | 以既有 `Gpu_MatchesCpu_*` 與 basic 測試鎖定；抽函式的 commit 不混入新功能 |
 | 編輯遮罩時暫停幾何效果造成「看到的不是最終結果」 | 只在遮罩分頁開啟時暫停，狀態列顯示「編輯遮罩時暫停鏡頭變形與多格分鏡」 |
-| 顏色遮罩在低飽和區域抖動 | 低飽和時淡化色相權重（Task 2.4 公式） |
-| GPU 綁定數量（每層 8 個 binding）超過裝置限制 | 8 個 binding 低於 WebGPU 預設上限（每 stage 16 個 sampled texture / 8 個 storage buffer）；若在特定後端失敗，把形狀與頂點合併為一個 storage buffer |
+| 顏色遮罩選到太多（例如整片灰色都被選到） | 採用 LightCraft 修正過的容許距離與「L 權重 ¼」，以 issue #157 的情境寫成測試鎖定（Task 2.4）；因 FilmBatch 不做 LightCraft 的取色色調映射，係數不符時只調係數 |
+| 透明度圖快取吃顯示記憶體 | 只在預覽快取（最多 8 張、代理圖尺寸）；匯出共用一張暫存紋理（D4） |
+| 大量筆刷 dab 讓單一 GPU pass 太久（驅動逾時） | 每筆包圍盒剔除；dab 超過 65,536 個時改由 CPU 點陣化後上傳（Task 2.9） |
+| 移植 LightCraft 公式的授權 | 只移植公式與常數、不複製程式碼；檔頭註明來源，`THIRD-PARTY-NOTICES.txt` 加 Apache-2.0 說明（D7） |
+| GPU 綁定數量超過裝置限制 | `mask_eval` 5 個、`local_apply` 5 個 binding，低於 WebGPU 預設上限（每 stage 16 個 sampled texture / 8 個 storage buffer） |
