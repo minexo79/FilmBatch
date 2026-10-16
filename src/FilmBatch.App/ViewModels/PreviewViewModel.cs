@@ -93,6 +93,12 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
     [ObservableProperty]
     private string _zoomText = Loc.Get("Cmd.ZoomFit");
 
+    /// <summary>右下角拍攝資訊（檔名、日期、相機、鏡頭、ISO／快門／光圈）；沒有照片時為 null。</summary>
+    [ObservableProperty]
+    private PhotoExif? _exif;
+
+    private readonly Dictionary<string, PhotoExif> _exifCache = new(StringComparer.OrdinalIgnoreCase);
+
     public string EmptyText => Loc.Format("Preview.Empty", OperatingSystem.IsMacOS() ? "⌘O" : "Ctrl+O");
 
     private string? _controlModule;
@@ -112,7 +118,27 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
             NotifyHistogram();
             Source = source;
             Original = ToBitmap(ImageCache.ToBgra8(source), source.Width, source.Height);
+            _ = LoadExifAsync(source.FilePath);
         }
+    }
+
+    /// <summary>EXIF 只讀檔頭，但仍在背景執行緒讀取；讀完時若已換照片則丟棄。</summary>
+    private async Task LoadExifAsync(string? path)
+    {
+        if (path is null)
+        {
+            Exif = null;
+            return;
+        }
+        if (_exifCache.TryGetValue(path, out var cached))
+        {
+            Exif = cached;
+            return;
+        }
+        if (Exif?.FileName != Path.GetFileName(path)) Exif = null;
+        var exif = await Task.Run(() => PhotoExif.Read(path));
+        _exifCache[path] = exif;
+        if (string.Equals(Source?.FilePath, path, StringComparison.OrdinalIgnoreCase)) Exif = exif;
     }
 
     public void SetResult(RenderResult r, ImageHistogram? histogram, ImageHistogram? originalHistogram)
@@ -134,6 +160,7 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
         Source = null;
         Image = null;
         Original = null;
+        Exif = null;
         IsBusy = false;
         OverlayText = null;
         ControlPoint = null;

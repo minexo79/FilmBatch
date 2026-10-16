@@ -270,12 +270,6 @@
   <Style Selector="ToggleButton.tool:checked PathIcon">
     <Setter Property="Foreground" Value="{DynamicResource FB.AccentBrush}" />
   </Style>
-  <!-- 工具群組：一組相關的工具按鈕放在同一個圓角底座上 -->
-  <Style Selector="Border.tool-group">
-    <Setter Property="Background" Value="{DynamicResource FB.BaseBrush}" />
-    <Setter Property="CornerRadius" Value="8" />
-    <Setter Property="Padding" Value="2" />
-  </Style>
   <!-- 預覽區浮動工具列：疊在畫面右上角，圓角半透明底座＋柔和陰影；按鈕之間留較寬的間距。
        算圖指示改畫在工具列左側（PreviewCanvas.SpinnerRightInset），尺寸變動時兩邊要一起調整。 -->
   <Style Selector="Border.preview-toolbar">
@@ -299,8 +293,48 @@
     <Setter Property="Margin" Value="6,4" />
     <Setter Property="Background" Value="{DynamicResource FB.BorderLightBrush}" />
   </Style>
-  <Style Selector="Border.tool-group TextBlock">
+  <!-- 預覽區檢視控制：浮在預覽區正下方中央，外觀與右上角浮動工具列一致 -->
+  <Style Selector="Border.preview-zoombar">
+    <Setter Property="HorizontalAlignment" Value="Center" />
+    <Setter Property="VerticalAlignment" Value="Bottom" />
+    <Setter Property="Margin" Value="0,0,0,14" />
+    <Setter Property="Padding" Value="3" />
+    <Setter Property="CornerRadius" Value="10" />
+    <Setter Property="Background" Value="#E61C1C1C" />
+    <Setter Property="BoxShadow" Value="0 4 14 0 #80000000" />
+  </Style>
+  <Style Selector="Border.preview-zoombar TextBlock">
+    <Setter Property="FontSize" Value="11" />
     <Setter Property="Foreground" Value="{DynamicResource FB.TextBrush}" />
+  </Style>
+  <Style Selector="Border.preview-zoombar :is(Button).tool">
+    <Setter Property="ToolTip.Placement" Value="Top" />
+  </Style>
+
+  <!-- 預覽區拍攝資訊（EXIF）：浮在預覽區右下角，外觀與檢視控制列一致 -->
+  <Style Selector="Border.preview-exif">
+    <Setter Property="HorizontalAlignment" Value="Right" />
+    <Setter Property="VerticalAlignment" Value="Bottom" />
+    <Setter Property="Margin" Value="0,0,14,14" />
+    <Setter Property="Padding" Value="12,8" />
+    <Setter Property="MaxWidth" Value="300" />
+    <Setter Property="CornerRadius" Value="10" />
+    <Setter Property="Background" Value="#E61C1C1C" />
+    <Setter Property="BoxShadow" Value="0 4 14 0 #80000000" />
+  </Style>
+  <Style Selector="Border.preview-exif StackPanel">
+    <Setter Property="Spacing" Value="2" />
+  </Style>
+  <Style Selector="Border.preview-exif TextBlock">
+    <Setter Property="FontSize" Value="11" />
+    <Setter Property="Foreground" Value="#B8B8B8" />
+    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+  </Style>
+  <Style Selector="Border.preview-exif TextBlock.title">
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="#EAEAEA" />
+    <Setter Property="Margin" Value="0,0,0,2" />
   </Style>
 
   <!-- 小型圖示按鈕（面板內） -->

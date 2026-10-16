@@ -26,5 +26,32 @@
         <Button Classes="tool" Command="{Binding Main.PasteSpecialCommand}" ToolTip.Tip="{l:Tr Tip.PasteSpecial}"><PathIcon Data="{StaticResource Icon.PasteSpecial}" /></Button>
       </StackPanel>
     </Border>
+
+    <!-- 拍攝資訊：右下角，不攔截滑鼠；缺少的欄位不顯示；全螢幕預覽時隱藏 -->
+    <Border Classes="preview-exif" IsHitTestVisible="False">
+      <Border.IsVisible>
+        <MultiBinding Converter="{x:Static BoolConverters.And}">
+          <Binding Path="!Main.IsFullScreen" />
+          <Binding Path="Exif" Converter="{x:Static ObjectConverters.IsNotNull}" />
+        </MultiBinding>
+      </Border.IsVisible>
+      <StackPanel>
+        <TextBlock Classes="title" Text="{Binding Exif.FileName}" />
+        <TextBlock Text="{Binding Exif.TakenText}" IsVisible="{Binding Exif.TakenText, Converter={x:Static ObjectConverters.IsNotNull}}" />
+        <TextBlock Text="{Binding Exif.Camera}" IsVisible="{Binding Exif.Camera, Converter={x:Static ObjectConverters.IsNotNull}}" />
+        <TextBlock Text="{Binding Exif.Lens}" IsVisible="{Binding Exif.Lens, Converter={x:Static ObjectConverters.IsNotNull}}" />
+        <TextBlock Classes="numeric" Text="{Binding Exif.ExposureText}" IsVisible="{Binding Exif.ExposureText, Converter={x:Static ObjectConverters.IsNotNull}}" />
+      </StackPanel>
+    </Border>
+
+    <!-- 檢視控制：分割比較、符合視窗、100%、縮放比例，浮在預覽區正下方中央；全螢幕預覽時隱藏 -->
+    <Border Classes="preview-zoombar" IsVisible="{Binding !Main.IsFullScreen}">
+      <StackPanel Orientation="Horizontal">
+        <ToggleButton Classes="tool" IsChecked="{Binding IsSplit}" ToolTip.Tip="{l:Tr Tip.Compare}"><PathIcon Data="{StaticResource Icon.Compare}" /></ToggleButton>
+        <Button Classes="tool" Command="{Binding Main.ZoomFitCommand}" ToolTip.Tip="{l:Tr Tip.ZoomFit}"><PathIcon Data="{StaticResource Icon.ZoomFit}" /></Button>
+        <Button Classes="tool" Command="{Binding Main.Zoom100Command}" ToolTip.Tip="{OnPlatform '100%（Ctrl+1）', macOS='100%（⌘1）'}"><PathIcon Data="{StaticResource Icon.Zoom100}" /></Button>
+        <TextBlock Classes="numeric" Text="{Binding ZoomText}" Margin="6,0,10,0" MinWidth="64" TextAlignment="Center" VerticalAlignment="Center" />
+      </StackPanel>
+    </Border>
   </Panel>
 </UserControl>
