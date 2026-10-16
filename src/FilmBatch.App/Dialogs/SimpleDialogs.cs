@@ -83,7 +83,7 @@ internal static class SimpleDialogs
             {
                 new TextBlock
                 {
-                    Text = $"有 {count} 張照片已有單張覆寫。\n保留覆寫：只更換預設，手動調整的欄位維持不變。\n清除覆寫：完全改用新預設。",
+                    Text = Loc.Format("Dialog.AssignMessage", count),
                     TextWrapping = Avalonia.Media.TextWrapping.Wrap,
                 },
                 remember,

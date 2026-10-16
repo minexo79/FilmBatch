@@ -16,7 +16,7 @@
   <data name="Cmd.QuickExport" xml:space="preserve"><value>Quick Export Selected Photos</value></data>
   <data name="Cmd.ResetSelected" xml:space="preserve"><value>Reset Selected Photos</value></data>
   <data name="Histogram.Title" xml:space="preserve"><value>Histogram · RGB / Luminance</value></data>
-  <data name="Histogram.Clipping" xml:space="preserve"><value>Shadow clipping {0:P1}　Highlight clipping {1:P1}</value></data>
+  <data name="Histogram.Clipping" xml:space="preserve"><value>Shadow clipping {0:P1}  Highlight clipping {1:P1}</value></data>
   <data name="Cmd.Preferences" xml:space="preserve"><value>Preferences…</value></data>
   <data name="Cmd.Exit" xml:space="preserve"><value>Exit</value></data>
   <data name="Cmd.Undo" xml:space="preserve"><value>Undo</value></data>
@@ -62,11 +62,12 @@
   <data name="Film.UnsupportedEffect" xml:space="preserve"><value>“{0}” is not implemented yet; rendered as off</value></data>
   <data name="Film.UnknownRecipe" xml:space="preserve"><value>Unknown recipe “{0}”; rendering current field values</value></data>
   <data name="Film.SkippedOne" xml:space="preserve"><value>Skipped {0}</value></data>
+  <data name="Film.FileError" xml:space="preserve"><value>{0}: {1}</value></data>
   <data name="Film.SkippedMany" xml:space="preserve"><value>Skipped {0} files — first: {1}</value></data>
   <data name="Filmstrip.All" xml:space="preserve"><value>All</value></data>
   <data name="Filmstrip.OverridesOnly" xml:space="preserve"><value>With overrides</value></data>
   <data name="Filmstrip.Unassigned" xml:space="preserve"><value>Unassigned</value></data>
-  <data name="Filmstrip.ByPreset" xml:space="preserve"><value>By preset:</value></data>
+  <data name="Filmstrip.ByPreset" xml:space="preserve"><value>By preset</value></data>
   <data name="Presets.Apply" xml:space="preserve"><value>Apply to Selection</value></data>
   <data name="Presets.Rename" xml:space="preserve"><value>Rename…</value></data>
   <data name="Presets.Color" xml:space="preserve"><value>Change Color Label</value></data>
@@ -139,4 +140,343 @@
   <data name="Pref.Browse" xml:space="preserve"><value>Browse…</value></data>
   <data name="Pref.ApplyNote" xml:space="preserve"><value>Settings apply when this window closes; GPU settings rebuild the renderer in the background.</value></data>
   <data name="Filmstrip.OpenHint" xml:space="preserve"><value>Double-click here to choose a photo folder</value></data>
+  <data name="Pref.Background.DarkGray" xml:space="preserve"><value>Dark gray #161616 (default)</value></data>
+  <data name="Pref.Background.MidGray" xml:space="preserve"><value>Mid gray #808080 (for judging brightness)</value></data>
+  <data name="Pref.Background.Black" xml:space="preserve"><value>Black #000000</value></data>
+  <data name="Pref.Backend.Auto" xml:space="preserve"><value>Auto ({0})</value></data>
+  <data name="Pref.AdaptersFailed" xml:space="preserve"><value>Could not list adapters: {0}</value></data>
+  <data name="Export.Scope.Selected" xml:space="preserve"><value>Selected photos</value></data>
+  <data name="Export.Scope.All" xml:space="preserve"><value>All photos</value></data>
+  <data name="Export.Scope.ByPreset" xml:space="preserve"><value>By preset</value></data>
+  <data name="Export.Size.Original" xml:space="preserve"><value>Original size</value></data>
+  <data name="Export.Size.LongEdge" xml:space="preserve"><value>Long edge</value></data>
+  <data name="Export.Status.Ready" xml:space="preserve"><value>Ready</value></data>
+  <data name="Export.Summary" xml:space="preserve"><value>Will export {0} photo(s) to {1}</value></data>
+  <data name="Export.Error.NoPreset" xml:space="preserve"><value>Choose a preset first.</value></data>
+  <data name="Export.Error.NoPhotos" xml:space="preserve"><value>No matching photos.</value></data>
+  <data name="Export.Error.NoFolder" xml:space="preserve"><value>No photo folder is open.</value></data>
+  <data name="Export.Error.NoSelection" xml:space="preserve"><value>No photos selected.</value></data>
+  <data name="Export.Status.Preparing" xml:space="preserve"><value>Preparing export…</value></data>
+  <data name="Export.Status.Progress" xml:space="preserve"><value>Exporting {0}/{1}: {2}</value></data>
+  <data name="Export.Status.ProgressFailed" xml:space="preserve"><value>Exporting {0}/{1} ({2} failed): {3}</value></data>
+  <data name="Export.Status.Cancelled" xml:space="preserve"><value>Cancelled</value></data>
+  <data name="Export.Status.Failed" xml:space="preserve"><value>Failed: {0}</value></data>
+  <data name="Export.Status.CancelledDone" xml:space="preserve"><value>Cancelled: {0} exported</value></data>
+  <data name="Export.Status.Done" xml:space="preserve"><value>Done: {0} exported</value></data>
+  <data name="Export.Status.DoneFailed" xml:space="preserve"><value>Done: {0} exported, {1} failed</value></data>
+  <data name="Export.Field.Scope" xml:space="preserve"><value>Scope</value></data>
+  <data name="Common.ChoosePreset" xml:space="preserve"><value>Choose preset</value></data>
+  <data name="Export.Field.Format" xml:space="preserve"><value>Format</value></data>
+  <data name="Export.Field.Quality" xml:space="preserve"><value>Quality</value></data>
+  <data name="Export.Field.Size" xml:space="preserve"><value>Size</value></data>
+  <data name="Export.Field.LongEdge" xml:space="preserve"><value>Long edge (px)</value></data>
+  <data name="Export.Field.Destination" xml:space="preserve"><value>Destination</value></data>
+  <data name="Common.ChooseFolder" xml:space="preserve"><value>Choose folder</value></data>
+  <data name="Export.Field.FileName" xml:space="preserve"><value>File name template</value></data>
+  <data name="Export.FileNameHint" xml:space="preserve"><value>Available: {name} {preset} {index} {index:000}</value></data>
+  <data name="Export.Field.Metadata" xml:space="preserve"><value>Metadata</value></data>
+  <data name="Export.MetadataNote" xml:space="preserve"><value>Keeps EXIF (orientation reset to 1) and embeds an sRGB ICC profile</value></data>
+  <data name="Tip.ToggleModule" xml:space="preserve"><value>Enable / disable this module</value></data>
+  <data name="Presets.ImportYaml" xml:space="preserve"><value>Import YAML…</value></data>
+  <data name="Presets.ExportYaml" xml:space="preserve"><value>Export YAML…</value></data>
+  <data name="Presets.Col.Name" xml:space="preserve"><value>Name</value></data>
+  <data name="Presets.Col.Category" xml:space="preserve"><value>Category</value></data>
+  <data name="Presets.Col.Color" xml:space="preserve"><value>Color label</value></data>
+  <data name="Presets.Col.InUse" xml:space="preserve"><value>In use</value></data>
+  <data name="Tip.IncludeSeeds" xml:space="preserve"><value>Off by default: random effects such as light leaks, grain and dust keep each photo's own pattern</value></data>
+  <data name="Tip.MirrorPositions" xml:space="preserve"><value>Mirror position parameters horizontally, handy when mixing landscape and portrait shots</value></data>
+  <data name="Tip.ResetParam" xml:space="preserve"><value>Double-click to reset to default</value></data>
+  <data name="Tip.PresetUpdated" xml:space="preserve"><value>The preset was updated and can be synced</value></data>
+  <data name="Tip.HasOverrides" xml:space="preserve"><value>Has per-photo overrides</value></data>
+  <data name="Inspector.RelativePath" xml:space="preserve"><value>Relative path</value></data>
+  <data name="Tip.LastRender" xml:space="preserve"><value>Last preview render time</value></data>
+  <data name="Tip.Compare" xml:space="preserve"><value>Compare with original: hold Space; Y toggles split view</value></data>
+  <data name="Tip.ZoomFit" xml:space="preserve"><value>Fit to window (Ctrl+0)</value></data>
+  <data name="Tip.ZoomFit.Mac" xml:space="preserve"><value>Fit to window (⌘0)</value></data>
+  <data name="Status.BackgroundTasks" xml:space="preserve"><value>Background tasks</value></data>
+  <data name="Presets.Rendering" xml:space="preserve"><value>Rendering…</value></data>
+  <data name="Tip.Undo" xml:space="preserve"><value>Undo (Ctrl+Z)</value></data>
+  <data name="Tip.Undo.Mac" xml:space="preserve"><value>Undo (⌘Z)</value></data>
+  <data name="Tip.Redo" xml:space="preserve"><value>Redo (Ctrl+Shift+Z)</value></data>
+  <data name="Tip.Redo.Mac" xml:space="preserve"><value>Redo (⌘⇧Z)</value></data>
+  <data name="Tip.Copy" xml:space="preserve"><value>Copy settings (Ctrl+C)</value></data>
+  <data name="Tip.Copy.Mac" xml:space="preserve"><value>Copy settings (⌘C)</value></data>
+  <data name="Tip.Paste" xml:space="preserve"><value>Paste (Ctrl+V)</value></data>
+  <data name="Tip.Paste.Mac" xml:space="preserve"><value>Paste (⌘V)</value></data>
+  <data name="Tip.PasteSpecial" xml:space="preserve"><value>Paste special (Ctrl+Shift+V)</value></data>
+  <data name="Tip.PasteSpecial.Mac" xml:space="preserve"><value>Paste special (⌘⇧V)</value></data>
+  <data name="Filmstrip.Count" xml:space="preserve"><value>{0} photos</value></data>
+  <data name="Filmstrip.CountFiltered" xml:space="preserve"><value>{0} / {1} photos</value></data>
+  <data name="Inspector.FileMulti" xml:space="preserve"><value>{0} ({1} photos)</value></data>
+  <data name="Inspector.PreviewSize" xml:space="preserve"><value>Preview {0}×{1}</value></data>
+  <data name="Inspector.Overrides" xml:space="preserve"><value>{0} override(s)</value></data>
+  <data name="Inspector.NoOverrides" xml:space="preserve"><value>No overrides</value></data>
+  <data name="Preview.FitScale" xml:space="preserve"><value>Fit to window ({0})</value></data>
+  <data name="Toast.PresetLoadFailed" xml:space="preserve"><value>Failed to load preset: {0}</value></data>
+  <data name="Toast.PresetsLoadFailed" xml:space="preserve"><value>{0} preset(s) could not be loaded: {1}</value></data>
+  <data name="Toast.RenderFailed" xml:space="preserve"><value>Render failed: {0}</value></data>
+  <data name="Toast.PreparingSamples" xml:space="preserve"><value>Preparing sample photos…</value></data>
+  <data name="Toast.NoSupportedPhotos" xml:space="preserve"><value>This folder has no supported photos (TIFF, JPEG, PNG)</value></data>
+  <data name="Dialog.PresetChanged" xml:space="preserve"><value>Preset library updated</value></data>
+  <data name="Dialog.PresetChangedMessage" xml:space="preserve"><value>“{0}” differs from the version saved in this project. Sync updates the photos that use it; Cancel keeps the saved snapshot.</value></data>
+  <data name="Dialog.Sync" xml:space="preserve"><value>Sync</value></data>
+  <data name="Toast.PresetSyncFailed" xml:space="preserve"><value>Preset sync failed: {0}</value></data>
+  <data name="Status.Thumbnails" xml:space="preserve"><value>{0} thumbnail(s)</value></data>
+  <data name="Toast.CopiedPhoto" xml:space="preserve"><value>Copied settings from “{0}”</value></data>
+  <data name="Toast.CopiedModule" xml:space="preserve"><value>Copied “{0}” module settings</value></data>
+  <data name="Toast.Pasted" xml:space="preserve"><value>Pasted to {0} photo(s)</value></data>
+  <data name="Toast.Assigned" xml:space="preserve"><value>Assigned “{0}” to {1} photo(s)</value></data>
+  <data name="Toast.PresetCreated" xml:space="preserve"><value>Created preset “{0}”</value></data>
+  <data name="Dialog.UpdatePresetMessage" xml:space="preserve"><value>Write this photo's {0} adjustment(s) back to “{1}”?
+{2} photo(s) use this preset. This cannot be undone.</value></data>
+  <data name="Dialog.Update" xml:space="preserve"><value>Update</value></data>
+  <data name="Toast.PresetUpdated" xml:space="preserve"><value>Updated preset “{0}”</value></data>
+  <data name="Presets.Summary" xml:space="preserve"><value>{0}
+Category: {1}
+Enabled: {2}</value></data>
+  <data name="Common.ListSeparator" xml:space="preserve"><value>, </value></data>
+  <data name="Presets.CopyName" xml:space="preserve"><value>{0} copy</value></data>
+  <data name="Presets.DeleteInUse" xml:space="preserve"><value>{0} photo(s) use “{1}”; after deleting, they keep using the snapshot stored in the project.
+This cannot be undone.</value></data>
+  <data name="Presets.DeleteConfirm" xml:space="preserve"><value>Delete preset “{0}”? This cannot be undone.</value></data>
+  <data name="Presets.UsersText" xml:space="preserve"><value>{0} in use</value></data>
+  <data name="Presets.ImportTitle" xml:space="preserve"><value>Import preset YAML</value></data>
+  <data name="Presets.ExportTitle" xml:space="preserve"><value>Export preset YAML</value></data>
+  <data name="Presets.ReplaceTitle" xml:space="preserve"><value>Update preset</value></data>
+  <data name="Presets.ReplaceMessage" xml:space="preserve"><value>Replace preset “{0}”? Existing projects keep their snapshot.</value></data>
+  <data name="Presets.Replace" xml:space="preserve"><value>Replace</value></data>
+  <data name="Presets.Imported" xml:space="preserve"><value>Imported preset “{0}”</value></data>
+  <data name="Toast.ImportFailed" xml:space="preserve"><value>Import failed: {0}</value></data>
+  <data name="Presets.BadExtension" xml:space="preserve"><value>Preset files must use the .yaml or .yml extension.</value></data>
+  <data name="Presets.Exported" xml:space="preserve"><value>Exported preset: {0}</value></data>
+  <data name="Toast.ExportFailed" xml:space="preserve"><value>Export failed: {0}</value></data>
+  <data name="Film.Selected" xml:space="preserve"><value>Applied recipe “{0}”</value></data>
+  <data name="Film.ResetDone" xml:space="preserve"><value>Reset to “{0}”</value></data>
+  <data name="Film.Imported" xml:space="preserve"><value>Imported “{0}”</value></data>
+  <data name="Film.Exported" xml:space="preserve"><value>Exported “{0}”</value></data>
+  <data name="Film.CustomGroup" xml:space="preserve"><value>Custom</value></data>
+  <data name="Dialog.AssignMessage" xml:space="preserve"><value>{0} photo(s) already have per-photo overrides.
+Keep overrides: switch the preset only; manually adjusted fields stay as they are.
+Clear overrides: use the new preset entirely.</value></data>
+  <data name="Dialog.ChoosePhotoFolder" xml:space="preserve"><value>Choose photo folder</value></data>
+  <data name="Toast.UnhandledError" xml:space="preserve"><value>An error occurred: {0} (see log)</value></data>
+  <data name="Toast.BackgroundError" xml:space="preserve"><value>A background task failed: {0}</value></data>
+  <data name="Toast.SaveProjectFailed" xml:space="preserve"><value>Could not save the project: {0} (closing cancelled)</value></data>
+  <data name="Preview.Original" xml:space="preserve"><value>Original</value></data>
+  <data name="Preview.Effect" xml:space="preserve"><value>Edited</value></data>
+  <data name="Gallery.WindowTitle" xml:space="preserve"><value>FilmBatch Widget Gallery</value></data>
+  <data name="Gallery.Colors" xml:space="preserve"><value>Color tokens (2.2.2) — grays must be R = G = B</value></data>
+  <data name="Gallery.Inputs" xml:space="preserve"><value>Buttons and inputs (normal / accent / disabled; check hover and press with the mouse)</value></data>
+  <data name="Gallery.Button" xml:space="preserve"><value>Button</value></data>
+  <data name="Gallery.AccentButton" xml:space="preserve"><value>Accent button</value></data>
+  <data name="Gallery.DisabledButton" xml:space="preserve"><value>Disabled button</value></data>
+  <data name="Gallery.ToolButton" xml:space="preserve"><value>Toolbar button</value></data>
+  <data name="Gallery.DisabledToolButton" xml:space="preserve"><value>Disabled toolbar button</value></data>
+  <data name="Gallery.ToggledOn" xml:space="preserve"><value>Toggled on</value></data>
+  <data name="Gallery.ToggledOff" xml:space="preserve"><value>Toggled off</value></data>
+  <data name="Gallery.Disabled" xml:space="preserve"><value>Disabled</value></data>
+  <data name="Gallery.Placeholder" xml:space="preserve"><value>Placeholder</value></data>
+  <data name="Gallery.Checked" xml:space="preserve"><value>Checked</value></data>
+  <data name="Gallery.Unchecked" xml:space="preserve"><value>Unchecked</value></data>
+  <data name="Gallery.ParamRow" xml:space="preserve"><value>ParamRow: normal / overridden (● + bold) / disabled</value></data>
+  <data name="Gallery.ParamSlider" xml:space="preserve"><value>ParamSlider: the wheel only works after the slider has focus; hold Shift for fine steps.</value></data>
+  <data name="Gallery.ModuleSection" xml:space="preserve"><value>ModuleSection: enabled + overridden / disabled (dimmed but still adjustable) / collapsed</value></data>
+  <data name="Gallery.Thumbnail" xml:space="preserve"><value>ThumbnailView: normal / overridden ● / preset updated ⟳ / load failed; multi-select (1 and 2 selected)</value></data>
+  <data name="Gallery.PresetItem" xml:space="preserve"><value>PresetItem (color label + name + pin key)</value></data>
+  <data name="Gallery.ToastSample" xml:space="preserve"><value>Pasted to 12 photos</value></data>
+  <data name="Gallery.StatusBar" xml:space="preserve"><value>Status bar (software adapter warning)</value></data>
+  <data name="Gallery.PreviewCanvas" xml:space="preserve"><value>PreviewCanvas: split view, draggable control point, multi-select overlay, busy indicator</value></data>
+  <data name="Gallery.OverlaySample" xml:space="preserve"><value>3 photos selected; edits apply to all of them</value></data>
+  <data name="Gallery.Thumb.Normal" xml:space="preserve"><value>Normal</value></data>
+  <data name="Gallery.Thumb.Overrides" xml:space="preserve"><value>Overridden</value></data>
+  <data name="Gallery.Thumb.Updated" xml:space="preserve"><value>Preset updated</value></data>
+  <data name="Gallery.Thumb.Both" xml:space="preserve"><value>Overridden + updated</value></data>
+  <data name="Gallery.Thumb.Failed" xml:space="preserve"><value>Load failed</value></data>
+  <data name="Gallery.Thumb.FailedReason" xml:space="preserve"><value>Cannot decode: file is corrupt</value></data>
+  <data name="Gallery.Chromatic" xml:space="preserve"><value>Chromatic</value></data>
+  <data name="Module.basic" xml:space="preserve"><value>Basic Adjustments</value></data>
+  <data name="Module.lens_distortion" xml:space="preserve"><value>Lens Distortion</value></data>
+  <data name="Module.multi_lens" xml:space="preserve"><value>Multi-Lens</value></data>
+  <data name="Module.double_exposure" xml:space="preserve"><value>Double Exposure</value></data>
+  <data name="Module.bokeh" xml:space="preserve"><value>Bokeh &amp; Selective Focus</value></data>
+  <data name="Module.zoom_rotate_blur" xml:space="preserve"><value>Zoom &amp; Rotate Blur</value></data>
+  <data name="Module.motion_blur" xml:space="preserve"><value>Motion Blur</value></data>
+  <data name="Module.vignette" xml:space="preserve"><value>Vignette</value></data>
+  <data name="Module.halation" xml:space="preserve"><value>Halation</value></data>
+  <data name="Module.light_leak" xml:space="preserve"><value>Light Leak</value></data>
+  <data name="Module.film" xml:space="preserve"><value>Film Color</value></data>
+  <data name="Module.photo_plate" xml:space="preserve"><value>Historic Process</value></data>
+  <data name="Module.tone" xml:space="preserve"><value>Split Toning</value></data>
+  <data name="Module.detail" xml:space="preserve"><value>Clarity &amp; Sharpening</value></data>
+  <data name="Module.dirt_scratches" xml:space="preserve"><value>Dust &amp; Scratches</value></data>
+  <data name="Module.grain" xml:space="preserve"><value>Grain</value></data>
+  <data name="Group.Basic" xml:space="preserve"><value>Basic</value></data>
+  <data name="Group.Geometry" xml:space="preserve"><value>Geometry</value></data>
+  <data name="Group.Optical" xml:space="preserve"><value>Optics</value></data>
+  <data name="Group.Film" xml:space="preserve"><value>Film</value></data>
+  <data name="Group.Surface" xml:space="preserve"><value>Surface</value></data>
+  <data name="PasteCategory.Color" xml:space="preserve"><value>Color</value></data>
+  <data name="PasteCategory.Optical" xml:space="preserve"><value>Optics</value></data>
+  <data name="PasteCategory.Surface" xml:space="preserve"><value>Surface</value></data>
+  <data name="Param.enabled" xml:space="preserve"><value>Enabled</value></data>
+  <data name="Param.amount" xml:space="preserve"><value>Amount</value></data>
+  <data name="Param.angle" xml:space="preserve"><value>Angle</value></data>
+  <data name="Param.size" xml:space="preserve"><value>Size</value></data>
+  <data name="Param.strength" xml:space="preserve"><value>Strength</value></data>
+  <data name="Param.transition" xml:space="preserve"><value>Transition</value></data>
+  <data name="Param.hue" xml:space="preserve"><value>Hue</value></data>
+  <data name="Param.scale" xml:space="preserve"><value>Scale</value></data>
+  <data name="Param.rotation" xml:space="preserve"><value>Rotation</value></data>
+  <data name="Param.center_x" xml:space="preserve"><value>Center X</value></data>
+  <data name="Param.center_y" xml:space="preserve"><value>Center Y</value></data>
+  <data name="Param.seed" xml:space="preserve"><value>Seed</value></data>
+  <data name="Param.mode" xml:space="preserve"><value>Mode</value></data>
+  <data name="Param.texture" xml:space="preserve"><value>Texture</value></data>
+  <data name="Param.exposure" xml:space="preserve"><value>Exposure</value></data>
+  <data name="Param.saturation" xml:space="preserve"><value>Saturation</value></data>
+  <data name="Param.contrast" xml:space="preserve"><value>Contrast</value></data>
+  <data name="Param.basic.temperature" xml:space="preserve"><value>Temperature</value></data>
+  <data name="Param.basic.tint" xml:space="preserve"><value>Tint</value></data>
+  <data name="Param.basic.brightness" xml:space="preserve"><value>Brightness</value></data>
+  <data name="Param.basic.highlights" xml:space="preserve"><value>Highlights</value></data>
+  <data name="Param.basic.shadows" xml:space="preserve"><value>Shadows</value></data>
+  <data name="Param.basic.structure" xml:space="preserve"><value>Structure</value></data>
+  <data name="Param.lens_distortion.amount" xml:space="preserve"><value>Distortion</value></data>
+  <data name="Param.lens_distortion.chromatic" xml:space="preserve"><value>Chromatic Aberration</value></data>
+  <data name="Param.lens_distortion.edge_soften" xml:space="preserve"><value>Edge Softening</value></data>
+  <data name="Param.lens_distortion.auto_crop" xml:space="preserve"><value>Auto Crop</value></data>
+  <data name="Param.multi_lens.layout" xml:space="preserve"><value>Layout</value></data>
+  <data name="Choice.multi_lens.layout.h2" xml:space="preserve"><value>2 across</value></data>
+  <data name="Choice.multi_lens.layout.h3" xml:space="preserve"><value>3 across</value></data>
+  <data name="Choice.multi_lens.layout.h4" xml:space="preserve"><value>4 across</value></data>
+  <data name="Choice.multi_lens.layout.v2" xml:space="preserve"><value>2 stacked</value></data>
+  <data name="Choice.multi_lens.layout.stagger" xml:space="preserve"><value>4 staggered</value></data>
+  <data name="Param.multi_lens.offset" xml:space="preserve"><value>Offset</value></data>
+  <data name="Param.multi_lens.zoom_variation" xml:space="preserve"><value>Zoom Variation</value></data>
+  <data name="Param.multi_lens.exposure_variation" xml:space="preserve"><value>Exposure Variation</value></data>
+  <data name="Param.multi_lens.color_variation" xml:space="preserve"><value>Color Variation</value></data>
+  <data name="Param.multi_lens.divider" xml:space="preserve"><value>Divider Softness</value></data>
+  <data name="Param.double_exposure.source" xml:space="preserve"><value>Source</value></data>
+  <data name="Choice.double_exposure.source.self" xml:space="preserve"><value>This photo</value></data>
+  <data name="Choice.double_exposure.source.photo" xml:space="preserve"><value>Another photo in project</value></data>
+  <data name="Choice.double_exposure.source.file" xml:space="preserve"><value>External file</value></data>
+  <data name="Param.double_exposure.source_path" xml:space="preserve"><value>Source Path</value></data>
+  <data name="Param.double_exposure.blend" xml:space="preserve"><value>Blend Mode</value></data>
+  <data name="Choice.double_exposure.blend.add" xml:space="preserve"><value>Add</value></data>
+  <data name="Choice.double_exposure.blend.screen" xml:space="preserve"><value>Screen</value></data>
+  <data name="Choice.double_exposure.blend.lighten" xml:space="preserve"><value>Lighten</value></data>
+  <data name="Choice.double_exposure.blend.multiply" xml:space="preserve"><value>Multiply</value></data>
+  <data name="Param.double_exposure.opacity" xml:space="preserve"><value>Opacity</value></data>
+  <data name="Param.double_exposure.offset_x" xml:space="preserve"><value>Offset X</value></data>
+  <data name="Param.double_exposure.offset_y" xml:space="preserve"><value>Offset Y</value></data>
+  <data name="Param.double_exposure.mirror" xml:space="preserve"><value>Mirror</value></data>
+  <data name="Choice.double_exposure.mirror.none" xml:space="preserve"><value>None</value></data>
+  <data name="Choice.double_exposure.mirror.horizontal" xml:space="preserve"><value>Horizontal</value></data>
+  <data name="Choice.double_exposure.mirror.vertical" xml:space="preserve"><value>Vertical</value></data>
+  <data name="Param.double_exposure.exposure_balance" xml:space="preserve"><value>Exposure Balance</value></data>
+  <data name="Param.bokeh.center_x" xml:space="preserve"><value>Focus X</value></data>
+  <data name="Param.bokeh.center_y" xml:space="preserve"><value>Focus Y</value></data>
+  <data name="Param.bokeh.focus_size" xml:space="preserve"><value>Focus Area Size</value></data>
+  <data name="Param.bokeh.focus_shape" xml:space="preserve"><value>Focus Area Shape</value></data>
+  <data name="Choice.bokeh.focus_shape.circle" xml:space="preserve"><value>Circle</value></data>
+  <data name="Choice.bokeh.focus_shape.ellipse" xml:space="preserve"><value>Ellipse</value></data>
+  <data name="Choice.bokeh.focus_shape.hband" xml:space="preserve"><value>Horizontal band</value></data>
+  <data name="Choice.bokeh.focus_shape.vband" xml:space="preserve"><value>Vertical band</value></data>
+  <data name="Param.bokeh.aspect" xml:space="preserve"><value>Aspect Ratio</value></data>
+  <data name="Param.bokeh.blur" xml:space="preserve"><value>Blur Amount</value></data>
+  <data name="Param.bokeh.shape" xml:space="preserve"><value>Aperture Shape</value></data>
+  <data name="Choice.bokeh.shape.circle" xml:space="preserve"><value>Circle</value></data>
+  <data name="Choice.bokeh.shape.hexagon" xml:space="preserve"><value>Hexagon</value></data>
+  <data name="Choice.bokeh.shape.octagon" xml:space="preserve"><value>Octagon</value></data>
+  <data name="Choice.bokeh.shape.cateye" xml:space="preserve"><value>Cat's eye</value></data>
+  <data name="Param.bokeh.highlight_boost" xml:space="preserve"><value>Highlight Boost</value></data>
+  <data name="Param.zoom_rotate_blur.zoom" xml:space="preserve"><value>Zoom</value></data>
+  <data name="Param.zoom_rotate_blur.rotate" xml:space="preserve"><value>Rotate</value></data>
+  <data name="Param.zoom_rotate_blur.protect_radius" xml:space="preserve"><value>Protected Radius</value></data>
+  <data name="Param.motion_blur.angle" xml:space="preserve"><value>Direction</value></data>
+  <data name="Param.motion_blur.length" xml:space="preserve"><value>Length</value></data>
+  <data name="Param.motion_blur.protect_enabled" xml:space="preserve"><value>Protected Area</value></data>
+  <data name="Param.motion_blur.protect_x" xml:space="preserve"><value>Protected Area X</value></data>
+  <data name="Param.motion_blur.protect_y" xml:space="preserve"><value>Protected Area Y</value></data>
+  <data name="Param.motion_blur.protect_size" xml:space="preserve"><value>Protected Area Size</value></data>
+  <data name="Param.vignette.roundness" xml:space="preserve"><value>Roundness</value></data>
+  <data name="Param.vignette.feather" xml:space="preserve"><value>Feather</value></data>
+  <data name="Param.halation.threshold" xml:space="preserve"><value>Threshold</value></data>
+  <data name="Param.halation.radius" xml:space="preserve"><value>Radius</value></data>
+  <data name="Choice.light_leak.mode.procedural" xml:space="preserve"><value>Procedural</value></data>
+  <data name="Choice.light_leak.mode.texture" xml:space="preserve"><value>Texture</value></data>
+  <data name="Choice.light_leak.texture.random" xml:space="preserve"><value>Random</value></data>
+  <data name="Param.light_leak.size" xml:space="preserve"><value>Extent</value></data>
+  <data name="Param.light_leak.irregularity" xml:space="preserve"><value>Irregularity</value></data>
+  <data name="Param.light_leak.count" xml:space="preserve"><value>Count</value></data>
+  <data name="Param.film.recipe" xml:space="preserve"><value>Recipe</value></data>
+  <data name="Param.film.strength" xml:space="preserve"><value>Effect Mix</value></data>
+  <data name="Param.film.style" xml:space="preserve"><value>Creative Style</value></data>
+  <data name="Param.film.sharpness" xml:space="preserve"><value>Sharpness</value></data>
+  <data name="Param.film.white_balance" xml:space="preserve"><value>White Balance</value></data>
+  <data name="Choice.film.white_balance.auto" xml:space="preserve"><value>Auto</value></data>
+  <data name="Choice.film.white_balance.keep" xml:space="preserve"><value>Keep input</value></data>
+  <data name="Param.film.amber_blue" xml:space="preserve"><value>Amber–Blue</value></data>
+  <data name="Param.film.green_magenta" xml:space="preserve"><value>Green–Magenta</value></data>
+  <data name="Param.film.effect" xml:space="preserve"><value>Picture Effect</value></data>
+  <data name="Choice.film.effect.off" xml:space="preserve"><value>Off</value></data>
+  <data name="Choice.film.effect.toy-camera" xml:space="preserve"><value>Toy Camera</value></data>
+  <data name="Choice.film.effect.pop-color" xml:space="preserve"><value>Pop Color</value></data>
+  <data name="Choice.film.effect.posterization" xml:space="preserve"><value>Posterization</value></data>
+  <data name="Choice.film.effect.retro-photo" xml:space="preserve"><value>Retro Photo</value></data>
+  <data name="Choice.film.effect.soft-high-key" xml:space="preserve"><value>Soft High-key</value></data>
+  <data name="Choice.film.effect.part-color" xml:space="preserve"><value>Partial Color</value></data>
+  <data name="Choice.film.effect.rough-mono" xml:space="preserve"><value>High Contrast Mono</value></data>
+  <data name="Choice.film.effect.soft-focus" xml:space="preserve"><value>Soft Focus</value></data>
+  <data name="Choice.film.effect.hdr-art" xml:space="preserve"><value>HDR Painting</value></data>
+  <data name="Choice.film.effect.miniature" xml:space="preserve"><value>Miniature</value></data>
+  <data name="Choice.film.effect.illust" xml:space="preserve"><value>Illustration</value></data>
+  <data name="Choice.film.effect.watercolor" xml:space="preserve"><value>Watercolor</value></data>
+  <data name="Param.film.effect_option" xml:space="preserve"><value>Effect Option</value></data>
+  <data name="Choice.film.effect_option.default" xml:space="preserve"><value>(Effect default)</value></data>
+  <data name="Choice.film.effect_option.blue" xml:space="preserve"><value>Blue</value></data>
+  <data name="Choice.film.effect_option.pink" xml:space="preserve"><value>Pink</value></data>
+  <data name="Choice.film.effect_option.green" xml:space="preserve"><value>Green</value></data>
+  <data name="Choice.film.effect_option.normal" xml:space="preserve"><value>Normal</value></data>
+  <data name="Choice.film.effect_option.cool" xml:space="preserve"><value>Cool</value></data>
+  <data name="Choice.film.effect_option.warm" xml:space="preserve"><value>Warm</value></data>
+  <data name="Choice.film.effect_option.magenta" xml:space="preserve"><value>Magenta</value></data>
+  <data name="Choice.film.effect_option.red" xml:space="preserve"><value>Red</value></data>
+  <data name="Choice.film.effect_option.yellow" xml:space="preserve"><value>Yellow</value></data>
+  <data name="Choice.film.effect_option.posterization-color" xml:space="preserve"><value>Color</value></data>
+  <data name="Choice.film.effect_option.posterization-bw" xml:space="preserve"><value>B&amp;W</value></data>
+  <data name="Param.film.exposure" xml:space="preserve"><value>Exposure Comp.</value></data>
+  <data name="Param.film.dro" xml:space="preserve"><value>D-Range Optimizer</value></data>
+  <data name="Choice.film.dro.off" xml:space="preserve"><value>Off</value></data>
+  <data name="Choice.film.dro.auto" xml:space="preserve"><value>Auto</value></data>
+  <data name="Param.film.wb_reference" xml:space="preserve"><value>Reference Color Temp</value></data>
+  <data name="Param.photo_plate.plate_type" xml:space="preserve"><value>Plate</value></data>
+  <data name="Choice.photo_plate.plate_type.tintype" xml:space="preserve"><value>Tintype</value></data>
+  <data name="Choice.photo_plate.plate_type.wetplate" xml:space="preserve"><value>Wet plate collodion</value></data>
+  <data name="Choice.photo_plate.plate_type.cyanotype" xml:space="preserve"><value>Cyanotype</value></data>
+  <data name="Choice.photo_plate.plate_type.albumen" xml:space="preserve"><value>Albumen print</value></data>
+  <data name="Param.photo_plate.ortho" xml:space="preserve"><value>Orthochromatic</value></data>
+  <data name="Param.photo_plate.tint_hue" xml:space="preserve"><value>Tint Hue</value></data>
+  <data name="Param.photo_plate.tint_amount" xml:space="preserve"><value>Tint Amount</value></data>
+  <data name="Param.photo_plate.edge_erosion" xml:space="preserve"><value>Edge Erosion</value></data>
+  <data name="Param.photo_plate.stains" xml:space="preserve"><value>Stains</value></data>
+  <data name="Param.photo_plate.uneven" xml:space="preserve"><value>Uneven Coating</value></data>
+  <data name="Param.tone.shadow_hue" xml:space="preserve"><value>Shadow Hue</value></data>
+  <data name="Param.tone.shadow_amount" xml:space="preserve"><value>Shadow Amount</value></data>
+  <data name="Param.tone.highlight_hue" xml:space="preserve"><value>Highlight Hue</value></data>
+  <data name="Param.tone.highlight_amount" xml:space="preserve"><value>Highlight Amount</value></data>
+  <data name="Param.tone.balance" xml:space="preserve"><value>Balance</value></data>
+  <data name="Param.detail.clarity" xml:space="preserve"><value>Clarity</value></data>
+  <data name="Param.detail.sharpen" xml:space="preserve"><value>Sharpen</value></data>
+  <data name="Choice.dirt_scratches.mode.procedural" xml:space="preserve"><value>Procedural</value></data>
+  <data name="Choice.dirt_scratches.mode.texture" xml:space="preserve"><value>Texture</value></data>
+  <data name="Param.dirt_scratches.dust" xml:space="preserve"><value>Dust</value></data>
+  <data name="Param.dirt_scratches.scratches" xml:space="preserve"><value>Scratches</value></data>
+  <data name="Param.dirt_scratches.hairs" xml:space="preserve"><value>Hairs</value></data>
+  <data name="Param.dirt_scratches.polarity" xml:space="preserve"><value>Polarity</value></data>
+  <data name="Choice.dirt_scratches.polarity.dark" xml:space="preserve"><value>Dark</value></data>
+  <data name="Choice.dirt_scratches.polarity.light" xml:space="preserve"><value>Light</value></data>
+  <data name="Choice.dirt_scratches.polarity.mixed" xml:space="preserve"><value>Mixed</value></data>
+  <data name="Param.grain.roughness" xml:space="preserve"><value>Roughness</value></data>
+  <data name="Param.grain.color" xml:space="preserve"><value>Color Grain</value></data>
 </root>

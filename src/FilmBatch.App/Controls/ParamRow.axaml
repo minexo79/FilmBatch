@@ -1,5 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:l="using:FilmBatch.App.Localization"
              xmlns:vm="using:FilmBatch.App.ViewModels"
              xmlns:c="using:FilmBatch.App.Controls"
              x:Class="FilmBatch.App.Controls.ParamRow"
@@ -9,7 +10,7 @@
     <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
       <TextBlock Name="NameText" Classes="param-name" Classes.overridden="{Binding IsOverridden}"
                  Text="{Binding Label}" Background="Transparent"
-                 ToolTip.Tip="雙擊重設回預設值" ToolTip.ShowDelay="800" />
+                 ToolTip.Tip="{l:Tr Tip.ResetParam}" ToolTip.ShowDelay="800" />
       <Ellipse Classes="override-dot" IsVisible="{Binding IsOverridden}" />
     </StackPanel>
     <NumericUpDown Grid.Row="0" Grid.Column="1" Classes="inline-value" Value="{Binding NumericValue, Mode=TwoWay}" FormatString="{Binding FormatString}"

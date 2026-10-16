@@ -42,6 +42,9 @@ public sealed partial class PresetItemViewModel(Preset preset) : ObservableObjec
 
     public bool HasHoverPreview => HoverPreview is not null;
 
+    /// <summary>切換語言後更新提示文字。</summary>
+    public void RefreshSummary() => OnPropertyChanged(nameof(Summary));
+
     partial void OnHoverPreviewChanged(Bitmap? value) => OnPropertyChanged(nameof(HasHoverPreview));
 
     /// <summary>滑鼠停留提示：分類與啟用的模組（沒有焦點照片時只顯示此文字，不使用假圖）。</summary>
@@ -50,8 +53,8 @@ public sealed partial class PresetItemViewModel(Preset preset) : ObservableObjec
         get
         {
             var resolved = Preset.Resolved;
-            var enabled = FilmBatch.Core.Params.ModuleCatalog.Modules.Where(m => resolved.Bool(m.EnabledFlatKey)).Select(m => m.Label);
-            return $"{Name}\n分類：{Category}\n啟用：{string.Join("、", enabled)}";
+            var enabled = FilmBatch.Core.Params.ModuleCatalog.Modules.Where(m => resolved.Bool(m.EnabledFlatKey)).Select(Loc.ModuleLabel);
+            return Loc.Format("Presets.Summary", Name, Category, string.Join(Loc.Get("Common.ListSeparator"), enabled));
         }
     }
 
@@ -97,6 +100,10 @@ public sealed partial class PresetLibraryViewModel : ObservableObject
         _main = main;
         _hover = new PresetHoverCoordinator(main, this);
         Rebuild();
+        Loc.OnCultureChanged(this, static vm =>
+        {
+            foreach (var p in vm.Categories.SelectMany(c => c.Presets)) p.RefreshSummary();
+        });
     }
 
     public PresetItemViewModel? SelectedPreset => SelectedNode as PresetItemViewModel;
@@ -134,7 +141,7 @@ public sealed partial class PresetLibraryViewModel : ObservableObject
     private async Task Rename(PresetItemViewModel? item)
     {
         if (item is null) return;
-        var name = await _main.Dialogs.PromptAsync(Loc.Get("Presets.Rename"), "名稱", item.Name);
+        var name = await _main.Dialogs.PromptAsync(Loc.Get("Presets.Rename"), Loc.Get("Presets.Col.Name"), item.Name);
         if (string.IsNullOrWhiteSpace(name) || name == item.Name) return;
         _main.Library.Save(item.Preset with { Name = name.Trim() });
     }
@@ -159,7 +166,7 @@ public sealed partial class PresetLibraryViewModel : ObservableObject
     private void Duplicate(PresetItemViewModel? item)
     {
         if (item is null) return;
-        _main.Library.Save(item.Preset with { Id = Guid.NewGuid(), Name = item.Name + " 複本", Pinned = false });
+        _main.Library.Save(item.Preset with { Id = Guid.NewGuid(), Name = Loc.Format("Presets.CopyName", item.Name), Pinned = false });
     }
 
     [RelayCommand]
@@ -176,8 +183,8 @@ public sealed partial class PresetLibraryViewModel : ObservableObject
         if (item is null) return;
         var users = _main.Service?.CountUsing(item.Id) ?? 0;
         var message = users > 0
-            ? $"有 {users} 張照片使用「{item.Name}」，刪除後將改用專案內快照。\n此操作無法復原。"
-            : $"刪除預設「{item.Name}」？此操作無法復原。";
+            ? Loc.Format("Presets.DeleteInUse", users, item.Name)
+            : Loc.Format("Presets.DeleteConfirm", item.Name);
         if (!await _main.Dialogs.ConfirmAsync(Loc.Get("Presets.Delete"), message, Loc.Get("Presets.Delete"))) return;
         _main.Library.Delete(item.Id);
     }

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="Recipe.Error.NotAllowed" xml:space="preserve"><value>{0}：{1} 不在允許範圍內</value></data>
+  <data name="Recipe.Error.NewerFormat" xml:space="preserve"><value>由較新版的 Recipe Lab 建立（格式 {0}）</value></data>
+  <data name="Recipe.Error.NotKeyValue" xml:space="preserve"><value>第 {0} 行不是 YAML 的 key: value</value></data>
+  <data name="Recipe.Error.SetTwice" xml:space="preserve"><value>{0} 重複設定</value></data>
+  <data name="Recipe.Skip.Reason" xml:space="preserve"><value>{0}：{1}</value></data>
+  <data name="Recipe.Skip.CannotRead" xml:space="preserve"><value>{0}：無法讀取：{1}</value></data>
+  <data name="Recipe.Skip.TooLarge" xml:space="preserve"><value>{0}：檔案過大，不是配方檔</value></data>
+  <data name="Recipe.Skip.AlreadyLoaded" xml:space="preserve"><value>{0}：{1} 已經載入</value></data>
+</root>

@@ -7,7 +7,7 @@ public sealed record Preset
 {
     public required Guid Id { get; init; }
     public required string Name { get; init; }
-    public string Category { get; init; } = "未分類";
+    public string Category { get; init; } = "Uncategorized";
     /// <summary>色彩標籤，例如 <c>#D98E2B</c>。</summary>
     public string ColorLabel { get; init; } = "#7A7A7A";
     public int PipelineVersion { get; init; } = 1;

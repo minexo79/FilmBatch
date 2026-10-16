@@ -1,4 +1,5 @@
 using FilmBatch.Gpu.Device;
+using FilmBatch.Gpu.Localization;
 using FilmBatch.Gpu.ShaderSystem;
 using WebGpuSharp;
 
@@ -22,7 +23,7 @@ public sealed class GpuCommandList : IDisposable
     public void Dispatch(ComputeKernel kernel, ReadOnlySpan<object> resources, uint groupsX, uint groupsY, uint groupsZ = 1)
     {
         if (resources.Length != kernel.Bindings.Count)
-            throw new ArgumentException($"{kernel.Label}: 需要 {kernel.Bindings.Count} 個資源，收到 {resources.Length} 個。");
+            throw new ArgumentException(GpuText.Format("Gpu.ResourceCountMismatch", kernel.Label, kernel.Bindings.Count, resources.Length));
 
         var entries = new BindGroupEntry[resources.Length];
         for (var i = 0; i < resources.Length; i++)
@@ -31,12 +32,12 @@ public sealed class GpuCommandList : IDisposable
             {
                 GpuTexture t => new BindGroupEntry { Binding = (uint)i, TextureView = t.View },
                 GpuBuffer b => new BindGroupEntry { Binding = (uint)i, Buffer = b.Handle, Size = b.Size },
-                var r => throw new ArgumentException($"不支援的資源型別：{r?.GetType().Name}"),
+                var r => throw new ArgumentException(GpuText.Format("Gpu.UnsupportedResource", r?.GetType().Name)),
             };
         }
         var desc = new BindGroupDescriptor { Layout = kernel.BindGroupLayout, Entries = entries };
-        var group = _gpu.Device.CreateBindGroup(in desc) ?? throw new GpuException($"無法建立 bind group（{kernel.Label}）");
-        _gpu.ThrowIfError($"建立 bind group（{kernel.Label}）");
+        var group = _gpu.Device.CreateBindGroup(in desc) ?? throw new GpuException(GpuText.Format("Gpu.BindGroupFailed", kernel.Label));
+        _gpu.ThrowIfError(GpuText.Format("Gpu.Context.CreateBindGroup", kernel.Label));
 
         var pass = _encoder.BeginComputePass();
         pass.SetPipeline(kernel.Pipeline);
@@ -55,10 +56,10 @@ public sealed class GpuCommandList : IDisposable
     public void Submit()
     {
         var cmd = _encoder.Finish();
-        _gpu.ThrowIfError("結束指令編碼");
+        _gpu.ThrowIfError(GpuText.Get("Gpu.Context.FinishCommands"));
         _gpu.Queue.Submit(cmd);
         var (status, message) = _gpu.Device.PopErrorScopeSync(10_000_000_000);
-        if (!string.IsNullOrEmpty(message)) throw new GpuException($"GPU 指令錯誤：{status} {message}");
+        if (!string.IsNullOrEmpty(message)) throw new GpuException(GpuText.Format("Gpu.CommandError", status, message));
     }
 
     public void Dispose() { }

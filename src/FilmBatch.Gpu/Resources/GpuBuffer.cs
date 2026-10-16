@@ -1,4 +1,5 @@
 using FilmBatch.Gpu.Device;
+using FilmBatch.Gpu.Localization;
 using WebGpuSharp;
 using WgpuBuffer = WebGpuSharp.Buffer;
 
@@ -21,8 +22,8 @@ public sealed class GpuBuffer : IDisposable
         // WebGPU 要求緩衝區大小為 4 的倍數
         Size = (size + 3) & ~3UL;
         var desc = new BufferDescriptor { Label = label ?? "", Usage = (BufferUsage)(int)usage, Size = Size };
-        Handle = gpu.Device.CreateBuffer(ref desc) ?? throw new GpuException($"無法建立緩衝區 {label}");
-        gpu.ThrowIfError($"建立緩衝區 {label}");
+        Handle = gpu.Device.CreateBuffer(ref desc) ?? throw new GpuException(GpuText.Format("Gpu.BufferFailed", label));
+        gpu.ThrowIfError(GpuText.Format("Gpu.Context.CreateBuffer", label));
     }
 
     /// <summary>立即釋放顯示記憶體（不等 GC）。</summary>

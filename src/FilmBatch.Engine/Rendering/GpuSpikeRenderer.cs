@@ -1,3 +1,4 @@
+using FilmBatch.Core;
 using System.Diagnostics;
 using FilmBatch.Core.Params;
 using FilmBatch.Engine.Imaging;
@@ -15,7 +16,7 @@ public sealed class GpuSpikeRenderer : IPreviewRenderer
     private string? _cpuReason;
     private bool UsingCpu => _cpuReason is not null;
 
-    public string DeviceName => _cpuReason is { } reason ? $"CPU（{reason}）" : _gpu.AdapterInfo.DisplayName;
+    public string DeviceName => _cpuReason is { } reason ? CoreText.T($"CPU（{reason}）", $"CPU ({reason})") : _gpu.AdapterInfo.DisplayName;
     public bool IsSoftware => UsingCpu || _gpu.AdapterInfo.IsSoftware;
     public GpuAdapterInfo AdapterInfo => _gpu.AdapterInfo;
     public GpuDevice Device => _gpu;
@@ -38,8 +39,8 @@ public sealed class GpuSpikeRenderer : IPreviewRenderer
         _assets.Prepare(source, parameters);
         // 匯出不受預覽記憶體預算限制：只要不超過裝置紋理上限就用 GPU，
         // 實際配置顯示記憶體失敗時才改用 CPU 等效路徑（不靜默截斷）。
-        _cpuReason = !_pipeline.FitsDevice(source, parameters) ? "影像超過 GPU 紋理尺寸上限"
-            : _pipeline.Reserve(source, parameters) is { } error ? $"GPU 顯示記憶體不足：{error}"
+        _cpuReason = !_pipeline.FitsDevice(source, parameters) ? CoreText.T("影像超過 GPU 紋理尺寸上限", "image exceeds the GPU texture size limit")
+            : _pipeline.Reserve(source, parameters) is { } error ? CoreText.T($"GPU 顯示記憶體不足：{error}", $"not enough GPU memory: {error}")
             : null;
         if (UsingCpu) return CpuPipeline.Process(source, parameters, null, cancellationToken);
         var output = new ushort[source.Rgba16.Length];
@@ -71,7 +72,7 @@ public sealed class GpuSpikeRenderer : IPreviewRenderer
     {
         var parameters = ModuleParams.From(source, settings);
         _assets.Prepare(source, parameters);
-        _cpuReason = _pipeline.CanRender(source, parameters) ? null : "影像超過 GPU 尺寸或記憶體預算";
+        _cpuReason = _pipeline.CanRender(source, parameters) ? null : CoreText.T("影像超過 GPU 尺寸或記憶體預算", "image exceeds the GPU size or memory budget");
         return parameters;
     }
 

@@ -24,7 +24,7 @@ public partial class App : Application
             var options = StartupOptions.Current;
             var settings = AppSettings.Load();
             if (options.ForceSoftware) settings.ForceSoftwareGpu = true;
-            Loc.Instance.Culture = CultureInfo.GetCultureInfo(settings.Language);
+            Loc.Instance.Culture = CultureInfo.GetCultureInfo(settings.EffectiveLanguage);
 
             if (options.Gallery)
             {
@@ -54,13 +54,13 @@ public partial class App : Application
         Dispatcher.UIThread.UnhandledException += (_, e) =>
         {
             AppLog.Error("未處理的例外", e.Exception);
-            vm.Toast.Show($"發生錯誤：{e.Exception.Message}（詳見 log）");
+            vm.Toast.Show(Loc.Format("Toast.UnhandledError", e.Exception.Message));
             e.Handled = true;
         };
         TaskScheduler.UnobservedTaskException += (_, e) =>
         {
             AppLog.Error("未觀察的工作例外", e.Exception);
-            Dispatcher.UIThread.Post(() => vm.Toast.Show($"背景工作發生錯誤：{e.Exception.InnerException?.Message}"));
+            Dispatcher.UIThread.Post(() => vm.Toast.Show(Loc.Format("Toast.BackgroundError", e.Exception.InnerException?.Message ?? "")));
             e.SetObserved();
         };
     }

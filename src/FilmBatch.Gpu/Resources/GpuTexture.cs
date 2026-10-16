@@ -1,4 +1,5 @@
 using FilmBatch.Gpu.Device;
+using FilmBatch.Gpu.Localization;
 using WebGpuSharp;
 
 namespace FilmBatch.Gpu.Resources;
@@ -56,9 +57,9 @@ public sealed class GpuTexture : IDisposable
             MipLevelCount = 1,
             SampleCount = 1,
         };
-        Handle = gpu.Device.CreateTexture(in desc) ?? throw new GpuException($"無法建立紋理 {label}");
-        gpu.ThrowIfError($"建立紋理 {label}");
-        View = Handle.CreateView() ?? throw new GpuException($"無法建立紋理檢視 {label}");
+        Handle = gpu.Device.CreateTexture(in desc) ?? throw new GpuException(GpuText.Format("Gpu.TextureFailed", label));
+        gpu.ThrowIfError(GpuText.Format("Gpu.Context.CreateTexture", label));
+        View = Handle.CreateView() ?? throw new GpuException(GpuText.Format("Gpu.TextureViewFailed", label));
     }
 
     /// <summary>立即釋放顯示記憶體（不等 GC）。</summary>

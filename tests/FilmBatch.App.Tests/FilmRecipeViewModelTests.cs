@@ -17,7 +17,7 @@ public class FilmRecipeViewModelTests
         film.Refresh();
 
         Assert.NotEmpty(film.Groups);
-        Assert.Equal(12, film.Groups.Count(g => g.Brand != FilmRecipeLibrary.CustomGroupName));
+        Assert.Equal(12, film.Groups.Count(g => g.Brand != FilmBatch.App.Localization.Loc.Get("Film.CustomGroup")));
         var velvia = film.Groups.SelectMany(g => g.Recipes).First(r => r.Key == "velvia");
         film.Selected = velvia;
 
@@ -61,7 +61,7 @@ public class FilmRecipeViewModelTests
         dialogs.PromptAnswer = "Test Lab";
         await film.SaveAsCustomCommand.ExecuteAsync(null);
         film.Refresh();
-        var custom = film.Groups.FirstOrDefault(g => g.Brand == FilmRecipeLibrary.CustomGroupName);
+        var custom = film.Groups.FirstOrDefault(g => g.Brand == FilmBatch.App.Localization.Loc.Get("Film.CustomGroup"));
         Assert.NotNull(custom);
         Assert.Contains(custom.Recipes, r => r.Key == "custom:Test Lab");
 

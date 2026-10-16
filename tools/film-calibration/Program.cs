@@ -437,7 +437,7 @@ static class Program
         sb.AppendLine("  \"calibration\": {");
         sb.AppendLine("    \"status\": \"calibrated-scene-approximation\",");
         sb.AppendLine($"    \"date\": \"{DateTime.UtcNow:yyyy-MM-dd}\",");
-        sb.AppendLine("    \"samplesCommit\": \"fd97eec77caf56bb2740a89b503e1037fdb24877\",");
+        sb.AppendLine("    \"samplesCommit\": \"6d70495e62d4a9ec15a9c5cfcf835e775ff9c8cc\",");
         sb.AppendLine("    \"method\": \"coordinate-descent on mean-DeltaE00 vs sample frames, input=frame01, actual CpuPipeline\",");
         sb.AppendLine($"    \"trainMeanDE\": {F6(trainAfter)},");
         sb.AppendLine($"    \"trainBaselineMeanDE\": {F6(trainBefore)},");

@@ -7,3 +7,4 @@ dist/
 TestResults/
 samples/
 artifacts/
+.vscode/

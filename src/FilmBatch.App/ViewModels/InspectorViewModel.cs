@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using FilmBatch.App.Localization;
 using FilmBatch.Core.Params;
 
 namespace FilmBatch.App.ViewModels;
@@ -47,6 +48,12 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
                 m => _main.CopyModuleOnly(m.Key), Film))
             .ToList();
         foreach (var m in Modules) m.ExpandedChanged += OnModuleExpanded;
+        Loc.OnCultureChanged(this, static vm =>
+        {
+            foreach (var g in vm.Groups) g.RefreshLabel();
+            foreach (var m in vm.Modules) m.RefreshLabels();
+            vm.Refresh();
+        });
         Modules[0].IsExpanded = true;
         Groups = new(Modules.GroupBy(m => m.Schema.Group).Select(g => new ModuleGroupViewModel(g.Key, g)));
         RefreshPresetOptions();
@@ -92,10 +99,10 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
 
         var entry = svc.Project[file];
         var resolved = svc.SettingsFor(file);
-        FileName = _main.Selection.Count > 1 ? $"{file}（共 {_main.Selection.Count} 張）" : file;
-        Dimensions = _main.Preview.Source is { } src && _main.FocusFile == file ? $"預覽 {src.Width}×{src.Height}" : "";
+        FileName = _main.Selection.Count > 1 ? Loc.Format("Inspector.FileMulti", file, _main.Selection.Count) : file;
+        Dimensions = _main.Preview.Source is { } src && _main.FocusFile == file ? Loc.Format("Inspector.PreviewSize", src.Width, src.Height) : "";
         HasOverrides = entry.HasOverrides;
-        OverrideText = entry.HasOverrides ? $"已覆寫 {entry.Overrides.Count} 項" : "無覆寫";
+        OverrideText = entry.HasOverrides ? Loc.Format("Inspector.Overrides", entry.Overrides.Count) : Loc.Get("Inspector.NoOverrides");
 
         _loadingPreset = true;
         SelectedPreset = PresetOptions.FirstOrDefault(p => p.Id == entry.PresetId);

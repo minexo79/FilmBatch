@@ -8,9 +8,35 @@ using FilmBatch.Gpu.Device;
 
 namespace FilmBatch.App.ViewModels.Dialogs;
 
-public sealed record Option<T>(T Value, string Label)
+/// <summary>下拉選單的一個選項。以資源 key 建立時，切換語言會即時更新 <see cref="Label"/>。</summary>
+public abstract class OptionBase : ObservableObject
 {
+    public abstract string Label { get; }
+
     public override string ToString() => Label;
+}
+
+public sealed class Option<T> : OptionBase
+{
+    private readonly Func<string> _label;
+
+    /// <summary>固定文字（名稱、型號等不需翻譯的內容）。</summary>
+    public Option(T value, string label) : this(value, () => label, live: false) { }
+
+    private Option(T value, Func<string> label, bool live)
+    {
+        Value = value;
+        _label = label;
+        if (live) Loc.OnCultureChanged(this, static o => o.OnPropertyChanged(nameof(Label)));
+    }
+
+    /// <summary>以 <see cref="Loc"/> 的 key 取得文字，可帶格式參數。</summary>
+    public static Option<T> Localized(T value, string key, params object[] args) =>
+        new(value, () => args.Length == 0 ? Loc.Get(key) : Loc.Format(key, args), live: true);
+
+    public T Value { get; }
+
+    public override string Label => _label();
 }
 
 /// <summary>
@@ -24,18 +50,18 @@ public sealed partial class PreferencesViewModel : ObservableObject
 
     public IReadOnlyList<Option<PreviewBackground>> Backgrounds { get; } =
     [
-        new(PreviewBackground.DarkGray, "深灰 #161616（預設）"),
-        new(PreviewBackground.MidGray, "中灰 #808080（判斷亮度用）"),
-        new(PreviewBackground.Black, "純黑 #000000"),
+        Option<PreviewBackground>.Localized(PreviewBackground.DarkGray, "Pref.Background.DarkGray"),
+        Option<PreviewBackground>.Localized(PreviewBackground.MidGray, "Pref.Background.MidGray"),
+        Option<PreviewBackground>.Localized(PreviewBackground.Black, "Pref.Background.Black"),
     ];
 
     public IReadOnlyList<int> ProxySizes { get; } = [1200, 1600, 2048, 2560];
 
     public IReadOnlyList<Option<string>> Backends { get; } = OperatingSystem.IsMacOS()
-        ? [new("Auto", "自動（Metal）"), new("Metal", "Metal")]
+        ? [Option<string>.Localized("Auto", "Pref.Backend.Auto", "Metal"), new("Metal", "Metal")]
         : OperatingSystem.IsWindows()
-            ? [new("Auto", "自動（DX12）"), new("Dx12", "DX12"), new("Vulkan", "Vulkan")]
-            : [new("Auto", "自動（Vulkan）"), new("Vulkan", "Vulkan")];
+            ? [Option<string>.Localized("Auto", "Pref.Backend.Auto", "DX12"), new("Dx12", "DX12"), new("Vulkan", "Vulkan")]
+            : [Option<string>.Localized("Auto", "Pref.Backend.Auto", "Vulkan"), new("Vulkan", "Vulkan")];
 
     public IReadOnlyList<Option<string>> Languages { get; } =
         Loc.Languages.Select(l => new Option<string>(l.Code, l.Name)).ToList();
@@ -81,7 +107,7 @@ public sealed partial class PreferencesViewModel : ObservableObject
         _forceSoftware = s.ForceSoftwareGpu;
         _gpuMemoryLimitMb = s.GpuMemoryLimitMb;
         _texturesFolder = s.TexturesFolder ?? Core.AppPaths.Textures;
-        _language = Languages.FirstOrDefault(l => l.Value == s.Language) ?? Languages[0];
+        _language = Languages.First(l => l.Value == s.EffectiveLanguage);
         _ = LoadAdaptersAsync();
     }
 
@@ -94,7 +120,7 @@ public sealed partial class PreferencesViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            Adapters.Add($"無法列舉：{ex.Message}");
+            Adapters.Add(Loc.Format("Pref.AdaptersFailed", ex.Message));
         }
     }
 

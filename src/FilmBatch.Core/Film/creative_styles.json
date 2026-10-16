@@ -6,7 +6,7 @@
   "calibration": {
     "status": "calibrated-scene-approximation",
     "date": "2026-10-15",
-    "samplesCommit": "fd97eec77caf56bb2740a89b503e1037fdb24877",
+    "samplesCommit": "6d70495e62d4a9ec15a9c5cfcf835e775ff9c8cc",
     "method": "coordinate-descent on mean-DeltaE00 vs sample frames, input=frame01, actual CpuPipeline",
     "trainMeanDE": 4.847633,
     "trainBaselineMeanDE": 7.003688,

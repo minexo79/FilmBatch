@@ -12,9 +12,10 @@ namespace FilmBatch.App.Services;
 
 /// <summary>
 /// macOS 原生選單列（計畫書 2.4.1「macOS 另提供原生選單列 NativeMenu」）：
-/// 應用程式選單掛在 <see cref="Application"/>（About／Preferences 加在 Avalonia 自動附加的
-/// Hide／Quit 之前），其餘選單掛在主視窗。其他平台安裝後無效果，行為與視窗內選單一致。
-/// 手勢以 <see cref="KeyGesture"/> 直接建立（Meta = ⌘），語言切換時由呼叫端重建整棵選單。
+/// 「關於」與「偏好設定」放在應用程式選單開頭（Avalonia 附加的 Services／Hide／Quit 之前），其餘選單掛在主視窗。
+/// Avalonia.Native 把匯出綁定在第一次匯出的根 <see cref="NativeMenu"/>：主視窗換根會丟例外、應用程式換根不會生效，
+/// 所以兩個根都只設定一次，切換語言時只重建根之下的項目（原生子選單的標題只在建立時讀取）。
+/// 手勢以 <see cref="KeyGesture"/> 直接建立（Meta = ⌘）。其他平台安裝後無效果，行為與視窗內選單一致。
 /// </summary>
 public static class NativeMenus
 {
@@ -22,37 +23,40 @@ public static class NativeMenus
     public static void Install(Application app, MainWindow window, MainWindowViewModel vm)
     {
         if (!OperatingSystem.IsMacOS()) return;
-        Apply();
-        // 切換語言時原生選單需整棵重建（原生 NSMenuItem 只讀取建立當下的字串）
+        // 應用程式選單的根宣告在 App.axaml：Avalonia 在初始化完成前就匯出它，並在後面附加系統項目
+        var appMenu = NativeMenu.GetMenu(app) ?? throw new InvalidOperationException("App.axaml must declare NativeMenu.Menu.");
+        var windowMenu = new NativeMenu();
+        NativeMenuItemBase[] appItems = [];
+        Fill();
+        NativeMenu.SetMenu(window, windowMenu);
         Loc.Instance.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName == nameof(Loc.Culture)) Apply();
+            if (e.PropertyName == nameof(Loc.Culture)) Fill();
         };
         return;
 
-        void Apply()
+        void Fill()
         {
-            NativeMenu.SetMenu(app, CreateAppMenu(window, vm));
-            NativeMenu.SetMenu(window, CreateWindowMenu(window, vm));
+            foreach (var item in appItems) appMenu.Items.Remove(item);
+            appItems = CreateAppItems(vm);
+            for (var i = 0; i < appItems.Length; i++) appMenu.Items.Insert(i, appItems[i]);
+
+            windowMenu.Items.Clear();
+            FillWindowMenu(windowMenu, window, vm);
         }
     }
 
-    /// <summary>應用程式選單（選單列最左、顯示 App 名稱的一欄）：About、偏好設定（⌘,）。</summary>
-    internal static NativeMenu CreateAppMenu(MainWindow window, MainWindowViewModel vm)
-    {
-        var menu = new NativeMenu();
-        menu.Items.Add(Item(Loc.Get("Cmd.About"), vm.AboutCommand));
-        menu.Items.Add(new NativeMenuItemSeparator());
-        menu.Items.Add(Item(Loc.Get("Cmd.Preferences"), vm.PreferencesCommand,
-            new KeyGesture(Key.OemComma, KeyModifiers.Meta)));
-        return menu;
-    }
+    /// <summary>應用程式選單（選單列最左、顯示 App 名稱的一欄）開頭的項目：About、偏好設定（⌘,）。</summary>
+    private static NativeMenuItemBase[] CreateAppItems(MainWindowViewModel vm) =>
+    [
+        Item(Loc.Get("Cmd.About"), vm.AboutCommand),
+        new NativeMenuItemSeparator(),
+        Item(Loc.Get("Cmd.Preferences"), vm.PreferencesCommand, new KeyGesture(Key.OemComma, KeyModifiers.Meta)),
+    ];
 
-    /// <summary>視窗選單：檔案／編輯／檢視／視窗／預設，與視窗內選單同一組命令與手勢。</summary>
-    internal static NativeMenu CreateWindowMenu(MainWindow window, MainWindowViewModel vm)
+    /// <summary>視窗選單：檔案／編輯／檢視／預設／視窗／說明，與視窗內選單同一組命令與手勢。</summary>
+    private static void FillWindowMenu(NativeMenu menu, MainWindow window, MainWindowViewModel vm)
     {
-        var menu = new NativeMenu();
-
         var file = new NativeMenu();
         file.Items.Add(Item(Loc.Get("Cmd.OpenFolder"), vm.OpenFolderCommand, Meta(Key.O)));
         file.Items.Add(Item(Loc.Get("Cmd.OpenSamples"), vm.OpenSamplesCommand));
@@ -102,8 +106,6 @@ public static class NativeMenus
         help.Items.Add(Item(Loc.Get("Cmd.OpenGitHub"), vm.OpenGitHubCommand));
         help.Items.Add(Item(Loc.Get("Cmd.ReportIssue"), vm.ReportIssueCommand));
         menu.Items.Add(SubMenu(Loc.Get("Menu.Help"), help));
-
-        return menu;
     }
 
     private static KeyGesture Meta(Key key) => new(key, KeyModifiers.Meta);
@@ -112,20 +114,9 @@ public static class NativeMenus
     private static NativeMenuItem SubMenu(string header, NativeMenu items) =>
         new() { Header = header, Menu = items };
 
-    private static NativeMenuItem Item(string header, ICommand command, KeyGesture? gesture = null)
-    {
-        var item = new NativeMenuItem
-        {
-            Header = header,
-            Command = command,
-            Gesture = gesture,
-            // 明確同步 CanExecute：原生 NSMenuItem 的啟用狀態在開啟選單時讀取
-            IsEnabled = command.CanExecute(null),
-        };
-        command.CanExecuteChanged += (_, _) =>
-            Avalonia.Threading.Dispatcher.UIThread.Post(() => item.IsEnabled = command.CanExecute(null));
-        return item;
-    }
+    // NativeMenuItem 以弱事件追蹤 CanExecuteChanged 並同步 IsEnabled（原生選單開啟時讀取），重建後舊項目可被回收
+    private static NativeMenuItem Item(string header, ICommand command, KeyGesture? gesture = null) =>
+        new() { Header = header, Command = command, Gesture = gesture };
 
     /// <summary>把同步動作包成 <see cref="ICommand"/>，讓原生選單項目可共用啟用狀態邏輯。</summary>
     private sealed class CommandAdapter : ICommand

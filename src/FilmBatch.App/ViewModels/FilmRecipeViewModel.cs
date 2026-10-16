@@ -59,6 +59,11 @@ public sealed partial class FilmRecipeViewModel : ObservableObject
         _library = FilmRecipeLibrary.Create(AppPaths.Recipes);
         RebuildGroups();
         RefreshSelection();
+        Loc.OnCultureChanged(this, static vm =>
+        {
+            vm.RebuildGroups();
+            vm.RefreshSelection();
+        });
     }
 
     public FilmRecipeLibrary Library => _library;
@@ -83,8 +88,8 @@ public sealed partial class FilmRecipeViewModel : ObservableObject
             if (recipes.Count > 0) Groups.Add(new(brand, recipes));
         }
         if (_library.Custom.Count > 0)
-            Groups.Add(new(FilmRecipeLibrary.CustomGroupName,
-                _library.Custom.Select(e => new FilmRecipeOption(e.Recipe.Key, e.Recipe.Name, FilmRecipeLibrary.CustomGroupName, true))));
+            Groups.Add(new(Loc.Get("Film.CustomGroup"),
+                _library.Custom.Select(e => new FilmRecipeOption(e.Recipe.Key, e.Recipe.Name, Loc.Get("Film.CustomGroup"), true))));
     }
 
     private static string DisplayName(FilmRecipe recipe)
@@ -153,7 +158,7 @@ public sealed partial class FilmRecipeViewModel : ObservableObject
         var fields = FilmRecipeLibrary.ToSettings(recipe);
         var values = fields.With("film.enabled", true);
         if (_main.Service.SetValues(_main.Selection, values, $"選用配方「{value.Name}」"))
-            _main.Toast.Show($"已選用配方「{value.Name}」", canUndo: true);
+            _main.Toast.Show(Loc.Format("Film.Selected", value.Name), canUndo: true);
         RefreshSelection();
     }
 
@@ -164,7 +169,7 @@ public sealed partial class FilmRecipeViewModel : ObservableObject
         if (_main.Service is null || _main.Selection.Count == 0 || Selected is null) return;
         if (!_library.TryGet(Selected.Key, out var recipe)) return;
         if (_main.Service.SetValues(_main.Selection, FilmRecipeLibrary.ToSettings(recipe), $"重設為配方「{Selected.Name}」值"))
-            _main.Toast.Show($"已重設為「{Selected.Name}」", canUndo: true);
+            _main.Toast.Show(Loc.Format("Film.ResetDone", Selected.Name), canUndo: true);
     }
 
     /// <summary>另存為自訂配方（目前欄位 → 格式 1 .YML）。</summary>
@@ -212,12 +217,12 @@ public sealed partial class FilmRecipeViewModel : ObservableObject
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            _main.Toast.Show($"{Path.GetFileName(path)}: {ex.Message}");
+            _main.Toast.Show(Loc.Format("Film.FileError", Path.GetFileName(path), ex.Message));
             return;
         }
         if (!parsed.Success)
         {
-            _main.Toast.Show($"{Path.GetFileName(path)}: {parsed.Error}");
+            _main.Toast.Show(Loc.Format("Film.FileError", Path.GetFileName(path), parsed.Error ?? ""));
             return;
         }
         var recipe = parsed.Recipe!;
@@ -233,7 +238,7 @@ public sealed partial class FilmRecipeViewModel : ObservableObject
             Path.Combine(folder, CustomRecipeFile.FileNameFor(recipe.Name, taken!)),
             CustomRecipeFile.Write(recipe));
         Refresh();
-        _main.Toast.Show($"已匯入「{recipe.Name}」");
+        _main.Toast.Show(Loc.Format("Film.Imported", recipe.Name));
     }
 
     /// <summary>匯出目前欄位為格式 1 .YML（8.3 檔名）。</summary>
@@ -250,7 +255,7 @@ public sealed partial class FilmRecipeViewModel : ObservableObject
         var path = await _main.Dialogs.SaveFileAsync(Loc.Get("Film.Export"), suggested, ["*.yml", "*.YML"]);
         if (path is null) return;
         AppPaths.WriteAllTextAtomic(path, CustomRecipeFile.Write(recipe, madeOn: Environment.MachineName));
-        _main.Toast.Show($"已匯出「{name}」");
+        _main.Toast.Show(Loc.Format("Film.Exported", name));
     }
 
     private string SuggestedName(string recipeKey)

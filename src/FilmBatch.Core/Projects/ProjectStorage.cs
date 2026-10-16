@@ -24,7 +24,7 @@ internal sealed class PhotoDocument
 internal sealed class PresetDocument
 {
     public required string Name { get; init; }
-    public string Category { get; init; } = "未分類";
+    public string Category { get; init; } = "Uncategorized";
     public string ColorLabel { get; init; } = "#7A7A7A";
     public int PipelineVersion { get; init; } = 1;
     public bool Pinned { get; init; }

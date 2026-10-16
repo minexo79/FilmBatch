@@ -10,8 +10,8 @@
   <DockPanel Margin="16">
     <StackPanel DockPanel.Dock="Bottom" Spacing="12" Margin="0,12,0,0">
       <StackPanel Orientation="Horizontal" Spacing="16">
-        <CheckBox Content="{l:Tr Dialog.IncludeSeeds}" IsChecked="{Binding IncludeSeeds}" ToolTip.Tip="預設不複製：漏光、顆粒、灰塵等隨機效果每張照片保持各自的形狀" />
-        <CheckBox Content="{l:Tr Dialog.MirrorPositions}" IsChecked="{Binding MirrorPositions}" ToolTip.Tip="位置類參數水平鏡像，方便橫直幅混用" />
+        <CheckBox Content="{l:Tr Dialog.IncludeSeeds}" IsChecked="{Binding IncludeSeeds}" ToolTip.Tip="{l:Tr Tip.IncludeSeeds}" />
+        <CheckBox Content="{l:Tr Dialog.MirrorPositions}" IsChecked="{Binding MirrorPositions}" ToolTip.Tip="{l:Tr Tip.MirrorPositions}" />
       </StackPanel>
       <Grid ColumnDefinitions="*,Auto">
         <StackPanel Orientation="Horizontal" Spacing="6">
