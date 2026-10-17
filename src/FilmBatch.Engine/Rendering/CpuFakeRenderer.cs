@@ -30,7 +30,7 @@ public sealed class CpuFakeRenderer : IPreviewRenderer
             bgra[i + 2] = (byte)((pixels[i] + 128) / 257);
             bgra[i + 3] = (byte)((pixels[i + 3] + 128) / 257);
         }
-        return new RenderResult(source.Width, source.Height, bgra, sw.Elapsed);
+        return new RenderResult(rendered.Width, rendered.Height, bgra, sw.Elapsed);
     }
 
     public SourceImage Render16(SourceImage source, Settings settings, CancellationToken cancellationToken = default)

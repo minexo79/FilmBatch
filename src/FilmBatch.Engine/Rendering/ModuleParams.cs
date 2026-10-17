@@ -11,6 +11,11 @@ namespace FilmBatch.Engine.Rendering;
 /// </summary>
 public sealed class ModuleParams
 {
+    // crop（管線最前面；之後所有模組都以裁切後的畫框 OutWidth × OutHeight 計算）
+    public CropParams Crop;
+    public CropTransform CropT;
+    public int OutWidth => CropT.OutWidth;
+    public int OutHeight => CropT.OutHeight;
     // basic
     public bool BasicOn;
     public float Exposure, Temperature, Tint, Brightness, Contrast, Highlights, Shadows, Saturation, Structure;
@@ -100,6 +105,13 @@ public sealed class ModuleParams
 
         var m = new ModuleParams
         {
+            // crop
+            Crop = new CropParams(
+                B(s, "crop.enabled", false),
+                N(s, "crop.rect_cx", 0.5f), N(s, "crop.rect_cy", 0.5f),
+                N(s, "crop.rect_w", 1), N(s, "crop.rect_h", 1),
+                N(s, "crop.angle", 0), I(s, "crop.quarter", 0),
+                B(s, "crop.flip_h", false), B(s, "crop.flip_v", false)),
             // basic
             BasicOn = B(s, "basic.enabled", true),
             Exposure = N(s, "basic.exposure", 0),
@@ -240,6 +252,7 @@ public sealed class ModuleParams
             SeedGrain = SeedHash.Combine(photoSeed, (uint)N(s, "grain.seed", 0)),
         };
 
+        m.CropT = CropGeometry.Compute(source.Width, source.Height, m.Crop);
         m.FilmLut = m.FilmOn ? FilmLookLibrary.TryLut(m.FilmLookKey) : null;
         m.FilmLook = FilmLookUniforms.From(m);
         return m;
@@ -248,7 +261,8 @@ public sealed class ModuleParams
 
     /// <summary>是否需要任何 spatial（非逐像素）pass——供尺寸/記憶體規劃與分塊 apron 估算。</summary>
     public bool HasSpatialPasses =>
-        (BasicOn && Structure != 0)
+        Crop.On
+        || (BasicOn && Structure != 0)
         || LensOn || MultiOn || DoubleOn
         || (BokehOn && BokehBlur > 0)
         || (ZoomRotateOn && (Zoom != 0 || Rotate != 0))
