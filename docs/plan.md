@@ -972,7 +972,7 @@ flowchart TB
 | recipe | 內建配方 key 或 `custom:名稱` | 底片配方（Recipe Lab 的 77 組內建配方或自訂配方，見第 7 章） |
 | strength | 0 ~ 100 % | 效果比例（輸入與配方結果混合） |
 | style | standard / vivid / neutral / portrait / clear / deep / light / mono / sepia | 創意風格 |
-| saturation / contrast / sharpness | −3 ~ +3 | 創意風格的飽和、對比、銳利度 |
+| saturation / contrast / sharpness | −9 ~ +9 | 創意風格的飽和、對比、銳利度（範圍比照 Sony 四代機選單；校準數據只到 ±3，±4 ~ ±9 以 ±3 端點等比外推） |
 | white_balance | auto / keep / 2500K ~ 9900K | 白平衡（auto 與 keep 皆沿用輸入） |
 | amber_blue / green_magenta | −7 ~ +7 | 白平衡微調 |
 | effect / effect_option | 見 7.2 | 照片效果與其子參數；啟用時忽略創意風格 |
@@ -1146,9 +1146,9 @@ Recipe Lab 的配方本身就是**近似**：A6000 無法儲存色調曲線與 l
 | 欄位 | 範圍 | 說明 |
 |---|---|---|
 | `style` | standard / vivid / neutral / portrait / clear / deep / light / mono / sepia | 創意風格（Creative Style）。另有 landscape、sunset、night、red-leaves 為 Recipe Lab 已辨識但內建配方未使用的風格 |
-| `saturation` | −3 ~ +3 | 創意風格的飽和度調整 |
-| `contrast` | −3 ~ +3 | 創意風格的對比調整 |
-| `sharpness` | −3 ~ +3 | 創意風格的銳利度調整 |
+| `saturation` | −9 ~ +9 | 創意風格的飽和度調整 |
+| `contrast` | −9 ~ +9 | 創意風格的對比調整 |
+| `sharpness` | −9 ~ +9 | 創意風格的銳利度調整 |
 | `white-balance` | `auto` / `keep` / `2500K` ~ `9900K`（以 100K 為單位） | 白平衡模式；`auto` 與 `keep` 在 FilmBatch 中都表示「沿用輸入的白平衡」 |
 | `amber-blue` | −7 ~ +7 | 白平衡微調，琥珀（+）／藍（−），畫面顯示為 A1 / B1 |
 | `green-magenta` | −7 ~ +7 | 白平衡微調，綠（+）／洋紅（−），畫面顯示為 G1 / M1 |
@@ -1165,7 +1165,7 @@ Recipe Lab 只提供「相機要設成什麼」，真正的成像是在相機內
 flowchart LR
     A["線性 RGB"] --> B["曝光補償<br/>× 2^(格數/3)"] --> C["白平衡<br/>色溫 + A/B、G/M 微調<br/>（Bradford 色適應）"]
     C --> D{"照片效果？"}
-    D -->|"off"| E["創意風格基底<br/>色調曲線、色彩矩陣"] --> F["對比 / 飽和 ±3"] --> G["DRO<br/>局部亮部 / 暗部調整"] --> H["銳利度 ±3"]
+    D -->|"off"| E["創意風格基底<br/>色調曲線、色彩矩陣"] --> F["對比 / 飽和 ±9"] --> G["DRO<br/>局部亮部 / 暗部調整"] --> H["銳利度 ±9"]
     D -->|"其他"| X["照片效果<br/>Retro / Soft High-key / HC Mono…"]
     H --> M["效果比例<br/>與輸入混合"]
     X --> M

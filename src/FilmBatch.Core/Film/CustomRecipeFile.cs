@@ -15,6 +15,8 @@ public static class CustomRecipeFile
     public const int FormatVersion = 1;
     public const int MaxBytes = 8192;
     public const int NameMaxLength = 24;
+    /// <summary>飽和 / 對比 / 銳利度的上下限（Sony 四代機選單為 ±9，見 <see cref="CreativeStyleTable.MaxSteps"/>）。</summary>
+    public const int AdjustmentLimit = CreativeStyleTable.MaxSteps;
     /// <summary>名稱允許的字元：上游 <c>CustomRecipes.NAME_PUNCT</c>。</summary>
     public const string NamePunct = " -.'()&+";
 
@@ -99,7 +101,7 @@ public static class CustomRecipeFile
         {
             adj[key] = 0;
             if (!kv.TryGetValue(key, out var adjText) || adjText.Length == 0) continue;
-            if (!TrySigned(adjText, out var n) || n is < -3 or > 3)
+            if (!TrySigned(adjText, out var n) || n is < -AdjustmentLimit or > AdjustmentLimit)
                 return CustomRecipeParseResult.Fail(Bad(key, adjText));
             adj[key] = n;
         }
@@ -236,9 +238,9 @@ public static class CustomRecipeFile
         Line(sb, "name", Quoted(recipe.Name), null);
         if (!string.IsNullOrWhiteSpace(madeOn)) Line(sb, "made-on", Quoted(madeOn.Trim()), "the computer it was saved on");
         Line(sb, "style", recipe.Style, string.Join(' ', KnownStyles));
-        Line(sb, "saturation", Signed(recipe.Saturation), "-3 .. +3");
-        Line(sb, "contrast", Signed(recipe.Contrast), "-3 .. +3");
-        Line(sb, "sharpness", Signed(recipe.Sharpness), "-3 .. +3");
+        Line(sb, "saturation", Signed(recipe.Saturation), "-9 .. +9");
+        Line(sb, "contrast", Signed(recipe.Contrast), "-9 .. +9");
+        Line(sb, "sharpness", Signed(recipe.Sharpness), "-9 .. +9");
         Line(sb, "effect", recipe.Effect, string.Join(' ', KnownEffects));
         if (EffectOptions(recipe.Effect) is not null)
             Line(sb, "effect-option", recipe.EffectOption, string.Join(' ', EffectOptions(recipe.Effect)!));

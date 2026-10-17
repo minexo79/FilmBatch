@@ -72,9 +72,23 @@ public sealed class CreativeStyleTable
         _styles.TryGetValue(style, out var s) ? s : _styles["standard"];
 
 
-    public double ContrastFactor(int steps) => steps is >= -3 and <= 3 ? _contrastPerStep[steps + 3] : 1.0;
+    /// <summary>可調格數上限：Sony 四代機選單為 ±9；校準數據只涵蓋 ±<see cref="CalibratedSteps"/>。</summary>
+    public const int MaxSteps = 9;
+    public const int CalibratedSteps = 3;
 
-    public double SaturationFactor(int steps) => steps is >= -3 and <= 3 ? _saturationPerStep[steps + 3] : 1.0;
+    public double ContrastFactor(int steps) => StepFactor(_contrastPerStep, steps);
+
+    public double SaturationFactor(int steps) => StepFactor(_saturationPerStep, steps);
+
+    // ±3 以內查校準表；超出時以 ±3 端點的每格平均倍率等比外推：f(n) = f(±3)^(|n|/3)，
+    // 在 ±3 處連續且保持單調、恆正（負端趨近 0 而不會截斷成整段灰）。
+    private static double StepFactor(double[] table, int steps)
+    {
+        steps = Math.Clamp(steps, -MaxSteps, MaxSteps);
+        if (Math.Abs(steps) <= CalibratedSteps) return table[steps + CalibratedSteps];
+        var edge = table[steps < 0 ? 0 : 2 * CalibratedSteps];
+        return Math.Pow(edge, Math.Abs(steps) / (double)CalibratedSteps);
+    }
 
     /// <summary>白平衡微調 → (mired 偏移, CC 偏移)。</summary>
     public (double Mired, double Cc) WhiteBalanceShift(int amberBlue, int greenMagenta) =>

@@ -88,7 +88,7 @@ public sealed class FilmRecipeTests
     [Fact]
     public void Format1_RejectsOutOfRangeWithoutClamping()
     {
-        var bad = CustomRecipeFile.Parse("format: 1\nname: \"Bad\"\nsaturation: +5\n", "BAD.YML");
+        var bad = CustomRecipeFile.Parse("format: 1\nname: \"Bad\"\nsaturation: +10\n", "BAD.YML");
         Assert.False(bad.Success);
         Assert.Contains("saturation", bad.Error);
     }
@@ -138,6 +138,34 @@ public sealed class FilmRecipeTests
         Assert.True(table.HasStyle("vivid"));
         Assert.True(table.IsEffectSupported("retro-photo"));
         Assert.False(table.IsEffectSupported("toy-camera"));
+    }
+
+    [Fact]
+    public void CreativeStyles_StepFactorsExtrapolateToNine()
+    {
+        var table = CreativeStyleTable.LoadEmbedded();
+        foreach (var factor in (Func<int, double>[])[table.ContrastFactor, table.SaturationFactor])
+        {
+            // ±3 以外不再是恆等 1.0；全程單調、恆正，超出 ±9 視同 ±9。
+            for (var s = -CreativeStyleTable.MaxSteps; s < CreativeStyleTable.MaxSteps; s++)
+                Assert.True(factor(s) <= factor(s + 1), $"step {s}");
+            Assert.True(factor(-CreativeStyleTable.MaxSteps) > 0);
+            Assert.True(factor(-4) < factor(-3));
+            Assert.True(factor(4) > factor(3));
+            Assert.Equal(factor(9), factor(20));
+            Assert.Equal(factor(-9), factor(-20));
+        }
+    }
+
+    [Fact]
+    public void CustomRecipe_AcceptsSonyGen4AdjustmentRange()
+    {
+        var ok = CustomRecipeFile.Parse("format: 1\nname: \"Wide\"\nsaturation: +9\ncontrast: -9\nsharpness: -9\n", "wide.txt");
+        Assert.True(ok.Success, ok.Error);
+        Assert.Equal(9, ok.Recipe!.Saturation);
+        Assert.Equal(-9, ok.Recipe.Contrast);
+        Assert.Equal(-9, ok.Recipe.Sharpness);
+        Assert.False(CustomRecipeFile.Parse("format: 1\nname: \"Wide\"\nsaturation: +10\n", "wide.txt").Success);
     }
 
     [Fact]

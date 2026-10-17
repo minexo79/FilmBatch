@@ -54,7 +54,7 @@ internal struct FilmParameters
             Seed = p.SeedGrain,
         };
         var dro = table.DroLevels(p.FilmDro);
-        result.Spatial = new((float)dro.Shadow, (float)dro.Highlight, p.FilmSharpness / 3f * .8f, 0);
+        result.Spatial = new((float)dro.Shadow, (float)dro.Highlight, SharpenAmount(p.FilmSharpness), 0);
         var effect = ModuleParams.FilmEffectIndex(p.FilmEffect);
         if (effect != 0 && table.TryGetEffect(p.FilmEffect, out var parameters))
         {
@@ -75,6 +75,14 @@ internal struct FilmParameters
         result.Wb1 = new(balance.M12, balance.M22, balance.M32, 0);
         result.Wb2 = new(balance.M13, balance.M23, balance.M33, 0);
         return result;
+    }
+
+    // 銳利度 ±9 → 細節增益。正端沿用每格 0.8/3 線性；負端在 -3 時為 -0.8（與舊版相同），
+    // 往 -9 以 -(1 - 0.2^(|s|/3)) 趨近 -1（完全模糊），避免超過 -1 時細節反相。
+    internal static float SharpenAmount(float sharpness)
+    {
+        sharpness = Math.Clamp(sharpness, -CreativeStyleTable.MaxSteps, CreativeStyleTable.MaxSteps);
+        return sharpness >= 0 ? sharpness / 3f * .8f : -(1 - MathF.Pow(.2f, -sharpness / 3f));
     }
 
     private static Matrix4x4 WhiteBalance(ModuleParams p, CreativeStyleTable table)

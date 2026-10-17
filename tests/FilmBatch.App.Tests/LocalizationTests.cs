@@ -62,12 +62,12 @@ public partial class LocalizationTests
         try
         {
             Loc.Instance.Culture = CultureInfo.GetCultureInfo("en");
-            var en = Core.Film.CustomRecipeFile.Parse("saturation: +9", "BAD.YML").Error!;
-            Assert.Equal("saturation: +9 is not allowed", en);
+            var en = Core.Film.CustomRecipeFile.Parse("saturation: +10", "BAD.YML").Error!;
+            Assert.Equal("saturation: +10 is not allowed", en);
             Assert.Equal("No usable GPU adapter was found.", Gpu.Localization.GpuText.Get("Gpu.NoAdapter"));
 
             Loc.Instance.Culture = CultureInfo.GetCultureInfo("zh-TW");
-            var zh = Core.Film.CustomRecipeFile.Parse("saturation: +9", "BAD.YML").Error!;
+            var zh = Core.Film.CustomRecipeFile.Parse("saturation: +10", "BAD.YML").Error!;
             Assert.Contains("saturation", zh);
             Assert.Matches(Cjk(), zh);
             Assert.Matches(Cjk(), Gpu.Localization.GpuText.Get("Gpu.NoAdapter"));

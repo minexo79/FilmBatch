@@ -79,7 +79,7 @@ public class FilmRecipeViewModelTests
         var dialogs = (FakeDialogs)vm.Dialogs;
         await TestEnv.OpenSamplesAsync(vm);
         var bad = Path.Combine(Path.GetTempPath(), "filmbatch-bad-" + Guid.NewGuid().ToString("N") + ".YML");
-        File.WriteAllText(bad, "format: 1\nname: \"Bad\"\nsaturation: +9\n");
+        File.WriteAllText(bad, "format: 1\nname: \"Bad\"\nsaturation: +10\n");
         try
         {
             dialogs.PickFileAnswer = bad;
