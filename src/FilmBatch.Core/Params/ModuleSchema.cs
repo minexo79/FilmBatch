@@ -4,7 +4,7 @@ namespace FilmBatch.Core.Params;
 public enum ModuleGroup { Basic, Geometry, Optical, Film, Surface }
 
 /// <summary>選擇性貼上對話框的分類。</summary>
-public enum PasteCategory { Color, Optical, Surface }
+public enum PasteCategory { Color, Optical, Surface, Crop, Local }
 
 public sealed record ModuleSchema(
     string Key,
@@ -44,6 +44,8 @@ public sealed record ModuleSchema(
         PasteCategory.Color => "色彩類",
         PasteCategory.Optical => "光學類",
         PasteCategory.Surface => "表面類",
+        PasteCategory.Crop => "裁切",
+        PasteCategory.Local => "細部調整",
         _ => c.ToString(),
     };
 }

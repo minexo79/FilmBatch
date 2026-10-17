@@ -23,7 +23,7 @@ public sealed class Project
     public bool PreserveSnapshots { get; private set; }
 
     public string Folder { get; }
-    public int PipelineVersion { get; init; } = 1;
+    public int PipelineVersion { get; init; } = ProjectStorage.CurrentVersion;
     public Guid DefaultPresetId { get; set; }
 
     /// <summary>所用預設的快照（預設庫中被刪除或修改時，舊專案的結果不會在不知情時改變）。</summary>

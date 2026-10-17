@@ -40,6 +40,11 @@ public sealed record ParamDef
     public static ParamDef Offset(string key, string label, PositionAxis axis) =>
         new() { Key = key, Label = label, Kind = ParamKind.Float, Default = 0.0, Min = -0.5, Max = 0.5, Step = 0.01, Axis = axis, IsCenteredOffset = true };
 
+    /// <summary>以 0 為中心的角度（例如拉直）：水平鏡像時取負值。</summary>
+    public static ParamDef MirrorAngle(string key, string label, double def, double min, double max, double step = 0.1) =>
+        new() { Key = key, Label = label, Kind = ParamKind.Float, Default = def, Min = min, Max = max, Step = step,
+                Unit = "°", Axis = PositionAxis.X, IsCenteredOffset = true };
+
     public static ParamDef Choice(string key, string label, params ChoiceOption[] options) =>
         new() { Key = key, Label = label, Kind = ParamKind.Choice, Default = options[0].Key, Choices = options };
 

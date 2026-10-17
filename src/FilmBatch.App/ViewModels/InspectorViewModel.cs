@@ -44,6 +44,7 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
         _main = main;
         FilmLook = new FilmLookViewModel(main);
         Modules = ModuleCatalog.Modules
+            .Where(s => s.Key != "crop")   // 裁切只在「裁切」分頁編輯（docs/cut-and-mask/plan.md D8）
             .Select(s => new ModuleSectionViewModel(s, this,
                 m => { if (_main.Service is { } svc) svc.ResetModule(_main.Selection, m.Key); },
                 m => _main.CopyModuleOnly(m.Key), FilmLook))

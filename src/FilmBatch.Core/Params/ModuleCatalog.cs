@@ -13,6 +13,23 @@ public static class ModuleCatalog
 
     public static IReadOnlyList<ModuleSchema> Modules { get; } =
     [
+        // 裁切：管線最前面（docs/cut-and-mask/plan.md D2）；中心點不叫 center_x/y，避免自動產生畫布控制點。
+        new("crop", "裁切", ModuleGroup.Geometry, PasteCategory.Crop,
+        [
+            Bool(ModuleSchema.EnabledKey, "啟用"),
+            Position("rect_cx", "中心 X", 0.5, PositionAxis.X),
+            Position("rect_cy", "中心 Y", 0.5, PositionAxis.Y),
+            Float("rect_w", "寬度", 1, 0.02, 1, 0.001),
+            Float("rect_h", "高度", 1, 0.02, 1, 0.001),
+            MirrorAngle("angle", "拉直", 0, -45, 45),
+            Int("quarter", "旋轉 90°", 0, 0, 3),
+            Bool("flip_h", "水平翻轉"),
+            Bool("flip_v", "垂直翻轉"),
+            Choice("aspect", "比例",
+                O("free", "自由"), O("original", "原始"), O("1x1", "1:1"), O("4x5", "4:5"),
+                O("3x2", "3:2"), O("16x9", "16:9"), O("6x7", "6:7"), O("xpan", "XPan 65:24")),
+            Bool("aspect_portrait", "直式比例"),
+        ]),
         new("basic", "基本調整", ModuleGroup.Basic, PasteCategory.Color,
         [
             Bool(ModuleSchema.EnabledKey, "啟用", true),

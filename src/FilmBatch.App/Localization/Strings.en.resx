@@ -299,6 +299,27 @@ Clear overrides: use the new preset entirely.</value></data>
   <data name="PasteCategory.Color" xml:space="preserve"><value>Color</value></data>
   <data name="PasteCategory.Optical" xml:space="preserve"><value>Optics</value></data>
   <data name="PasteCategory.Surface" xml:space="preserve"><value>Surface</value></data>
+  <data name="PasteCategory.Crop" xml:space="preserve"><value>Crop</value></data>
+  <data name="PasteCategory.Local" xml:space="preserve"><value>Local Adjustments</value></data>
+  <data name="Module.crop" xml:space="preserve"><value>Crop</value></data>
+  <data name="Param.crop.rect_cx" xml:space="preserve"><value>Center X</value></data>
+  <data name="Param.crop.rect_cy" xml:space="preserve"><value>Center Y</value></data>
+  <data name="Param.crop.rect_w" xml:space="preserve"><value>Width</value></data>
+  <data name="Param.crop.rect_h" xml:space="preserve"><value>Height</value></data>
+  <data name="Param.crop.angle" xml:space="preserve"><value>Straighten</value></data>
+  <data name="Param.crop.quarter" xml:space="preserve"><value>Rotate 90°</value></data>
+  <data name="Param.crop.flip_h" xml:space="preserve"><value>Flip Horizontal</value></data>
+  <data name="Param.crop.flip_v" xml:space="preserve"><value>Flip Vertical</value></data>
+  <data name="Param.crop.aspect" xml:space="preserve"><value>Aspect Ratio</value></data>
+  <data name="Param.crop.aspect_portrait" xml:space="preserve"><value>Portrait Ratio</value></data>
+  <data name="Choice.crop.aspect.free" xml:space="preserve"><value>Free</value></data>
+  <data name="Choice.crop.aspect.original" xml:space="preserve"><value>Original</value></data>
+  <data name="Choice.crop.aspect.1x1" xml:space="preserve"><value>1:1</value></data>
+  <data name="Choice.crop.aspect.4x5" xml:space="preserve"><value>4:5</value></data>
+  <data name="Choice.crop.aspect.3x2" xml:space="preserve"><value>3:2</value></data>
+  <data name="Choice.crop.aspect.16x9" xml:space="preserve"><value>16:9</value></data>
+  <data name="Choice.crop.aspect.6x7" xml:space="preserve"><value>6:7</value></data>
+  <data name="Choice.crop.aspect.xpan" xml:space="preserve"><value>XPan 65:24</value></data>
   <data name="Param.enabled" xml:space="preserve"><value>Enabled</value></data>
   <data name="Param.amount" xml:space="preserve"><value>Amount</value></data>
   <data name="Param.angle" xml:space="preserve"><value>Angle</value></data>
