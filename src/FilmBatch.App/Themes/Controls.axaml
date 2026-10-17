@@ -569,7 +569,8 @@
     <Setter Property="Height" Value="12" />
     <Setter Property="Foreground" Value="{DynamicResource FB.PlaceholderBrush}" />
   </Style>
-  <Style Selector="ToggleButton.chevron:checked /template/ ContentPresenter, ToggleButton.chevron:pointerover /template/ ContentPresenter, ToggleButton.chevron:pressed /template/ ContentPresenter">
+  <!-- 未展開時也必須覆寫 Fluent 預設的按鈕底色，否則會出現灰色圓角外框。 -->
+  <Style Selector="ToggleButton.chevron:checked /template/ ContentPresenter, ToggleButton.chevron:unchecked /template/ ContentPresenter, ToggleButton.chevron:pointerover /template/ ContentPresenter, ToggleButton.chevron:pressed /template/ ContentPresenter">
     <Setter Property="Background" Value="Transparent" />
   </Style>
   <Style Selector="ToggleButton.chevron PathIcon.expanded">
