@@ -67,6 +67,7 @@ public abstract partial class ParamViewModel(string moduleKey, ParamDef def, IPa
         ParamKind.Bool => new ToggleParamViewModel(moduleKey, def, host),
         ParamKind.Choice => new ChoiceParamViewModel(moduleKey, def, host),
         ParamKind.Path => new TextParamViewModel(moduleKey, def, host),
+        ParamKind.Curve => new CurveParamViewModel(moduleKey, def, host),
         _ => new SliderParamViewModel(moduleKey, def, host),
     };
 }

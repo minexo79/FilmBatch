@@ -41,7 +41,7 @@ public static class PresetFile
                     var value = definition.Kind switch
                     {
                         ParamKind.Bool when bool.TryParse(text, out var boolean) => ParamValue.Of(boolean),
-                        ParamKind.Choice or ParamKind.Path => ParamValue.Of(
+                        ParamKind.Choice or ParamKind.Path or ParamKind.Curve => ParamValue.Of(
                             scalar.Style == ScalarStyle.Plain && text is "null" or "~" ? "" : text),
                         ParamKind.Float or ParamKind.Int or ParamKind.Seed when double.TryParse(text, NumberStyles.Float,
                             CultureInfo.InvariantCulture, out var number) => ParamValue.Of(number),
