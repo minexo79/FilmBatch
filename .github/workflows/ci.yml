@@ -96,8 +96,8 @@ jobs:
           global-json-file: global.json
       - name: Restore (needs NuGet 內附 Dawn 作 ABI 比對)
         run: dotnet restore FilmBatch.sln
-      - name: Build Dawn for both macOS architectures
-        run: bash build/build-dawn.sh all
+      - name: Build Dawn for Apple Silicon
+        run: bash build/build-dawn.sh arm64
       - uses: actions/upload-artifact@v4
         with:
           name: dawn-macos-minos14
