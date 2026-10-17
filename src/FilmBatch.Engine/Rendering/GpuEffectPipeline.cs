@@ -1,5 +1,6 @@
 using System.Numerics;
 using System.Runtime.InteropServices;
+using FilmBatch.Core.Film;
 using FilmBatch.Core.Random;
 using FilmBatch.Engine.Imaging;
 using FilmBatch.Gpu.Device;
@@ -11,7 +12,6 @@ namespace FilmBatch.Engine.Rendering;
 public sealed record EffectRendererOptions
 {
     public string? TexturesFolder { get; init; }
-    public string? RecipesFolder { get; init; }
     public ulong MemoryBudgetBytes { get; init; }
     /// <summary>每次編碼/讀回的列帶大小上限（位元組）；0 = 預設 64 MB，仍受裝置緩衝區上限約束。</summary>
     public ulong MaxBandBytes { get; init; }
@@ -25,6 +25,8 @@ internal sealed class GpuEffectPipeline : IDisposable
     private readonly List<ComputeKernel> _kernels = [];
     private readonly List<GpuBuffer> _uniforms = [];
     private readonly Dictionary<int, GpuBuffer> _gaussians = [];
+    // 內附 LUT 的紋理（FilmLookLibrary 對同一 key 回傳同一個 FilmLut；FilmLut 未覆寫 Equals，預設比較即參考相等）
+    private readonly Dictionary<FilmLut, GpuTexture> _luts = [];
     private readonly LinkedList<CachedSource> _sources = new();
     private readonly GpuTexture[] _work = new GpuTexture[4];
     private GpuBuffer? _output, _readback, _band;
@@ -32,7 +34,7 @@ internal sealed class GpuEffectPipeline : IDisposable
     private int _uniformIndex;
     private readonly ComputeKernel _decode, _encode8, _encode16, _display, _spike, _blur, _box,
         _basicLinear, _lens, _multi, _double, _bokeh, _zoom, _motion, _vignette,
-        _halExtract, _halAdd, _leak, _film, _droBase, _droApply, _filmBlend, _plate,
+        _halExtract, _halAdd, _leak, _look, _plate,
         _basicDisplay, _tone, _detail, _dirt, _grain, _texture;
 
     public GpuEffectPipeline(GpuDevice gpu, ShaderLibrary shaders, EffectRendererOptions? options = null)
@@ -67,10 +69,7 @@ internal sealed class GpuEffectPipeline : IDisposable
         _halExtract = K("optical/halation_extract", tex, storage, uniform);
         _halAdd = K("optical/halation_add", tex, tex, storage, uniform);
         _leak = K("optical/light_leak", tex, storage, uniform);
-        _film = K("film/film_pixel", tex, storage, uniform);
-        _droBase = K("film/dro_base", tex, storage, uniform);
-        _droApply = K("film/film_dro_sharpen", tex, tex, storage, uniform);
-        _filmBlend = K("film/blend", tex, tex, storage, uniform);
+        _look = K("film/look", tex, tex, storage, uniform);
         _plate = K("film/photo_plate", tex, storage, uniform);
         _basicDisplay = K("linear/basic_display", tex, tex, storage, uniform);
         _tone = K("film/tone", tex, storage, uniform);
@@ -241,18 +240,8 @@ internal sealed class GpuEffectPipeline : IDisposable
                     p.LeakSize / 100, p.LeakHue, p.LeakIrregularity / 100, p.LeakCount, p.SeedLightLeak,
                     _width / (float)_height, shortSide, 0, 0))
                 : Apply(_texture, OverlayUniforms(p, leak, true), leak);
-        if (p.FilmOn && p.Film.Mix.X > 0)
-        {
-            var original = p.Film.Mix.X < 1 ? current : null;
-            current = Apply(_film, p.Film, reserve: original);
-            if (p.Film.Spatial.X != 0 || p.Film.Spatial.Y != 0)
-            {
-                var basis = Apply(_droBase, p.Film, reserve: original);
-                current = Apply(_droApply, p.Film, basis, original);
-            }
-            if (p.Film.Spatial.Z != 0) current = Sharpen(.003f, p.Film.Spatial.Z, original);
-            if (original is not null) current = Apply(_filmBlend, p.Film, original);
-        }
+        if (p.FilmOn && p.FilmLut is not null && p.FilmStrength > 0)
+            current = Apply(_look, p.FilmLook, LutTexture(p.FilmLut));
         if (p.PlateOn && p.PlateStrength > 0)
             current = Apply(_plate, new PlateUniforms(p.PlateType, p.PlateStrength / 100, p.PlateOrtho / 100,
                 p.PlateTintHue, p.PlateTintAmount / 100, p.PlateEdgeErosion / 100, p.PlateStains / 100,
@@ -308,6 +297,16 @@ internal sealed class GpuEffectPipeline : IDisposable
         Dispatch(commands, _blur, [input, temp, Uniform(new BlurUniforms(1, 0, radius, 0)), weights]);
         Dispatch(commands, _blur, [temp, result, Uniform(new BlurUniforms(0, 1, radius, 0)), weights]);
         return result;
+    }
+
+    private GpuTexture LutTexture(FilmLut lut)
+    {
+        if (_luts.TryGetValue(lut, out var texture)) return texture;
+        var n = (uint)lut.Size;
+        texture = _gpu.CreateTexture(n * n, n, GpuTextureFormat.Rgba32Float, GpuTextureUsage.CopyDst | GpuTextureUsage.Sampled, "film lut");
+        _gpu.WriteTexture<float>(texture, lut.ToTextureRgba());
+        _luts.Add(lut, texture);
+        return texture;
     }
 
     private GpuTexture Next(GpuTexture first, GpuTexture? second = null, GpuTexture? third = null)
@@ -456,6 +455,7 @@ internal sealed class GpuEffectPipeline : IDisposable
         foreach (var texture in _work) texture?.Dispose();
         foreach (var buffer in _uniforms) buffer.Dispose();
         foreach (var buffer in _gaussians.Values) buffer.Dispose();
+        foreach (var texture in _luts.Values) texture.Dispose();
         foreach (var kernel in _kernels) kernel.Dispose();
         _output?.Dispose(); _readback?.Dispose(); _band?.Dispose();
     }

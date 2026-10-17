@@ -9,7 +9,7 @@ public class PhotoOperationsTests
     private static Settings S(params (string Key, ParamValue Value)[] values) =>
         new(values.Select(v => new KeyValuePair<string, ParamValue>(v.Key, v.Value)));
 
-    private static readonly Settings PresetA = ModuleCatalog.Defaults.Overlay(S(("grain.enabled", true), ("grain.amount", 40.0), ("film.recipe", "kodak-ektar-100")));
+    private static readonly Settings PresetA = ModuleCatalog.Defaults.Overlay(S(("grain.enabled", true), ("grain.amount", 40.0), ("film.look", "kodak-ektar-100")));
     private static readonly Settings PresetB = ModuleCatalog.Defaults.Overlay(S(("grain.enabled", true), ("grain.amount", 10.0)));
     private static readonly Guid IdA = Guid.NewGuid();
     private static readonly Guid IdB = Guid.NewGuid();
@@ -21,7 +21,7 @@ public class PhotoOperationsTests
     {
         var resolved = PhotoOperations.Resolve(PresetA, S(("grain.amount", 55.0)));
         Assert.Equal(55, resolved.Number("grain.amount"));          // 覆寫
-        Assert.Equal("kodak-ektar-100", resolved.Text("film.recipe"));      // 預設
+        Assert.Equal("kodak-ektar-100", resolved.Text("film.look"));        // 預設
         Assert.Equal(30, resolved.Number("grain.size"));            // 系統預設
     }
 

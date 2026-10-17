@@ -7,7 +7,7 @@
 
 - **像 Lightroom 一樣批次修圖**：開啟整個資料夾，以縮圖列瀏覽，一次選多張照片套用同一組設定，再整批匯出。
 - **每張照片各有風格**：建立多個預設（例如「Portra 風 + 漏光」），每張照片可指定不同預設，並在預設上單張微調；只記錄差異，修改預設時其他照片自動同步。
-- **底片色彩 & 類比效果**：有77組的底片配方 (來自 [Recipe Lab](https://github.com/voxivoid/recipe-lab-sony-pmca))、顆粒、光暈、漏光、暗角、焦外、動態模糊、鏡頭變形、雙重曝光、多格分鏡、灰塵刮痕等 16 個模組，以 GPU 即時預覽。
+- **底片色彩 & 類比效果**：Nik 式底片風格，內附 36 卷底片 LUT（來自 [RawTherapee Film Simulation Collection](http://rawtherapee.com/shared/HaldCLUT.zip)，CC BY-SA 4.0），可調效果比例、暖色、褪色與八色相帶修正，並以目前照片的縮圖挑選；搭配顆粒、光暈、漏光、暗角、焦外、動態模糊、鏡頭變形、雙重曝光、多格分鏡、灰塵刮痕等，共 16 個模組，以 GPU 即時預覽。
 - **非破壞性編輯**：原始檔永不修改；匯出 JPEG／16-bit TIFF／16-bit PNG，保留 EXIF 並嵌入 sRGB ICC。
 - **命令列批次輸出**：`filmbatch-cli` 可在腳本中直接套用已保存的設定匯出。
 
@@ -65,6 +65,6 @@ macOS（Apple Silicon）改用 `osx-arm64`；不再提供 Intel Mac 建置。
 
 - [docs/architecture.md](docs/architecture.md)：專案架構與算圖流程
 - [docs/building.md](docs/building.md)：建置、測試、CI、發佈與 CLI 用法
-- [docs/film-provenance.md](docs/film-provenance.md)、[docs/film-calibration.md](docs/film-calibration.md)：底片配方來源與色彩校正
+- [docs/film-looks.md](docs/film-looks.md)：底片風格的 LUT 來源與授權、演算法與新增底片流程
 - [docs/plan.md](docs/plan.md)：完整計畫書
 - [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt)：第三方元件授權

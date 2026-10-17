@@ -1,0 +1,101 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:FilmBatch.App.ViewModels"
+             xmlns:c="using:FilmBatch.App.Controls"
+             xmlns:l="using:FilmBatch.App.Localization"
+             x:Class="FilmBatch.App.Controls.FilmLookControl"
+             x:DataType="vm:FilmLookViewModel">
+  <!-- Nik 式底片風格：底片縮圖格 → 色相修正縮圖格 → 自訂色相帶（docs/film-looks.md）。
+       縮圖以焦點照片算出，只在 film 模組展開時算（FilmLookThumbnails）。 -->
+  <UserControl.DataTemplates>
+    <!-- 底片與色相修正共用的縮圖格內容：96×64 縮圖＋名稱 -->
+    <DataTemplate DataType="vm:FilmTileViewModel">
+      <StackPanel Spacing="2">
+        <Border Classes="film-thumb" Height="64">
+          <Panel>
+            <Image Source="{Binding Thumbnail}" Stretch="UniformToFill" />
+            <ProgressBar Classes="film-thumb-busy" IsIndeterminate="True" IsVisible="{Binding IsLoading}" VerticalAlignment="Bottom" />
+          </Panel>
+        </Border>
+        <TextBlock Classes="small" Text="{Binding Name}" TextTrimming="CharacterEllipsis" HorizontalAlignment="Center" />
+      </StackPanel>
+    </DataTemplate>
+  </UserControl.DataTemplates>
+  <!-- Part="Look"：底片分組＋縮圖格（放在一般參數之上）；Part="Hue"：色相修正＋自訂色相（放在一般參數之下） -->
+  <Panel>
+    <StackPanel Name="LookPart" Spacing="6" Margin="0,4,0,4">
+      <Grid ColumnDefinitions="*,Auto" Classes="param-line">
+        <TextBlock Classes="param-name" Text="{l:Tr Film.Look}" VerticalAlignment="Center" />
+        <ComboBox Grid.Column="1" Classes="flat" MinWidth="150" VerticalAlignment="Center"
+                  ItemsSource="{Binding Groups}" SelectedItem="{Binding SelectedGroupItem}"
+                  DisplayMemberBinding="{Binding Label, x:DataType=vm:FilmGroupViewModel}"
+                  AutomationProperties.Name="{l:Tr Film.Look}" />
+      </Grid>
+      <ItemsControl ItemsSource="{Binding Looks}">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate><UniformGrid Columns="3" /></ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:FilmTileViewModel">
+            <Button Classes="film-tile" Classes.selected="{Binding IsSelected}"
+                    Command="{Binding $parent[ItemsControl].((vm:FilmLookViewModel)DataContext).ApplyLookCommand}"
+                    CommandParameter="{Binding}" Content="{Binding}" ToolTip.Tip="{Binding Name}"
+                    AutomationProperties.Name="{Binding Name}" />
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </StackPanel>
+
+    <StackPanel Name="HuePart" Spacing="6" Margin="0,4,0,4">
+      <Grid ColumnDefinitions="*,Auto" Classes="param-line">
+        <TextBlock Classes="param-name" Text="{l:Tr Film.HueCorrection}" VerticalAlignment="Center" />
+        <Border Grid.Column="1" Classes="film-badge" IsVisible="{Binding IsCustomHue}">
+          <TextBlock Text="{l:Tr Film.HueCustom}" />
+        </Border>
+      </Grid>
+      <ItemsControl ItemsSource="{Binding HuePresets}">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate><UniformGrid Columns="3" /></ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:FilmTileViewModel">
+            <Button Classes="film-tile" Classes.selected="{Binding IsSelected}"
+                    Command="{Binding $parent[ItemsControl].((vm:FilmLookViewModel)DataContext).ApplyHuePresetCommand}"
+                    CommandParameter="{Binding}" Content="{Binding}" ToolTip.Tip="{Binding Name}"
+                    AutomationProperties.Name="{Binding Name}" />
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+
+      <TextBlock Classes="param-name" Text="{l:Tr Film.HueBands}" Margin="0,4,0,0" />
+      <ListBox Classes="hue-bands" ItemsSource="{Binding Bands}" SelectedItem="{Binding SelectedBand}">
+        <ListBox.ItemsPanel>
+          <ItemsPanelTemplate><UniformGrid Columns="8" /></ItemsPanelTemplate>
+        </ListBox.ItemsPanel>
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="vm:HueBandViewModel">
+            <Ellipse Width="18" Height="18" Fill="{Binding Swatch}" ToolTip.Tip="{Binding Label}"
+                     AutomationProperties.Name="{Binding Label}" />
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+      <ContentControl Content="{Binding SelectedBand}">
+        <ContentControl.ContentTemplate>
+          <DataTemplate x:DataType="vm:HueBandViewModel">
+            <StackPanel>
+              <ContentControl Content="{Binding Hue}">
+                <ContentControl.ContentTemplate><DataTemplate><c:ParamRow /></DataTemplate></ContentControl.ContentTemplate>
+              </ContentControl>
+              <ContentControl Content="{Binding Saturation}">
+                <ContentControl.ContentTemplate><DataTemplate><c:ParamRow /></DataTemplate></ContentControl.ContentTemplate>
+              </ContentControl>
+              <ContentControl Content="{Binding Lightness}">
+                <ContentControl.ContentTemplate><DataTemplate><c:ParamRow /></DataTemplate></ContentControl.ContentTemplate>
+              </ContentControl>
+            </StackPanel>
+          </DataTemplate>
+        </ContentControl.ContentTemplate>
+      </ContentControl>
+    </StackPanel>
+  </Panel>
+</UserControl>

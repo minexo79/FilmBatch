@@ -143,6 +143,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         };
         Renderer.ThumbnailReady += Presets.Hover.OnThumbnailReady;
         Renderer.Failed += Presets.Hover.OnThumbnailFailed;
+        Renderer.ThumbnailReady += Inspector.FilmLook.Thumbnails.OnThumbnailReady;
+        Renderer.Failed += Inspector.FilmLook.Thumbnails.OnThumbnailFailed;
         Renderer.Failed += (file, message) =>
         {
             Filmstrip.SetError(file, message);
@@ -179,6 +181,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         if (_disposed || generation != _openGeneration) return;
         Renderer.CancelThumbnails();
         Presets.Hover.InvalidateCache();
+        Inspector.FilmLook.InvalidateThumbnails();
         Images.Clear();
         if (Service is not null) Service.Project.EntriesChanged -= OnEntriesChanged;
 
@@ -549,6 +552,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             Settings.ForceSoftwareGpu ? null : () => PreviewService.CreateCpuRenderer(Settings));
         Images.SetPreviewLongEdge(Settings.PreviewLongEdge);
         Presets.Hover.InvalidateCache();
+        Inspector.FilmLook.InvalidateThumbnails();
         RequestPreview();
         _ = LoadPreviewAsync();
         if (Service is { } service)

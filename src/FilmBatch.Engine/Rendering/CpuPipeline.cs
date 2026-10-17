@@ -61,8 +61,8 @@ public static class CpuPipeline
         }
         ct.ThrowIfCancellationRequested();
 
-        // ③ 底片（線性 → 顯示）：底片色彩 → 效果比例 → 古典版材
-        if (p.FilmOn) FilmProcessing.Apply(cur, a, b, w, h, p.Film);
+        // ③ 底片（線性）：底片風格 → 古典版材
+        if (p.FilmOn && p.FilmLut is not null && p.FilmStrength > 0) FilmLookProcessing.Apply(cur, n, p.FilmLook, p.FilmLut);
         ct.ThrowIfCancellationRequested();
         if (p.PlateOn && p.PlateStrength > 0) PhotoPlate(cur, w, h, p);
         ct.ThrowIfCancellationRequested();

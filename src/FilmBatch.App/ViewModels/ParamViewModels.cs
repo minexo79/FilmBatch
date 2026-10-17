@@ -120,7 +120,7 @@ public sealed partial class SliderParamViewModel(string moduleKey, ParamDef def,
     }
 }
 
-/// <summary>選項參數：未知值（如自訂配方 key）保留顯示，不強制跳回首項。</summary>
+/// <summary>選項參數：未知值（如舊版或手動編輯檔案留下的 key）保留顯示，不強制跳回首項。</summary>
 public sealed partial class ChoiceParamViewModel(string moduleKey, ParamDef def, IParamHost host) : ParamViewModel(moduleKey, def, host)
 {
     private ChoiceItem? _selected;
@@ -143,7 +143,7 @@ public sealed partial class ChoiceParamViewModel(string moduleKey, ParamDef def,
         }
     }
 
-    /// <summary>目前值不在選項中時顯示原文（例如 custom: 自訂配方）。</summary>
+    /// <summary>目前值不在選項中時顯示原文（例如已移除的底片 key）。</summary>
     public string UnknownValue { get; private set; } = "";
 
     public bool HasUnknownValue => UnknownValue.Length > 0;

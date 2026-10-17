@@ -14,7 +14,7 @@
    - 4.2 [Core．專案與照片設定（Projects）](#42-core專案與照片設定projects)
    - 4.3 [Core．復原堆疊（Commands）](#43-core復原堆疊commands)
    - 4.4 [Core．預設庫（Presets）](#44-core預設庫presets)
-   - 4.5 [Core．底片配方（Film）](#45-core底片配方film)
+   - 4.5 [Core．底片風格（Film）](#45-core底片風格film)
    - 4.6 [Engine．算圖管線（Rendering）](#46-engine算圖管線rendering)
    - 4.7 [Engine．算圖排程（Scheduling）](#47-engine算圖排程scheduling)
    - 4.8 [Engine．影像讀取與批次匯出（Imaging / Exporting）](#48-engine影像讀取與批次匯出imaging--exporting)
@@ -38,7 +38,8 @@
 | 預設（preset） | 存在預設庫的一組設定（YAML），可指定給多張照片 | `Preset` |
 | 覆寫（overrides） | 某張照片與其預設**不同**的欄位 | `PhotoEntry.Overrides` |
 | 最終參數（resolved） | 系統預設 ⊕ 預設 ⊕ 覆寫，實際拿去算圖的值 | `ProjectService.SettingsFor` |
-| 配方（recipe） | Recipe Lab 的底片色彩設定，屬於 `film` 模組 | `FilmRecipe` |
+| 底片（look） | `film` 模組選用的一卷底片，即一個內附 3D LUT（`film.look` 存其 key） | `FilmLook`、`FilmLut` |
+| 色相帶（hue band） | 底片風格的八個分色相修正區段，各有色相／飽和／明度 | `HueBands` |
 | 算圖器（renderer） | 把「影像 + 設定」算成結果的物件，有 GPU 與 CPU 兩種 | `IPreviewRenderer` |
 | 世代（generation / epoch） | 遞增的編號，用來丟棄過期的算圖結果 | `PreviewService`、`RenderScheduler` |
 
@@ -57,12 +58,12 @@ flowchart TB
     Engine["FilmBatch.Engine<br/>算圖管線、排程、影像 IO、匯出"] --> Gpu
     Engine --> Core
     Gpu["FilmBatch.Gpu<br/>WebGPU 裝置、資源、WGSL shader"]
-    Core["FilmBatch.Core<br/>參數 schema、專案、預設、配方、復原"]
+    Core["FilmBatch.Core<br/>參數 schema、專案、預設、底片 LUT、復原"]
 ```
 
 | 專案 | 一句話職責 | 可以引用 | **不可以**引用 |
 |---|---|---|---|
-| `FilmBatch.Core` | 資料模型與規則：參數、專案、預設、配方、復原 | 只有 .NET 與 YAML 函式庫 | Avalonia、GPU、Magick.NET |
+| `FilmBatch.Core` | 資料模型與規則：參數、專案、預設、底片 LUT、復原 | 只有 .NET 與 YAML 函式庫 | Avalonia、GPU、Magick.NET |
 | `FilmBatch.Gpu` | WebGPU 的薄封裝與嵌入的 WGSL | WebGPUSharp | 其他 FilmBatch 專案、Avalonia |
 | `FilmBatch.Engine` | 把設定變成影像：算圖、排程、讀檔、匯出 | Core、Gpu、Magick.NET | Avalonia |
 | `FilmBatch.App` | 桌面介面 | Core、Engine | 直接呼叫 Gpu（一律經 Engine） |
@@ -213,18 +214,24 @@ flowchart LR
 
 **陷阱**：`PresetLibrary` 先寫入磁碟成功，才更新記憶體中的清單並發事件；損毀的 YAML 會記在 `LoadErrors`，不會被空白資料覆蓋。
 
-### 4.5 Core．底片配方（Film）
+### 4.5 Core．底片風格（Film）
 
-**職責**：Recipe Lab 77 組底片配方、Sony 成像風格係數，以及與相機互通的自訂配方檔。
+**職責**：Nik 式底片風格的資料：36 卷內附底片（RawTherapee Film Simulation Collection 的 Hald CLUT 轉成的 3D LUT，CC BY-SA 4.0）、八色相帶定義與內建色相修正預設，以及舊參數的相容處理。演算法、來源與授權見 [film-looks.md](film-looks.md)。
 
 | 型別 / 檔案 | 說明 |
 |---|---|
-| `Film/recipelab.json` | 從 Recipe Lab v1.7.0 搬移的 77 組配方原始資料（嵌入資源） |
-| `Film/creative_styles.json` | Sony 創意風格的色彩係數，由 `tools/film-calibration` 校正產生 |
-| `FilmRecipeLibrary` | 內建 + 自訂配方的查詢；`ToSettings` 把配方轉成 `film.*` 參數；`MatchesRecipe` 判斷是否被手動改過（介面上的 EDITED 標記） |
-| `CustomRecipeFile` | 讀寫 Recipe Lab「格式 1」的 `.YML` 自訂配方，略過不合法的檔案並回報原因 |
+| `FilmLut` | 3D LUT 資料（`Size`、`Data`，Hald 像素順序）；`Sample` 四面體內插、`Resample` 改邊長、`FromHald`、`ToTextureRgba` 轉成 GPU 紋理排列 |
+| `FilmLutFile` | `.fblut` 二進位格式讀寫（magic、int32 邊長、16-bit unorm） |
+| `FilmLookLibrary` | 底片清單（以 `JsonDocument` 讀嵌入的 `looks.json`）、`GroupsInOrder`、`DefaultKey`（`kodak-portra-400`）；`TryLut(key)` 第一次使用時載入並快取，未知 key 回傳 null |
+| `HueBands`／`HuePresets` | 八個色相帶的 key、中心角（`CentersDegrees`，與 `film/look.wgsl` 同值）、24 個參數 schema（`Params`、`FlatKeys`）；內建色相修正預設與 `Find`（判斷目前值是否為某預設，否則為「自訂」） |
+| `Film/Looks/` | `looks.json`（36 卷清單，順序即介面順序）、36 個 33³ `.fblut`、`LICENSE.txt`（CC BY-SA 4.0 聲明），皆為嵌入資源 `FilmBatch.Looks/*` |
+| `Params/RetiredParams` | 舊 Recipe Lab 模組的 13 個 `film.*` key；`SettingsJsonConverter` 與 `PresetFile` 讀檔時靜默丟棄 |
 
-**陷阱**：配方欄位、範圍與品牌順序有測試鎖定（`FilmRecipeTests`）；更新配方資料請照 [film-provenance.md](film-provenance.md) 的流程，不要手改 JSON。
+**陷阱**
+
+- `looks.json` 的 `key` 會存進專案與預設，發佈後不可改名；新增底片照 [film-looks.md](film-looks.md#5-新增或更換底片) 的流程以 `tools/film-luts` 產生 `.fblut`，不要手改 LUT。
+- 卷數、分組與每卷都有 33³ LUT 由 `FilmLookTests` 鎖定；`film.look` 的選項由 `FilmLookLibrary.All` 產生（`RetiredParamsTests` 檢查兩者一致）。
+- 色相帶中心角改動時，C#（`HueBands.CentersDegrees`）與 WGSL 要一起改。
 
 ### 4.6 Engine．算圖管線（Rendering）
 
@@ -249,7 +256,9 @@ flowchart LR
 | `GpuEffectPipeline` | `GpuEffectPipeline.cs` | GPU 管線。建構子以 `K("optical/vignette", …)` 載入每支 shader；`Process` 依序派送 pass；檔案底部是各 shader 的 uniform 結構（例如 `VignetteUniforms`） |
 | `GpuSpikeRenderer` | `GpuSpikeRenderer.cs` | **正式的 GPU 算圖器**（名稱沿用自 M0 技術驗證）。超過 GPU 紋理上限或顯示記憶體不足時，自動改走 CPU 並在 `DeviceName` 標示原因 |
 | `CpuFakeRenderer` | `CpuFakeRenderer.cs` | **正式的 CPU 算圖器**（名稱同樣是歷史遺留），內部呼叫 `CpuPipeline`；無 GPU 或使用者強制軟體模式時使用 |
-| `FilmProcessing`、`FilmParameters` | 同目錄 | 底片色彩的 CPU 實作與傳給 shader 的參數結構（與 `film/common.wgsl` 對齊） |
+| `FilmLookProcessing` | `FilmLookProcessing.cs` | 底片風格的 CPU 參考實作：LUT → 八色相帶（OKLCh）→ 暖色 → 褪色 → 依效果比例混合；`BandWeight` 為色相帶權重 |
+| `FilmLookUniforms` | `FilmLookUniforms.cs` | 傳給 `film/look.wgsl` 的 uniform（`Mix`、`Flags`、`Band0`…`Band7`，與 WGSL `struct LookParams` 對齊） |
+| `Oklab` | `Oklab.cs` | 線性 sRGB ↔ OKLab 轉換（與 `look.wgsl` 的 `to_oklab`／`from_oklab` 同係數） |
 | `EffectAssets` | `EffectAssets.cs` | 解析外部素材：雙重曝光的第二張照片、漏光與灰塵的材質檔。材質庫為空時改用程序化效果 |
 
 **處理順序**（`CpuPipeline.Process` 與 `GpuEffectPipeline.Process` 相同）
@@ -258,7 +267,7 @@ flowchart LR
 |---|---|---|
 | ① 幾何 | 線性光 | 基本調整（曝光、色溫、色調）→ 鏡頭變形 → 多格分鏡 |
 | ② 光學 | 線性光 | 雙重曝光 → 散景 → 縮放旋轉模糊 → 動態模糊 → 暗角 → 光暈 → 漏光 |
-| ③ 底片 | 線性光 | 底片色彩 → 古典版材 |
+| ③ 底片 | 線性光 | 底片風格 → 古典版材 |
 | — | 線性 → sRGB | `linear_to_display` |
 | ④ 顯示 | sRGB | 基本調整（亮度、對比、亮部陰影、飽和、細節）→ 色調分離 → 清晰與銳化 |
 | ⑤ 表面 | sRGB | 灰塵與刮痕 → 顆粒 |
@@ -367,7 +376,7 @@ flowchart TB
     SB --> EX["ExportViewModel<br/>照片匯出分頁"]
     IN --> MS["ModuleSectionViewModel × 16"]
     MS --> PA["ParamViewModel<br/>Slider / Choice / Toggle / Text"]
-    IN --> FR["FilmRecipeViewModel<br/>底片配方選單"]
+    IN --> FL["FilmLookViewModel<br/>底片與色相修正縮圖格"]
 ```
 
 | 型別 | 說明 |
@@ -378,6 +387,7 @@ flowchart TB
 | `ParamViewModel` 系列 | `ParamViewModel.Create` 依 `ParamKind` 產生對應子類別，`InspectorView.axaml` 依型別套用 `DataTemplate`，所以**新增參數不需要寫 XAML** |
 | `FilmstripViewModel` | 縮圖清單、多選、篩選、縮圖背景載入、覆寫 / 預設更新標記 |
 | `PreviewViewModel` | 預覽影像、縮放、分割對比、控制點、直方圖資料、右下角拍攝資訊（EXIF 跟著每次解碼的來源重讀，重開資料夾不沿用舊資訊） |
+| `FilmLookViewModel` | film 模組的底片縮圖格、色相修正預設縮圖格與色相帶編輯器（`Controls/FilmLookControl.axaml`）。縮圖由 `FilmLookThumbnails` 以焦點照片算出，只在模組展開時計算，鍵前綴 `film-look/`，與縮圖列共用低優先佇列 |
 
 #### 服務與控制項
 
@@ -411,7 +421,7 @@ flowchart TB
 
 ### 4.11 Cli．命令列工具
 
-`src/FilmBatch.Cli/Program.cs` 以 System.CommandLine 定義指令：`export`（套用已保存的專案設定批次匯出）、`recipes list` / `recipes import`、`gpu-info`、`spike`（GPU 基準測試）。它與 GUI 共用 Core 與 Engine，因此匯出結果與 GUI 一致。用法見 [building.md](building.md#命令列工具cli)。
+`src/FilmBatch.Cli/Program.cs` 以 System.CommandLine 定義指令：`export`（套用已保存的專案設定批次匯出）、`gpu-info`、`spike`（GPU 基準測試）。它與 GUI 共用 Core 與 Engine，因此匯出結果與 GUI 一致。用法見 [building.md](building.md#命令列工具cli)。
 
 ---
 
@@ -459,6 +469,13 @@ flowchart TB
 2. 在 `IDialogService` 加方法，並在 `DialogService` 中以 `ShowDialog` 實作。
 3. ViewModel 只呼叫 `IDialogService`，測試時可以假物件替換。
 
+### 5.6 新增一卷底片
+
+1. 在 `Core/Film/Looks/looks.json` 加一筆（`key`、`name`、`group`、HaldCLUT.zip 內的 `source`）；陣列順序即介面順序。
+2. 執行 `dotnet run --project tools/film-luts -- src/FilmBatch.Core/Film/Looks/looks.json src/FilmBatch.Core/Film/Looks` 產生 `<key>.fblut`（需要網路，只以 HTTP Range 抓列出的 PNG）。
+3. 執行 `FilmLookTests`（卷數有改時更新測試中的數字）。
+4. 更新 [film-looks.md](film-looks.md) 的底片表；新分組還要在資源檔加分組名稱。不需要改 CPU／GPU 程式碼。
+
 ---
 
 ## 6. 測試對照
@@ -468,7 +485,10 @@ flowchart TB
 | 三層合併、貼上、重設 | `tests/FilmBatch.Core.Tests/PhotoOperationsTests.cs`、`ProjectServiceTests.cs` |
 | 專案與預設存檔 | `PersistenceTests.cs` |
 | 效果演算法、CPU / GPU 一致性 | `EffectPipelineTests.cs`、`GpuSpikeTests.cs` |
-| 底片配方與校正 | `FilmRecipeTests.cs`、`FilmCalibrationTests.cs` |
+| 底片 LUT、底片清單、色相預設 | `FilmLutTests.cs`、`FilmLookTests.cs` |
+| 舊參數丟棄、film schema | `RetiredParamsTests.cs` |
+| 底片風格算圖、色相帶、CPU / GPU 一致性 | `EffectPipelineTests.cs`（`FilmLook_*`、`HueBandWeights_*`、`Gpu_MatchesCpu_OnFilmLook`） |
+| 底片縮圖格與色相帶編輯器 | `tests/FilmBatch.App.Tests/FilmLookViewModelTests.cs` |
 | 排程與裝置重建 | `RenderSchedulerTests.cs`、`RenderSchedulerReconfigureTests.cs` |
 | 匯出與中繼資料 | `BatchExporterTests.cs`、`TiffMetadataTests.cs` |
 | ViewModel 與介面互動 | `tests/FilmBatch.App.Tests/`（Avalonia.Headless，不需顯示器） |
@@ -485,7 +505,6 @@ flowchart TB
 | 偏好設定 | `<使用者資料夾>/settings.json` |
 | Dock 版面 | `<使用者資料夾>/layout.json` |
 | 預設庫 | `<使用者資料夾>/presets/*.yaml` |
-| 自訂底片配方 | `<使用者資料夾>/recipes/` |
 | 材質庫 | `<使用者資料夾>/textures/` |
 | 記錄檔 | `<使用者資料夾>/logs/` |
 | 專案（每個照片資料夾一份） | `<照片資料夾>/.filmbatch/project.json` |
@@ -498,4 +517,4 @@ flowchart TB
 - [building.md](building.md)：建置、測試、CI 與發佈
 - [adr/0001-webgpu-binding.md](adr/0001-webgpu-binding.md)：WebGPU 綁定選型
 - [adr/0002-ai-denoise.md](adr/0002-ai-denoise.md)：AI 降噪（提議中）
-- [film-provenance.md](film-provenance.md)、[film-calibration.md](film-calibration.md)：配方來源與色彩校正
+- [film-looks.md](film-looks.md)：底片風格的 LUT 來源與授權、演算法、色相帶與新增底片流程
