@@ -226,6 +226,32 @@ public sealed class RawStandardExifTests
         finally { File.Delete(file); }
     }
 
+    [Fact]
+    public void Append_Recanonicalizes_ProfileTouchedByGetValue()
+    {
+        // Regression: once any value is read, Magick.NET re-serializes the profile with
+        // its own writer (PixelX/YDimension as SHORT, lossy interop handling). Append
+        // re-canonicalizes through Normalize, so the appended file keeps LONG dimensions
+        // and reads without libtiff "wrong data type" warnings.
+        var profile = TiffMetadata.Normalize(new ExifProfile(SourceExif(
+            ifd0: [], exif: [(Tags.IsoSpeed, 3, [200, 0])], gps: [])), 4, 4);
+        Assert.NotNull(profile.GetValue(ExifTag.PixelXDimension));
+        var file = AppendToFreshTiff(profile);
+        try
+        {
+            var tiff = File.ReadAllBytes(file);
+            var exifDir = DirectoryValue(tiff, Root(tiff), Tags.ExifIfd);
+            var xField = FindField(tiff, exifDir, Tags.PixelXDimension);
+            var yField = FindField(tiff, exifDir, Tags.PixelYDimension);
+            Assert.NotEqual(-1, xField);
+            Assert.NotEqual(-1, yField);
+            Assert.Equal(4, BinaryPrimitives.ReadUInt16LittleEndian(tiff.AsSpan(xField + 2, 2)));
+            Assert.Equal(4, BinaryPrimitives.ReadUInt16LittleEndian(tiff.AsSpan(yField + 2, 2)));
+            Assert.Empty(ReadWarnings(file));
+        }
+        finally { File.Delete(file); }
+    }
+
     private static bool Listed(string warning) =>
         warning.Contains("GainControl", StringComparison.OrdinalIgnoreCase)
         || warning.Contains("wrong data type", StringComparison.OrdinalIgnoreCase)

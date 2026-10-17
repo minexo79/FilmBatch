@@ -304,9 +304,10 @@ internal static class TiffMetadata
     /// With <paramref name="replaceExif"/>, the writer's own 34665/34853 pointers are replaced by
     /// the canonical copies (for DNG renders whose writer EXIF lacks source standard fields);
     /// encoder-owned image and DNG tags are otherwise untouched.
-    /// <paramref name="profile"/> is re-canonicalized through <see cref="Normalize(IExifProfile?, uint, uint, bool, Metadata?)"/>:
-    /// Magick.NET re-serializes a profile lossily once any value has been read from it
-    /// (e.g. PixelX/YDimension become SHORT), so its raw bytes are never trusted.</summary>
+    /// <paramref name="profile"/> is re-canonicalized through <see cref="Normalize(IExifProfile?, uint, uint, bool, Metadata?)"/>
+    /// before its bytes are trusted: once any value is read from a profile, Magick.NET re-serializes
+    /// with its own writer (PixelX/YDimension become SHORT). Re-canonicalization restores the emitted
+    /// dimension block and declared types; fields the writer dropped entirely stay dropped.</summary>
     public static void Append(string path, IExifProfile profile, bool replaceExif = false)
     {
         using var file = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);

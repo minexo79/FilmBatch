@@ -97,8 +97,9 @@ public sealed class JpegPreviewTests
         Assert.Equal(width, px.Width);
         Assert.Equal(height, px.Height);
         Assert.Equal(channels, px.Channels);
+        Assert.Null(px.U16); // 上游 Buf::U8：precision<8 lossless 以 U8 緩衝帶 2-byte 原生樣本
         Assert.NotNull(px.U8);
-        var buf = Pixels(px);
+        var buf = px.U8!;
         Assert.Equal(byteLen, buf.Length);
         Assert.Equal(fnv, Fnv.Hash(buf));
     }
