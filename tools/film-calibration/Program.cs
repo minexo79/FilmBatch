@@ -387,10 +387,11 @@ static class Program
             prev = now;
         }
         // An underconstrained endpoint must not keep an arbitrary near-gray initial value
-        // after its two neighboring steps have been fitted. Use their slope, not held-out photos.
+        // after its two neighboring steps have been fitted. Continue their ratio, not held-out photos
+        // (a linear slope reaches near-gray too fast and over-desaturated FL/IN).
         if (!satSteps.Contains(0) && satSteps.Contains(1) && satSteps.Contains(2))
         {
-            m.Saturation[0] = Math.Clamp(2 * m.Saturation[1] - m.Saturation[2], 0, m.Saturation[1]);
+            m.Saturation[0] = Math.Clamp(m.Saturation[1] * m.Saturation[1] / Math.Max(m.Saturation[2], 1e-9), 0, m.Saturation[1]);
             _extrapolatedMinimumSaturation = true;
             Console.WriteLine($"[{tag}] underconstrained saturation -3 extrapolated to {m.Saturation[0]:F6}");
         }
@@ -445,7 +446,7 @@ static class Program
         sb.AppendLine($"    \"heldoutBaselineMeanDE\": {F6(heldBefore)},");
         sb.AppendLine($"    \"heldoutCount\": {Rows.Count(r => r.Cls == "Held")},");
         if (_extrapolatedMinimumSaturation)
-            sb.AppendLine("    \"satMinus3Guard\": \"Unfitted -3 extrapolated from fitted -2/-1 slope, clamped to [0,-2]; no held-out photos used\",");
+            sb.AppendLine("    \"satMinus3Guard\": \"Unfitted -3 extrapolated from fitted -1->-2 ratio, clamped to [0,-2]; no held-out photos used\",");
         sb.AppendLine("    \"excluded\": \"9 overrange + 5 PP3-matrix (union 10) fit-excluded; 8 kelvin direction-check only; 5 supported-effect measured-only\"");
         sb.AppendLine("  },");
         sb.AppendLine("  // 每種創意風格的基底：logit 空間色調曲線 y = sigmoid(k * logit(x) - shift)（0→0、1→1），");

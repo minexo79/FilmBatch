@@ -14,7 +14,7 @@
     "heldoutBaselineMeanDE": 7.179708,
     "heldoutCount": 24,
     "excluded": "9 overrange + 5 PP3-matrix (union 10) fit-excluded; 8 kelvin direction-check only; 5 supported-effect measured-only",
-    "satMinus3Guard": "0.329012 continues fitted -2/-1 slope (2*0.629012-0.929012); -3 had one train sample (frame 64) so the fit froze the 0.1 initial"
+    "satMinus3Guard": "0.425889 continues fitted -1->-2 ratio geometrically (0.629012^2/0.929012); -3 had one train sample (frame 64) so the fit froze the 0.1 initial. Was 0.329012 (linear slope), which over-desaturated FL/IN on a Sony gen-4 body"
   },
   // 每種創意風格的基底：logit 空間色調曲線 y = sigmoid(k * logit(x) - shift)（0→0、1→1），
   // 擬合的 3x3 矩陣以列歸一投影維持中性灰；未覆蓋的風格保留初值。
@@ -35,18 +35,21 @@
     "sepia":     { "k": 0.913691, "shift": 0.053316, "matrix": [1,0,0, 0,1,0, 0,0,1], "sepia": true }
   },
   // 對比 / 飽和逐格係數：零檔固定為 1，保持單調，單樣本檔位不擬合。
-  // 飽和 -3 例外：train 僅 frame 64 一張，擬合凍結初值 0.1（近灰）；此處以外推守衛 0.329012
-  // （延續擬合後 -2/-1 斜率：2*0.629012-0.929012）取代，推導見 calibration.satMinus3Guard。
+  // 飽和 -3 例外：train 僅 frame 64 一張，擬合凍結初值 0.1（近灰）；此處以外推守衛 0.425889
+  // （等比延續擬合後 -1→-2 的倍率：0.629012²/0.929012）取代，推導見 calibration.satMinus3Guard。
+  // 舊值 0.329012 為線性斜率外推，在 Sony 四代機實拍比對中讓 FL/IN 去色過重；待色卡校正後再重擬。
   "contrastPerStep": { "-3": 0.66, "-2": 0.989275, "-1": 0.989416, "0": 1, "1": 1.158667, "2": 1.158856, "3": 1.159611 },
-  "saturationPerStep": { "-3": 0.329012, "-2": 0.629012, "-1": 0.929012, "0": 1, "1": 1.232604, "2": 1.358308, "3": 1.358883 },
+  "saturationPerStep": { "-3": 0.425889, "-2": 0.629012, "-1": 0.929012, "0": 1, "1": 1.232604, "2": 1.358308, "3": 1.358883 },
   // 白平衡微調：每格 mired / CC 偏移，Kelvin 樣張不參與擬合。
   "amberBlueMiredPerStep": 5.90843,
   "greenMagentaCcPerStep": 3.645058,
   // 第一版實作的照片效果（計畫書 7.3）；其餘讀入但以 off 算圖並提示。
   "supportedEffects": ["off", "retro-photo", "soft-high-key", "rough-mono"],
+  // soft-high-key lift：原 0.18 與 SH 配方的 +1.0 EV 疊加後整張泛白（L* 5% 分位 56，實拍 33）；
+  // 0.045 為保留 +1.0 EV 與 contrastScale 0.7，以 Sony 四代機 ST→SH 實拍亮度分位的最大誤差最小化所得。
   "effects": {
     "retro-photo":   { "desaturate": 0.45, "warmShift": 0.08, "fadeBlack": 0.06 },
-    "soft-high-key": { "lift": 0.18, "contrastScale": 0.7, "tints": { "blue": [0.94, 0.97, 1.05], "pink": [1.05, 0.95, 1.0], "green": [0.95, 1.04, 0.95] } },
+    "soft-high-key": { "lift": 0.045, "contrastScale": 0.7, "tints": { "blue": [0.94, 0.97, 1.05], "pink": [1.05, 0.95, 1.0], "green": [0.95, 1.04, 0.95] } },
     "rough-mono":    { "contrastScale": 1.3, "grainBoost": 0.2, "weights": [0.299, 0.587, 0.114] }
   },
   // DRO 各級相對於 auto 的暗部提升 / 亮部壓縮（初始值，待校正）。
