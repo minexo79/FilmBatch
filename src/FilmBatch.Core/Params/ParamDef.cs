@@ -1,6 +1,13 @@
+using FilmBatch.Core.Curves;
+using FilmBatch.Core.Masks;
+
 namespace FilmBatch.Core.Params;
 
-public enum ParamKind { Float, Int, Bool, Choice, Path, Seed }
+/// <summary>
+/// 參數型別。<see cref="ParamKind.Curve"/> 與 <see cref="ParamKind.MaskStack"/> 的值是正規化的文字
+/// （見 <see cref="ToneCurve.Serialize"/>、<see cref="MaskStackCodec.Serialize"/>），內容相同 ⇔ 字串相同。
+/// </summary>
+public enum ParamKind { Float, Int, Bool, Choice, Path, Seed, Curve, MaskStack }
 
 /// <summary>位置類參數的座標軸，用於「貼上時鏡像位置」。</summary>
 public enum PositionAxis { None, X, Y }
@@ -57,12 +64,22 @@ public sealed record ParamDef
     public static ParamDef Seed(string key = "seed", string label = "種子") =>
         new() { Key = key, Label = label, Kind = ParamKind.Seed, Default = 0.0, Min = 0, Max = 9999 };
 
+    /// <summary>色調曲線（文字值 "x,y;x,y"，預設恆等）。</summary>
+    public static ParamDef Curve(string key, string label) =>
+        new() { Key = key, Label = label, Kind = ParamKind.Curve, Default = ToneCurve.IdentityText };
+
+    /// <summary>遮罩堆疊（文字值為 <see cref="MaskStackCodec"/> 的 JSON，預設 <c>""</c> = 沒有遮罩）。</summary>
+    public static ParamDef MaskStack(string key, string label) =>
+        new() { Key = key, Label = label, Kind = ParamKind.MaskStack, Default = "" };
+
     /// <summary>把值限制在合法範圍。</summary>
     public ParamValue Coerce(ParamValue v) => Kind switch
     {
         ParamKind.Bool => ParamValue.Of(v.AsBool),
         ParamKind.Choice => Choices.Any(c => c.Key == v.AsText) ? ParamValue.Of(v.AsText) : Default,
         ParamKind.Path => ParamValue.Of(v.AsText),
+        ParamKind.Curve => ToneCurve.TryParse(v.AsText, out var curve) ? ParamValue.Of(curve.Serialize()) : Default,
+        ParamKind.MaskStack => MaskStackCodec.TryParse(v.AsText, out var masks) ? ParamValue.Of(MaskStackCodec.Serialize(masks)) : Default,
         ParamKind.Int or ParamKind.Seed => ParamValue.Of(Math.Round(Math.Clamp(v.AsNumber, Min, Max))),
         _ => ParamValue.Of(Math.Clamp(v.AsNumber, Min, Max)),
     };

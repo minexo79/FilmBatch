@@ -323,6 +323,8 @@ Clear overrides: use the new preset entirely.</value></data>
   <data name="Choice.crop.aspect.16x9" xml:space="preserve"><value>16:9</value></data>
   <data name="Choice.crop.aspect.6x7" xml:space="preserve"><value>6:7</value></data>
   <data name="Choice.crop.aspect.xpan" xml:space="preserve"><value>XPan 65:24</value></data>
+  <data name="Module.local" xml:space="preserve"><value>Local Adjustments</value></data>
+  <data name="Param.local.masks" xml:space="preserve"><value>Masks</value></data>
   <data name="Param.enabled" xml:space="preserve"><value>Enabled</value></data>
   <data name="Param.amount" xml:space="preserve"><value>Amount</value></data>
   <data name="Param.angle" xml:space="preserve"><value>Angle</value></data>

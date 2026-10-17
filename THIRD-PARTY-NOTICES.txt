@@ -18,3 +18,9 @@ RawTherapee Film Simulation Collection（2015-09-20 版，底片 LUT） CC BY-SA
   這些 LUT 檔依 CC BY-SA 4.0 散布；詳見 src/FilmBatch.Core/Film/Looks/LICENSE.txt 與 docs/film-looks.md。
   商標聲明：底片名稱（Kodak、Fuji、Agfa、Ilford、Lomography、Polaroid 等）為各公司商標，僅用於說明
   LUT 意圖模擬的底片，FilmBatch 與上述商標所有者無任何關係，亦未獲其背書。
+LightCraft                  Apache-2.0   https://github.com/storytold/lightcraft
+  只參考作法與公式，未複製原始碼。移植的公式與常數：顏色範圍遮罩的容許距離（0.015 + 0.06·refine）與
+  L 權重 ¼ 的 OkLab 距離（crates/pipeline/src/masks.rs 的 color_range_tolerance）；筆刷 dab 間距（¼ 半徑）
+  與筆觸累加方式（crates/pipeline/src/masks.rs、crates/gpu/src/wgsl/mask.wgsl）。
+  見 src/FilmBatch.Engine/Rendering/MaskMath.cs、BrushDabs.cs 的檔頭註解。授權全文：
+  https://www.apache.org/licenses/LICENSE-2.0
