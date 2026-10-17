@@ -38,7 +38,7 @@ fn is_finite(v: f32) -> bool {
 }
 
 // rounding_mask 由 CPU 固定傳 0，但編譯時未知；整數運算保留 f32 捨入點，
-// 防止 Metal fast-math 把乘加／LUT 座標重新結合。不可改成編譯期常數。
+// 防止編譯器融合乘加或重新結合（Metal fast-math、D3D12 mad 等）。不可改成編譯期常數。
 fn rounded(v: f32) -> f32 {
     return bitcast<f32>(bitcast<u32>(v) ^ p.band.rounding_mask);
 }
@@ -47,16 +47,38 @@ fn rounded3(v: vec3f) -> vec3f {
     return bitcast<vec3f>(bitcast<vec3u>(v) ^ vec3u(p.band.rounding_mask));
 }
 
+// WGSL 規格允許 fma 展開成「乘法捨入後再加法」（D3D12 的 mad 也可能未融合），
+// 不能用來取得精確餘差；改以 Veltkamp 分割與 Dekker 乘積，只依賴正確捨入的加、減、乘。
+fn split_f32(a: f32) -> vec2f {
+    let scaled = rounded(4097.0 * a);
+    let high = rounded(scaled - rounded(scaled - a));
+    return vec2f(high, rounded(a - high));
+}
+
+// a × b = product + 回傳值（product 為 a × b 的 f32 捨入值；無溢位／下溢時精確）。
+fn product_error(a: f32, b: f32, product: f32) -> f32 {
+    let x = split_f32(a);
+    let y = split_f32(b);
+    let residual = rounded(rounded(x.x * y.x) - product);
+    return rounded(rounded(rounded(residual + rounded(x.x * y.y)) + rounded(x.y * y.x)) + rounded(x.y * y.y));
+}
+
 fn dot3_ordered(a: vec3f, b: vec3f) -> f32 {
     let product = rounded3(a * b);
     return rounded(rounded(product.x + product.y) + product.z);
 }
 
+// f32 除法依規格可有 2.5 ULP 誤差；以精確餘差修正成 CPU 的正確捨入商。
 fn divide_rounded(numerator: f32, denominator: f32) -> f32 {
-    let q = rounded(numerator / denominator);
-    let remainder = fma(-q, denominator, numerator);
-    return rounded(fma(remainder, 1.0 / denominator, q));
+    let quotient = rounded(numerator / denominator);
+    let product = rounded(quotient * denominator);
+    let remainder = rounded(rounded(numerator - product) - product_error(quotient, denominator, product));
+    return rounded(quotient + rounded(remainder / denominator));
 }
+
+// 2/ln(2) 拆成 f32 high 與餘差 low。
+const LOG2_SCALE_HIGH: f32 = 2.885390043258667;
+const LOG2_SCALE_LOW: f32 = 3.851925978e-8;
 
 // mantissa 收斂到 [sqrt(0.5), sqrt(2)]，以 2*atanh(t) 級數取得 LUT 用的 log2。
 // 原生 log2 的容許誤差在高光色域壓縮後會放大，因此不直接用於此座標。
@@ -74,30 +96,38 @@ fn log2_lut(x: f32) -> f32 {
         m = m * 0.5;
         exponent = exponent + 1.0;
     }
+    // t + t_low = (m - 1) / (m + 1)：保留分母捨入與除法餘差。
     let numerator = rounded(m - 1.0);
     let denominator = rounded(m + 1.0);
     let denominator_low = rounded(m - rounded(denominator - 1.0));
     let t = rounded(numerator / denominator);
-    let remainder = rounded(fma(-t, denominator, numerator));
+    let product = rounded(t * denominator);
+    let remainder = rounded(rounded(numerator - product) - product_error(t, denominator, product));
     let t_low = rounded(rounded(remainder - rounded(t * denominator_low)) / denominator);
-    let tt = t * t;
-    let correction = tt * (1.0 / 3.0 + tt * (1.0 / 5.0
-        + tt * (1.0 / 7.0 + tt * (1.0 / 9.0 + tt / 11.0))));
-    let series = rounded(fma(t, correction, t));
-    let series_low = rounded(rounded(fma(t, correction, rounded(t - series)))
-        + rounded(t_low / rounded(1.0 - tt)));
-    // 以 high/low 保留級數與 2/ln(2) 的捨入餘差，避免 EV 落到相鄰色碼。
-    let high = rounded(fma(series, 2.885390043258667, exponent));
-    // 每項餘差先捨入，避免 fast-math 合併 high/low 係數而消去補償。
-    let low = rounded(rounded(rounded(fma(series, 2.885390043258667, rounded(exponent - high)))
-        + rounded(series * 3.851925978e-8)) + rounded(series_low * 2.885390043258667));
+    // atanh(t) = t + t × correction；t_low 以導數 1 / (1 - t²) 補入。
+    let tt = rounded(t * t);
+    var correction = rounded(tt / 11.0);
+    correction = rounded(tt * rounded(1.0 / 9.0 + correction));
+    correction = rounded(tt * rounded(1.0 / 7.0 + correction));
+    correction = rounded(tt * rounded(1.0 / 5.0 + correction));
+    correction = rounded(tt * rounded(1.0 / 3.0 + correction));
+    let tail = rounded(t * correction);
+    let series = rounded(t + tail);
+    let series_low = rounded(rounded(rounded(t - series) + tail) + rounded(t_low / rounded(1.0 - tt)));
+    // log2(x) = exponent + (series + series_low) × 2/ln(2)；high/low 保留每次乘、加的捨入餘差，
+    // 避免 EV 落到相鄰 f32 而在高光色域壓縮後放大成多個色碼。
+    let scaled = rounded(series * LOG2_SCALE_HIGH);
+    let high = rounded(exponent + scaled);
+    let low = rounded(rounded(rounded(rounded(scaled - rounded(high - exponent))
+        + product_error(series, LOG2_SCALE_HIGH, scaled))
+        + rounded(series * LOG2_SCALE_LOW)) + rounded(series_low * LOG2_SCALE_HIGH));
     return rounded(high + low);
 }
 
 fn lut_position(ev: f32) -> f32 {
     let shifted = rounded(ev - LUT_MIN_EV);
     let unit = divide_rounded(shifted, LUT_MAX_EV - LUT_MIN_EV);
-    return clamp(unit, 0.0, 1.0) * f32(LUT_COUNT - 1u);
+    return rounded(clamp(unit, 0.0, 1.0) * f32(LUT_COUNT - 1u));
 }
 
 fn tone_apply(y: f32) -> f32 {
@@ -117,7 +147,7 @@ fn tone_apply(y: f32) -> f32 {
 fn chroma_scale(o: f32) -> f32 {
     // ToneMap.ChromaScale：非有限回 1； clamp(o,0,1) 後線性內插
     if (!is_finite(o)) { return 1.0; }
-    let f = clamp(o, 0.0, 1.0) * f32(CHROMA_COUNT - 1u);
+    let f = rounded(clamp(o, 0.0, 1.0) * f32(CHROMA_COUNT - 1u));
     let i = min(u32(f), CHROMA_COUNT - 2u);
     let t = f - f32(i);
     let a = chroma[i];
@@ -129,11 +159,16 @@ fn chroma_scale(o: f32) -> f32 {
 fn linear_to_srgb1(v: f32) -> f32 {
     let x = max(v, 0.0);
     if (x <= 0.0031308) { return x * 12.92; }
-    return 1.055 * pow(x, 1.0 / 2.4) - 0.055;
+    return rounded(rounded(1.055 * pow(x, 1.0 / 2.4)) - 0.055);
 }
 
 fn clamp_f(v: f32, lo: f32, hi: f32) -> f32 {
     return min(max(v, lo), hi);
+}
+
+// CPU：(int)(e * 65535f + 0.5f)；乘、加各自捨入，不讓後端合併成 mad／fma。
+fn quantize16(e: f32) -> u32 {
+    return u32(floor(rounded(rounded(e * 65535.0) + 0.5)));
 }
 
 @compute @workgroup_size(16, 16)
@@ -179,7 +214,7 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
     let er = clamp_f(linear_to_srgb1(clamp_f(r.r, 0.0, 1.0)), 0.0, 1.0);
     let gg = clamp_f(linear_to_srgb1(clamp_f(r.g, 0.0, 1.0)), 0.0, 1.0);
     let bb = clamp_f(linear_to_srgb1(clamp_f(r.b, 0.0, 1.0)), 0.0, 1.0);
-    let q = vec4u(u32(floor(er * 65535.0 + 0.5)), u32(floor(gg * 65535.0 + 0.5)), u32(floor(bb * 65535.0 + 0.5)), 65535u);
+    let q = vec4u(quantize16(er), quantize16(gg), quantize16(bb), 65535u);
     let idx = (id.y * p.band.width + id.x) * 2u;
     dst[idx] = q.r | (q.g << 16u);
     dst[idx + 1u] = q.b | (q.a << 16u);
