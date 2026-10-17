@@ -16,6 +16,9 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
 
     public ObservableCollection<ModuleGroupViewModel> Groups { get; }
     public IReadOnlyList<ModuleSectionViewModel> Modules { get; }
+
+    /// <summary>film 模組頂部的底片風格縮圖格與色相帶編輯器。</summary>
+    public FilmLookViewModel FilmLook { get; }
     public ObservableCollection<PresetItemViewModel> PresetOptions { get; } = [];
 
     [ObservableProperty]
@@ -39,10 +42,11 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
     public InspectorViewModel(MainWindowViewModel main)
     {
         _main = main;
+        FilmLook = new FilmLookViewModel(main);
         Modules = ModuleCatalog.Modules
             .Select(s => new ModuleSectionViewModel(s, this,
                 m => { if (_main.Service is { } svc) svc.ResetModule(_main.Selection, m.Key); },
-                m => _main.CopyModuleOnly(m.Key)))
+                m => _main.CopyModuleOnly(m.Key), FilmLook))
             .ToList();
         foreach (var m in Modules) m.ExpandedChanged += OnModuleExpanded;
         Loc.OnCultureChanged(this, static vm =>
@@ -90,6 +94,7 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
             OverrideText = "";
             HasOverrides = false;
             _main.Preview.ShowControlPoint(null, null);
+            FilmLook.OnSettingsChanged();
             return;
         }
 
@@ -105,6 +110,7 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
         _loadingPreset = false;
 
         foreach (var m in Modules) m.Load(resolved, entry.Overrides, HideDisabledModules);
+        FilmLook.OnSettingsChanged();
         UpdateControlPoint(resolved);
     }
 

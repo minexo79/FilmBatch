@@ -275,4 +275,32 @@
   <data name="Gallery.Thumb.Failed" xml:space="preserve"><value>讀檔失敗</value></data>
   <data name="Gallery.Thumb.FailedReason" xml:space="preserve"><value>無法解碼：檔案損毀</value></data>
   <data name="Gallery.Chromatic" xml:space="preserve"><value>彩色</value></data>
+  <!-- 底片風格（FilmLookControl） -->
+  <data name="Film.Look" xml:space="preserve"><value>底片</value></data>
+  <data name="Film.HueCorrection" xml:space="preserve"><value>色相修正</value></data>
+  <data name="Film.HueCustom" xml:space="preserve"><value>自訂</value></data>
+  <data name="Film.HueBands" xml:space="preserve"><value>自訂色相</value></data>
+  <data name="Film.LookApplied" xml:space="preserve"><value>已套用底片「{0}」</value></data>
+  <data name="Film.HueApplied" xml:space="preserve"><value>已套用色相修正「{0}」</value></data>
+  <data name="Film.Group.kodak" xml:space="preserve"><value>柯達</value></data>
+  <data name="Film.Group.fuji" xml:space="preserve"><value>富士</value></data>
+  <data name="Film.Group.agfa-lomo" xml:space="preserve"><value>愛克發與 Lomo</value></data>
+  <data name="Film.Group.polaroid" xml:space="preserve"><value>拍立得</value></data>
+  <data name="Film.Group.bw" xml:space="preserve"><value>黑白</value></data>
+  <data name="Film.Group.creative" xml:space="preserve"><value>創意</value></data>
+  <data name="Film.Band.red" xml:space="preserve"><value>紅</value></data>
+  <data name="Film.Band.orange" xml:space="preserve"><value>橙</value></data>
+  <data name="Film.Band.yellow" xml:space="preserve"><value>黃</value></data>
+  <data name="Film.Band.green" xml:space="preserve"><value>綠</value></data>
+  <data name="Film.Band.aqua" xml:space="preserve"><value>青</value></data>
+  <data name="Film.Band.blue" xml:space="preserve"><value>藍</value></data>
+  <data name="Film.Band.purple" xml:space="preserve"><value>紫</value></data>
+  <data name="Film.Band.magenta" xml:space="preserve"><value>洋紅</value></data>
+  <data name="Film.Hue.none" xml:space="preserve"><value>無</value></data>
+  <data name="Film.Hue.warm-skin" xml:space="preserve"><value>暖膚色</value></data>
+  <data name="Film.Hue.clear-sky" xml:space="preserve"><value>清澈藍天</value></data>
+  <data name="Film.Hue.lush-green" xml:space="preserve"><value>青翠綠意</value></data>
+  <data name="Film.Hue.golden" xml:space="preserve"><value>金黃秋色</value></data>
+  <data name="Film.Hue.teal-orange" xml:space="preserve"><value>冷暖對比</value></data>
+  <data name="Film.Hue.muted" xml:space="preserve"><value>低彩度</value></data>
 </root>

@@ -24,7 +24,8 @@ public sealed partial class ModuleSectionViewModel : ObservableObject
     public void RefreshLabels()
     {
         OnPropertyChanged(nameof(Label));
-        foreach (var p in Params) p.RefreshLabels();
+        foreach (var p in _allParams) p.RefreshLabels();
+        FilmLook?.RefreshLabels();
     }
 
     [ObservableProperty]
@@ -41,16 +42,30 @@ public sealed partial class ModuleSectionViewModel : ObservableObject
     public event EventHandler? ExpandedChanged;
 
     public ModuleSectionViewModel(ModuleSchema schema, IParamHost host,
-        Action<ModuleSectionViewModel> onReset, Action<ModuleSectionViewModel> onCopyOnly)
+        Action<ModuleSectionViewModel> onReset, Action<ModuleSectionViewModel> onCopyOnly,
+        FilmLookViewModel? filmLook = null)
     {
         Schema = schema;
         _host = host;
         _onReset = onReset;
         _onCopyOnly = onCopyOnly;
-        Params = new(schema.Params
+        _allParams = [.. schema.Params
             .Where(p => p.Key != ModuleSchema.EnabledKey)
-            .Select(p => ParamViewModel.Create(schema.Key, p, host)));
+            .Select(p => ParamViewModel.Create(schema.Key, p, host))];
+        FilmLook = schema.Key == "film" ? filmLook : null;
+        // film 模組：底片（look）由縮圖格選、24 個色相參數由色相帶編輯器顯示，一般參數列只留其餘欄位。
+        Params = new(FilmLook is null ? _allParams : _allParams.Where(p => p.Def.Key != "look" && !IsHueParam(p)));
+        FilmLook?.Attach([.. _allParams.Where(IsHueParam)]);
     }
+
+    /// <summary>所有參數（含 film 模組由底片風格區塊顯示、不在 <see cref="Params"/> 中的參數）；載入與語言切換都以此為準。</summary>
+    private readonly List<ParamViewModel> _allParams;
+
+    /// <summary>film 模組頂部的底片風格選擇；其他模組為 null。</summary>
+    public FilmLookViewModel? FilmLook { get; }
+
+    // HueBands.Params() 的順序是色相帶 × (h, s, l)，篩選後第 b*3+c 個即對應參數（與 FilmLookViewModel.Attach 一致）。
+    private static bool IsHueParam(ParamViewModel p) => p.Def.Key.StartsWith("hue_", StringComparison.Ordinal);
 
     /// <summary>模組開關（標題列的勾選框）。開關與其他參數一樣可存進預設、可被覆寫。</summary>
     public bool IsModuleEnabled
@@ -63,7 +78,11 @@ public sealed partial class ModuleSectionViewModel : ObservableObject
         }
     }
 
-    partial void OnIsExpandedChanged(bool value) => ExpandedChanged?.Invoke(this, EventArgs.Empty);
+    partial void OnIsExpandedChanged(bool value)
+    {
+        FilmLook?.SetExpanded(value);
+        ExpandedChanged?.Invoke(this, EventArgs.Empty);
+    }
 
     [RelayCommand]
     private void ResetModule() => _onReset(this);
@@ -78,7 +97,7 @@ public sealed partial class ModuleSectionViewModel : ObservableObject
         try
         {
             IsModuleEnabled = resolved.Bool(Schema.EnabledFlatKey);
-            foreach (var p in Params)
+            foreach (var p in _allParams)
                 p.Load(resolved.TryGetValue(p.FlatKey, out var v) ? v : p.Def.Default, overrides.ContainsKey(p.FlatKey));
             OverrideCount = Schema.FlatKeys.Count(overrides.ContainsKey);
             IsVisible = !hideDisabled || IsModuleEnabled;

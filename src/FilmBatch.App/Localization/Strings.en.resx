@@ -285,7 +285,7 @@ Clear overrides: use the new preset entirely.</value></data>
   <data name="Module.vignette" xml:space="preserve"><value>Vignette</value></data>
   <data name="Module.halation" xml:space="preserve"><value>Halation</value></data>
   <data name="Module.light_leak" xml:space="preserve"><value>Light Leak</value></data>
-  <data name="Module.film" xml:space="preserve"><value>Film Color</value></data>
+  <data name="Module.film" xml:space="preserve"><value>Film Look</value></data>
   <data name="Module.photo_plate" xml:space="preserve"><value>Historic Process</value></data>
   <data name="Module.tone" xml:space="preserve"><value>Split Toning</value></data>
   <data name="Module.detail" xml:space="preserve"><value>Clarity &amp; Sharpening</value></data>
@@ -420,4 +420,59 @@ Clear overrides: use the new preset entirely.</value></data>
   <data name="Choice.dirt_scratches.polarity.mixed" xml:space="preserve"><value>Mixed</value></data>
   <data name="Param.grain.roughness" xml:space="preserve"><value>Roughness</value></data>
   <data name="Param.grain.color" xml:space="preserve"><value>Color Grain</value></data>
+  <!-- Film look (FilmLookControl) -->
+  <data name="Film.Look" xml:space="preserve"><value>Film</value></data>
+  <data name="Film.HueCorrection" xml:space="preserve"><value>Hue Correction</value></data>
+  <data name="Film.HueCustom" xml:space="preserve"><value>CUSTOM</value></data>
+  <data name="Film.HueBands" xml:space="preserve"><value>Custom Hue</value></data>
+  <data name="Film.LookApplied" xml:space="preserve"><value>Applied film "{0}"</value></data>
+  <data name="Film.HueApplied" xml:space="preserve"><value>Applied hue correction "{0}"</value></data>
+  <data name="Film.Group.kodak" xml:space="preserve"><value>Kodak</value></data>
+  <data name="Film.Group.fuji" xml:space="preserve"><value>Fuji</value></data>
+  <data name="Film.Group.agfa-lomo" xml:space="preserve"><value>Agfa &amp; Lomo</value></data>
+  <data name="Film.Group.polaroid" xml:space="preserve"><value>Polaroid</value></data>
+  <data name="Film.Group.bw" xml:space="preserve"><value>Black &amp; White</value></data>
+  <data name="Film.Group.creative" xml:space="preserve"><value>Creative</value></data>
+  <data name="Film.Band.red" xml:space="preserve"><value>Red</value></data>
+  <data name="Film.Band.orange" xml:space="preserve"><value>Orange</value></data>
+  <data name="Film.Band.yellow" xml:space="preserve"><value>Yellow</value></data>
+  <data name="Film.Band.green" xml:space="preserve"><value>Green</value></data>
+  <data name="Film.Band.aqua" xml:space="preserve"><value>Aqua</value></data>
+  <data name="Film.Band.blue" xml:space="preserve"><value>Blue</value></data>
+  <data name="Film.Band.purple" xml:space="preserve"><value>Purple</value></data>
+  <data name="Film.Band.magenta" xml:space="preserve"><value>Magenta</value></data>
+  <data name="Film.Hue.none" xml:space="preserve"><value>None</value></data>
+  <data name="Film.Hue.warm-skin" xml:space="preserve"><value>Warm Skin</value></data>
+  <data name="Film.Hue.clear-sky" xml:space="preserve"><value>Clear Sky</value></data>
+  <data name="Film.Hue.lush-green" xml:space="preserve"><value>Lush Green</value></data>
+  <data name="Film.Hue.golden" xml:space="preserve"><value>Golden</value></data>
+  <data name="Film.Hue.teal-orange" xml:space="preserve"><value>Teal &amp; Orange</value></data>
+  <data name="Film.Hue.muted" xml:space="preserve"><value>Muted</value></data>
+  <data name="Param.film.look" xml:space="preserve"><value>Film</value></data>
+  <data name="Param.film.warmth" xml:space="preserve"><value>Warmth</value></data>
+  <data name="Param.film.fade" xml:space="preserve"><value>Fade</value></data>
+  <data name="Param.film.hue_red_h" xml:space="preserve"><value>Red Hue</value></data>
+  <data name="Param.film.hue_red_s" xml:space="preserve"><value>Red Saturation</value></data>
+  <data name="Param.film.hue_red_l" xml:space="preserve"><value>Red Luminance</value></data>
+  <data name="Param.film.hue_orange_h" xml:space="preserve"><value>Orange Hue</value></data>
+  <data name="Param.film.hue_orange_s" xml:space="preserve"><value>Orange Saturation</value></data>
+  <data name="Param.film.hue_orange_l" xml:space="preserve"><value>Orange Luminance</value></data>
+  <data name="Param.film.hue_yellow_h" xml:space="preserve"><value>Yellow Hue</value></data>
+  <data name="Param.film.hue_yellow_s" xml:space="preserve"><value>Yellow Saturation</value></data>
+  <data name="Param.film.hue_yellow_l" xml:space="preserve"><value>Yellow Luminance</value></data>
+  <data name="Param.film.hue_green_h" xml:space="preserve"><value>Green Hue</value></data>
+  <data name="Param.film.hue_green_s" xml:space="preserve"><value>Green Saturation</value></data>
+  <data name="Param.film.hue_green_l" xml:space="preserve"><value>Green Luminance</value></data>
+  <data name="Param.film.hue_aqua_h" xml:space="preserve"><value>Aqua Hue</value></data>
+  <data name="Param.film.hue_aqua_s" xml:space="preserve"><value>Aqua Saturation</value></data>
+  <data name="Param.film.hue_aqua_l" xml:space="preserve"><value>Aqua Luminance</value></data>
+  <data name="Param.film.hue_blue_h" xml:space="preserve"><value>Blue Hue</value></data>
+  <data name="Param.film.hue_blue_s" xml:space="preserve"><value>Blue Saturation</value></data>
+  <data name="Param.film.hue_blue_l" xml:space="preserve"><value>Blue Luminance</value></data>
+  <data name="Param.film.hue_purple_h" xml:space="preserve"><value>Purple Hue</value></data>
+  <data name="Param.film.hue_purple_s" xml:space="preserve"><value>Purple Saturation</value></data>
+  <data name="Param.film.hue_purple_l" xml:space="preserve"><value>Purple Luminance</value></data>
+  <data name="Param.film.hue_magenta_h" xml:space="preserve"><value>Magenta Hue</value></data>
+  <data name="Param.film.hue_magenta_s" xml:space="preserve"><value>Magenta Saturation</value></data>
+  <data name="Param.film.hue_magenta_l" xml:space="preserve"><value>Magenta Luminance</value></data>
 </root>
