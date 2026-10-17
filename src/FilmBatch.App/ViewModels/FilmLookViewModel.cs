@@ -43,7 +43,7 @@ public sealed partial class HueBandViewModel(int index, IBrush swatch, ParamView
     public void RefreshLabel() => OnPropertyChanged(nameof(Label));
 }
 
-/// <summary>film 模組頂部：Nik 式底片縮圖格、色相修正縮圖格與自訂色相帶編輯器（docs/film-looks.md）。</summary>
+/// <summary>film 模組頂部：底片縮圖格、色相修正縮圖格與自訂色相帶編輯器（docs/film-looks.md）。</summary>
 public sealed partial class FilmLookViewModel : ObservableObject
 {
     // 色塊顏色只是辨識用的示意色（各色相帶中心附近），與主題無關。

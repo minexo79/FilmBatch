@@ -219,7 +219,7 @@ flowchart LR
 
 ### 4.5 Core．底片風格（Film）
 
-**職責**：Nik 式底片風格的資料：36 卷內附底片（RawTherapee Film Simulation Collection 的 Hald CLUT 轉成的 3D LUT，CC BY-SA 4.0）、八色相帶定義與內建色相修正預設，以及舊參數的相容處理。演算法、來源與授權見 [film-looks.md](film-looks.md)。
+**職責**：底片顏色模擬的資料：36 卷內附底片（RawTherapee Film Simulation Collection 的 Hald CLUT 轉成的 3D LUT，CC BY-SA 4.0）、八色相帶定義與內建色相修正預設，以及舊參數的相容處理。演算法、來源與授權見 [film-looks.md](film-looks.md)。
 
 | 型別 / 檔案 | 說明 |
 |---|---|

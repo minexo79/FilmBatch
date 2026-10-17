@@ -3,7 +3,7 @@ using FilmBatch.App.ViewModels;
 
 namespace FilmBatch.App.Tests;
 
-/// <summary>film 模組頂部的 Nik 式底片縮圖格、色相修正縮圖格與自訂色相帶編輯器。</summary>
+/// <summary>film 模組頂部的 底片縮圖格、色相修正縮圖格與自訂色相帶編輯器。</summary>
 public class FilmLookViewModelTests
 {
     [AvaloniaFact]

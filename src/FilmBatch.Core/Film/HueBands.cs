@@ -4,7 +4,7 @@ using static FilmBatch.Core.Params.ParamDef;
 namespace FilmBatch.Core.Film;
 
 /// <summary>
-/// Nik 式分色相修正：OKLCh 色相環上的八個色相帶，各有色相／飽和／明度三個 −100–100 的參數。
+/// 分色相修正：OKLCh 色相環上的八個色相帶，各有色相／飽和／明度三個 −100–100 的參數。
 /// 中心角度與 WGSL film/look.wgsl 的 CENTERS 必須相同。
 /// </summary>
 public static class HueBands
@@ -29,7 +29,7 @@ public static class HueBands
         });
 }
 
-/// <summary>內建色相修正（Nik 式一鍵套用）；Values 只列非零欄位，其餘為 0。</summary>
+/// <summary>內建色相修正（一鍵套用）；Values 只列非零欄位，其餘為 0。</summary>
 public sealed record HuePreset(string Key, string Name, IReadOnlyDictionary<string, double> Values)
 {
     public Settings ToSettings() => new(HueBands.FlatKeys.Select(key =>

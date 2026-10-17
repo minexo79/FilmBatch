@@ -3,7 +3,7 @@ using System.Collections.Frozen;
 namespace FilmBatch.Core.Params;
 
 /// <summary>
-/// 已移除的參數（Recipe Lab 底片配方，2026-10 由 Nik 式底片風格取代）。
+/// 已移除的參數（Recipe Lab 底片配方，2026-10 由 底片顏色模擬取代）。
 /// 讀取舊專案／預設時靜默丟棄，讓舊檔仍能開啟；寫入時自然不會再出現。
 /// </summary>
 public static class RetiredParams

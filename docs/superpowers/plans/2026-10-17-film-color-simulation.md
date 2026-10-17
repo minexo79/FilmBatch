@@ -1,17 +1,17 @@
-# Nik 式底片風格（Hald CLUT ＋ 分色相修正）實作計畫
+# 底片顏色模擬（Hald CLUT ＋ 分色相修正）實作計畫
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 以「Nik Collection Film Type」式的底片風格取代現有 Recipe Lab／Sony 創意風格的 `film` 模組：選一卷底片（3D LUT）、調效果比例／暖色／褪色，再加上 Nik 式的簡單分色相修正（內建預設＋使用者自訂），並以目前照片算出的縮圖格狀選單挑選。
+**Goal:** 以底片顏色模擬取代現有 Recipe Lab／Sony 創意風格的 `film` 模組：選一卷底片（3D LUT）、調效果比例／暖色／褪色，再加上簡單的分色相修正（內建預設＋使用者自訂），並以目前照片算出的縮圖格狀選單挑選。
 
 **Architecture:** 底片色彩改為一個逐像素 pass：線性光 → sRGB → 33³ 3D LUT（四面體內插）→ 線性 → OKLCh 八色相帶修正 → 暖色 → 褪色 → 與原圖依效果比例混合。LUT 由 RawTherapee Film Simulation Collection（CC BY-SA 4.0）的 Hald CLUT 離線轉成 `.fblut` 二進位檔，嵌入 Core。CPU（`CpuPipeline`）與 GPU（WGSL）兩份實作數學一致。舊的 Recipe Lab 配方、Sony 係數、校正工具、配方匯入匯出與相關 UI 全部移除，舊專案／預設裡的舊 `film.*` 欄位在讀取時靜默丟棄。
 
 **Tech Stack:** .NET 10、Avalonia、CommunityToolkit.Mvvm、WebGPUSharp（WGSL compute）、Magick.NET（僅 LUT 轉檔工具）、xUnit v3。
 
 **Spec:** 本對話中與使用者確認的決策（記錄於 2026-10-17）：
-- 只要 Nik 式風格化調色（Hald CLUT ＋ 分色相微調），不做光譜／物理底片模型。
+- 只要風格化調色（Hald CLUT ＋ 分色相微調），不做光譜／物理底片模型。
 - 接受內附 CC BY-SA 4.0 的 LUT：在 `THIRD-PARTY-NOTICES.txt` 標示出處，LUT 檔沿用 CC BY-SA 4.0。
-- 色相修正：類似 Nik 的簡單色相修正（內建預設），另留「自訂」讓使用者自己調。
+- 色相修正：簡單的色相修正（內建預設），另留「自訂」讓使用者自己調。
 - 預覽：縮圖格狀選單，以**目前照片**的小縮圖顯示每種底片／色相修正的效果，點選即套用。
 - 新模組**直接取代**舊的 Recipe Lab 模組。
 
@@ -816,7 +816,7 @@ using System.Collections.Frozen;
 namespace FilmBatch.Core.Params;
 
 /// <summary>
-/// 已移除的參數（Recipe Lab 底片配方，2026-10 由 Nik 式底片風格取代）。
+/// 已移除的參數（Recipe Lab 底片配方，2026-10 由 底片顏色模擬取代）。
 /// 讀取舊專案／預設時靜默丟棄，讓舊檔仍能開啟；寫入時自然不會再出現。
 /// </summary>
 public static class RetiredParams
@@ -862,7 +862,7 @@ using static FilmBatch.Core.Params.ParamDef;
 namespace FilmBatch.Core.Film;
 
 /// <summary>
-/// Nik 式分色相修正：OKLCh 色相環上的八個色相帶，各有色相／飽和／明度三個 −100–100 的參數。
+/// 分色相修正：OKLCh 色相環上的八個色相帶，各有色相／飽和／明度三個 −100–100 的參數。
 /// 中心角度與 WGSL film/look.wgsl 的 CENTERS 必須相同。
 /// </summary>
 public static class HueBands
@@ -887,7 +887,7 @@ public static class HueBands
         });
 }
 
-/// <summary>內建色相修正（Nik 式一鍵套用）；Values 只列非零欄位，其餘為 0。</summary>
+/// <summary>內建色相修正（一鍵套用）；Values 只列非零欄位，其餘為 0。</summary>
 public sealed record HuePreset(string Key, string Name, IReadOnlyDictionary<string, double> Values)
 {
     public Settings ToSettings() => new(HueBands.FlatKeys.Select(key =>
@@ -922,7 +922,7 @@ public static class HuePresets
 - [ ] **Step 7: 替換 `ModuleCatalog.cs` 的 film 模組**（整段 `new("film", "底片色彩", …)` 換成）
 
 ```csharp
-        // 底片風格：Nik 式底片色彩（RawTherapee Film Simulation Hald CLUT）＋ 八色相帶修正（docs/film-looks.md）。
+        // 底片風格：底片顏色模擬（RawTherapee Film Simulation Hald CLUT）＋ 八色相帶修正（docs/film-looks.md）。
         new("film", "底片風格", ModuleGroup.Film, PasteCategory.Color,
         [
             Bool(ModuleSchema.EnabledKey, "啟用"),
@@ -956,7 +956,7 @@ Expected: PASS。再跑 `dotnet build`：舊 `ModuleParams` 讀的是已不存�
 
 ```bash
 git add src/FilmBatch.Core tests/FilmBatch.Core.Tests/RetiredParamsTests.cs tests/FilmBatch.Core.Tests/FilmLookTests.cs
-git commit -m "Replace film schema with Nik-style look, warmth, fade and hue bands; drop retired keys on load"
+git commit -m "Replace film schema with film color look, warmth, fade and hue bands; drop retired keys on load"
 ```
 
 ---
@@ -1729,7 +1729,7 @@ public sealed class HueBandViewModel(int index, string label, string swatch, Par
     public ParamViewModel Lightness { get; } = lightness;
 }
 
-/// <summary>film 模組頂部：Nik 式底片縮圖格、色相修正縮圖格與自訂色相帶編輯器。</summary>
+/// <summary>film 模組頂部：底片縮圖格、色相修正縮圖格與自訂色相帶編輯器。</summary>
 public sealed partial class FilmLookViewModel : ObservableObject
 {
     private static readonly string[] Swatches = ["#E04848", "#F08A3C", "#E8CF3A", "#4CB050", "#3EC1C9", "#3F6FE0", "#8A55D6", "#D64FA8"];
@@ -1904,7 +1904,7 @@ public sealed partial class FilmLookViewModel : ObservableObject
              xmlns:l="using:FilmBatch.App.Localization"
              x:Class="FilmBatch.App.Controls.FilmLookControl"
              x:DataType="vm:FilmLookViewModel">
-  <!-- Nik 式底片風格：底片縮圖格 → 色相修正縮圖格 → 自訂色相帶（docs/film-looks.md） -->
+  <!-- 底片顏色模擬：底片縮圖格 → 色相修正縮圖格 → 自訂色相帶（docs/film-looks.md） -->
   <StackPanel Spacing="8">
     <Grid ColumnDefinitions="*,Auto" Classes="param-line">
       <TextBlock Classes="param-name" Text="{l:Tr Film.Look}" VerticalAlignment="Center" />
@@ -2078,7 +2078,7 @@ Expected: 全部 PASS（含 `FilmLookViewModelTests`、`LocalizationTests`、`Th
 
 ```bash
 git add -A src/FilmBatch.App tests/FilmBatch.App.Tests
-git commit -m "Add Nik-style film look thumbnail grid and hue band editor"
+git commit -m "Add film color simulation thumbnail grid and hue band editor"
 ```
 
 ---
@@ -2090,7 +2090,7 @@ git commit -m "Add Nik-style film look thumbnail grid and hue band editor"
 - Modify: `THIRD-PARTY-NOTICES.txt`、`docs/architecture.md`（4.5 節、名詞速查、處理順序表、修改食譜、測試對照、資料檔位置）、`README.md`（若提到 Recipe Lab）
 
 - [ ] **Step 1: 撰寫 `docs/film-looks.md`**，章節：
-  1. 概念：對應 Nik Film Type（底片 = LUT、效果比例 = Strength、暖色 = Warmth、褪色 = Fade、色相修正）。
+  1. 概念：對應參數（底片 = LUT、效果比例 = Strength、暖色 = Warmth、褪色 = Fade、色相修正）。
   2. 來源與授權：HaldCLUT.zip 版本、大小、CC BY-SA 4.0、作者、商標聲明；`src/FilmBatch.Core/Film/Looks/LICENSE.txt`。
   3. 演算法：完整處理順序（與 Global Constraints 的常數相同）、`.fblut` 格式、紋理排列、四面體內插。
   4. 色相帶：八個中心角、權重（相鄰中心間線性、總和為 1）、色度閘門、內建預設表。
@@ -2116,13 +2116,13 @@ Expected: 建置成功、全部測試 PASS（GPU 測試在無 GPU 環境為 Skip
 
 ```bash
 git add docs THIRD-PARTY-NOTICES.txt README.md
-git commit -m "Document Nik-style film looks and RawTherapee LUT attribution"
+git commit -m "Document film color simulation and RawTherapee LUT attribution"
 ```
 
 ---
 
 ## 自我檢查紀錄
 
-- **規格覆蓋**：Nik 式風格化（Task 1、4、5）；CC BY-SA 內附與聲明（Task 2、8）；Nik 式色相修正＋自訂（Task 3 預設、Task 4/5 算圖、Task 7 編輯器）；縮圖格、以目前照片算（Task 7）；取代舊模組（Task 3 schema、Task 6 刪除、Task 7 UI）；JPG 與 RAW 都可用（同一 sRGB 管線，Task 8 文件說明限制）。
+- **規格覆蓋**：風格化（Task 1、4、5）；CC BY-SA 內附與聲明（Task 2、8）；色相修正＋自訂（Task 3 預設、Task 4/5 算圖、Task 7 編輯器）；縮圖格、以目前照片算（Task 7）；取代舊模組（Task 3 schema、Task 6 刪除、Task 7 UI）；JPG 與 RAW 都可用（同一 sRGB 管線，Task 8 文件說明限制）。
 - **型別一致**：`FilmLut.Sample/Resample/ToTextureRgba/FromHald`、`FilmLookLibrary.TryLut/DefaultKey/GroupsInOrder`、`HueBands.FlatKeys/CentersDegrees/ParamKey`、`HuePresets.All/Find`、`FilmLookUniforms.From/Band`、`FilmLookProcessing.Apply/Pixel/BandWeight`、`FilmLookViewModel.Attach/SetExpanded/OnSettingsChanged/RefreshSelection/RequestThumbnails`、`FilmLookThumbnails.Request/Invalidate/OnThumbnailReady/OnThumbnailFailed` 在各 Task 名稱一致。
 - **已知需實作者對照現有程式的點**（皆已在步驟中標出檢查指令）：`TestSupport` 測試工具 API、`Loc` 公開方法、`ParamViewModel` 設值 API、`ThemeSnapshotTests` 快照更新流程。

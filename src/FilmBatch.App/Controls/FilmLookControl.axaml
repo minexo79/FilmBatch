@@ -5,7 +5,7 @@
              xmlns:l="using:FilmBatch.App.Localization"
              x:Class="FilmBatch.App.Controls.FilmLookControl"
              x:DataType="vm:FilmLookViewModel">
-  <!-- Nik 式底片風格：底片縮圖格 → 色相修正縮圖格 → 自訂色相帶（docs/film-looks.md）。
+  <!-- 底片顏色模擬：底片縮圖格 → 色相修正縮圖格 → 自訂色相帶（docs/film-looks.md）。
        縮圖以焦點照片算出，只在 film 模組展開時算（FilmLookThumbnails）。 -->
   <UserControl.DataTemplates>
     <!-- 底片與色相修正共用的縮圖格內容：96×64 縮圖＋名稱 -->
