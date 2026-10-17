@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using FilmBatch.App.ViewModels.Dialogs;
+using FilmBatch.App.ViewModels.Tools;
 
 namespace FilmBatch.App.ViewModels;
 
@@ -65,23 +66,40 @@ public sealed partial class SidebarViewModel : ObservableObject
         set { if (value) Active = SidePanel.Export; }
     }
 
+    /// <summary>「裁切」分頁的裁切工具。</summary>
+    public CropToolViewModel CropTool { get; }
+
+    /// <summary>進入「裁切」分頁前的分頁（R 在裁切分頁時回到這裡）。</summary>
+    public SidePanel PreviousPanel { get; private set; } = SidePanel.Inspector;
+
     public SidebarViewModel(PresetLibraryViewModel presets, InspectorViewModel inspector, InspectorViewModel filmEffects,
-        ExportViewModel export, PreviewViewModel preview)
+        ExportViewModel export, PreviewViewModel preview, CropToolViewModel cropTool)
     {
         Presets = presets;
         Inspector = inspector;
         FilmEffects = filmEffects;
         Export = export;
         Preview = preview;
+        CropTool = cropTool;
         SyncModuleTabs(Active);
     }
 
-    partial void OnActiveChanged(SidePanel value)
+    partial void OnActiveChanged(SidePanel oldValue, SidePanel newValue)
     {
-        SyncModuleTabs(value);
+        // 離開「裁切」分頁時自動套用（與 Lightroom 相同）；進入時啟用裁切工具
+        if (oldValue == SidePanel.Crop && CropTool.IsActive) CropTool.Apply();
+        if (newValue == SidePanel.Crop)
+        {
+            if (oldValue != SidePanel.Crop) PreviousPanel = oldValue;
+            CropTool.Begin();
+        }
+        SyncModuleTabs(newValue);
         // 匯出的張數與預設清單取決於目前的選取與預設庫，切換進來時重新整理
-        if (value == SidePanel.Export) Export.Refresh();
+        if (newValue == SidePanel.Export) Export.Refresh();
     }
+
+    /// <summary>R：不在裁切分頁時進入；已在裁切分頁時套用並回到上一個分頁。</summary>
+    public void ToggleCrop() => Active = Active == SidePanel.Crop ? PreviousPanel : SidePanel.Crop;
 
     /// <summary>畫布控制點只採用顯示中分頁裡展開的模組；其他分頁不顯示控制點。</summary>
     private void SyncModuleTabs(SidePanel value)

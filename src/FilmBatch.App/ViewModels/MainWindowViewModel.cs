@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.Input;
 using FilmBatch.App.Localization;
 using FilmBatch.App.Services;
 using FilmBatch.App.ViewModels.Dialogs;
+using FilmBatch.App.ViewModels.Tools;
 using FilmBatch.Core;
 using FilmBatch.Core.Commands;
 using FilmBatch.Core.Params;
@@ -48,6 +49,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     public SidebarViewModel Sidebar { get; }
     public PreviewViewModel Preview { get; }
+
+    /// <summary>「裁切」分頁的裁切工具（只作用於焦點照片）。</summary>
+    public CropToolViewModel CropTool { get; }
+
+    /// <summary>焦點照片的最終參數（三層合併）；沒有照片時為系統預設。</summary>
+    public Settings FocusedResolved =>
+        Service is not null && FocusFile is not null ? Service.SettingsFor(FocusFile) : ModuleCatalog.Defaults;
     public ToastViewModel Toast { get; }
 
     public ProjectService? Service { get; private set; }
@@ -105,7 +113,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         Filmstrip = new FilmstripViewModel(this);
         Inspector = new InspectorViewModel(this, new HashSet<ModuleGroup> { ModuleGroup.Basic, ModuleGroup.Geometry, ModuleGroup.Optical });
         FilmEffects = new InspectorViewModel(this, new HashSet<ModuleGroup> { ModuleGroup.Film, ModuleGroup.Surface }, showsPhotoInfo: false);
-        Sidebar = new SidebarViewModel(Presets, Inspector, FilmEffects, new ExportViewModel(this), Preview);
+        CropTool = new CropToolViewModel(CommitCrop,
+            () => Preview.Source is { } s ? (s.Width, s.Height) : (0, 0),
+            () => Service is not null && FocusFile is not null && Preview.Source is not null ? Service.SettingsFor(FocusFile) : null);
+        CropTool.PropertyChanged += OnCropToolChanged;
+        Sidebar = new SidebarViewModel(Presets, Inspector, FilmEffects, new ExportViewModel(this), Preview, CropTool);
         Sidebar.Export.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(ExportViewModel.IsExporting))
@@ -217,9 +229,16 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     public void OnSelectionChanged(IReadOnlyList<string> selection, string? focus)
     {
-        if (FocusFile != (focus ?? selection.LastOrDefault())) Preview.Clear();
+        var newFocus = focus ?? selection.LastOrDefault();
+        if (FocusFile != newFocus)
+        {
+            // 換照片前把未套用的裁切寫回原本的焦點照片；新照片載入後再重新進入裁切工具
+            if (CropTool.IsActive) CropTool.Apply();
+            Preview.Clear();
+        }
         Selection = selection;
-        FocusFile = focus ?? selection.LastOrDefault();
+        FocusFile = newFocus;
+        CropTool.FocusedOnly = selection.Count > 1;
         Presets.Hover.OnFocusChanged();
         SelectionText = Service is null ? Loc.Get("Status.NoProject") : Loc.Format("Status.Selected", selection.Count);
         OnPropertyChanged(nameof(HasSelection));
@@ -246,6 +265,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             var source = await Images.GetPreviewAsync(service.Project.PathOf(file));
             if (_disposed || Service != service || file != FocusFile || generation != _previewLoadGeneration) return;
             Preview.SetOriginal(source);
+            if (Sidebar.IsCrop && !CropTool.IsActive) CropTool.Begin();
             RequestPreview();
         }
         catch (Exception ex)
@@ -261,8 +281,65 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     public void RequestPreview()
     {
         if (Service is null || FocusFile is null || Preview.Source is null) return;
-        Renderer.RequestPreview(FocusFile, Preview.Source, Service.SettingsFor(FocusFile));
+        var settings = Service.SettingsFor(FocusFile);
+        // 裁切工具啟用時暫停裁切，顯示全幅（保留 90° 旋轉與翻轉，裁切框畫在定向後的影像上）；不寫入照片設定
+        if (CropTool.IsActive) settings = settings.Overlay(FullFrame(CropTool.Working));
+        _previewOrientation = CropTool.IsActive ? (CropTool.Working.Quarter, CropTool.Working.FlipH, CropTool.Working.FlipV) : null;
+        // 原圖對比也套用同一個裁切 / 方向：只比較調整（與 Lightroom 相同）
+        Preview.SetCompareCrop(CropGeometry.FromSettings(settings));
+        Renderer.RequestPreview(FocusFile, Preview.Source, settings);
         Preview.IsBusy = true;
+    }
+
+    private (int Quarter, bool FlipH, bool FlipV)? _previewOrientation;
+    private bool _committingCrop;
+
+    /// <summary>全幅、不拉直，只保留方向（90° 旋轉、翻轉）；沒有方向變化時直接關閉裁切。</summary>
+    private static Settings FullFrame(CropParams c) => Core.Params.Settings.Empty
+        .With("crop.enabled", c.Quarter != 0 || c.FlipH || c.FlipV)
+        .With("crop.rect_cx", 0.5).With("crop.rect_cy", 0.5).With("crop.rect_w", 1.0).With("crop.rect_h", 1.0)
+        .With("crop.angle", 0.0).With("crop.quarter", (double)c.Quarter)
+        .With("crop.flip_h", c.FlipH).With("crop.flip_v", c.FlipV);
+
+    private void OnCropToolChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        switch (e.PropertyName)
+        {
+            case nameof(CropToolViewModel.IsActive):
+                Preview.ActiveTool = CropTool.IsActive ? CropTool.CanvasTool : null;
+                RequestPreview();
+                break;
+            // 拖曳裁切框只重畫畫布；只有方向改變（轉 90°、翻轉）才需要重算全幅預覽
+            case nameof(CropToolViewModel.Working) when CropTool.IsActive
+                && _previewOrientation != (CropTool.Working.Quarter, CropTool.Working.FlipH, CropTool.Working.FlipV):
+                RequestPreview();
+                break;
+        }
+    }
+
+    /// <summary>套用裁切：一筆復原紀錄，只寫入焦點照片（多選時以 toast 提示）。</summary>
+    private void CommitCrop(Settings values)
+    {
+        if (Service is null || FocusFile is null) return;
+        _committingCrop = true;
+        try
+        {
+            if (Service.SetValues([FocusFile], values, Loc.Get("Tool.Crop")) && Selection.Count > 1)
+                Toast.Show(Loc.Get("Toast.CropFocusedOnly"), canUndo: true);
+        }
+        finally { _committingCrop = false; }
+    }
+
+    /// <summary>R：進入裁切分頁；已在裁切分頁時套用並回到上一個分頁。</summary>
+    [RelayCommand]
+    private void ToggleCrop()
+    {
+        if (Sidebar.Active != SidePanel.Crop)
+        {
+            IsFullScreen = false;
+            PanelsHidden = false;
+        }
+        Sidebar.ToggleCrop();
     }
 
     public void RequestThumbnail(string file, SourceImage source)
@@ -277,6 +354,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         Filmstrip.UpdateMarkers(files);
         if (FocusFile is not null && files.Contains(FocusFile))
         {
+            // 裁切工具啟用中，照片在工具外被改變（復原、貼上、指定預設）：重新載入，放棄未套用的修改
+            if (CropTool.IsActive && !_committingCrop && Service is not null) CropTool.Reload(Service.SettingsFor(FocusFile));
             Presets.Hover.InvalidateForPhoto(FocusFile);
             RefreshModulePanels();
             RequestPreview();

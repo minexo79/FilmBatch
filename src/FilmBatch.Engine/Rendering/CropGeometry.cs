@@ -40,6 +40,20 @@ public readonly record struct CropTransform(int OutWidth, int OutHeight, Affine2
 /// </summary>
 public static class CropGeometry
 {
+    /// <summary>
+    /// 從設定讀出 <c>crop.*</c>（缺少的 key 用 schema 預設）。數值與 <see cref="ModuleParams"/> 一樣先轉成 float，
+    /// 讓預覽的「原圖對比」與算圖結果得到完全相同的輸出尺寸。
+    /// </summary>
+    public static CropParams FromSettings(FilmBatch.Core.Params.Settings s)
+    {
+        static double N(FilmBatch.Core.Params.Settings s, string k, float def) => s.ContainsKey(k) ? (float)s.Number(k) : def;
+        static bool B(FilmBatch.Core.Params.Settings s, string k) => s.ContainsKey(k) && s.Bool(k);
+        return new CropParams(B(s, "crop.enabled"),
+            N(s, "crop.rect_cx", 0.5f), N(s, "crop.rect_cy", 0.5f), N(s, "crop.rect_w", 1), N(s, "crop.rect_h", 1),
+            N(s, "crop.angle", 0), s.ContainsKey("crop.quarter") ? (int)Math.Round(s.Number("crop.quarter")) : 0,
+            B(s, "crop.flip_h"), B(s, "crop.flip_v"));
+    }
+
     public static CropTransform Compute(int srcW, int srcH, CropParams c)
     {
         if (!c.On) return new(srcW, srcH, Affine2.Identity, Affine2.Identity, srcW, srcH);

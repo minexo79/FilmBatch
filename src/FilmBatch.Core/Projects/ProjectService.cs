@@ -62,12 +62,19 @@ public sealed class ProjectService
         return Apply($"調整 {label}", fileNames, e => PhotoOperations.SetValue(e, key, value, BaseFor(e.PresetId)), mergeKey);
     }
 
-    /// <summary>一筆可復原的多欄位操作，例如套用一組色相修正預設。</summary>
-    public bool SetValues(IReadOnlyCollection<string> fileNames, Settings values, string description) =>
-        Apply(description, fileNames, entry => entry with
+    /// <summary>
+    /// 一筆可復原的多欄位操作，例如套用一組色相修正預設、裁切工具一次寫入所有 <c>crop.*</c>。
+    /// 每個值依 schema 夾限（與 <see cref="SetValue"/> 相同）；與基準相同的值移除覆寫。
+    /// </summary>
+    public bool SetValues(IReadOnlyCollection<string> fileNames, Settings values, string description)
+    {
+        var coerced = new Settings(values.Select(kv => KeyValuePair.Create(kv.Key,
+            (ModuleCatalog.Param(kv.Key) ?? throw new ArgumentException($"未知的參數：{kv.Key}")).Coerce(kv.Value))));
+        return Apply(description, fileNames, entry => entry with
         {
-            Overrides = PhotoOperations.Clean(entry.Overrides.Overlay(values), BaseFor(entry.PresetId)),
+            Overrides = PhotoOperations.Clean(entry.Overrides.Overlay(coerced), BaseFor(entry.PresetId)),
         });
+    }
 
     public bool ResetParam(IReadOnlyCollection<string> fileNames, string key) =>
         Apply($"重設 {ModuleCatalog.Param(key)?.Label ?? key}", fileNames, e => PhotoOperations.ResetParam(e, key));

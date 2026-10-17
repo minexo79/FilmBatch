@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using FilmBatch.Engine.Imaging;
+using FilmBatch.Engine.Rendering;
 
 namespace FilmBatch.App.Services;
 
@@ -122,6 +123,40 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
             dst[o + 2] = (byte)(s[i] >> 8);
             dst[o + 3] = 255;
         }
+        return dst;
+    }
+
+    /// <summary>
+    /// 套用裁切變換（旋轉 90°、翻轉、拉直、裁切）後轉成 BGRA8：預覽「原圖對比」用，讓原圖與效果的畫框一致。
+    /// 與算圖的 crop pass 相同的取樣位置（像素中心、雙線性、邊緣延伸），但直接在 sRGB 值上內插（只供對照顯示）。
+    /// </summary>
+    public static byte[] ToBgra8(SourceImage src, CropTransform t)
+    {
+        int w = t.OutWidth, h = t.OutHeight, sw = src.Width, sh = src.Height;
+        var dst = new byte[w * h * 4];
+        var s = src.Rgba16;
+        var m = t.OutToSource;
+        Parallel.For(0, h, y =>
+        {
+            for (var x = 0; x < w; x++)
+            {
+                var (sx, sy) = m.Apply(x + 0.5, y + 0.5);
+                var fx = Math.Clamp(sx - 0.5, 0, sw - 1);
+                var fy = Math.Clamp(sy - 0.5, 0, sh - 1);
+                var x0 = (int)fx; var y0 = (int)fy;
+                var x1 = Math.Min(x0 + 1, sw - 1); var y1 = Math.Min(y0 + 1, sh - 1);
+                var ax = fx - x0; var ay = fy - y0;
+                int i00 = (y0 * sw + x0) * 4, i10 = (y0 * sw + x1) * 4, i01 = (y1 * sw + x0) * 4, i11 = (y1 * sw + x1) * 4;
+                var o = (y * w + x) * 4;
+                for (var c = 0; c < 3; c++)
+                {
+                    var top = s[i00 + c] + (s[i10 + c] - s[i00 + c]) * ax;
+                    var bottom = s[i01 + c] + (s[i11 + c] - s[i01 + c]) * ax;
+                    dst[o + 2 - c] = (byte)((int)Math.Round(top + (bottom - top) * ay) >> 8);
+                }
+                dst[o + 3] = 255;
+            }
+        });
         return dst;
     }
 }
