@@ -64,6 +64,18 @@ M0 之後需要正式回答兩個問題：
 - 整合點為 `BatchExporter.ProcessOne` → `ImageLoader.LoadFull` 內部多載 → `RawSourceLoader.TryLoad`。直接影像載入與預覽仍使用 CPU；不新增全域 GPU、使用者設定或相依套件。
 - 每筆 `export_log.json` 的 `Renderer` 分別標示效果算圖與 RAW 收尾，例如 `Apple M3 · Metal + RAW GPU`、`… + RAW CPU（原因）`；純 CPU 算圖器維持原有 CPU 標示，混合批次不沿用前一張的狀態。
 
+### 裁切與底片管線整合（2026-10-18）
+
+合併提交 `703ff49` 將 `dev-cutandmask`（`de62003`）整合至 `feature/raw-port`；以 `03761e1` 為 RAW／CPU SIMD／Dawn 基準，採用以下邊界：
+
+- **來源與效果分開。**`raw` 設定在來源載入／顯影時生效；模組目錄依 `raw → crop → basic → …` 排列。RAW 顯示收尾完成後才旋轉／裁切，crop 仍是 CPU 與 WGSL 效果管線的第一步。不以固定模組數或陣列索引識別功能。
+- **尺寸與來源資訊一起保留。**`GpuSpikeRenderer.Render16` 以 `OutWidth`／`OutHeight` 包裝裁切後像素，同時保留 `FilePath`、`RawOptions`、`RawInfo` 與 `SemanticMasks`。後兩者仍描述原始 RAW 座標，不改寫成裁切座標。
+- **RAW 重載不取消裁切編輯。**預覽先用照片設定檢查是否需要重新顯影，再套用裁切工具的暫時全幅／方向設定與原圖比較；不把暫時預覽設定寫回照片。`EntriesChanged` 也會由 RAW／其他效果變更觸發，因此 `CropTool.Reload` 只在已保存的裁切幾何、啟用或比例設定改變時重置編輯；真正的裁切復原／貼上仍會重載。離開裁切分頁時才套用尚未提交的裁切。
+- **底片整套切換。**採用 dev 的 `FilmLookProcessing`、LUT schema／素材、CPU／WGSL 與介面，維持既有 RAW 收尾與 SIMD 算術；不恢復已移除的 Recipe Lab 命令、工具或 `RecipesFolder`。CLI 保留 `RawCommands`，專案保留 RAW JSON／ICC 嵌入資源及測試組件存取權。
+- **授權與文件跟隨實際內容。**保留 RAW 移植元件聲明與 RawTherapee LUT 的 CC BY-SA 歸屬；文件入口改指向 `film-looks.md`，不留下已移除的配方／校正文件連結。
+
+驗證同時涵蓋 RAW＋裁切／旋轉匯出、CPU／Metal 像素對齊、LUT 路徑、裁切後回到全幅的工作區重建，以及裁切編輯中的 RAW 重載。合併前的基準量測不作為合併後整體匯出效能的宣稱。
+
 ### 浮點精度
 
 大圖 smoke 曾在高光接近色域邊界時觀察到 6／4／3 個 16-bit 色碼的差異；擴大到五個隨機種子後，又找出 5-code 的青色高光輸入。四組輸入均保留於 `RawGpuDisplayTests.Gpu_SaturatedHighlightNearGamutBoundary_MatchesCpu`，未放寬 2-code 容差。
@@ -79,7 +91,7 @@ Metal 的乘加重結合與 LUT 座標捨入、原生 `log2` 容許誤差會在�
 - 代價：引入外部 codegen 工具鏈、C++ 產生器、多目標產物與額外建置步驟；排程需逐目標調校。本次不新增相依。
 - 重估觸發：CPU 在 pass fusion 後仍有可證實瓶頸，或需要同一排程同時產出跨平台 SIMD 與 GPU 版本且收益可量測時，再評估。
 
-## 本機 CPU 基準
+## 本機 CPU 基準（合併前 `03761e1`）
 
 Apple M3、.NET 10.0.13、Release、`DOTNET_TieredCompilation=0`。基準將原始純量 `CpuPipeline` 與修改版編入同一個拋棄式程式；影像 1600×1067、`Random(42)`，各暖機四次，交錯執行十二組，取中位數；輸出緩衝區重用，兩版工作區配置一致。
 
@@ -93,7 +105,7 @@ Apple M3、.NET 10.0.13、Release、`DOTNET_TieredCompilation=0`。基準將原�
 
 基本調整：曝光 0.7、色溫 30、色調 −20、亮度 10、對比 15、飽和度 20、亮部 −10、暗部 15、structure 20。色調分離：暗部色相 210／量 40、亮部色相 45／量 30、平衡 −15。清晰 30／銳化 25。這不是「全部模組開啟」基準，也沒有證明記憶體頻寬為瓶頸；數值不保證其他硬體的加速幅度。
 
-## 本機 RAW 收尾基準
+## 本機 RAW 收尾基準（合併前 `03761e1`）
 
 Apple M3／Metal、Release、`DOTNET_TieredCompilation=0`；1600×1067 線性 RGB，`rng = new Random(147)` 連續抽樣 `(float)rng.NextDouble() * 2.5f` 產生有限 HDR 值，前兩像素設為黑與 `1e-10f`；相機曲線／色度沿用 `RawGpuDisplayTests` 的合成 fixture。各暖機兩次，交錯量測六組，取中位數。以下為補償餘差屏障修正後的重新量測。
 
@@ -107,10 +119,11 @@ Apple M3／Metal、Release、`DOTNET_TieredCompilation=0`；1600×1067 線性 RG
 
 ## 驗證界線
 
-- `dotnet test FilmBatch.sln -c Release`：896 通過、313 略過、0 失敗；其中 Core 228、Raw 613、App 55 通過。外部 `FILMBATCH_RAW_SAMPLES`／`FILMBATCH_RAW_ORACLE` 未設定，相關語料／對照測試未執行。
-- RAW GPU 的 14 個案例在真實 GPU 上執行：預設／相機曲線、色度、高光與色域邊界、黑白與暗部 LUT 外插／上限、分帶尾端、取消、CPU 降級、DNG 匯出的像素／中繼資料／裝置紀錄。
-- `dotnet run build/CheckShaders.cs -- --naga <naga-30.0.1>`：33 個嵌入 WGSL 全數通過。
-- 實際 CLI 將生成的 257×129 DNG 分別以 `--backend Metal` 與 `--software` 匯出 PNG，像素最大差 1／65535，alpha、尺寸與相機中繼資料一致；Metal 紀錄 `RAW GPU`，無軟體 GPU 時明確顯示原因後以 CPU 成功匯出。
-- 強制 RAW 分帶預算不足時，CPU 降級像素與原 CPU 載入完全一致；故意損毀 WGSL 時，編譯錯誤直接傳播。
-- `DOTNET_EnableHWIntrinsic=0` 的 CPU smoke 仍與原純量版一致；Windows／Linux 的本次效能與 RAW GPU 實機路徑尚未量測。
-- 未宣稱所有平台／輸入逐位元一致，也未把 RAW 解碼、demosaic、外觀擬合說成已 GPU 化。
+- 合併後 `dotnet test FilmBatch.sln -c Release`：978 通過、313 略過、0 失敗；其中 Core 281、Raw 613、App 84 通過。外部 `FILMBATCH_RAW_SAMPLES`／`FILMBATCH_RAW_ORACLE` 未設定，相關語料／對照測試未執行。
+- RAW GPU 的 15 個案例在真實 GPU 上執行：預設／相機曲線、色度、高光與色域邊界、黑白與暗部 LUT 外插／上限、分帶尾端、取消、CPU 降級、全幅及裁切／旋轉 DNG 匯出的像素／中繼資料／裝置紀錄。
+- `dotnet run build/CheckShaders.cs -- --naga <naga-30.0.1>`：30 個嵌入 WGSL 全數通過，包含新裁切、LUT 及既有 RAW 收尾。
+- 實際 CLI 將生成的 256×128 DNG，以保存的 RAW／旋轉／裁切設定分別經 `--backend Metal` 與 `--software` 匯出 64×128 PNG，像素最大差 1／65535，alpha 與相機中繼資料一致；Metal 紀錄 `RAW GPU`，無軟體 GPU 時明確顯示原因後以 CPU 成功匯出。
+- 實際桌面 DNG 操作曾重現「切換 RAW 選項丟失未套用裁切」。`RawOptionChange_PreservesPendingCropUntilApplyAndUndo` 在修正前失敗、修正後通過；真實 Metal 視窗亦確認 RAW 重載保留編輯框、原圖比較維持旋轉後全幅，離開裁切分頁後才得到 96×256 預覽。
+- RAW＋裁切／旋轉、加 LUT，以及裁切後回到全幅的獨立 CPU／Metal smoke，最大差分別為 0／1／0 個 16-bit 色碼，alpha 完全一致；以 `DOTNET_EnableHWIntrinsic=0` 重跑仍得到相同結果。
+- 完整測試包含 RAW 分帶預算不足時的 CPU 降級；故意損毀 WGSL 並確認編譯錯誤傳播的證據來自合併前 `03761e1`。
+- Windows／Linux 的本次效能與 RAW GPU 實機路徑尚未量測；未宣稱所有平台／輸入逐位元一致，也未把 RAW 解碼、demosaic、外觀擬合說成已 GPU 化。
