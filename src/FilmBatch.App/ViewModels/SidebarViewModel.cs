@@ -9,9 +9,9 @@ public enum SidePanel { Presets, Inspector, Crop, FilmEffects, Export }
 
 /// <summary>
 /// 右側邊欄：外緣的圖示工具列切換五個分頁（Lightroom 式）：
-/// 預設庫｜照片資訊與模組｜裁切｜底片效果｜細部調整｜照片匯出。
+/// 預設庫｜照片基本參數｜裁切｜底片效果｜細部調整｜照片匯出。
 /// 各分頁的 ViewModel 常駐，切換時只改變顯示中的分頁，保留各自的捲動與輸入狀態。
-/// 「照片資訊與模組」與「底片效果」共用 <see cref="InspectorViewModel"/>，以模組群組區分。
+/// 「照片基本參數」與「底片效果」共用 <see cref="InspectorViewModel"/>，以模組群組區分。
 /// </summary>
 public sealed partial class SidebarViewModel : ObservableObject
 {

@@ -38,7 +38,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     public PresetLibraryViewModel Presets { get; }
     public FilmstripViewModel Filmstrip { get; }
-    /// <summary>「照片資訊與模組」分頁：照片資訊 + 基本調整、幾何、光學群組。</summary>
+    /// <summary>「照片基本參數」分頁：照片資訊 + 基本調整、幾何、光學群組。</summary>
     public InspectorViewModel Inspector { get; }
 
     /// <summary>「底片效果」分頁：底片、表面群組（含底片風格縮圖格）。</summary>
@@ -655,7 +655,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         RefreshModulePanels();
     }
 
-    /// <summary>重新載入兩個模組分頁（照片資訊與模組、底片效果）。</summary>
+    /// <summary>重新載入兩個模組分頁（照片基本參數、底片效果）。</summary>
     private void RefreshModulePanels()
     {
         Inspector.Refresh();

@@ -39,7 +39,7 @@
   <data name="Cmd.Language" xml:space="preserve"><value>Language</value></data>
   <data name="Panel.Presets" xml:space="preserve"><value>Presets</value></data>
   <data name="Panel.Preview" xml:space="preserve"><value>Preview</value></data>
-  <data name="Panel.Inspector" xml:space="preserve"><value>Photo &amp; Modules</value></data>
+  <data name="Panel.Inspector" xml:space="preserve"><value>Photo Basic Parameters</value></data>
   <data name="Panel.Filmstrip" xml:space="preserve"><value>Filmstrip</value></data>
   <data name="Panel.Export" xml:space="preserve"><value>Export</value></data>
   <data name="Panel.Crop" xml:space="preserve"><value>Crop</value></data>

@@ -9,7 +9,7 @@ using FilmBatch.App.ViewModels;
 namespace FilmBatch.App.Views;
 
 /// <summary>
-/// 停靠版面（計畫書 2.3）：中央預覽、右側邊欄（預設庫｜照片資訊與模組｜照片匯出，以分頁工具列切換）、下縮圖列。
+/// 停靠版面（計畫書 2.3）：中央預覽、右側邊欄（預設庫｜照片基本參數｜照片匯出，以分頁工具列切換）、下縮圖列。
 /// 面板只用 Dock 內建的 Tool / Document 型別（以 Id 識別），ViewModel 經 <see cref="Factory.ContextLocator"/> 指派，
 /// 因此 layout.json 只包含版面本身，可安全地序列化與還原。
 /// </summary>

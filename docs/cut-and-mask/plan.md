@@ -33,7 +33,7 @@
 |---|---|---|
 | **Phase 1** | 裁切 | 自由 / 固定比例裁切框、拉直（−45°～45°）、90° 旋轉、水平 / 垂直翻轉、三分線、自動限制在影像內（**先移回影像內，移不進去才縮小**）；匯出與縮圖反映裁切；側邊欄改為六個分頁，新增「裁切」分頁，並把底片與表面模組移到新的「底片效果」分頁（D8） |
 | **Phase 2** | 遮罩 | 最多 8 個遮罩圖層；每個圖層由最多 8 個形狀以「加 / 減 / 交集」組合；形狀類型：**顏色範圍（OkLab、可多點取樣、一個「精細度」滑桿）、線性漸層、筆刷、多邊形、圓形（橢圓）**；每個圖層可調**基本參數**（曝光、色溫、色調、亮度、對比、亮部、暗部、飽和度）與**曲線**；圖層不透明度、反轉、紅色疊色檢視；在獨立的「細部調整」分頁編輯 |
-| **Phase 3** | 細部曲線 | 全域 `curves` 模組（類似 LightCraft 的 Curve），在「照片資訊與模組」分頁的**基本調整群組**內，處理位置在**底片之前**：**參數式曲線**（亮部 / 亮調 / 暗調 / 陰影四個滑桿 + 三個分界點）＋ RGB 主曲線 + R / G / B 單色版點曲線、RGB / 明度兩種套用模式；完整曲線編輯器（直方圖底圖、精確數值、鍵盤微調、曲線範本） |
+| **Phase 3** | 細部曲線 | 全域 `curves` 模組（類似 LightCraft 的 Curve），在「照片基本參數」分頁的**基本調整群組**內，處理位置在**底片之前**：**參數式曲線**（亮部 / 亮調 / 暗調 / 陰影四個滑桿 + 三個分界點）＋ RGB 主曲線 + R / G / B 單色版點曲線、RGB / 明度兩種套用模式；完整曲線編輯器（直方圖底圖、精確數值、鍵盤微調、曲線範本） |
 
 > **依賴說明**：遮罩「裡面可調整曲線」需要曲線的資料型別、LUT 烘焙與編輯器。為了維持使用者指定的順序，Phase 2 的 **Task 2.1 先做「曲線核心」最小版**（資料型別、單調樣條、LUT、只有主曲線的編輯器），Phase 3 在同一套元件上擴充成完整的細部曲線。
 
@@ -160,18 +160,18 @@ CPU 參考實作用同一份數學（dab 展開共用 `BrushDabs.Expand`），�
 
 ### D8. 側邊欄分頁
 
-側邊欄由目前的三個分頁（預設庫｜照片資訊與模組｜照片匯出）改為六個，由上到下：
+側邊欄由目前的三個分頁（預設庫｜照片基本參數｜照片匯出）改為六個，由上到下：
 
 | 順序 | 分頁 | `SidePanel` | 內容 | 快捷鍵 |
 |---|---|---|---|---|
 | 1 | 預設庫 | `Presets` | 維持原樣 | — |
-| 2 | 照片資訊與模組 | `Inspector` | 照片資訊（EXIF）＋ `ModuleGroup.Basic`（基本調整、曲線）、`Geometry`（鏡頭變形、多格分鏡）、`Optical` | — |
+| 2 | 照片基本參數 | `Inspector` | 照片資訊（EXIF）＋ `ModuleGroup.Basic`（基本調整、曲線）、`Geometry`（鏡頭變形、多格分鏡）、`Optical` | — |
 | 3 | **裁切**（新增） | `Crop` | 裁切工具面板：比例、直式 / 橫式、拉直、旋轉 90°、翻轉、重設、套用 / 取消 | `R` |
 | 4 | **底片效果**（新增） | `FilmEffects` | `ModuleGroup.Film`（底片、古典版材、色調分離、清晰與銳化）、`Surface`（灰塵與刮痕、顆粒） | — |
 | 5 | **細部調整**（新增） | `Masks` | 遮罩圖層與局部調整（Task 2.8） | `M` |
 | 6 | 照片匯出 | `Export` | 維持原樣 | — |
 
-- 「照片資訊與模組」與「底片效果」共用同一套模組面板元件（`InspectorViewModel`、`ModuleSectionViewModel`、`ModuleGroupViewModel`），以**要顯示的 `ModuleGroup` 集合**區分，不複製程式碼。`crop` 與 `local` 兩個模組不在任何模組面板中顯示，只能從各自的分頁編輯。
+- 「照片基本參數」與「底片效果」共用同一套模組面板元件（`InspectorViewModel`、`ModuleSectionViewModel`、`ModuleGroupViewModel`），以**要顯示的 `ModuleGroup` 集合**區分，不複製程式碼。`crop` 與 `local` 兩個模組不在任何模組面板中顯示，只能從各自的分頁編輯。
 - 畫布控制點（例如暗角中心）目前依「展開中的模組」決定；分成兩個模組分頁後，只採用**目前顯示中的分頁**裡展開的模組。
 - **分頁順序與處理順序不一致（已知取捨）**：遮罩在處理上排在底片**之前**，但「細部調整」分頁排在「底片效果」之後；裁切在處理上最前面，但分頁排在第 3 個。分頁順序依使用者的操作習慣安排，不影響成像；在 `docs/architecture.md` 4.10 寫明。
 
@@ -219,7 +219,7 @@ CPU 參考實作用同一份數學（dab 展開共用 `BrushDabs.Expand`），�
 | Create | `src/FilmBatch.App/Controls/CurveEditor.cs` | 曲線編輯器控制項 |
 | Create | `src/FilmBatch.App/ViewModels/Tools/CropToolViewModel.cs` | 裁切工具狀態、比例、套用 / 取消 |
 | Create | `src/FilmBatch.App/Views/CropPanelView.axaml(.cs)` | 「裁切」分頁 |
-| Modify | `src/FilmBatch.App/ViewModels/InspectorViewModel.cs` | 依 `ModuleGroup` 集合過濾，供「照片資訊與模組」與「底片效果」兩個分頁共用；略過 `crop`、`local` |
+| Modify | `src/FilmBatch.App/ViewModels/InspectorViewModel.cs` | 依 `ModuleGroup` 集合過濾，供「照片基本參數」與「底片效果」兩個分頁共用；略過 `crop`、`local` |
 | Create | `src/FilmBatch.App/ViewModels/Local/MasksPanelViewModel.cs`、`MaskLayerViewModel.cs`、`MaskShapeViewModel.cs`、`MaskAdjustHost.cs` | 遮罩面板 |
 | Create | `src/FilmBatch.App/ViewModels/CurveParamViewModel.cs` | 曲線參數（Inspector 與遮罩共用） |
 | Modify | `src/FilmBatch.App/ViewModels/ParamViewModels.cs` | `Create` 支援 `Curve`；`MaskStack` 不在 Inspector 顯示 |
@@ -2086,7 +2086,7 @@ new("curves", "曲線", ModuleGroup.Basic, PasteCategory.Color,
 ]),
 ```
 
-> 陣列順序 = 面板順序 = 處理順序（architecture.md 4.1）。`curves` 緊接在 `basic` 之後，所以在「照片資訊與模組」分頁中顯示在「基本調整」正下方，處理上也在底片之前（D2）。
+> 陣列順序 = 面板順序 = 處理順序（architecture.md 4.1）。`curves` 緊接在 `basic` 之後，所以在「照片基本參數」分頁中顯示在「基本調整」正下方，處理上也在底片之前（D2）。
 
 處理位置在**線性段**，所以曲線 pass 自己做色彩編碼轉換（與 `local_apply` 相同的作法）：
 
@@ -2452,7 +2452,7 @@ dotnet run build/CheckShaders.cs
 
 | # | 標準 |
 |---|---|
-| A0 | 側邊欄六個分頁依序為：預設庫、照片資訊與模組（基本調整含曲線、幾何、光學）、裁切、底片效果（底片、表面）、細部調整、照片匯出；`crop`、`local` 不出現在模組分頁 |
+| A0 | 側邊欄六個分頁依序為：預設庫、照片基本參數（基本調整含曲線、幾何、光學）、裁切、底片效果（底片、表面）、細部調整、照片匯出；`crop`、`local` 不出現在模組分頁 |
 | A1 | 裁切：在「裁切」分頁操作；自由 / 8 種比例、拉直 ±45° 自動內縮、90° 旋轉、翻轉；拖出邊界時框先移回影像內、放不下才縮小；`Esc` 取消、`Enter` 或離開分頁套用；一次復原還原整個裁切 |
 | A2 | 裁切後暗角、漏光、顆粒、多格分鏡以裁切後畫框計算；縮圖、預覽、匯出（含 CLI）尺寸一致 |
 | A3 | 五種遮罩形狀皆可建立與編輯；顏色遮罩可多點取樣（最多 5 個）、只用一個「精細度」滑桿；同一圖層的形狀可加 / 減 / 交集；圖層可反轉、調不透明度、隱藏、複製、排序 |

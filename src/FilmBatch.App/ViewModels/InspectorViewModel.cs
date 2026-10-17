@@ -8,7 +8,7 @@ namespace FilmBatch.App.ViewModels;
 /// <summary>
 /// 右面板：照片資訊 + 模組面板（計畫書 2.4.5）。模組區塊依 schema 建立一次，切換照片時只更新數值。
 /// 修改套用到所有選取照片；顯示的是焦點照片的值與覆寫狀態。
-/// 「照片資訊與模組」與「底片效果」兩個分頁各一個實例，以要顯示的 <see cref="ModuleGroup"/> 集合區分（cut-and-mask D8）。
+/// 「照片基本參數」與「底片效果」兩個分頁各一個實例，以要顯示的 <see cref="ModuleGroup"/> 集合區分（cut-and-mask D8）。
 /// </summary>
 public sealed partial class InspectorViewModel : ObservableObject, IParamHost
 {
@@ -21,7 +21,7 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
     /// <summary>film 模組頂部的底片風格縮圖格與色相帶編輯器；只有包含 film 模組的分頁才有。</summary>
     public FilmLookViewModel? FilmLook { get; }
 
-    /// <summary>是否顯示照片資訊（檔名、預設、重設與預設按鈕）；只有「照片資訊與模組」分頁顯示。</summary>
+    /// <summary>是否顯示照片資訊（檔名、預設、重設與預設按鈕）；只有「照片基本參數」分頁顯示。</summary>
     public bool ShowsPhotoInfo { get; }
 
     /// <summary>是否為目前顯示中的分頁；畫布控制點只採用顯示中分頁裡展開的模組。由 <see cref="SidebarViewModel"/> 設定。</summary>

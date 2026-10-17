@@ -369,7 +369,7 @@ flowchart TB
     MW["MainWindowViewModel<br/>中樞：專案、選取、復原、命令"]
     MW --> PL["PresetLibraryViewModel<br/>預設庫分頁"]
     MW --> FS["FilmstripViewModel<br/>縮圖列、篩選、標記"]
-    MW --> IN["InspectorViewModel<br/>照片資訊與模組分頁"]
+    MW --> IN["InspectorViewModel<br/>照片基本參數分頁"]
     MW --> PV["PreviewViewModel<br/>預覽、縮放、原圖對比、直方圖"]
     MW --> SB["SidebarViewModel<br/>側邊欄分頁切換"]
     MW --> TO["ToastViewModel<br/>非阻斷提示"]

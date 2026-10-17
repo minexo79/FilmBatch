@@ -39,7 +39,7 @@
   <data name="Cmd.Language" xml:space="preserve"><value>語言</value></data>
   <data name="Panel.Presets" xml:space="preserve"><value>預設庫</value></data>
   <data name="Panel.Preview" xml:space="preserve"><value>預覽</value></data>
-  <data name="Panel.Inspector" xml:space="preserve"><value>照片資訊與模組</value></data>
+  <data name="Panel.Inspector" xml:space="preserve"><value>照片基本參數</value></data>
   <data name="Panel.Filmstrip" xml:space="preserve"><value>縮圖列</value></data>
   <data name="Panel.Export" xml:space="preserve"><value>照片匯出</value></data>
   <data name="Panel.Crop" xml:space="preserve"><value>裁切</value></data>
