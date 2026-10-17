@@ -4,14 +4,14 @@ using FilmBatch.Core.Params;
 
 namespace FilmBatch.App.Tests;
 
-/// <summary>側邊欄六個分頁（cut-and-mask 計畫 D8）：分頁順序、兩個模組分頁依群組分配模組、畫布控制點只看目前分頁。</summary>
+/// <summary>側邊欄五個分頁（cut-and-mask 計畫 D8）：分頁順序、兩個模組分頁依群組分配模組、畫布控制點只看目前分頁。</summary>
 public sealed class SidebarTabsTests
 {
     [Fact]
     public void Tabs_AreOrdered_AsDesigned()
     {
         Assert.Equal(
-            [SidePanel.Presets, SidePanel.Inspector, SidePanel.Crop, SidePanel.FilmEffects, SidePanel.Masks, SidePanel.Export],
+            [SidePanel.Presets, SidePanel.Inspector, SidePanel.Crop, SidePanel.FilmEffects, SidePanel.Export],
             Enum.GetValues<SidePanel>());
     }
 
@@ -23,7 +23,7 @@ public sealed class SidebarTabsTests
         var film = main.Sidebar.FilmEffects.Modules.Select(m => m.Schema.Group).Distinct().ToList();
         Assert.All(inspector, g => Assert.Contains(g, new[] { ModuleGroup.Basic, ModuleGroup.Geometry, ModuleGroup.Optical }));
         Assert.All(film, g => Assert.Contains(g, new[] { ModuleGroup.Film, ModuleGroup.Surface }));
-        Assert.Equal(ModuleCatalog.Modules.Count(m => m.Key is not ("crop" or "local")),
+        Assert.Equal(ModuleCatalog.Modules.Count(m => m.Key != "crop"),
             main.Sidebar.Inspector.Modules.Count + main.Sidebar.FilmEffects.Modules.Count);
         Assert.Same(main.Inspector, main.Sidebar.Inspector);
         Assert.Same(main.FilmEffects, main.Sidebar.FilmEffects);

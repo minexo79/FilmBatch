@@ -6,7 +6,7 @@
              xmlns:c="using:FilmBatch.App.Controls"
              x:Class="FilmBatch.App.Views.SidebarView"
              x:DataType="vm:SidebarViewModel">
-  <!-- 右側邊欄：內容區｜外緣圖示工具列（預設庫、照片資訊與模組、裁切、底片效果、細部調整、照片匯出；cut-and-mask D8）。各分頁常駐，只切換顯示。 -->
+  <!-- 右側邊欄：內容區｜外緣圖示工具列（預設庫、照片資訊與模組、裁切、底片效果、照片匯出；cut-and-mask D8）。各分頁常駐，只切換顯示。 -->
   <Grid ColumnDefinitions="*,Auto">
     <DockPanel Grid.Column="0">
       <Expander DockPanel.Dock="Top" Header="{l:Tr Histogram.Title}" IsExpanded="{Binding Preview.HistogramExpanded}"
@@ -30,13 +30,6 @@
           </Border>
           <v:InspectorView DataContext="{Binding FilmEffects}" />
         </DockPanel>
-        <!-- 細部調整分頁：占位，Task 2.8 換成遮罩面板 -->
-        <DockPanel IsVisible="{Binding IsMasks}" Background="{DynamicResource FB.PanelBrush}">
-          <Border DockPanel.Dock="Top" Classes="panel-header">
-            <TextBlock Classes="panel-title" Text="{l:Tr Panel.Masks}" />
-          </Border>
-          <Panel />
-        </DockPanel>
         <Panel IsVisible="{Binding IsExport}"><v:ExportPanelView DataContext="{Binding Export}" /></Panel>
       </Panel>
     </DockPanel>
@@ -58,10 +51,6 @@
         <RadioButton Classes="rail" GroupName="SidebarTabs" IsChecked="{Binding IsFilmEffects}"
                      ToolTip.Tip="{l:Tr Panel.FilmEffects}" ToolTip.Placement="Left">
           <PathIcon Data="{StaticResource Icon.Film}" />
-        </RadioButton>
-        <RadioButton Classes="rail" GroupName="SidebarTabs" IsChecked="{Binding IsMasks}"
-                     ToolTip.Tip="{l:Tr Panel.Masks}" ToolTip.Placement="Left">
-          <PathIcon Data="{StaticResource Icon.Masks}" />
         </RadioButton>
         <RadioButton Classes="rail" GroupName="SidebarTabs" IsChecked="{Binding IsExport}"
                      ToolTip.Tip="{l:Tr Panel.Export}" ToolTip.Placement="Left">

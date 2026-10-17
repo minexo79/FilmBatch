@@ -1,21 +1,10 @@
 using System.Numerics;
-using FilmBatch.Core.Masks;
 
 namespace FilmBatch.Engine.Rendering;
 
-/// <summary>
-/// 線性 sRGB ↔ OKLab（Björn Ottosson 公開的矩陣；與 film/look.wgsl 的 to_oklab / from_oklab 同係數，
-/// 遮罩的 common/oklab.wgsl 也使用同一組係數）。
-/// </summary>
-public static class Oklab
+/// <summary>線性 sRGB ↔ OKLab（與 film/look.wgsl 的 to_oklab / from_oklab 同係數）。</summary>
+internal static class Oklab
 {
-    /// <summary>線性 sRGB（先夾到 0–1）→ OkLab。顏色遮罩的取樣與比對共用。</summary>
-    public static OkLabColor FromLinearSrgb(float r, float g, float b)
-    {
-        var lab = FromLinear(Vector3.Clamp(new Vector3(r, g, b), Vector3.Zero, Vector3.One));
-        return new OkLabColor(lab.X, lab.Y, lab.Z);
-    }
-
     public static Vector3 FromLinear(Vector3 rgb)
     {
         var l = MathF.Cbrt(.41222147f * rgb.X + .53633254f * rgb.Y + .05144599f * rgb.Z);

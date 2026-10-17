@@ -68,7 +68,6 @@ public abstract partial class ParamViewModel(string moduleKey, ParamDef def, IPa
         ParamKind.Choice => new ChoiceParamViewModel(moduleKey, def, host),
         ParamKind.Path => new TextParamViewModel(moduleKey, def, host),
         ParamKind.Curve => new CurveParamViewModel(moduleKey, def, host),
-        ParamKind.MaskStack => throw new NotSupportedException("Mask stacks are edited in the masks panel, not the inspector."),
         _ => new SliderParamViewModel(moduleKey, def, host),
     };
 }

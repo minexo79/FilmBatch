@@ -5,10 +5,10 @@ using FilmBatch.App.ViewModels.Tools;
 namespace FilmBatch.App.ViewModels;
 
 /// <summary>側邊欄的分頁；列舉順序 = 分頁圖示由上到下的順序（cut-and-mask D8）。</summary>
-public enum SidePanel { Presets, Inspector, Crop, FilmEffects, Masks, Export }
+public enum SidePanel { Presets, Inspector, Crop, FilmEffects, Export }
 
 /// <summary>
-/// 右側邊欄：外緣的圖示工具列切換六個分頁（Lightroom 式）：
+/// 右側邊欄：外緣的圖示工具列切換五個分頁（Lightroom 式）：
 /// 預設庫｜照片資訊與模組｜裁切｜底片效果｜細部調整｜照片匯出。
 /// 各分頁的 ViewModel 常駐，切換時只改變顯示中的分頁，保留各自的捲動與輸入狀態。
 /// 「照片資訊與模組」與「底片效果」共用 <see cref="InspectorViewModel"/>，以模組群組區分。
@@ -27,7 +27,7 @@ public sealed partial class SidebarViewModel : ObservableObject
     public PreviewViewModel Preview { get; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsPresets), nameof(IsInspector), nameof(IsCrop), nameof(IsFilmEffects), nameof(IsMasks), nameof(IsExport))]
+    [NotifyPropertyChangedFor(nameof(IsPresets), nameof(IsInspector), nameof(IsCrop), nameof(IsFilmEffects), nameof(IsExport))]
     private SidePanel _active = SidePanel.Inspector;
 
     public bool IsPresets
@@ -52,12 +52,6 @@ public sealed partial class SidebarViewModel : ObservableObject
     {
         get => Active == SidePanel.FilmEffects;
         set { if (value) Active = SidePanel.FilmEffects; }
-    }
-
-    public bool IsMasks
-    {
-        get => Active == SidePanel.Masks;
-        set { if (value) Active = SidePanel.Masks; }
     }
 
     public bool IsExport

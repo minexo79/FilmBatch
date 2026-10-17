@@ -39,7 +39,7 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
     private bool _isActive;
 
     /// <summary>只在各自分頁編輯、不出現在模組面板中的模組（裁切、細部調整）。</summary>
-    private static readonly HashSet<string> TabOnlyModules = ["crop", "local"];
+    private static readonly HashSet<string> TabOnlyModules = ["crop"];
     public ObservableCollection<PresetItemViewModel> PresetOptions { get; } = [];
 
     [ObservableProperty]

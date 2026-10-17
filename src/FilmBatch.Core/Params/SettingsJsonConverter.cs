@@ -1,7 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using FilmBatch.Core.Curves;
-using FilmBatch.Core.Masks;
 
 namespace FilmBatch.Core.Params;
 
@@ -40,7 +39,7 @@ public sealed class SettingsJsonConverter : JsonConverter<Settings>
         var expected = definition.Kind switch
         {
             ParamKind.Bool => ValueKind.Bool,
-            ParamKind.Choice or ParamKind.Path or ParamKind.Curve or ParamKind.MaskStack => ValueKind.Text,
+            ParamKind.Choice or ParamKind.Path or ParamKind.Curve => ValueKind.Text,
             _ => ValueKind.Number,
         };
         if (value.Kind != expected) throw new InvalidDataException($"Invalid value type: {key}");
@@ -50,8 +49,6 @@ public sealed class SettingsJsonConverter : JsonConverter<Settings>
             throw new InvalidDataException($"Parameter out of range: {key}");
         if (definition.Kind == ParamKind.Curve && !ToneCurve.TryParse(value.AsText, out _))
             throw new InvalidDataException($"Invalid curve: {key}");
-        if (definition.Kind == ParamKind.MaskStack && !MaskStackCodec.TryParse(value.AsText, out _))
-            throw new InvalidDataException($"Invalid mask stack: {key}");
         // Asset choices can be supplied by the user's library, not only the static catalog.
         if (definition.Kind == ParamKind.Choice && key is not "light_leak.texture"
             && !definition.Choices.Any(choice => choice.Key == value.AsText))

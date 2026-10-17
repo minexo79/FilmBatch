@@ -44,7 +44,6 @@
   <data name="Panel.Export" xml:space="preserve"><value>照片匯出</value></data>
   <data name="Panel.Crop" xml:space="preserve"><value>裁切</value></data>
   <data name="Panel.FilmEffects" xml:space="preserve"><value>底片效果</value></data>
-  <data name="Panel.Masks" xml:space="preserve"><value>細部調整</value></data>
   <data name="Panel.Crop.Tip" xml:space="preserve"><value>裁切（R）</value></data>
   <data name="Cmd.Crop" xml:space="preserve"><value>裁切工具</value></data>
   <data name="Tool.Crop" xml:space="preserve"><value>裁切</value></data>
