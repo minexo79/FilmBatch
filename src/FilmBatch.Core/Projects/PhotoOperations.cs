@@ -1,3 +1,4 @@
+using FilmBatch.Core.Masks;
 using FilmBatch.Core.Params;
 
 namespace FilmBatch.Core.Projects;
@@ -95,9 +96,12 @@ public static class PhotoOperations
         return result;
     }
 
-    /// <summary>水平鏡像：X 座標 x → 1 − x；以 0 為中心的位移取負值。</summary>
+    /// <summary>水平鏡像：X 座標 x → 1 − x；以 0 為中心的位移取負值；遮罩堆疊內的形狀一併鏡像。</summary>
     public static ParamValue MirrorValue(ParamDef p, ParamValue v) => p.Axis switch
     {
+        _ when p.Kind == ParamKind.MaskStack => MaskStackCodec.TryParse(v.AsText, out var masks)
+            ? ParamValue.Of(MaskStackCodec.Serialize(MaskEdits.MirrorX(masks)))
+            : v,
         PositionAxis.X when p.IsCenteredOffset => ParamValue.Of(-v.AsNumber),
         PositionAxis.X => ParamValue.Of(1 - v.AsNumber),
         _ => v,
