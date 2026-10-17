@@ -21,13 +21,8 @@
       <Panel>
         <Panel IsVisible="{Binding IsPresets}"><v:PresetLibraryView DataContext="{Binding Presets}" /></Panel>
         <Panel IsVisible="{Binding IsInspector}"><v:InspectorView DataContext="{Binding Inspector}" /></Panel>
-        <!-- 裁切分頁：占位，Task 1.7 換成裁切工具面板 -->
-        <DockPanel IsVisible="{Binding IsCrop}" Background="{DynamicResource FB.PanelBrush}">
-          <Border DockPanel.Dock="Top" Classes="panel-header">
-            <TextBlock Classes="panel-title" Text="{l:Tr Panel.Crop}" />
-          </Border>
-          <Panel />
-        </DockPanel>
+        <!-- 裁切分頁：裁切工具面板（比例、拉直、旋轉 90°、翻轉、重設、套用 / 取消） -->
+        <Panel IsVisible="{Binding IsCrop}"><v:CropPanelView DataContext="{Binding CropTool}" /></Panel>
         <!-- 底片效果分頁：與「照片資訊與模組」共用模組面板，只有底片、表面群組，不顯示照片資訊 -->
         <DockPanel IsVisible="{Binding IsFilmEffects}" Background="{DynamicResource FB.PanelBrush}">
           <Border DockPanel.Dock="Top" Classes="panel-header">
@@ -57,7 +52,7 @@
           <PathIcon Data="{StaticResource Icon.Settings}" />
         </RadioButton>
         <RadioButton Classes="rail" GroupName="SidebarTabs" IsChecked="{Binding IsCrop}"
-                     ToolTip.Tip="{l:Tr Panel.Crop}" ToolTip.Placement="Left">
+                     ToolTip.Tip="{l:Tr Panel.Crop.Tip}" ToolTip.Placement="Left">
           <PathIcon Data="{StaticResource Icon.Crop}" />
         </RadioButton>
         <RadioButton Classes="rail" GroupName="SidebarTabs" IsChecked="{Binding IsFilmEffects}"

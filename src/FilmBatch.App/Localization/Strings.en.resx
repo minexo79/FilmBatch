@@ -45,6 +45,24 @@
   <data name="Panel.Crop" xml:space="preserve"><value>Crop</value></data>
   <data name="Panel.FilmEffects" xml:space="preserve"><value>Film Effects</value></data>
   <data name="Panel.Masks" xml:space="preserve"><value>Local Adjustments</value></data>
+  <data name="Panel.Crop.Tip" xml:space="preserve"><value>Crop (R)</value></data>
+  <data name="Cmd.Crop" xml:space="preserve"><value>Crop Tool</value></data>
+  <data name="Tool.Crop" xml:space="preserve"><value>Crop</value></data>
+  <data name="Tool.Crop.Apply" xml:space="preserve"><value>Apply</value></data>
+  <data name="Tool.Crop.Cancel" xml:space="preserve"><value>Cancel</value></data>
+  <data name="Tool.Crop.Edit" xml:space="preserve"><value>Edit Crop</value></data>
+  <data name="Tool.Crop.Aspect" xml:space="preserve"><value>Aspect Ratio</value></data>
+  <data name="Tool.Crop.SwapOrientation" xml:space="preserve"><value>Swap portrait / landscape (X)</value></data>
+  <data name="Tool.Crop.Straighten" xml:space="preserve"><value>Straighten</value></data>
+  <data name="Tool.Crop.Orientation" xml:space="preserve"><value>Rotate and Flip</value></data>
+  <data name="Tool.Crop.RotateLeft" xml:space="preserve"><value>Rotate left 90° ([)</value></data>
+  <data name="Tool.Crop.RotateRight" xml:space="preserve"><value>Rotate right 90° (])</value></data>
+  <data name="Tool.Crop.FlipH" xml:space="preserve"><value>Flip horizontal</value></data>
+  <data name="Tool.Crop.FlipV" xml:space="preserve"><value>Flip vertical</value></data>
+  <data name="Tool.Crop.Reset" xml:space="preserve"><value>Reset Crop</value></data>
+  <data name="Tool.Crop.FocusedOnly" xml:space="preserve"><value>Crop applies to the current photo only</value></data>
+  <data name="Tool.Crop.Shortcuts" xml:space="preserve"><value>Drag inside the frame to move, drag a handle to resize (Alt resizes from the center), drag outside to rotate. Enter or double-click inside applies, Esc cancels, R applies and returns to the previous tab.</value></data>
+  <data name="Toast.CropFocusedOnly" xml:space="preserve"><value>Crop applied to the current photo only</value></data>
   <data name="Inspector.NoPhoto" xml:space="preserve"><value>No photo selected</value></data>
   <data name="Inspector.Preset" xml:space="preserve"><value>Preset</value></data>
   <data name="Inspector.ResetPhoto" xml:space="preserve"><value>Reset Photo</value></data>

@@ -45,6 +45,24 @@
   <data name="Panel.Crop" xml:space="preserve"><value>裁切</value></data>
   <data name="Panel.FilmEffects" xml:space="preserve"><value>底片效果</value></data>
   <data name="Panel.Masks" xml:space="preserve"><value>細部調整</value></data>
+  <data name="Panel.Crop.Tip" xml:space="preserve"><value>裁切（R）</value></data>
+  <data name="Cmd.Crop" xml:space="preserve"><value>裁切工具</value></data>
+  <data name="Tool.Crop" xml:space="preserve"><value>裁切</value></data>
+  <data name="Tool.Crop.Apply" xml:space="preserve"><value>套用</value></data>
+  <data name="Tool.Crop.Cancel" xml:space="preserve"><value>取消</value></data>
+  <data name="Tool.Crop.Edit" xml:space="preserve"><value>編輯裁切</value></data>
+  <data name="Tool.Crop.Aspect" xml:space="preserve"><value>比例</value></data>
+  <data name="Tool.Crop.SwapOrientation" xml:space="preserve"><value>切換直式 / 橫式（X）</value></data>
+  <data name="Tool.Crop.Straighten" xml:space="preserve"><value>拉直</value></data>
+  <data name="Tool.Crop.Orientation" xml:space="preserve"><value>旋轉與翻轉</value></data>
+  <data name="Tool.Crop.RotateLeft" xml:space="preserve"><value>向左旋轉 90°（[）</value></data>
+  <data name="Tool.Crop.RotateRight" xml:space="preserve"><value>向右旋轉 90°（]）</value></data>
+  <data name="Tool.Crop.FlipH" xml:space="preserve"><value>水平翻轉</value></data>
+  <data name="Tool.Crop.FlipV" xml:space="preserve"><value>垂直翻轉</value></data>
+  <data name="Tool.Crop.Reset" xml:space="preserve"><value>重設裁切</value></data>
+  <data name="Tool.Crop.FocusedOnly" xml:space="preserve"><value>裁切只套用到目前照片</value></data>
+  <data name="Tool.Crop.Shortcuts" xml:space="preserve"><value>拖曳框內移動、拖曳把手調整大小（Alt 以中心縮放）、拖曳框外旋轉。Enter 或點兩下框內套用，Esc 取消，R 套用並回到上一個分頁。</value></data>
+  <data name="Toast.CropFocusedOnly" xml:space="preserve"><value>裁切只套用到目前照片</value></data>
   <data name="Inspector.NoPhoto" xml:space="preserve"><value>尚未選取照片</value></data>
   <data name="Inspector.Preset" xml:space="preserve"><value>預設</value></data>
   <data name="Inspector.ResetPhoto" xml:space="preserve"><value>重設此張</value></data>

@@ -32,6 +32,33 @@ public class ProjectServiceTests
     }
 
     [Fact]
+    public void SetValues_WritesSeveralKeysAsOneUndoRecord()
+    {
+        var svc = Create("a.tif");
+        var values = Settings.Empty.With("crop.enabled", true).With("crop.rect_w", 0.6).With("crop.rect_cx", 0.3)
+            .With("crop.angle", 5.0).With("crop.quarter", 1.0);
+        Assert.True(svc.SetValues(["a.tif"], values, "裁切"));
+        var s = svc.SettingsFor("a.tif");
+        Assert.True(s.Bool("crop.enabled"));
+        Assert.Equal(0.6, s.Number("crop.rect_w"), 6);
+        Assert.Equal(1, s.Number("crop.quarter"));
+
+        svc.Stack.Undo();
+        Assert.False(svc.Project["a.tif"].HasOverrides);
+        Assert.False(svc.Stack.CanUndo);
+    }
+
+    [Fact]
+    public void SetValues_CoercesValuesToTheSchema()
+    {
+        var svc = Create("a.tif");
+        svc.SetValues(["a.tif"], Settings.Empty.With("crop.rect_w", 7.0).With("crop.quarter", 1.4), "裁切");
+        var s = svc.SettingsFor("a.tif");
+        Assert.Equal(1, s.Number("crop.rect_w"));
+        Assert.Equal(1, s.Number("crop.quarter"));
+    }
+
+    [Fact]
     public void DragMerge_SameKeyMergesIntoOneRecord_UntilClosed()
     {
         var svc = Create("a.tif");
