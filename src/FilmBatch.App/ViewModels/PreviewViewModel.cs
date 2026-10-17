@@ -5,6 +5,7 @@ using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using CommunityToolkit.Mvvm.ComponentModel;
+using FilmBatch.App.Controls.Tools;
 using FilmBatch.App.Localization;
 using FilmBatch.App.Services;
 using FilmBatch.Core.Params;
@@ -108,6 +109,9 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
 
     private string? _controlModule;
 
+    /// <summary>目前畫布控制點所屬的模組 key；沒有顯示控制點時為 null。</summary>
+    public string? ControlPointModule => _controlModule;
+
     public void SetBackground(PreviewBackground bg) => Background = new SolidColorBrush(bg switch
     {
         PreviewBackground.MidGray => Color.FromRgb(0x80, 0x80, 0x80),
@@ -122,10 +126,47 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
             _resultHistogram = _originalHistogram = null;
             NotifyHistogram();
             Source = source;
-            Original = ToBitmap(ImageCache.ToBgra8(source), source.Width, source.Height);
+            _originalShown = null;
+            UpdateOriginal();
             _ = LoadExifAsync(source);
         }
     }
+
+    // ───────────── 原圖對比的畫框 ─────────────
+
+    /// <summary>原圖對比使用的裁切（只比較調整，與 Lightroom 相同）；未啟用時為全幅。</summary>
+    private CropParams _compareCrop;
+    private (SourceImage Source, CropParams Crop)? _originalShown;
+
+    /// <summary>
+    /// 設定「原圖」要套用的裁切（與這次算圖請求相同的裁切 / 方向），讓左右對比與按住空白鍵時畫框一致。
+    /// 裁切相同時不重算。
+    /// </summary>
+    public void SetCompareCrop(CropParams crop)
+    {
+        _compareCrop = crop.On ? crop : default;
+        UpdateOriginal();
+    }
+
+    private void UpdateOriginal()
+    {
+        if (Source is not { } source) return;
+        if (_originalShown is { } shown && ReferenceEquals(shown.Source, source) && shown.Crop == _compareCrop) return;
+        _originalShown = (source, _compareCrop);
+        if (!_compareCrop.On)
+        {
+            Original = ToBitmap(ImageCache.ToBgra8(source), source.Width, source.Height);
+            return;
+        }
+        var t = CropGeometry.Compute(source.Width, source.Height, _compareCrop);
+        Original = ToBitmap(ImageCache.ToBgra8(source, t), t.OutWidth, t.OutHeight);
+    }
+
+    // ───────────── 畫布工具 ─────────────
+
+    /// <summary>目前的畫布工具（裁切工具啟用時為裁切框）；null 時畫布使用平移 / 控制點。</summary>
+    [ObservableProperty]
+    private ICanvasTool? _activeTool;
 
     /// <summary>EXIF 只讀檔頭，但仍在背景執行緒讀取；讀完時若已換照片則丟棄。</summary>
     private async Task LoadExifAsync(SourceImage source)
@@ -165,6 +206,7 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
         Source = null;
         Image = null;
         Original = null;
+        _originalShown = null;
         Exif = null;
         IsBusy = false;
         OverlayText = null;

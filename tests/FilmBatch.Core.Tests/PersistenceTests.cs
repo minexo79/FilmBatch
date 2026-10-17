@@ -38,7 +38,8 @@ public sealed class PersistenceTests : IDisposable
 
     [Theory]
     [InlineData("{ broken")]
-    [InlineData("{\"pipeline_version\":2,\"default_preset_id\":\"00000000-0000-0000-0000-000000000000\",\"preset_snapshots\":{},\"photos\":{}}")]
+    [InlineData("{\"pipeline_version\":0,\"default_preset_id\":\"00000000-0000-0000-0000-000000000000\",\"preset_snapshots\":{},\"photos\":{}}")]
+    [InlineData("{\"pipeline_version\":3,\"default_preset_id\":\"00000000-0000-0000-0000-000000000000\",\"preset_snapshots\":{},\"photos\":{}}")]
     public void UnreadableProject_IsRejectedWithoutReplacement(string content)
     {
         var path = Path.Combine(Photos, ".filmbatch", "project.json");
@@ -47,6 +48,39 @@ public sealed class PersistenceTests : IDisposable
         var exception = Record.Exception(() => Project.Open(Photos, Guid.Empty));
         Assert.True(exception is JsonException or InvalidDataException);
         Assert.Equal(content, File.ReadAllText(path));
+    }
+
+    [Fact]
+    public void NewerProjectVersion_ReportsNewerFilmBatch()
+    {
+        var path = Path.Combine(Photos, ".filmbatch", "project.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, "{\"pipeline_version\":99,\"default_preset_id\":\"00000000-0000-0000-0000-000000000000\",\"preset_snapshots\":{},\"photos\":{}}");
+        var previous = CoreText.Culture;
+        try
+        {
+            CoreText.English = true;
+            var exception = Assert.Throws<InvalidDataException>(() => Project.Open(Photos, Guid.Empty));
+            Assert.Contains("newer version of FilmBatch", exception.Message);
+        }
+        finally
+        {
+            CoreText.Culture = previous;
+        }
+    }
+
+    [Fact]
+    public void ProjectFormat_WritesCurrentVersion_AndReadsVersion1()
+    {
+        using var library = PresetLibrary.Load(Presets);
+        var service = new ProjectService(Project.Open(Photos, SamplePresets.PortraWarm), library, new CommandStack());
+        service.SetValue(["照片 01.tif"], "crop.enabled", true);
+        var path = Path.Combine(Photos, ".filmbatch", "project.json");
+        Assert.Contains("\"pipeline_version\": 2", File.ReadAllText(path));
+        Assert.True(Project.Open(Photos, Guid.Empty)["照片 01.tif"].Overrides.Bool("crop.enabled"));
+
+        File.WriteAllText(path, File.ReadAllText(path).Replace("\"pipeline_version\": 2", "\"pipeline_version\": 1"));
+        Assert.True(Project.Open(Photos, Guid.Empty)["照片 01.tif"].Overrides.Bool("crop.enabled"));
     }
 
     [Fact]

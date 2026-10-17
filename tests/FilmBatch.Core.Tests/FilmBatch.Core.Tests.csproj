@@ -16,7 +16,5 @@
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />
-    <Compile Include="..\..\tools\film-calibration\Color.cs" Link="ColorMetric.cs" />
-    <None Update="Fixtures\Film\*.jpg" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

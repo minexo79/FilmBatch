@@ -8,7 +8,7 @@
              x:DataType="vm:InspectorViewModel">
   <!-- 照片資訊（固定在頂部）＋ 模組捲動區（計畫書 2.4.5） -->
   <DockPanel Background="{DynamicResource FB.PanelBrush}">
-    <Border DockPanel.Dock="Top" Classes="panel-header">
+    <Border DockPanel.Dock="Top" Classes="panel-header" IsVisible="{Binding ShowsPhotoInfo}">
       <Panel>
         <TextBlock Classes="secondary" Text="{l:Tr Inspector.NoPhoto}" IsVisible="{Binding !HasPhoto}" Margin="0,4" />
         <StackPanel Spacing="12" IsVisible="{Binding HasPhoto}">
@@ -75,11 +75,12 @@
                         </MenuFlyout>
                       </c:ModuleSection.HeaderFlyout>
                       <StackPanel>
-                      <!-- film 模組頂部的配方選擇由 ModuleSectionViewModel.Film 提供；其他模組為 null 不顯示 -->
-                      <ContentControl Content="{Binding Film}">
+                      <!-- film 模組的底片風格由 ModuleSectionViewModel.FilmLook 提供（其他模組為 null 不顯示）：
+                           底片縮圖格在一般參數（效果比例／暖色／褪色）之上，色相修正與自訂色相在其下 -->
+                      <ContentControl Content="{Binding FilmLook}" IsVisible="{Binding FilmLook, Converter={x:Static ObjectConverters.IsNotNull}}">
                         <ContentControl.DataTemplates>
-                          <DataTemplate x:DataType="vm:FilmRecipeViewModel">
-                            <c:FilmRecipeControl />
+                          <DataTemplate x:DataType="vm:FilmLookViewModel">
+                            <c:FilmLookControl Part="Look" />
                           </DataTemplate>
                         </ContentControl.DataTemplates>
                       </ContentControl>
@@ -117,8 +118,24 @@
                               <TextBox Grid.Column="1" Text="{Binding Value}" Width="150" VerticalAlignment="Center" PlaceholderText="{l:Tr Inspector.RelativePath}" />
                             </Grid>
                           </DataTemplate>
+                          <DataTemplate DataType="vm:CurveParamViewModel">
+                            <StackPanel Spacing="4" Classes="param-line">
+                              <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBlock Classes="param-name" Classes.overridden="{Binding IsOverridden}" Text="{Binding Label}" />
+                                <Ellipse Classes="override-dot" IsVisible="{Binding IsOverridden}" />
+                              </StackPanel>
+                              <c:CurveEditor Points="{Binding Points}" />
+                            </StackPanel>
+                          </DataTemplate>
                         </ItemsControl.DataTemplates>
                       </ItemsControl>
+                      <ContentControl Content="{Binding FilmLook}" IsVisible="{Binding FilmLook, Converter={x:Static ObjectConverters.IsNotNull}}">
+                        <ContentControl.DataTemplates>
+                          <DataTemplate x:DataType="vm:FilmLookViewModel">
+                            <c:FilmLookControl Part="Hue" />
+                          </DataTemplate>
+                        </ContentControl.DataTemplates>
+                      </ContentControl>
                       </StackPanel>
                     </c:ModuleSection>
                   </DataTemplate>

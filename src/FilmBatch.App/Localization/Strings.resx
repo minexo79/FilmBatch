@@ -39,9 +39,29 @@
   <data name="Cmd.Language" xml:space="preserve"><value>語言</value></data>
   <data name="Panel.Presets" xml:space="preserve"><value>預設庫</value></data>
   <data name="Panel.Preview" xml:space="preserve"><value>預覽</value></data>
-  <data name="Panel.Inspector" xml:space="preserve"><value>照片資訊與模組</value></data>
+  <data name="Panel.Inspector" xml:space="preserve"><value>照片基本參數</value></data>
   <data name="Panel.Filmstrip" xml:space="preserve"><value>縮圖列</value></data>
   <data name="Panel.Export" xml:space="preserve"><value>照片匯出</value></data>
+  <data name="Panel.Crop" xml:space="preserve"><value>裁切</value></data>
+  <data name="Panel.FilmEffects" xml:space="preserve"><value>底片效果</value></data>
+  <data name="Panel.Crop.Tip" xml:space="preserve"><value>裁切（R）</value></data>
+  <data name="Cmd.Crop" xml:space="preserve"><value>裁切工具</value></data>
+  <data name="Tool.Crop" xml:space="preserve"><value>裁切</value></data>
+  <data name="Tool.Crop.Apply" xml:space="preserve"><value>套用</value></data>
+  <data name="Tool.Crop.Cancel" xml:space="preserve"><value>取消</value></data>
+  <data name="Tool.Crop.Edit" xml:space="preserve"><value>編輯裁切</value></data>
+  <data name="Tool.Crop.Aspect" xml:space="preserve"><value>比例</value></data>
+  <data name="Tool.Crop.SwapOrientation" xml:space="preserve"><value>切換直式 / 橫式（X）</value></data>
+  <data name="Tool.Crop.Straighten" xml:space="preserve"><value>拉直</value></data>
+  <data name="Tool.Crop.Orientation" xml:space="preserve"><value>旋轉與翻轉</value></data>
+  <data name="Tool.Crop.RotateLeft" xml:space="preserve"><value>向左旋轉 90°（[）</value></data>
+  <data name="Tool.Crop.RotateRight" xml:space="preserve"><value>向右旋轉 90°（]）</value></data>
+  <data name="Tool.Crop.FlipH" xml:space="preserve"><value>水平翻轉</value></data>
+  <data name="Tool.Crop.FlipV" xml:space="preserve"><value>垂直翻轉</value></data>
+  <data name="Tool.Crop.Reset" xml:space="preserve"><value>重設裁切</value></data>
+  <data name="Tool.Crop.FocusedOnly" xml:space="preserve"><value>裁切只套用到目前照片</value></data>
+  <data name="Tool.Crop.Shortcuts" xml:space="preserve"><value>拖曳框內移動、拖曳把手調整大小（Alt 以中心縮放）、拖曳框外旋轉。Enter 或點兩下框內套用，Esc 取消，R 套用並回到上一個分頁。</value></data>
+  <data name="Toast.CropFocusedOnly" xml:space="preserve"><value>裁切只套用到目前照片</value></data>
   <data name="Inspector.NoPhoto" xml:space="preserve"><value>尚未選取照片</value></data>
   <data name="Inspector.Preset" xml:space="preserve"><value>預設</value></data>
   <data name="Inspector.ResetPhoto" xml:space="preserve"><value>重設此張</value></data>
@@ -50,20 +70,6 @@
   <data name="Inspector.HideDisabled" xml:space="preserve"><value>隱藏未啟用模組</value></data>
   <data name="Inspector.ResetModule" xml:space="preserve"><value>重設此模組</value></data>
   <data name="Inspector.CopyModule" xml:space="preserve"><value>只複製此模組</value></data>
-  <data name="Film.Recipe" xml:space="preserve"><value>配方</value></data>
-  <data name="Film.Edited" xml:space="preserve"><value>EDITED</value></data>
-  <data name="Film.ResetToRecipe" xml:space="preserve"><value>重設為配方值</value></data>
-  <data name="Film.SaveAsCustom" xml:space="preserve"><value>另存為自訂配方</value></data>
-  <data name="Film.Import" xml:space="preserve"><value>匯入配方…</value></data>
-  <data name="Film.Export" xml:space="preserve"><value>匯出配方…</value></data>
-  <data name="Film.RecipeName" xml:space="preserve"><value>配方名稱</value></data>
-  <data name="Film.InvalidName" xml:space="preserve"><value>名稱需為 1–24 個字元（英數字與 -.'()&amp;+ 空格）</value></data>
-  <data name="Film.NameTaken" xml:space="preserve"><value>「{0}」已存在</value></data>
-  <data name="Film.UnsupportedEffect" xml:space="preserve"><value>「{0}」效果尚未實作，以關閉算圖</value></data>
-  <data name="Film.UnknownRecipe" xml:space="preserve"><value>未知配方「{0}」，沿用目前欄位值算圖</value></data>
-  <data name="Film.SkippedOne" xml:space="preserve"><value>已略過 {0}</value></data>
-  <data name="Film.FileError" xml:space="preserve"><value>{0}：{1}</value></data>
-  <data name="Film.SkippedMany" xml:space="preserve"><value>已略過 {0} 個檔案——首先：{1}</value></data>
   <data name="Filmstrip.All" xml:space="preserve"><value>全部</value></data>
   <data name="Filmstrip.OverridesOnly" xml:space="preserve"><value>只顯示有覆寫</value></data>
   <data name="Filmstrip.Unassigned" xml:space="preserve"><value>未指定預設</value></data>
@@ -250,11 +256,6 @@
   <data name="Presets.BadExtension" xml:space="preserve"><value>預設檔副檔名必須是 .yaml 或 .yml。</value></data>
   <data name="Presets.Exported" xml:space="preserve"><value>已匯出預設：{0}</value></data>
   <data name="Toast.ExportFailed" xml:space="preserve"><value>匯出失敗：{0}</value></data>
-  <data name="Film.Selected" xml:space="preserve"><value>已選用配方「{0}」</value></data>
-  <data name="Film.ResetDone" xml:space="preserve"><value>已重設為「{0}」</value></data>
-  <data name="Film.Imported" xml:space="preserve"><value>已匯入「{0}」</value></data>
-  <data name="Film.Exported" xml:space="preserve"><value>已匯出「{0}」</value></data>
-  <data name="Film.CustomGroup" xml:space="preserve"><value>自訂</value></data>
   <data name="Dialog.AssignMessage" xml:space="preserve"><value>有 {0} 張照片已有單張覆寫。
 保留覆寫：只更換預設，手動調整的欄位維持不變。
 清除覆寫：完全改用新預設。</value></data>
@@ -297,4 +298,32 @@
   <data name="Module.raw" xml:space="preserve"><value>RAW 原廠處理</value></data>
   <data name="Param.raw.embedded_lens" xml:space="preserve"><value>內嵌鏡頭校正</value></data>
   <data name="Param.raw.camera_local_tone" xml:space="preserve"><value>相機局部色調</value></data>
+  <!-- 底片風格（FilmLookControl） -->
+  <data name="Film.Look" xml:space="preserve"><value>底片</value></data>
+  <data name="Film.HueCorrection" xml:space="preserve"><value>色相修正</value></data>
+  <data name="Film.HueCustom" xml:space="preserve"><value>自訂</value></data>
+  <data name="Film.HueBands" xml:space="preserve"><value>自訂色相</value></data>
+  <data name="Film.LookApplied" xml:space="preserve"><value>已套用底片「{0}」</value></data>
+  <data name="Film.HueApplied" xml:space="preserve"><value>已套用色相修正「{0}」</value></data>
+  <data name="Film.Group.kodak" xml:space="preserve"><value>柯達</value></data>
+  <data name="Film.Group.fuji" xml:space="preserve"><value>富士</value></data>
+  <data name="Film.Group.agfa-lomo" xml:space="preserve"><value>愛克發與 Lomo</value></data>
+  <data name="Film.Group.polaroid" xml:space="preserve"><value>拍立得</value></data>
+  <data name="Film.Group.bw" xml:space="preserve"><value>黑白</value></data>
+  <data name="Film.Group.creative" xml:space="preserve"><value>創意</value></data>
+  <data name="Film.Band.red" xml:space="preserve"><value>紅</value></data>
+  <data name="Film.Band.orange" xml:space="preserve"><value>橙</value></data>
+  <data name="Film.Band.yellow" xml:space="preserve"><value>黃</value></data>
+  <data name="Film.Band.green" xml:space="preserve"><value>綠</value></data>
+  <data name="Film.Band.aqua" xml:space="preserve"><value>青</value></data>
+  <data name="Film.Band.blue" xml:space="preserve"><value>藍</value></data>
+  <data name="Film.Band.purple" xml:space="preserve"><value>紫</value></data>
+  <data name="Film.Band.magenta" xml:space="preserve"><value>洋紅</value></data>
+  <data name="Film.Hue.none" xml:space="preserve"><value>無</value></data>
+  <data name="Film.Hue.warm-skin" xml:space="preserve"><value>暖膚色</value></data>
+  <data name="Film.Hue.clear-sky" xml:space="preserve"><value>清澈藍天</value></data>
+  <data name="Film.Hue.lush-green" xml:space="preserve"><value>青翠綠意</value></data>
+  <data name="Film.Hue.golden" xml:space="preserve"><value>金黃秋色</value></data>
+  <data name="Film.Hue.teal-orange" xml:space="preserve"><value>冷暖對比</value></data>
+  <data name="Film.Hue.muted" xml:space="preserve"><value>低彩度</value></data>
 </root>

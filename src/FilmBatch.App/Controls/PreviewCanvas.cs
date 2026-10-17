@@ -6,6 +6,7 @@ using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
+using FilmBatch.App.Controls.Tools;
 
 namespace FilmBatch.App.Controls;
 
@@ -15,6 +16,7 @@ namespace FilmBatch.App.Controls;
 /// <item>縮放：符合視窗 / 100%（1 影像像素 = 1 裝置像素）/ 滾輪縮放；放大時拖曳平移。</item>
 /// <item>原圖對比：<see cref="ShowOriginal"/>（按住空白鍵）、<see cref="IsSplit"/> 左右分割（分割線可拖曳）。</item>
 /// <item>控制點：與影像一起繪製，命中測試自行計算；拖曳時即時回報（<see cref="ControlPointDragged"/>）。</item>
+/// <item>畫布工具：<see cref="ActiveTool"/>（裁切框等）畫在影像之上，指標事件優先交給工具。</item>
 /// <item>算圖中於右上角顯示細小的旋轉指示，不遮擋畫面、不鎖住操作。</item>
 /// </list>
 /// </summary>
@@ -38,6 +40,9 @@ public class PreviewCanvas : Control
         AvaloniaProperty.Register<PreviewCanvas, string?>(nameof(OverlayText));
     public static readonly StyledProperty<Point?> ControlPointProperty =
         AvaloniaProperty.Register<PreviewCanvas, Point?>(nameof(ControlPoint));
+    /// <summary>目前的畫布工具（裁切、遮罩）；非 null 時指標事件先交給工具。</summary>
+    public static readonly StyledProperty<ICanvasTool?> ActiveToolProperty =
+        AvaloniaProperty.Register<PreviewCanvas, ICanvasTool?>(nameof(ActiveTool));
     public static readonly StyledProperty<IBrush?> CanvasBackgroundProperty =
         AvaloniaProperty.Register<PreviewCanvas, IBrush?>(nameof(CanvasBackground));
 
@@ -58,7 +63,7 @@ public class PreviewCanvas : Control
     private static readonly IBrush OverlayBackground = new SolidColorBrush(Color.FromArgb(0xB0, 0x1A, 0x1A, 0x1A));
     private static readonly IBrush OverlayForeground = new SolidColorBrush(Color.FromRgb(0xEA, 0xEA, 0xEA));
 
-    private enum DragMode { None, Pan, Split, ControlPoint }
+    private enum DragMode { None, Pan, Split, ControlPoint, Tool }
 
     private DragMode _drag;
     private Point _dragStart;
@@ -79,6 +84,7 @@ public class PreviewCanvas : Control
     public string? OverlayText { get => GetValue(OverlayTextProperty); set => SetValue(OverlayTextProperty, value); }
     public Point? ControlPoint { get => GetValue(ControlPointProperty); set => SetValue(ControlPointProperty, value); }
     public IBrush? CanvasBackground { get => GetValue(CanvasBackgroundProperty); set => SetValue(CanvasBackgroundProperty, value); }
+    public ICanvasTool? ActiveTool { get => GetValue(ActiveToolProperty); set => SetValue(ActiveToolProperty, value); }
 
     /// <summary>拖曳控制點：參數為正規化座標與是否已放開。</summary>
     public event Action<Point, bool>? ControlPointDragged;
@@ -95,6 +101,13 @@ public class PreviewCanvas : Control
             if (e.NewValue is <= 0.0) c._pan = default;
         });
         IsBusyProperty.Changed.AddClassHandler<PreviewCanvas>((c, _) => c.UpdateSpinner());
+        ActiveToolProperty.Changed.AddClassHandler<PreviewCanvas>((c, e) =>
+        {
+            if (e.OldValue is ICanvasTool old) old.Invalidated -= c.InvalidateVisual;
+            if (e.NewValue is ICanvasTool tool) tool.Invalidated += c.InvalidateVisual;
+            if (c._drag == DragMode.Tool) c._drag = DragMode.None;
+            c.InvalidateVisual();
+        });
         FocusableProperty.OverrideDefaultValue<PreviewCanvas>(true);
         ClipToBoundsProperty.OverrideDefaultValue<PreviewCanvas>(true);
     }
@@ -159,6 +172,9 @@ public class PreviewCanvas : Control
                 DrawLabel(ctx, Localization.Loc.Get("Preview.Original"), new Point(x - 8, top + 8), alignRight: true);
                 DrawLabel(ctx, Localization.Loc.Get("Preview.Effect"), new Point(x + 8, top + 8), alignRight: false);
             }
+
+            // 畫布工具畫在影像（含對比分割）之上；按住空白鍵看原圖時也保留，方便對照裁切範圍
+            ActiveTool?.Render(ctx, new CanvasMapping(dest));
 
             if (ControlPoint is { } p && !ShowOriginal)
             {
@@ -231,7 +247,9 @@ public class PreviewCanvas : Control
         Focus();
         var pos = pt.Position;
 
-        if (ControlPointScreen() is { } cp && Distance(cp, pos) <= HitRadius)
+        if (ActiveTool is { } tool && tool.OnPressed(pos, Mapping(), e.KeyModifiers))
+            _drag = DragMode.Tool;
+        else if (ControlPointScreen() is { } cp && Distance(cp, pos) <= HitRadius)
             _drag = DragMode.ControlPoint;
         else if (SplitScreenX() is { } sx && Math.Abs(sx - pos.X) <= 6)
             _drag = DragMode.Split;
@@ -255,6 +273,9 @@ public class PreviewCanvas : Control
 
         switch (_drag)
         {
+            case DragMode.Tool:
+                ActiveTool?.OnMoved(pos, Mapping(), e.KeyModifiers);
+                break;
             case DragMode.ControlPoint:
                 ControlPointDragged?.Invoke(ToNormalized(img.Size, pos), false);
                 break;
@@ -267,7 +288,8 @@ public class PreviewCanvas : Control
                 InvalidateVisual();
                 break;
             default:
-                Cursor = ControlPointScreen() is { } cp && Distance(cp, pos) <= HitRadius ? new Cursor(StandardCursorType.Hand)
+                Cursor = ActiveTool?.CursorAt(pos, Mapping()) is { } toolCursor ? toolCursor
+                    : ControlPointScreen() is { } cp && Distance(cp, pos) <= HitRadius ? new Cursor(StandardCursorType.Hand)
                     : SplitScreenX() is { } sx && Math.Abs(sx - pos.X) <= 6 ? new Cursor(StandardCursorType.SizeWestEast)
                     : Cursor.Default;
                 break;
@@ -278,6 +300,7 @@ public class PreviewCanvas : Control
     {
         base.OnPointerReleased(e);
         if (_drag == DragMode.None) return;
+        if (_drag == DragMode.Tool) ActiveTool?.OnReleased(e.GetPosition(this), Mapping());
         if (_drag == DragMode.ControlPoint && Displayed is { } img)
             ControlPointDragged?.Invoke(ToNormalized(img.Size, e.GetPosition(this)), true);
         _drag = DragMode.None;
@@ -304,6 +327,9 @@ public class PreviewCanvas : Control
         InvalidateVisual();
         e.Handled = true;
     }
+
+    /// <summary>目前顯示影像的畫布矩形 ↔ 正規化座標。</summary>
+    private CanvasMapping Mapping() => new(Displayed is { } img ? ImageRect(img.Size) : new Rect(Bounds.Size));
 
     private bool IsLargerThanView() =>
         Displayed is { } img && ImageRect(img.Size) is var r && (r.Width > Bounds.Width + 1 || r.Height > Bounds.Height + 1);

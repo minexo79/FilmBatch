@@ -569,7 +569,8 @@
     <Setter Property="Height" Value="12" />
     <Setter Property="Foreground" Value="{DynamicResource FB.PlaceholderBrush}" />
   </Style>
-  <Style Selector="ToggleButton.chevron:checked /template/ ContentPresenter, ToggleButton.chevron:pointerover /template/ ContentPresenter, ToggleButton.chevron:pressed /template/ ContentPresenter">
+  <!-- 未展開時也必須覆寫 Fluent 預設的按鈕底色，否則會出現灰色圓角外框。 -->
+  <Style Selector="ToggleButton.chevron:checked /template/ ContentPresenter, ToggleButton.chevron:unchecked /template/ ContentPresenter, ToggleButton.chevron:pointerover /template/ ContentPresenter, ToggleButton.chevron:pressed /template/ ContentPresenter">
     <Setter Property="Background" Value="Transparent" />
   </Style>
   <Style Selector="ToggleButton.chevron PathIcon.expanded">
@@ -624,6 +625,73 @@
   <Style Selector="Border.drop-target">
     <Setter Property="BorderBrush" Value="{DynamicResource FB.AccentBrush}" />
     <Setter Property="BorderThickness" Value="2" />
+  </Style>
+
+  <!-- ───── 底片風格（FilmLookControl）：縮圖格、「自訂」標記、色相帶色塊 ───── -->
+  <Style Selector="Button.film-tile">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="2" />
+    <Setter Property="CornerRadius" Value="6" />
+    <Setter Property="Padding" Value="2" />
+    <Setter Property="Margin" Value="2" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+  </Style>
+  <Style Selector="Button.film-tile:pointerover /template/ ContentPresenter, Button.film-tile:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource FB.HoverOverlayBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource FB.BorderLightBrush}" />
+  </Style>
+  <!-- 目前套用中的底片／色相修正：強調色 2px 外框 -->
+  <Style Selector="Button.film-tile.selected /template/ ContentPresenter, Button.film-tile.selected:pointerover /template/ ContentPresenter, Button.film-tile.selected:pressed /template/ ContentPresenter">
+    <Setter Property="BorderBrush" Value="{DynamicResource FB.AccentBrush}" />
+  </Style>
+  <Style Selector="Border.film-thumb">
+    <Setter Property="Background" Value="{DynamicResource FB.ThumbnailBackBrush}" />
+    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="ClipToBounds" Value="True" />
+  </Style>
+  <Style Selector="ProgressBar.film-thumb-busy">
+    <Setter Property="MinHeight" Value="2" />
+    <Setter Property="Height" Value="2" />
+    <Setter Property="MinWidth" Value="0" />
+  </Style>
+  <!-- 色相值不符合任何內建修正：琥珀色「自訂」標記（與覆寫標示同色系） -->
+  <Style Selector="Border.film-badge">
+    <Setter Property="Background" Value="{DynamicResource FB.BaseBrush}" />
+    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="Padding" Value="5,1" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Border.film-badge TextBlock">
+    <Setter Property="FontSize" Value="11" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{DynamicResource FB.OverrideBrush}" />
+  </Style>
+  <Style Selector="ListBox.hue-bands">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Margin" Value="0,0,0,4" />
+  </Style>
+  <Style Selector="ListBox.hue-bands ListBoxItem">
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="MinHeight" Value="28" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="CornerRadius" Value="6" />
+  </Style>
+  <Style Selector="ListBox.hue-bands ListBoxItem /template/ ContentPresenter, ListBox.hue-bands ListBoxItem:selected /template/ ContentPresenter, ListBox.hue-bands ListBoxItem:selected:focus /template/ ContentPresenter, ListBox.hue-bands ListBoxItem:selected:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+  <Style Selector="ListBox.hue-bands ListBoxItem:pointerover /template/ ContentPresenter, ListBox.hue-bands ListBoxItem:selected:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource FB.HoverOverlayBrush}" />
+  </Style>
+  <!-- 選取中的色相帶：色塊外加亮白 2px 外環（同縮圖列選取） -->
+  <Style Selector="ListBox.hue-bands ListBoxItem Ellipse">
+    <Setter Property="StrokeThickness" Value="2" />
+    <Setter Property="Stroke" Value="Transparent" />
+  </Style>
+  <Style Selector="ListBox.hue-bands ListBoxItem:selected Ellipse">
+    <Setter Property="Stroke" Value="{DynamicResource FB.SelectionRingBrush}" />
   </Style>
 
   <!-- ───── 預設庫 ───── -->

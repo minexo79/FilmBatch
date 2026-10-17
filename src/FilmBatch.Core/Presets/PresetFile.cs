@@ -35,12 +35,13 @@ public static class PresetFile
                     if (keyNode is not YamlScalarNode { Value: { } key } || valueNode is not YamlScalarNode scalar)
                         throw new InvalidDataException("Preset parameters must be scalar values.");
                     var flatKey = module + "." + key;
+                    if (RetiredParams.IsRetired(flatKey)) continue;
                     var definition = ModuleCatalog.Param(flatKey) ?? throw new InvalidDataException($"Unknown parameter: {flatKey}");
                     var text = scalar.Value ?? "";
                     var value = definition.Kind switch
                     {
                         ParamKind.Bool when bool.TryParse(text, out var boolean) => ParamValue.Of(boolean),
-                        ParamKind.Choice or ParamKind.Path => ParamValue.Of(
+                        ParamKind.Choice or ParamKind.Path or ParamKind.Curve => ParamValue.Of(
                             scalar.Style == ScalarStyle.Plain && text is "null" or "~" ? "" : text),
                         ParamKind.Float or ParamKind.Int or ParamKind.Seed when double.TryParse(text, NumberStyles.Float,
                             CultureInfo.InvariantCulture, out var number) => ParamValue.Of(number),

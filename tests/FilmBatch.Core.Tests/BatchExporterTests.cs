@@ -193,6 +193,46 @@ public class BatchExporterTests
     }
 
     [Fact]
+    public async Task Export_CroppedPhoto_HasCroppedDimensions()
+    {
+        var folder = PhotoFolder(count: 1, longEdge: 400);
+        var svc = CreateService(folder, "DSC_0012.tif");
+        var source = ImageLoader.LoadFull(Path.Combine(folder, "DSC_0012.tif"));
+        svc.SetValue(["DSC_0012.tif"], "crop.enabled", true);
+        svc.SetValue(["DSC_0012.tif"], "crop.rect_w", 0.5);
+        var dest = Path.Combine(folder, "export");
+        var summary = await Run(svc, ["DSC_0012.tif"], Jpeg(dest, "{name}"), TestContext.Current.CancellationToken);
+        Assert.Equal(0, summary.Failed);
+        using var image = new MagickImage(summary.OutputFiles[0]);
+        var expectedWidth = (uint)Math.Round(source.Width * 0.5);
+        Assert.Equal((expectedWidth, (uint)source.Height), (image.Width, image.Height));
+        // EXIF 的像素尺寸也是裁切後的尺寸
+        var exif = image.GetExifProfile();
+        Assert.NotNull(exif);
+        Assert.Equal(expectedWidth, (uint)exif!.GetValue(ExifTag.PixelXDimension)!.Value);
+        Assert.Equal((uint)source.Height, (uint)exif.GetValue(ExifTag.PixelYDimension)!.Value);
+    }
+
+    [Fact]
+    public async Task ExportLongEdge_CroppedPhoto_ScalesCroppedFrame()
+    {
+        var folder = PhotoFolder(count: 1, longEdge: 400);
+        var svc = CreateService(folder, "DSC_0012.tif");
+        svc.SetValue(["DSC_0012.tif"], "crop.enabled", true);
+        svc.SetValue(["DSC_0012.tif"], "crop.quarter", 1.0);   // 橫幅轉成直幅
+        var dest = Path.Combine(folder, "export");
+        var summary = await Run(svc, ["DSC_0012.tif"], new ExportOptions
+        {
+            Destination = dest, FileNameTemplate = "{name}", Format = ExportFormat.Png16,
+            Size = ExportSize.LongEdge, LongEdgePx = 200,
+        }, TestContext.Current.CancellationToken);
+        Assert.Equal(0, summary.Failed);
+        using var image = new MagickImage(summary.OutputFiles[0]);
+        Assert.Equal(200u, image.Height);
+        Assert.True(image.Width < image.Height);
+    }
+
+    [Fact]
     public void Template_UnknownToken_Throws()
     {
         Assert.Throws<InvalidDataException>(() =>

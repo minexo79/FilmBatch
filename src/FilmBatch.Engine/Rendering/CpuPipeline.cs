@@ -24,8 +24,12 @@ public static class CpuPipeline
 
     public static SourceImage Process(SourceImage source, ModuleParams p, ushort[]? outRgba16, CancellationToken ct)
     {
-        int w = source.Width, h = source.Height, n = w * h;
         var cur = DecodeLinear(source);
+        ct.ThrowIfCancellationRequested();
+
+        // 裁切（旋轉 90°、翻轉、拉直、裁切）：之後所有模組都以裁切後的畫框計算
+        if (p.Crop.On) cur = Crop(cur, source.Width, source.Height, p.CropT);
+        int w = p.OutWidth, h = p.OutHeight, n = w * h;
         ct.ThrowIfCancellationRequested();
 
         var a = new float[n * 4];
@@ -62,8 +66,8 @@ public static class CpuPipeline
         }
         ct.ThrowIfCancellationRequested();
 
-        // ③ 底片（線性 → 顯示）：底片色彩 → 效果比例 → 古典版材
-        if (p.FilmOn) FilmProcessing.Apply(cur, a, b, w, h, p.Film);
+        // ③ 底片（線性）：底片風格 → 古典版材
+        if (p.FilmOn && p.FilmLut is not null && p.FilmStrength > 0) FilmLookProcessing.Apply(cur, n, p.FilmLook, p.FilmLut);
         ct.ThrowIfCancellationRequested();
         if (p.PlateOn && p.PlateStrength > 0) PhotoPlate(cur, w, h, p);
         ct.ThrowIfCancellationRequested();
@@ -131,6 +135,29 @@ public static class CpuPipeline
                 .CopyTo(result, i);
         });
         return result;
+    }
+
+    /// <summary>
+    /// 裁切取樣（與 geometry/crop.wgsl 同演算法）：輸出像素中心經 <see cref="CropTransform.OutToSource"/>
+    /// 映到來源，雙線性取樣，超出邊界以邊緣像素延伸。
+    /// </summary>
+    public static float[] Crop(float[] srcLinear, int srcW, int srcH, CropTransform t)
+    {
+        int w = t.OutWidth, h = t.OutHeight;
+        var dst = new float[w * h * 4];
+        var m = t.OutToSource;
+        Parallel.For(0, h, y =>
+        {
+            for (var x = 0; x < w; x++)
+            {
+                var (sx, sy) = m.Apply(x + 0.5, y + 0.5);
+                var fx = (float)(sx - 0.5);
+                var fy = (float)(sy - 0.5);
+                var o = (y * w + x) * 4;
+                for (var c = 0; c < 4; c++) dst[o + c] = SampleBilinear(srcLinear, srcW, srcH, fx, fy, c);
+            }
+        });
+        return dst;
     }
 
     private static void BasicLinear(float[] pixels, int count, ModuleParams p)

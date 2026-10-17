@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using FilmBatch.Core.Curves;
 
 namespace FilmBatch.Core.Params;
 
@@ -23,6 +24,7 @@ public sealed class SettingsJsonConverter : JsonConverter<Settings>
                 JsonTokenType.String => ParamValue.Of(reader.GetString()!),
                 _ => throw new JsonException($"Invalid scalar parameter: {key}"),
             };
+            if (RetiredParams.IsRetired(key)) continue;
             if (!values.TryAdd(key, value)) throw new JsonException($"Duplicate parameter: {key}");
             Validate(key, value);
         }
@@ -37,7 +39,7 @@ public sealed class SettingsJsonConverter : JsonConverter<Settings>
         var expected = definition.Kind switch
         {
             ParamKind.Bool => ValueKind.Bool,
-            ParamKind.Choice or ParamKind.Path => ValueKind.Text,
+            ParamKind.Choice or ParamKind.Path or ParamKind.Curve => ValueKind.Text,
             _ => ValueKind.Number,
         };
         if (value.Kind != expected) throw new InvalidDataException($"Invalid value type: {key}");
@@ -45,8 +47,10 @@ public sealed class SettingsJsonConverter : JsonConverter<Settings>
             || value.Number < definition.Min || value.Number > definition.Max
             || (definition.Kind is ParamKind.Int or ParamKind.Seed && value.Number != Math.Truncate(value.Number))))
             throw new InvalidDataException($"Parameter out of range: {key}");
-        // Recipe and asset choices can be supplied by the user's library, not only the static catalog.
-        if (definition.Kind == ParamKind.Choice && key is not "film.recipe" and not "light_leak.texture"
+        if (definition.Kind == ParamKind.Curve && !ToneCurve.TryParse(value.AsText, out _))
+            throw new InvalidDataException($"Invalid curve: {key}");
+        // Asset choices can be supplied by the user's library, not only the static catalog.
+        if (definition.Kind == ParamKind.Choice && key is not "light_leak.texture"
             && !definition.Choices.Any(choice => choice.Key == value.AsText))
             throw new InvalidDataException($"Unknown option for {key}: {value.AsText}");
     }

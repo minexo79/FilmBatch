@@ -51,6 +51,7 @@
       </MenuItem>
       <MenuItem Header="{l:Tr Menu.View}">
         <MenuItem Header="{l:Tr Cmd.SplitCompare}" Command="{Binding ToggleSplitCommand}" InputGesture="Y" />
+        <MenuItem Header="{l:Tr Cmd.Crop}" Command="{Binding ToggleCropCommand}" InputGesture="R" />
         <MenuItem Header="{l:Tr Cmd.ZoomFit}" Command="{Binding ZoomFitCommand}" InputGesture="{OnPlatform Ctrl+D0, macOS=Meta+D0}" />
         <MenuItem Header="{l:Tr Cmd.Zoom100}" Command="{Binding Zoom100Command}" InputGesture="{OnPlatform Ctrl+D1, macOS=Meta+D1}" />
         <Separator />

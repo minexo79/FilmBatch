@@ -276,6 +276,57 @@ public sealed class RawGpuDisplayTests
         finally { Directory.Delete(folder, recursive: true); }
     }
 
+    [Fact]
+    public async Task RawExport_CroppedAndRotated_PreservesGeometryPixelsAndMetadata()
+    {
+        using (var probe = TryCreateGpu())
+            Assert.SkipWhen(probe is null, "沒有可用的 GPU 介面卡");
+        var folder = Path.Combine(Path.GetTempPath(), "filmbatch-rawcrop-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var sourcePath = WriteLinearDng(Path.Combine(folder, "scene.dng"), 64, 48);
+            var project = Project.Open(folder, SamplePresets.Neutral);
+            var service = new ProjectService(project, new PresetLibrary(SamplePresets.Create()), new CommandStack());
+            service.SetValue(["scene.dng"], "crop.enabled", true);
+            service.SetValue(["scene.dng"], "crop.quarter", 1.0);
+            service.SetValue(["scene.dng"], "crop.rect_w", 0.5);
+            service.SetValue(["scene.dng"], "crop.rect_h", 0.5);
+            service.SetValue(["scene.dng"], "crop.rect_cx", 0.75);
+            service.SetValue(["scene.dng"], "crop.rect_cy", 0.25);
+            var request = new ExportRequest
+            {
+                Service = service, Files = ["scene.dng"],
+                Options = new ExportOptions
+                {
+                    Destination = Path.Combine(folder, "export"),
+                    FileNameTemplate = "{name}", Format = ExportFormat.Png16,
+                },
+            };
+            var ct = TestContext.Current.CancellationToken;
+            var summary = await BatchExporter.RunAsync(request, () => GpuSpikeRenderer.Create(), null, ct);
+            Assert.Equal(0, summary.Failed);
+            var output = Assert.Single(summary.OutputFiles);
+            var actual = ImageLoader.LoadFull(output);
+            using var cpu = new CpuFakeRenderer();
+            var expected = cpu.Render16(ImageLoader.LoadFull(sourcePath), service.SettingsFor("scene.dng"), ct);
+            // 先轉成 48×64，再取定向後畫框的右上四分之一。
+            Assert.Equal((24, 32), (actual.Width, actual.Height));
+            Assert.Equal((expected.Width, expected.Height), (actual.Width, actual.Height));
+            var max = MaxAbsDiff(expected.Rgba16, actual.Rgba16);
+            Assert.True(max <= 64, $"RAW＋裁切 GPU/CPU 差異 {max}/65535");
+            for (var i = 3; i < actual.Rgba16.Length; i += 4)
+                Assert.Equal(ushort.MaxValue, actual.Rgba16[i]);
+            Assert.Equal("FilmBatch RAW GPU Proof", PhotoExif.Read(output).Camera);
+            using var log = System.Text.Json.JsonDocument.Parse(
+                File.ReadAllText(Path.Combine(folder, ".filmbatch", "export_log.json")));
+            var entry = log.RootElement.GetProperty("Entries")[0];
+            Assert.Equal("ok", entry.GetProperty("Status").GetString());
+            Assert.Contains("RAW GPU", entry.GetProperty("Renderer").GetString(), StringComparison.Ordinal);
+        }
+        finally { Directory.Delete(folder, recursive: true); }
+    }
+
     private static string WriteLinearDng(string path, int w, int h)
     {
         // 已渲染線性 sRGB DNG（WriteRenderedDng：LinearRaw、half-float Deflate、精確色彩標籤）：

@@ -48,6 +48,12 @@ internal sealed class PresetDocument
 
 internal static class ProjectStorage
 {
+    /// <summary>
+    /// 寫入的專案格式版本。2：加入裁切 / 遮罩 / 曲線等新 key（舊版讀到會顯示「較新版本建立」而非損毀）。
+    /// 讀取時接受 1 ~ 目前版本。
+    /// </summary>
+    public const int CurrentVersion = 2;
+
     public static string FilePath(string folder) => Path.Combine(AppPaths.ProjectFolder(folder), "project.json");
 
     public static ProjectDocument Read(string path)
@@ -55,7 +61,11 @@ internal static class ProjectStorage
         using var stream = File.OpenRead(path);
         var document = JsonSerializer.Deserialize(stream, ProjectJson.Default.ProjectDocument)
             ?? throw new InvalidDataException("Empty project document.");
-        if (document.PipelineVersion != 1) throw new InvalidDataException($"Unsupported project pipeline: {document.PipelineVersion}");
+        if (document.PipelineVersion > CurrentVersion)
+            throw new InvalidDataException(CoreText.T(
+                $"此專案由較新版本的 FilmBatch 建立（格式版本 {document.PipelineVersion}），請更新 FilmBatch 後再開啟。",
+                $"This project was created by a newer version of FilmBatch (format version {document.PipelineVersion}). Update FilmBatch to open it."));
+        if (document.PipelineVersion < 1) throw new InvalidDataException($"Unsupported project pipeline: {document.PipelineVersion}");
         if (document.Photos is null || document.PresetSnapshots is null || document.KeptPresetUpdates is null)
             throw new InvalidDataException("Incomplete project document.");
         foreach (var (name, photo) in document.Photos)

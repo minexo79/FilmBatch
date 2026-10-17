@@ -1,4 +1,4 @@
-FilmBatch 使用下列第三方元件；RAW 移植與 Recipe Lab 的授權全文附於下方。
+FilmBatch 使用下列第三方元件；RAW 移植的授權全文與 RawTherapee 底片 LUT 的來源及授權聲明列於下方。
 
 Avalonia UI 12              MIT          https://github.com/AvaloniaUI/Avalonia
 Dock.Avalonia 12            MIT          https://github.com/wieslawsoltes/Dock
@@ -9,15 +9,15 @@ Dawn (WebGPU)               BSD-3-Clause https://dawn.googlesource.com/dawn
 Magick.NET / ImageMagick    Apache-2.0 / ImageMagick License  https://github.com/dlemstra/Magick.NET
 System.CommandLine          MIT          https://github.com/dotnet/command-line-api
 .NET Runtime                MIT          https://github.com/dotnet/runtime
-Recipe Lab v1.7.0（底片配方資料與測試樣張） MIT https://github.com/voxivoid/recipe-lab-sony-pmca
-  Copyright (c) 2026 André Domingues。內建 77 組配方的原始數值、欄位語意、品牌分組與自訂配方格式 1
-  搬移自 src/com/voxivoid/recipelab/Recipes.java（釘選 tag v1.7.0，commit 6d70495e62d4a9ec15a9c5cfcf835e775ff9c8cc，
-  見 src/FilmBatch.Core/Film/recipelab.json 檔頭）。配方名稱中的 Kodak、Fujifilm、Ilford 等為各公司商標，
-  僅用來描述近似的風格，FilmBatch 不宣稱與其有關聯。
-  tests/FilmBatch.Core.Tests/Fixtures/Film/ 的 01、15、17 號 JPEG 為同一 commit 的
-  docs/samples/ 原始檔；僅用於色彩回歸，不作為 FilmBatch 產生的影像。
-  注意：FilmBatch 僅使用 Recipe Lab v1.7.0（含）以前以 MIT 授權釋出的內容。上游自 v1.8.0 起改採
-  GPL-3.0；FilmBatch 未使用 v1.8.0 及之後版本的任何程式碼、資料或樣張。
+RawTherapee Film Simulation Collection（2015-09-20 版，底片 LUT） CC BY-SA 4.0 http://rawtherapee.com/shared/HaldCLUT.zip
+  原作者：Pat David、Pavlov Dmitry、Michael Ezra。授權：Creative Commons Attribution-ShareAlike 4.0
+  International（https://creativecommons.org/licenses/by-sa/4.0/）。
+  src/FilmBatch.Core/Film/Looks/*.fblut 的 36 個 LUT 衍生自該集合（421,602,289 bytes 的 HaldCLUT.zip）。
+  修改：由 Hald CLUT（8-bit sRGB PNG；多數為 level 12／144³，Kodak Ektar 100 為 level 16／256³）
+  以四面體內插重新取樣成 33³，存成 16-bit 的 FilmBatch .fblut 格式（tools/film-luts）。
+  這些 LUT 檔依 CC BY-SA 4.0 散布；詳見 src/FilmBatch.Core/Film/Looks/LICENSE.txt 與 docs/film-looks.md。
+  商標聲明：底片名稱（Kodak、Fuji、Agfa、Ilford、Lomography、Polaroid 等）為各公司商標，僅用於說明
+  LUT 意圖模擬的底片，FilmBatch 與上述商標所有者無任何關係，亦未獲其背書。
 LightCraft（RAW 解碼、相機色彩與色調） MIT OR Apache-2.0（FilmBatch 依 MIT 使用） https://github.com/storytold/lightcraft
   Copyright (c) 2026 ArtCraft Team and the LightCraft contributors。src/FilmBatch.Raw 與 src/FilmBatch.Engine/Imaging/Raw
   為釘選 commit f34c7a8a89e0d1bade0a6889185f40acecc84a9f 的 C# 移植（已修改；各檔檔頭標示上游路徑）。
@@ -35,27 +35,6 @@ rawtoaces-data v1.1.0（相機光譜靈敏度） Apache-2.0 https://github.com/A
 CIE 1931 色彩配對函數 CC BY 4.0 https://creativecommons.org/licenses/by/4.0/
   © CIE（International Commission on Illumination），隨 rawtoaces-data 發佈；只用來擬合上列相機矩陣（修改：
   FilmBatch 不含原始資料）。
-
-MIT License (Recipe Lab v1.7.0)
-Copyright (c) 2026 André Domingues
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
 
 MIT License (LightCraft)
 Copyright (c) 2026 ArtCraft Team and the LightCraft contributors

@@ -117,8 +117,6 @@ dotnet run build/Build.cs -- --rid osx-arm64 \
 ```bash
 filmbatch-cli export "/path/to/photos" --out "/path/to/output" --format png
 filmbatch-cli export "/path/to/photos" --format jpg --quality 95 --long-edge 3000
-filmbatch-cli recipes list
-filmbatch-cli recipes import "/path/to/recipes"
 filmbatch-cli gpu-info
 ```
 
@@ -134,7 +132,7 @@ filmbatch-cli gpu-info
 
 | 內容 | 位置 |
 |---|---|
-| 設定、版面、預設、配方與記錄檔 | Windows：`%APPDATA%\FilmBatch\`；macOS：`~/Library/Application Support/FilmBatch/` |
+| 設定、版面、預設與記錄檔 | Windows：`%APPDATA%\FilmBatch\`；macOS：`~/Library/Application Support/FilmBatch/` |
 | 每個照片資料夾的專案與匯出紀錄 | `<照片資料夾>/.filmbatch/` |
 
 macOS 的快捷鍵使用 ⌘（例如 ⌘O、⌘Z、⌘⇧Z），並使用原生選單列：應用程式選單提供「關於」與「偏好設定」（⌘,），切換介面語言時選單列即時更新。
