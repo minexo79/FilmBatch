@@ -111,8 +111,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         Preview = new PreviewViewModel(this);
         Presets = new PresetLibraryViewModel(this);
         Filmstrip = new FilmstripViewModel(this);
-        Inspector = new InspectorViewModel(this, new HashSet<ModuleGroup> { ModuleGroup.Basic, ModuleGroup.Geometry, ModuleGroup.Optical });
-        FilmEffects = new InspectorViewModel(this, new HashSet<ModuleGroup> { ModuleGroup.Film, ModuleGroup.Surface }, showsPhotoInfo: false);
+        Inspector = new InspectorViewModel(this, new HashSet<ModuleGroup> { ModuleGroup.Basic, ModuleGroup.Optical });
+        FilmEffects = new InspectorViewModel(this, new HashSet<ModuleGroup> { ModuleGroup.Geometry, ModuleGroup.Film, ModuleGroup.Surface }, showsPhotoInfo: false);
         CropTool = new CropToolViewModel(CommitCrop,
             () => Preview.Source is { } s ? (s.Width, s.Height) : (0, 0),
             () => Service is not null && FocusFile is not null && Preview.Source is not null ? Service.SettingsFor(FocusFile) : null);

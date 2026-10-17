@@ -21,8 +21,8 @@ public sealed class SidebarTabsTests
         using var main = TestEnv.CreateViewModel();
         var inspector = main.Sidebar.Inspector.Modules.Select(m => m.Schema.Group).Distinct().ToList();
         var film = main.Sidebar.FilmEffects.Modules.Select(m => m.Schema.Group).Distinct().ToList();
-        Assert.All(inspector, g => Assert.Contains(g, new[] { ModuleGroup.Basic, ModuleGroup.Geometry, ModuleGroup.Optical }));
-        Assert.All(film, g => Assert.Contains(g, new[] { ModuleGroup.Film, ModuleGroup.Surface }));
+        Assert.All(inspector, g => Assert.Contains(g, new[] { ModuleGroup.Basic, ModuleGroup.Optical }));
+        Assert.All(film, g => Assert.Contains(g, new[] { ModuleGroup.Geometry, ModuleGroup.Film, ModuleGroup.Surface }));
         Assert.Equal(ModuleCatalog.Modules.Count(m => m.Key != "crop"),
             main.Sidebar.Inspector.Modules.Count + main.Sidebar.FilmEffects.Modules.Count);
         Assert.Same(main.Inspector, main.Sidebar.Inspector);
