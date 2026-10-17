@@ -40,21 +40,19 @@ public sealed class EffectPipelineTests
         return max;
     }
 
-    /// <summary>底片單級設定：其餘全部沿用系統預設（即關閉）。DRO 用 auto 因其為中性 (0,0)。</summary>
-    private static Settings FilmOnly(double exposure, double strength = 100, string style = "standard") =>
-        ModuleCatalog.Defaults
+    /// <summary>底片單級設定：其餘全部沿用系統預設（即關閉）。</summary>
+    private static Settings FilmOnly(double strength = 100, string look = "kodak-ektar-100",
+        double warmth = 0, double fade = 0, params (string Key, double Value)[] hue)
+    {
+        var s = ModuleCatalog.Defaults
             .With("film.enabled", true)
-            .With("film.style", style)
+            .With("film.look", look)
             .With("film.strength", strength)
-            .With("film.exposure", exposure)
-            .With("film.saturation", 0.0)
-            .With("film.contrast", 0.0)
-            .With("film.sharpness", 0.0)
-            .With("film.white_balance", "keep")
-            .With("film.amber_blue", 0.0)
-            .With("film.green_magenta", 0.0)
-            .With("film.effect", "off")
-            .With("film.dro", "auto");
+            .With("film.warmth", warmth)
+            .With("film.fade", fade);
+        foreach (var (key, value) in hue) s = s.With("film." + key, value);
+        return s;
+    }
 
     private static GpuSpikeRenderer? TryCreateGpu(EffectRendererOptions? options = null)
     {
@@ -113,32 +111,13 @@ public sealed class EffectPipelineTests
         }
         var src = new SourceImage(w, h, px) { FilePath = "/tmp/keep.tif" };
         using var cpu = new CpuFakeRenderer();
-        var rendered = cpu.Render16(src, FilmOnly(1.0), TestContext.Current.CancellationToken);
+        var rendered = cpu.Render16(src, FilmOnly(), TestContext.Current.CancellationToken);
         Assert.Equal(src.Width, rendered.Width);
         Assert.Equal(src.Height, rendered.Height);
         Assert.Equal(src.FilePath, rendered.FilePath);
         // 若只是 8-bit 上採樣，所有值都會是 257 的倍數；真 16-bit 管線低位元組應有變化。
         var nonStep = rendered.Rgba16.Count(v => v % 257 != 0);
         Assert.True(nonStep > rendered.Rgba16.Length / 4, $"疑似 8-bit 上採樣，非 257 倍數僅 {nonStep}/{rendered.Rgba16.Length}");
-    }
-
-    [Theory]
-    [InlineData(1.0)]
-    [InlineData(-1.0)]
-    [InlineData(2.0 / 3.0)]
-    public void FilmExposure_IsEvGain_WithOtherStagesDisabled(double ev)
-    {
-        // 計畫書 7.2：曝光為 EV（+1 即線性 ×2）；檔位顯示 .3/.7 為四捨五入，此處用未取整的三分之一級數。
-        var src = Flat(8, 8, 20000);
-        using var cpu = new CpuFakeRenderer();
-        var got = cpu.Render16(src, FilmOnly(ev), TestContext.Current.CancellationToken).Rgba16;
-        var gain = Math.Pow(2, ev);
-        var linIn = CpuPipeline.SrgbToLinear(20000 / 65535f);
-        double sum = 0;
-        for (var p = 0; p < 64; p++)
-            sum += CpuPipeline.SrgbToLinear(got[p * 4] / 65535f);
-        var ratio = sum / 64 / linIn;
-        Assert.InRange(ratio, gain * 0.98, gain * 1.02);
     }
 
     [Fact]
@@ -152,12 +131,12 @@ public sealed class EffectPipelineTests
         var src = new SourceImage(8, 8, px);
         using var cpu = new CpuFakeRenderer();
         var ct = TestContext.Current.CancellationToken;
-        var full = cpu.Render16(src, FilmOnly(0, style: "vivid"), ct).Rgba16;
-        var half = cpu.Render16(src, FilmOnly(0, strength: 50, style: "vivid"), ct).Rgba16;
-        var zero = cpu.Render16(src, FilmOnly(0, strength: 0, style: "vivid"), ct).Rgba16;
+        var full = cpu.Render16(src, FilmOnly(), ct).Rgba16;
+        var half = cpu.Render16(src, FilmOnly(strength: 50), ct).Rgba16;
+        var zero = cpu.Render16(src, FilmOnly(strength: 0), ct).Rgba16;
         Assert.True(MaxAbsDiff(zero, src.Rgba16) <= 2, "效果比例 0 應保留輸入");
-        Assert.True(MaxAbsDiff(full, src.Rgba16) > 256, "測試無效：vivid 全強度幾乎未改變像素");
-        // 線性域中半強度應為輸入與全強度的中點（FilmProcessing 的 orig*(1-m)+film*m 語義）。
+        Assert.True(MaxAbsDiff(full, src.Rgba16) > 256, "測試無效：底片全強度幾乎未改變像素");
+        // 線性域中半強度應為輸入與全強度的中點（FilmLookProcessing 的 Lerp(orig, look, m) 語義）。
         var worst = 0.0;
         for (var i = 0; i < px.Length; i += 4)
         for (var c = 0; c < 3; c++)
@@ -168,6 +147,45 @@ public sealed class EffectPipelineTests
             worst = Math.Max(worst, Math.Abs(linHalf - (linIn + linFull) / 2));
         }
         Assert.True(worst <= 0.002, $"效果比例 50 應為線性中點，最大偏 {worst}");
+    }
+
+    [Fact]
+    public void FilmLook_HueBand_ShiftsRedButNotBlueOrGray()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var cpu = new CpuFakeRenderer();
+        // 三個像素：飽和紅、飽和藍、中性灰（16-bit sRGB）
+        var src = new SourceImage(3, 1, [
+            52000, 8000, 8000, 65535,
+            8000, 12000, 52000, 65535,
+            30000, 30000, 30000, 65535]);
+        var plain = cpu.Render16(src, FilmOnly(), ct).Rgba16;
+        var shifted = cpu.Render16(src, FilmOnly(hue: [("hue_red_h", 100), ("hue_red_s", 50)]), ct).Rgba16;
+        Assert.NotEqual(plain[..3], shifted[..3]);
+        Assert.Equal(plain[4..7], shifted[4..7]);
+        Assert.Equal(plain[8..11], shifted[8..11]);
+    }
+
+    [Theory]
+    [InlineData(10f)] [InlineData(25f)] [InlineData(80f)] [InlineData(170f)] [InlineData(330f)] [InlineData(359f)]
+    public void HueBandWeights_ArePartitionOfUnity(float hue)
+    {
+        var sum = 0f;
+        for (var band = 0; band < 8; band++) sum += FilmLookProcessing.BandWeight(hue, band);
+        Assert.Equal(1f, sum, 5);
+    }
+
+    [Fact]
+    public void FilmLook_WarmthRaisesRedLowersBlue_FadeLiftsBlack()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var cpu = new CpuFakeRenderer();
+        var src = new SourceImage(2, 1, [30000, 30000, 30000, 65535, 0, 0, 0, 65535]);
+        var plain = cpu.Render16(src, FilmOnly(look: "kodak-tmax-100"), ct).Rgba16;
+        var warm = cpu.Render16(src, FilmOnly(look: "kodak-tmax-100", warmth: 100), ct).Rgba16;
+        Assert.True(warm[0] > plain[0] && warm[2] < plain[2]);
+        var faded = cpu.Render16(src, FilmOnly(look: "kodak-tmax-100", fade: 100), ct).Rgba16;
+        Assert.True(faded[4] > plain[4] + 3000);
     }
 
     [Fact]
@@ -467,9 +485,28 @@ public sealed class EffectPipelineTests
         using var gpu = TryCreateGpu();
         Assert.SkipWhen(gpu is null, "沒有可用的 GPU 介面卡");
         var src = Flat(32, 24, 20000, path: "/tmp/parity.tif");
-        var settings = FilmOnly(1.0)
+        var settings = FilmOnly()
             .With("grain.enabled", true)
             .With("grain.amount", 80.0);
+        var ct = TestContext.Current.CancellationToken;
+        var g = gpu!.Render16(src, settings, ct).Rgba16;
+        using var cpu = new CpuFakeRenderer();
+        var c = cpu.Render16(src, settings, ct).Rgba16;
+        var max = MaxAbsDiff(g, c);
+        Assert.True(max <= 64, $"GPU 與 CPU 16-bit 差異 {max}/65535");
+    }
+
+    [Theory]
+    [InlineData("kodak-portra-400", 0, 0)]
+    [InlineData("fuji-velvia-50", 40, 30)]
+    [InlineData("creative-teal-orange", -60, 0)]
+    public void Gpu_MatchesCpu_OnFilmLook(string look, double warmth, double fade)
+    {
+        using var gpu = TryCreateGpu();
+        Assert.SkipWhen(gpu is null, "沒有可用的 GPU 介面卡");
+        var src = Flat(32, 24, 20000, path: "/tmp/parity.tif");
+        var settings = FilmOnly(strength: 80, look: look, warmth: warmth, fade: fade,
+            hue: [("hue_orange_s", 30), ("hue_blue_h", -50), ("hue_green_l", 40)]);
         var ct = TestContext.Current.CancellationToken;
         var g = gpu!.Render16(src, settings, ct).Rgba16;
         using var cpu = new CpuFakeRenderer();
@@ -501,7 +538,7 @@ public sealed class EffectPipelineTests
         using var gpu = TryCreateGpu(new EffectRendererOptions { MemoryBudgetBytes = 1 });
         Assert.SkipWhen(gpu is null, "沒有可用的 GPU 介面卡");
         var src = Flat(32, 24, 20000, path: "/tmp/budget.tif");
-        var settings = FilmOnly(1.0).With("grain.enabled", true).With("grain.amount", 80.0);
+        var settings = FilmOnly().With("grain.enabled", true).With("grain.amount", 80.0);
         var ct = TestContext.Current.CancellationToken;
 
         gpu!.Render(src, settings);
@@ -522,7 +559,7 @@ public sealed class EffectPipelineTests
         Assert.SkipWhen(banded is null, "沒有可用的 GPU 介面卡");
         using var single = TryCreateGpu();
         var src = Gradient(32, 24, "/tmp/band.tif");
-        var settings = FilmOnly(0.5).With("grain.enabled", true).With("grain.amount", 50.0);
+        var settings = FilmOnly().With("grain.enabled", true).With("grain.amount", 50.0);
         var ct = TestContext.Current.CancellationToken;
 
         Assert.Equal(single!.Render16(src, settings, ct).Rgba16, banded!.Render16(src, settings, ct).Rgba16);

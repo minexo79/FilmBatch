@@ -9,6 +9,7 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Magick.NET-Q16-HDRI-AnyCPU" />
+    <InternalsVisibleTo Include="FilmBatch.Core.Tests" />
     <InternalsVisibleTo Include="film-calibrate" />
   </ItemGroup>
 </Project>
