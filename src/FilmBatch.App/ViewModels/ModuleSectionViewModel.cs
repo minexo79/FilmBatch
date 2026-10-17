@@ -50,7 +50,7 @@ public sealed partial class ModuleSectionViewModel : ObservableObject
         _onReset = onReset;
         _onCopyOnly = onCopyOnly;
         _allParams = [.. schema.Params
-            .Where(p => p.Key != ModuleSchema.EnabledKey)
+            .Where(p => p.Key != ModuleSchema.EnabledKey && p.Kind != ParamKind.MaskStack) // 遮罩只在「細部調整」分頁編輯
             .Select(p => ParamViewModel.Create(schema.Key, p, host))];
         FilmLook = schema.Key == "film" ? filmLook : null;
         // film 模組：底片（look）由縮圖格選、24 個色相參數由色相帶編輯器顯示，一般參數列只留其餘欄位。

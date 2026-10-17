@@ -134,8 +134,9 @@ public class PhotoOperationsTests
     [Fact]
     public void Schema_Has16ModulesInPipelineOrder()
     {
-        Assert.Equal(16, ModuleCatalog.Modules.Count);
+        Assert.Equal(17, ModuleCatalog.Modules.Count); // 16 個效果模組 + local（遮罩）
         Assert.Equal("basic", ModuleCatalog.Modules[0].Key);
+        Assert.Equal("local", ModuleCatalog.Modules[1].Key);
         Assert.Equal("grain", ModuleCatalog.Modules[^1].Key);
         Assert.All(ModuleCatalog.Modules, m => Assert.Equal(ModuleSchema.EnabledKey, m.Params[0].Key));
         // 群組順序與處理階段一致

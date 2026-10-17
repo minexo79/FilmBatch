@@ -299,6 +299,9 @@ Clear overrides: use the new preset entirely.</value></data>
   <data name="PasteCategory.Color" xml:space="preserve"><value>Color</value></data>
   <data name="PasteCategory.Optical" xml:space="preserve"><value>Optics</value></data>
   <data name="PasteCategory.Surface" xml:space="preserve"><value>Surface</value></data>
+  <data name="PasteCategory.Local" xml:space="preserve"><value>Local Adjustments</value></data>
+  <data name="Module.local" xml:space="preserve"><value>Local Adjustments</value></data>
+  <data name="Param.local.masks" xml:space="preserve"><value>Masks</value></data>
   <data name="Param.enabled" xml:space="preserve"><value>Enabled</value></data>
   <data name="Param.amount" xml:space="preserve"><value>Amount</value></data>
   <data name="Param.angle" xml:space="preserve"><value>Angle</value></data>

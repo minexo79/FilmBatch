@@ -1,5 +1,6 @@
 using System.Text.Json;
 using FilmBatch.Core.Commands;
+using FilmBatch.Core.Masks;
 using FilmBatch.Core.Params;
 using FilmBatch.Core.Presets;
 using FilmBatch.Core.Projects;
@@ -115,6 +116,28 @@ public sealed class PersistenceTests : IDisposable
         foreach (var item in reopened.Presets.ToArray()) reopened.Delete(item.Id);
         using var empty = PresetLibrary.Load(Presets);
         Assert.Empty(empty.Presets);
+    }
+
+    /// <summary>遮罩堆疊是很長的 JSON 文字值：YAML 不可折行或破壞引號，讀回後字串完全相同。</summary>
+    [Fact]
+    public void PresetYaml_RoundTripsLongMaskStackText()
+    {
+        var stack = MaskStackCodecTests.Sample();
+        var brush = new BrushShape([new BrushStroke(0.05, 0.5, 1, false,
+            [.. Enumerable.Range(0, 400).Select(i => new MaskPoint(i / 400.0, 0.5 + 0.3 * Math.Sin(i / 20.0)))])]);
+        stack = new MaskStack([.. stack.Layers, new MaskLayer("l3", "長筆刷 \"引號\" #: ", [brush])]);
+        var text = MaskStackCodec.Serialize(stack);
+        Assert.True(text.Length > 4000);
+        var preset = new Preset
+        {
+            Id = Guid.NewGuid(), Name = "遮罩",
+            Settings = Settings.Empty.With("local.masks", text).With("basic.exposure", 0.5),
+        };
+        var path = Path.Combine(_root, "mask.yaml");
+        PresetFile.Write(path, preset);
+        var back = PresetFile.Read(path);
+        Assert.Equal(text, back.Settings.Text("local.masks"));
+        Assert.Equal(preset.Settings, back.Settings);
     }
 
     [Fact]

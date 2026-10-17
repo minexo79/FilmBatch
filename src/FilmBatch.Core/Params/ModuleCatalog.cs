@@ -26,6 +26,12 @@ public static class ModuleCatalog
             Float("saturation", "飽和度", 0, -100, 100),
             Float("structure", "細節提取", 0, -100, 100),
         ]),
+        // 局部調整（遮罩）：在「細部調整」分頁編輯，不在模組面板顯示。新增第一個遮罩即生效，開關可一次暫停所有遮罩。
+        new("local", "細部調整", ModuleGroup.Basic, PasteCategory.Local,
+        [
+            Bool(ModuleSchema.EnabledKey, "啟用", true),
+            MaskStack("masks", "遮罩"),
+        ]),
         new("lens_distortion", "鏡頭變形", ModuleGroup.Geometry, PasteCategory.Optical,
         [
             Bool(ModuleSchema.EnabledKey, "啟用"),
