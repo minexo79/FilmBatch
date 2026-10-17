@@ -134,10 +134,12 @@ public class ProjectServiceTests
         Directory.CreateDirectory(dir);
         try
         {
-            foreach (var n in new[] { "人像 01.tif", "風景🌄.JPG", "b.png", "notes.txt" })
+            foreach (var n in new[] { "人像 01.tif", "風景🌄.JPG", "b.png", "Sony.ARW", "Canon.cr3",
+                "Fuji.RAF", "Nikon.nef", "Phone.dng", "Lumix.rw2", "Olympus.orf", "Pentax.pef", "Samsung.srw", "notes.txt", "unsupported.crw" })
                 File.WriteAllBytes(Path.Combine(dir, n), [0]);
             var project = Project.Open(dir, Guid.Empty);
-            Assert.Equal(["b.png", "人像 01.tif", "風景🌄.JPG"], project.FileNames);
+            Assert.Equal(["Canon.cr3", "Fuji.RAF", "Lumix.rw2", "Nikon.nef", "Olympus.orf", "Pentax.pef",
+                "Phone.dng", "Samsung.srw", "Sony.ARW", "b.png", "人像 01.tif", "風景🌄.JPG"], project.FileNames);
         }
         finally
         {

@@ -15,5 +15,6 @@
   <ItemGroup>
     <Using Include="Xunit" />
     <None Update="Corpus\*.tsv" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="Codecs\Fixtures\*.jpg" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

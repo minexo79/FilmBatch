@@ -1,4 +1,7 @@
 using System.Globalization;
+using FilmBatch.Engine.Imaging.Raw;
+using FilmBatch.Raw;
+using FilmBatch.Raw.Meta;
 using ImageMagick;
 
 namespace FilmBatch.Engine.Imaging;
@@ -19,6 +22,13 @@ public sealed record PhotoExif(
         var name = Path.GetFileName(path);
         try
         {
+            if (RawSourceLoader.TryReadInfo(path) is { } raw)
+            {
+                var meta = raw.Metadata;
+                return new PhotoExif(name, CaptureTime(meta.CaptureTime) ?? FileTime(path),
+                    CameraName(meta.Make, meta.Model), meta.LensModel,
+                    meta.Iso is <= int.MaxValue ? (int?)meta.Iso : null, meta.ExposureTime, meta.FNumber);
+            }
             using var image = new MagickImage();
             image.Ping(path);
             // JPEG 的 EXIF profile 展開成 exif:*；TIFF 的 EXIF 子目錄同樣是 exif:*，
@@ -37,7 +47,7 @@ public sealed record PhotoExif(
                 ParseRational(Attr("exif:ExposureTime")),
                 ParseRational(Attr("exif:FNumber")));
         }
-        catch (Exception e) when (e is MagickException or IOException or UnauthorizedAccessException)
+        catch (Exception e) when (e is MagickException or RawException or IOException or UnauthorizedAccessException)
         {
             return new PhotoExif(name, FileTime(path), null, null, null, null, null);
         }
@@ -88,6 +98,13 @@ public sealed record PhotoExif(
     private static DateTime? ParseDate(string? value) =>
         value is not null && DateTime.TryParseExact(value, "yyyy:MM:dd HH:mm:ss", CultureInfo.InvariantCulture,
             DateTimeStyles.None, out var dt) ? dt : null;
+
+    private static DateTime? CaptureTime(RawDateTime? value)
+    {
+        if (value is not { } t) return null;
+        try { return new DateTime(t.Year, t.Month, t.Day, t.Hour, t.Minute, t.Second, t.Millis); }
+        catch (ArgumentOutOfRangeException) { return null; }
+    }
 
     /// <summary>EXIF 有理數字串：「1/250」「28/10」或小數。</summary>
     private static double? ParseRational(string? value)

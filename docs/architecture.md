@@ -56,15 +56,18 @@ flowchart TB
     Cli --> Core
     Engine["FilmBatch.Engine<br/>算圖管線、排程、影像 IO、匯出"] --> Gpu
     Engine --> Core
+    Engine --> Raw
     Gpu["FilmBatch.Gpu<br/>WebGPU 裝置、資源、WGSL shader"]
     Core["FilmBatch.Core<br/>參數 schema、專案、預設、配方、復原"]
+    Raw["FilmBatch.Raw<br/>RAW 解碼、顯影、相機色彩（移植自 LightCraft）"]
 ```
 
 | 專案 | 一句話職責 | 可以引用 | **不可以**引用 |
 |---|---|---|---|
 | `FilmBatch.Core` | 資料模型與規則：參數、專案、預設、配方、復原 | 只有 .NET 與 YAML 函式庫 | Avalonia、GPU、Magick.NET |
 | `FilmBatch.Gpu` | WebGPU 的薄封裝與嵌入的 WGSL | WebGPUSharp | 其他 FilmBatch 專案、Avalonia |
-| `FilmBatch.Engine` | 把設定變成影像：算圖、排程、讀檔、匯出 | Core、Gpu、Magick.NET | Avalonia |
+| `FilmBatch.Raw` | RAW 容器與壓縮解碼、去馬賽克、相機色彩資料（移植自 LightCraft，見 [tools/raw-oracle](../tools/raw-oracle/README.md)） | 只有 .NET | 其他 FilmBatch 專案、Magick.NET、Avalonia、GPU |
+| `FilmBatch.Engine` | 把設定變成影像：算圖、排程、讀檔、匯出 | Core、Gpu、Raw、Magick.NET | Avalonia |
 | `FilmBatch.App` | 桌面介面 | Core、Engine | 直接呼叫 Gpu（一律經 Engine） |
 | `FilmBatch.Cli` | 命令列批次匯出 | Core、Engine | Avalonia |
 
@@ -292,14 +295,21 @@ App 端由 `App/Services/PreviewService.cs` 包裝：負責 `generation` 比對�
 
 | 型別 | 說明 |
 |---|---|
-| `Imaging/ImageLoader` | 以 Magick.NET 解碼，來源 ICC 轉成 sRGB、套用方向，產生 16-bit RGBA 的 `SourceImage`；可指定長邊產生預覽代理圖 |
+| `Imaging/ImageLoader` | 以 Magick.NET 解碼，來源 ICC 轉成 sRGB、套用方向，產生 16-bit RGBA 的 `SourceImage`；可指定長邊產生預覽代理圖。RAW（與含感光資料的 TIFF）先交給 `RawSourceLoader` |
+| `Imaging/Raw/RawSourceLoader` | RAW 來源：`FilmBatch.Raw` 解碼 → 以相機內嵌 JPEG 擬合起始外觀（`CameraPreview`）→ 分箱或去馬賽克顯影、高光重建、色彩 → 相機色調與 sRGB 編碼（`RawDisplay`）；可辨識但不支援或損毀的 RAW 一律報錯，不以內嵌 JPEG 代替 |
 | `Imaging/SourceImage` | 記憶體中的影像：寬、高、`Rgba16` 像素、`FilePath`（種子由檔名計算） |
 | `Imaging/ImageHistogram` | 直方圖與裁切比例 |
 | `Imaging/SampleImages` | 產生「開啟範例照片」用的測試圖 |
 | `Exporting/BatchExporter` | 匯出主流程：`BuildJobs` 為每張照片建立不可變快照 → `RunAsync` 在背景依序讀檔、`Render16`、縮放、編碼、寫入 EXIF / ICC → 寫 `export_log.json` |
 | `Exporting/ExportModels` | `ExportOptions`（格式、品質、尺寸、目的地、檔名範本）、`ExportJob` |
 | `Exporting/ExportFileNames` | 檔名範本（例如 `{name}_{preset}`、`{index}`）展開，並移除各平台的非法字元 |
-| `Exporting/TiffMetadata` | Magick.NET 無法寫 TIFF EXIF，這裡自行補寫 EXIF 目錄 |
+| `Exporting/TiffMetadata` | Magick.NET 無法寫 TIFF EXIF，這裡自行補寫 EXIF 目錄；RAW 來源的 EXIF／GPS 也由此從原檔（CR3 為 CMT1／CMT2／CMT4 區塊）正規化 |
+
+RAW 預覽擬合會先依 JPEG 的 ICC／EXIF／容器宣告決定色彩，只線性化一次，在線性光下縮放後轉到 Rec.2020。截斷代理像素以 NaN 排除；鄰域對比採 Rust `f32::min/max` 的略過 NaN 語意，避免連帶排除截斷像素周圍的有效樣本。X-Trans 穩健平均則沿用 Rust `total_cmp` 的負數與正負零排序。
+
+RAW 中繼資料的標頭辨識與感光解碼一致：RW2 的 `0x0055`、ORF 的 `0x4f52`／`0x5352` 都使用 classic TIFF IFD 佈局，保留其 Make／Model 與 EXIF 子目錄，不誤報為損毀的 TIFF。
+
+一般 TIFF 大於 RAW 可緩衝大小時，略過 RAW 探測，仍由 Magick.NET 載入；RAW 中繼資料損毀不阻止像素匯出，但必須在 `export_log.json` 記錄 `MetadataWarning`。RAW 移植的明確排除項目與 JPEG／ICC 偏差見 [參考輸出說明](../tools/raw-oracle/README.md#比較範圍與已知偏差)。
 
 **匯出的安全規則**（改匯出程式碼前務必知道）
 

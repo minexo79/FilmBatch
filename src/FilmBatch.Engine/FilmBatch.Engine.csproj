@@ -6,9 +6,14 @@
   <ItemGroup>
     <ProjectReference Include="..\FilmBatch.Core\FilmBatch.Core.csproj" />
     <ProjectReference Include="..\FilmBatch.Gpu\FilmBatch.Gpu.csproj" />
+    <ProjectReference Include="..\FilmBatch.Raw\FilmBatch.Raw.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Magick.NET-Q16-HDRI-AnyCPU" />
     <InternalsVisibleTo Include="film-calibrate" />
+    <InternalsVisibleTo Include="FilmBatch.Core.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Imaging\Raw\Profiles\*.json" />
   </ItemGroup>
 </Project>

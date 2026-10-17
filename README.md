@@ -9,6 +9,7 @@
 - **每張照片各有風格**：建立多個預設（例如「Portra 風 + 漏光」），每張照片可指定不同預設，並在預設上單張微調；只記錄差異，修改預設時其他照片自動同步。
 - **底片色彩 & 類比效果**：有77組的底片配方 (來自 [Recipe Lab](https://github.com/voxivoid/recipe-lab-sony-pmca))、顆粒、光暈、漏光、暗角、焦外、動態模糊、鏡頭變形、雙重曝光、多格分鏡、灰塵刮痕等 16 個模組，以 GPU 即時預覽。
 - **非破壞性編輯**：原始檔永不修改；匯出 JPEG／16-bit TIFF／16-bit PNG，保留 EXIF 並嵌入 sRGB ICC。
+- **直接讀取 RAW**：Sony、Canon（CR2／CR3）、Nikon、Fujifilm、Panasonic、Olympus、Pentax、Samsung、Leica、Hasselblad、Epson、Mamiya 與 DNG，以相機內 JPEG 擬合起始色彩後顯影（解碼移植自 [LightCraft](https://github.com/storytold/lightcraft)）。不支援的壓縮（例如 Nikon HE、JPEG XL DNG）會直接回報，不以內嵌預覽代替。
 - **命令列批次輸出**：`filmbatch-cli` 可在腳本中直接套用已保存的設定匯出。
 
 ## 快速開始

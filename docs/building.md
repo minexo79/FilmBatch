@@ -24,6 +24,10 @@ dotnet test FilmBatch.sln -c Release
 
 UI 測試以 Avalonia.Headless 執行，不需要顯示器；沒有 GPU 時 GPU 測試自動略過。
 
+### RAW 語料測試
+
+RAW 解碼與顯影另有對照 LightCraft 參考輸出的語料測試（逐位元的感光資料、色彩標籤與顯影階段，以及起始外觀擬合後的線性／顯示 RGB）。樣本與參考輸出不進版本庫；沒有設定 `FILMBATCH_RAW_SAMPLES`／`FILMBATCH_RAW_ORACLE` 時（例如 CI）這些測試會略過。取得方式、比較門檻與已知偏差見 [tools/raw-oracle/README.md](../tools/raw-oracle/README.md)。
+
 ### Shader 驗證
 
 所有 WGSL 經 `ShaderLibrary` 展開 include 後，以固定版本的 naga 驗證：

@@ -1,9 +1,11 @@
 using FilmBatch.Core;
+using FilmBatch.Engine.Imaging.Raw;
 using ImageMagick;
+using FilmBatch.Raw;
 
 namespace FilmBatch.Engine.Imaging;
 
-/// <summary>以 Magick.NET 解碼照片：EXIF 轉正後轉成 16-bit sRGB RGBA。CPU 不做任何效果運算。</summary>
+/// <summary>RAW 由受控的 C# 解碼器顯影；一般影像由 Magick.NET 解碼。輸出皆為轉正的 16-bit sRGB RGBA。</summary>
 /// <remarks>
 /// <see cref="Load(string, int)"/> 供預覽/縮圖（縮成代理圖）；<see cref="LoadFull"/> 供匯出（全解析度，不縮放）。
 /// 兩者皆執行 <c>AutoOrient</c>（像素已轉正），因此匯出編碼時 EXIF 方向一律寫 1（計畫書第 10 章）。
@@ -17,6 +19,7 @@ public static class ImageLoader
 
     public static SourceImage Load(string path, int maxLongEdge = PreviewLongEdge)
     {
+        if (RawSourceLoader.TryLoad(path, maxLongEdge) is { } raw) return raw;
         var settings = new MagickReadSettings();
         // JPEG 可在解碼時直接縮小，大幅加快縮圖
         if (maxLongEdge <= ThumbnailLongEdge * 2)
@@ -35,6 +38,7 @@ public static class ImageLoader
     /// <summary>全解析度解碼（匯出用）：EXIF 轉正、不縮放，保留 16-bit 資料。</summary>
     public static SourceImage LoadFull(string path)
     {
+        if (RawSourceLoader.TryLoad(path, int.MaxValue) is { } raw) return raw;
         using var image = new MagickImage(path);
         image.AutoOrient();
         return ToSource(image, path);
@@ -43,6 +47,11 @@ public static class ImageLoader
     /// <summary>只讀檔頭尺寸（Ping，不解碼像素）。回傳轉正後的寬高（以 EXIF 方向判斷是否交換）。</summary>
     public static (int Width, int Height) DecodeInfo(string path)
     {
+        if (RawSourceLoader.TryReadInfo(path) is { } raw)
+        {
+            var (width, height) = raw.DevelopedSize();
+            return raw.Orientation.SwapsAxes() ? (height, width) : (width, height);
+        }
         using var image = new MagickImage();
         image.Ping(path);
         var swap = image.Orientation is OrientationType.RightTop or OrientationType.RightBottom

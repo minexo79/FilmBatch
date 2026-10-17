@@ -376,15 +376,26 @@ public static class BatchExporter
         metadataWarning = null;
         try
         {
-            using var probe = new MagickImage();
-            probe.Ping(sourcePath);
-            source = probe.GetExifProfile();
-            // Normalize raw directories rather than flattening through ExifProfile.Values:
-            // that model omits the interoperability directory.
-            var normalized = source is null && probe.Format is MagickFormat.Tiff or MagickFormat.Tiff64
-                ? TiffMetadata.Read(sourcePath, picture.Width, picture.Height)
-                : TiffMetadata.Normalize(source, picture.Width, picture.Height);
-            // JPEG APP1 has a 16-bit size including its two-byte length, leaving 65533 bytes.
+            ExifProfile normalized;
+            if (FilmBatch.Engine.Imaging.Raw.RawSourceLoader.IsRawExtension(sourcePath))
+            {
+                // RAW 的 EXIF 失敗與其他來源一樣，外層統一記錄 "Source EXIF omitted: …" 並輸出全新 EXIF。
+                normalized = TiffMetadata.ReadRaw(sourcePath, picture.Width, picture.Height);
+            }
+            else
+            {
+                using var probe = new MagickImage();
+                probe.Ping(sourcePath);
+                source = probe.GetExifProfile();
+                // Normalize raw directories rather than flattening through ExifProfile.Values:
+                // that model omits the interoperability directory.
+                if (source is not null)
+                    normalized = TiffMetadata.Normalize(source, picture.Width, picture.Height);
+                else if (probe.Format is MagickFormat.Tiff or MagickFormat.Tiff64)
+                    normalized = TiffMetadata.Read(sourcePath, picture.Width, picture.Height);
+                else
+                    normalized = TiffMetadata.Normalize((IExifProfile?)null, picture.Width, picture.Height);
+            }
             // Prefer losing a private MakerNote to silently losing the entire EXIF profile.
             if (format == ExportFormat.Jpeg && normalized.ToByteArray()!.Length > 65533)
             {

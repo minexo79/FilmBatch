@@ -1,0 +1,4 @@
+# CC0 samples explicitly refused by LightCraft f34c7a8a.
+# file	sha256	error_kind	detail	url
+nef-nikon-zf-he.nef	98d6ca8e6c98048ca7ffed68ccaeda7b2b9f03807f0d320d97d5678db21748c2	Unsupported	Nikon High Efficiency NEF (HE / HE★, a JPEG XS-based codec with no public specification; shoot RAW Lossless compressed to edit the raw data)	https://raw.pixls.us/download/data/Nikon/Z%20f/DSC_0043.NEF
+orf-olympus-em1.orf	19ba17e778ae802d4039f0e88bb1cd68825780788b8058c479067e32b9a63eda	Unsupported	Olympus compressed ORF	https://raw.pixls.us/getfile.php/1051/nice/Olympus%20-%20E-M1%20-%2016bit%20%284:3%29.orf
