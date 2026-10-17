@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Headless.XUnit;
+using FilmBatch.App.Controls.Tools;
 using FilmBatch.App.ViewModels;
 using FilmBatch.App.ViewModels.Tools;
 using FilmBatch.Core.Params;
@@ -53,6 +54,44 @@ public sealed class CropToolTests
         vm.DragHandle(CropHandle.Left, new Point(-0.3, 0), false);    // 左邊已在 0，不能再往外
         Assert.Equal(0.25, vm.Working.Cx, 3);
         Assert.Equal(0.5, vm.Working.W, 3);
+    }
+
+    /// <summary>縮成左上角 0.5×0.5 的框（貼著上、左邊）。</summary>
+    private static CropToolViewModel CornerBox()
+    {
+        var (vm, _) = Create();
+        vm.BeginCommand.Execute(null);
+        vm.DragHandle(CropHandle.Right, new Point(-0.5, 0), false);
+        vm.DragHandle(CropHandle.Bottom, new Point(0, -0.5), false);
+        return vm;
+    }
+
+    [Fact]
+    public void DragMove_AgainstEdge_SlidesAlongIt_WithoutPullingTheOtherAxis()
+    {
+        var vm = CornerBox();
+        var tool = vm.CanvasTool;
+        var map = new CanvasMapping(new Rect(0, 0, 400, 300));
+        tool.OnPressed(new Point(100, 75), map, default);              // 框中心 → 移動
+        foreach (var x in new[] { 300.0, 320, 340, 360 })              // 右邊早已頂到，持續往右推
+        {
+            tool.OnMoved(new Point(x, 105), map, default);              // 往下 0.1
+            Assert.Equal(0.75, vm.Working.Cx, 6);
+            Assert.Equal(0.35, vm.Working.Cy, 6);                       // y 不應被拉向中心而抖動
+        }
+    }
+
+    [Fact]
+    public void Straighten_PointerBackToPress_ReturnsToStartAngle()
+    {
+        var vm = CornerBox();
+        var tool = vm.CanvasTool;
+        var map = new CanvasMapping(new Rect(0, 0, 400, 300));
+        tool.OnPressed(new Point(350, 250), map, default);             // 框外 → 拉直（框會被推回影像內而移動中心）
+        tool.OnMoved(new Point(250, 290), map, default);
+        tool.OnMoved(new Point(120, 290), map, default);
+        tool.OnMoved(new Point(350, 250), map, default);
+        Assert.Equal(0, vm.Working.AngleDeg, 6);
     }
 
     [Fact]

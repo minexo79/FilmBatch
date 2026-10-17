@@ -25,6 +25,7 @@ public sealed class CropTool : ICanvasTool
     private CropParams _dragStart;
     private Point _pressImage;
     private double _lastAngle;
+    private double _sweep;
     private long _lastMovePress;
     private Point _lastMovePoint;
 
@@ -161,6 +162,7 @@ public sealed class CropTool : ICanvasTool
         _dragStart = _vm.BeginDrag(straighten: _drag == CropHandle.Rotate);
         _pressImage = map.ToImage(canvas);
         _lastAngle = AngleAround(canvas, map);
+        _sweep = 0;
         return true;
     }
 
@@ -181,7 +183,8 @@ public sealed class CropTool : ICanvasTool
                 if (d > 180) d -= 360;
                 if (d < -180) d += 360;
                 _lastAngle = angle;
-                _vm.DragRotate(d);
+                _sweep += d;   // 用總轉角換算目標角度：夾在 ±45° 時增量不會被吃掉，指標回到原處角度就回到原值
+                _vm.DragRotate(_dragStart.AngleDeg + _sweep - _vm.Working.AngleDeg);
                 break;
             default:
                 _vm.Restore(_dragStart);
@@ -196,10 +199,13 @@ public sealed class CropTool : ICanvasTool
         _vm.EndDrag();
     }
 
-    /// <summary>指標相對裁切框中心的角度（度，畫布座標 y 向下 → 順時針為正）。</summary>
+    /// <summary>
+    /// 指標相對「按下時」裁切框中心的角度（度，畫布座標 y 向下 → 順時針為正）。
+    /// 用固定的中心：拉直時框會被推回影像內而移動，若跟著現在的中心算，角度會自我回饋而抽搐。
+    /// </summary>
     private double AngleAround(Point canvas, CanvasMapping map)
     {
-        var c = map.ToCanvas(new Point(_vm.Working.Cx, _vm.Working.Cy));
+        var c = map.ToCanvas(new Point(_dragStart.Cx, _dragStart.Cy));
         return Math.Atan2(canvas.Y - c.Y, canvas.X - c.X) * 180 / Math.PI;
     }
 

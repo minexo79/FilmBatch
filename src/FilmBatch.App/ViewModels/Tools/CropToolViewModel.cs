@@ -308,7 +308,23 @@ public sealed partial class CropToolViewModel : ObservableObject
     public void DragMove(Point delta)
     {
         if (!IsActive) return;
-        SetWorking(Working with { Cx = Working.Cx + delta.X, Cy = Working.Cy + delta.Y });
+        var (sw, sh) = _sourceSize();
+        var start = Working with { On = true };
+        bool Fits(CropParams c) => sw <= 0 || sh <= 0 || CropGeometry.FitsInside(sw, sh, c);
+        // 逐軸貼邊：先走 x 再走 y，各自走到剛好碰邊為止；不交給 Constrain（它會把框拉向中心，另一軸跟著抖）
+        CropParams Slide(CropParams b, double dx, double dy)
+        {
+            var full = b with { Cx = b.Cx + dx, Cy = b.Cy + dy };
+            if (Fits(full) || !Fits(b)) return full;
+            double lo = 0, hi = 1;
+            for (var i = 0; i < 40; i++)
+            {
+                var mid = (lo + hi) / 2;
+                if (Fits(b with { Cx = b.Cx + dx * mid, Cy = b.Cy + dy * mid })) lo = mid; else hi = mid;
+            }
+            return b with { Cx = b.Cx + dx * lo, Cy = b.Cy + dy * lo };
+        }
+        SetWorking(Slide(Slide(start, delta.X, 0), 0, delta.Y));
     }
 
     /// <summary>拉直：角度限制在 ±45°，框先移回影像內、移不進去才縮小。</summary>
