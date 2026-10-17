@@ -967,6 +967,8 @@ flowchart TB
 
 #### 5.3.11 底片色彩 `film`
 
+> **已由 [film-looks.md](film-looks.md) 取代**（2026-10）：`film` 模組改為 Nik 式底片風格（RawTherapee Hald CLUT ＋ 八色相帶修正），本節的 Recipe Lab 配方、Sony 成像模擬與自訂配方已移除，僅保留作為歷史紀錄。
+
 | 參數 | 範圍 | 說明 |
 |---|---|---|
 | recipe | 內建配方 key 或 `custom:名稱` | 底片配方（Recipe Lab 的 77 組內建配方或自訂配方，見第 7 章） |
@@ -1124,6 +1126,8 @@ mindmap
 ---
 
 ## 7. 底片色彩配方（移植自 Recipe Lab）
+
+> **已由 [film-looks.md](film-looks.md) 取代**（2026-10）：`film` 模組改為 Nik 式底片風格（RawTherapee Hald CLUT ＋ 八色相帶修正），本節的 Recipe Lab 配方、Sony 成像模擬與自訂配方已移除，僅保留作為歷史紀錄。
 
 FilmBatch 的底片色彩**全部搬移自 [Recipe Lab](https://github.com/voxivoid/recipe-lab-sony-pmca)**（voxivoid/recipe-lab-sony-pmca）。該專案是在 Sony PlayMemories Camera Apps 相機（A6000、A6300、A6500、A7 II 等）上執行的小程式，把 77 組「底片模擬 / 相機風格」配方寫進相機設定，讓相機直出就有該風格。FilmBatch 沿用它的配方資料、欄位定義、品牌分組與自訂配方檔格式，再以自有的 GPU shader 在電腦上重現 Sony 相機的成像，讓 RAW 編輯器匯出的照片也能套用這些配方。
 
