@@ -4,7 +4,7 @@
 
 **Goal:** 在 `dev-cutandmask` 分支依序加入 ① 裁切（含拉直、比例、翻轉）② 局部遮罩（顏色、線性、筆刷、多邊形、圓形，每個遮罩可調基本參數與曲線）③ 可調整的細部曲線（參數式四區段 + RGB / 單色版點曲線）。
 
-**Architecture:** 三個功能都沿用既有的「扁平 `Settings` → `ModuleParams` → CPU / GPU 雙管線」架構。裁切是一般的純量模組，在解碼後的第一個 pass 就把影像變成裁切後的畫框；曲線與遮罩是結構化資料，以兩個新的 `ParamKind`（`Curve`、`MaskStack`）存成**正規化的文字值**，因此三層覆寫、復原、預設、貼上、存檔全部不用改模型。遮罩分兩步：先把每個圖層算成一張**透明度圖**（可快取），再以透明度圖套用局部調整，位置在線性段、幾何效果之前；全域曲線放在顯示段的基本調整之後。部分作法參考 [LightCraft](https://github.com/storytold/lightcraft)（見 D7）。
+**Architecture:** 三個功能都沿用既有的「扁平 `Settings` → `ModuleParams` → CPU / GPU 雙管線」架構。裁切是一般的純量模組，在解碼後的第一個 pass 就把影像變成裁切後的畫框；曲線與遮罩是結構化資料，以兩個新的 `ParamKind`（`Curve`、`MaskStack`）存成**正規化的文字值**，因此三層覆寫、復原、預設、貼上、存檔全部不用改模型。遮罩分兩步：先把每個圖層算成一張**透明度圖**（可快取），再以透明度圖套用局部調整，位置在線性段、幾何效果之前；全域曲線屬於「基本調整」群組，放在基本調整（線性）之後、遮罩之前，也就是**底片之前**（見 D2）。側邊欄改為六個分頁，裁切與遮罩各自獨立成分頁（見 D8）。部分作法參考 [LightCraft](https://github.com/storytold/lightcraft)（見 D7）。
 
 **Tech Stack:** C# / .NET 10、Avalonia 12、CommunityToolkit.Mvvm、WebGPUSharp（Dawn）+ WGSL、xUnit（含 Avalonia.Headless）。
 
@@ -31,9 +31,9 @@
 
 | 階段 | 功能 | 內容 |
 |---|---|---|
-| **Phase 1** | 裁切 | 自由 / 固定比例裁切框、拉直（−45°～45°）、90° 旋轉、水平 / 垂直翻轉、三分線、自動限制在影像內（**先移回影像內，移不進去才縮小**）；匯出與縮圖反映裁切 |
-| **Phase 2** | 遮罩 | 最多 8 個遮罩圖層；每個圖層由最多 8 個形狀以「加 / 減 / 交集」組合；形狀類型：**顏色範圍（OkLab、可多點取樣、一個「精細度」滑桿）、線性漸層、筆刷、多邊形、圓形（橢圓）**；每個圖層可調**基本參數**（曝光、色溫、色調、亮度、對比、亮部、暗部、飽和度）與**曲線**；圖層不透明度、反轉、紅色疊色檢視 |
-| **Phase 3** | 細部曲線 | 全域 `curves` 模組：**參數式曲線**（亮部 / 亮調 / 暗調 / 陰影四個滑桿 + 三個分界點）＋ RGB 主曲線 + R / G / B 單色版點曲線、RGB / 明度兩種套用模式；完整曲線編輯器（直方圖底圖、精確數值、鍵盤微調、曲線範本）。色相曲線列為**選做**（Task 3.5） |
+| **Phase 1** | 裁切 | 自由 / 固定比例裁切框、拉直（−45°～45°）、90° 旋轉、水平 / 垂直翻轉、三分線、自動限制在影像內（**先移回影像內，移不進去才縮小**）；匯出與縮圖反映裁切；側邊欄改為六個分頁，新增「裁切」分頁，並把底片與表面模組移到新的「底片效果」分頁（D8） |
+| **Phase 2** | 遮罩 | 最多 8 個遮罩圖層；每個圖層由最多 8 個形狀以「加 / 減 / 交集」組合；形狀類型：**顏色範圍（OkLab、可多點取樣、一個「精細度」滑桿）、線性漸層、筆刷、多邊形、圓形（橢圓）**；每個圖層可調**基本參數**（曝光、色溫、色調、亮度、對比、亮部、暗部、飽和度）與**曲線**；圖層不透明度、反轉、紅色疊色檢視；在獨立的「細部調整」分頁編輯 |
+| **Phase 3** | 細部曲線 | 全域 `curves` 模組（類似 LightCraft 的 Curve），在「照片資訊與模組」分頁的**基本調整群組**內，處理位置在**底片之前**：**參數式曲線**（亮部 / 亮調 / 暗調 / 陰影四個滑桿 + 三個分界點）＋ RGB 主曲線 + R / G / B 單色版點曲線、RGB / 明度兩種套用模式；完整曲線編輯器（直方圖底圖、精確數值、鍵盤微調、曲線範本） |
 
 > **依賴說明**：遮罩「裡面可調整曲線」需要曲線的資料型別、LUT 烘焙與編輯器。為了維持使用者指定的順序，Phase 2 的 **Task 2.1 先做「曲線核心」最小版**（資料型別、單調樣條、LUT、只有主曲線的編輯器），Phase 3 在同一套元件上擴充成完整的細部曲線。
 
@@ -44,13 +44,13 @@
 - 透視校正（keystone）、內容感知填補。
 - 遮罩的「範圍遮罩」以明度 / 顏色限制其他形狀（Lightroom 的 Range Mask）——本版以「顏色形狀 + 交集」達成同樣效果。
 - 遮罩的「邊緣精修」（LightCraft 的 Refine Edges，引導濾波讓遮罩貼齊物體邊緣）、筆刷的「自動遮罩」與壓力感應——列為後續。
-- 色相曲線若時程不夠就延後（Task 3.5 選做）；它與日後的 HSL 混色器功能重疊。
+- 色相曲線（色相對色相 / 飽和度 / 明度、明度對飽和度）：**不做**（原 Task 3.5 已刪除）。依顏色調整由 `dev-film-param` 分支「底片」模組內的 8 色相帶負責（紅、橙、黃、綠、青、藍、紫、洋紅，OKLCh；見該分支的 `docs/film-looks.md` 第 4 節）。曲線與 8 色相帶各管一段，同時使用時會**調整兩次**，這是刻意的設計：曲線在底片之前修原始照片的明暗與 RGB 偏色，8 色相帶在底片 LUT 之後微調底片成色。
 
 ### 0.3 時程估計
 
 | 階段 | 估計 |
 |---|---|
-| Phase 1 裁切 | 1.5 週 |
+| Phase 1 裁切（含側邊欄分頁重整） | 2 週 |
 | Phase 2 遮罩 | 4 週 |
 | Phase 3 細部曲線 | 1.5 週 |
 | 收尾（文件、冒煙、效能） | 0.5 週 |
@@ -72,22 +72,26 @@
 
 取捨：一個照片的整個遮罩堆疊是**一個覆寫單位**（改任何一個遮罩就覆寫整個 `local.masks`）。遮罩本來就以單張照片為主，這是可接受的；換來的是零模型改動。
 
-### D2. 裁切在管線最前面
+### D2. 裁切在管線最前面，曲線在底片之前
 
 ```mermaid
 flowchart LR
     D["decode_rgba16<br/>來源全幅"] --> C["geometry/crop<br/>旋轉 90°、翻轉、拉直、裁切"]
     C --> BL["基本調整（線性）"]
-    BL --> L["local/mask_eval → local/local_apply<br/>每個遮罩圖層各一組（Phase 2）"]
+    BL --> CV["color/curves（Phase 3）<br/>pass 內轉 sRGB → 查表 → 轉回線性"]
+    CV --> L["local/mask_eval → local/local_apply<br/>每個遮罩圖層各一組（Phase 2）"]
     L --> G["① 幾何：鏡頭變形 → 多格分鏡"]
     G --> O["② 光學 …"]
-    O --> F["③ 底片 …"]
+    O --> F["③ 底片：底片風格（LUT＋8 色相帶）…"]
     F --> DS["④ 顯示：基本調整（顯示）"]
-    DS --> CV["curves（Phase 3）"]
-    CV --> T["色調分離 → 清晰銳化"]
+    DS --> T["色調分離 → 清晰銳化"]
     T --> S["⑤ 表面 …"]
 ```
 
+- **曲線的位置（使用者決定）**：曲線屬於「基本調整」群組，所以處理位置也放在底片之前（`ModuleCatalog` 的陣列順序 = 面板順序 = 處理順序）。只移曲線，基本調整的顯示段（亮度、對比、亮部、暗部、飽和度、細節提取）**維持在底片之後**，舊專案的成像不變。
+  - 實際順序因此是「曝光 / 色溫 / 色調 → 曲線 → 遮罩 → … → 底片 → 亮度 / 對比 …」：曲線在基本調整的對比**之前**執行，和 Lightroom（先基本、再曲線）相反。兩者都能調對比，效果會疊加，但順序不同，在 `docs/architecture.md` 4.6 寫明。
+  - 曲線的調色會再經過底片 LUT 重新上色，符合 D4「先修圖、再模擬底片」。選黑白底片時，R / G / B 通道曲線會變成類似黑白濾鏡的效果（例如壓低藍色 → 天空變暗）。
+  - 全域曲線在遮罩之前：先全域、再局部（與 Lightroom 相同）。遮罩的顏色形狀看到的是套用曲線後的像素。
 - 裁切後的畫框就是「照片」：暗角、漏光、顆粒、多格分鏡等都以裁切後的畫框計算（相當於 Lightroom 的 post-crop vignette），`ModuleParams` 的短邊也改用裁切後尺寸。
 - GPU 工作紋理改以**輸出尺寸**配置；來源上傳紋理仍是原尺寸。
 
@@ -139,7 +143,7 @@ CPU 參考實作用同一份數學（dab 展開共用 `BrushDabs.Expand`），�
 
 - 新模組 `crop`、`local`、`curves` 預設關閉，舊專案外觀不變。
 - 舊版程式開啟含新 key 的專案會因 `Unknown parameter` 失敗：在 `ProjectStorage` 把專案格式版本 +1，舊版顯示「專案由較新版本建立」而不是損毀訊息（Task 1.1 內處理）。
-- 選擇性貼上新增「裁切」「局部調整」兩個分類，**全部貼上（Ctrl+V）預設不含這兩類**（裁切與遮罩通常只屬於單張照片，與 Lightroom 同步設定的預設一致）。
+- 選擇性貼上新增「裁切」「細部調整」兩個分類，**全部貼上（Ctrl+V）預設不含這兩類**（裁切與遮罩通常只屬於單張照片，與 Lightroom 同步設定的預設一致）。
 
 ### D7. 參考 LightCraft 的地方
 
@@ -154,6 +158,23 @@ CPU 參考實作用同一份數學（dab 展開共用 `BrushDabs.Expand`），�
 
 **授權**：只參考作法與公式，不複製原始碼。若移植了具體常數或公式（例如顏色容許距離的係數、參數式曲線的視窗函式），在該檔案註解註明來源，並在 `THIRD-PARTY-NOTICES.txt` 加一段 LightCraft（Apache-2.0）的說明。
 
+### D8. 側邊欄分頁
+
+側邊欄由目前的三個分頁（預設庫｜照片資訊與模組｜照片匯出）改為六個，由上到下：
+
+| 順序 | 分頁 | `SidePanel` | 內容 | 快捷鍵 |
+|---|---|---|---|---|
+| 1 | 預設庫 | `Presets` | 維持原樣 | — |
+| 2 | 照片資訊與模組 | `Inspector` | 照片資訊（EXIF）＋ `ModuleGroup.Basic`（基本調整、曲線）、`Geometry`（鏡頭變形、多格分鏡）、`Optical` | — |
+| 3 | **裁切**（新增） | `Crop` | 裁切工具面板：比例、直式 / 橫式、拉直、旋轉 90°、翻轉、重設、套用 / 取消 | `R` |
+| 4 | **底片效果**（新增） | `FilmEffects` | `ModuleGroup.Film`（底片、古典版材、色調分離、清晰與銳化）、`Surface`（灰塵與刮痕、顆粒） | — |
+| 5 | **細部調整**（新增） | `Masks` | 遮罩圖層與局部調整（Task 2.8） | `M` |
+| 6 | 照片匯出 | `Export` | 維持原樣 | — |
+
+- 「照片資訊與模組」與「底片效果」共用同一套模組面板元件（`InspectorViewModel`、`ModuleSectionViewModel`、`ModuleGroupViewModel`），以**要顯示的 `ModuleGroup` 集合**區分，不複製程式碼。`crop` 與 `local` 兩個模組不在任何模組面板中顯示，只能從各自的分頁編輯。
+- 畫布控制點（例如暗角中心）目前依「展開中的模組」決定；分成兩個模組分頁後，只採用**目前顯示中的分頁**裡展開的模組。
+- **分頁順序與處理順序不一致（已知取捨）**：遮罩在處理上排在底片**之前**，但「細部調整」分頁排在「底片效果」之後；裁切在處理上最前面，但分頁排在第 3 個。分頁順序依使用者的操作習慣安排，不影響成像；在 `docs/architecture.md` 4.10 寫明。
+
 ---
 
 ## 2. 檔案結構
@@ -162,14 +183,13 @@ CPU 參考實作用同一份數學（dab 展開共用 `BrushDabs.Expand`），�
 |---|---|---|
 | Modify | `src/FilmBatch.Core/Params/ParamDef.cs` | 新增 `ParamKind.Curve`、`ParamKind.MaskStack`、`ParamDef.Curve/MaskStack/MirrorAngle` 工廠、Coerce |
 | Modify | `src/FilmBatch.Core/Params/ModuleSchema.cs` | `PasteCategory.Crop`、`PasteCategory.Local`；`ModuleGroup` 不變 |
-| Modify | `src/FilmBatch.Core/Params/ModuleCatalog.cs` | 新模組 `crop`（最前）、`local`（basic 之後）、`curves`（film 之後、tone 之前） |
+| Modify | `src/FilmBatch.Core/Params/ModuleCatalog.cs` | 新模組 `crop`（最前）、`curves`（緊接在 `basic` 之後）、`local`（`curves` 之後）；Phase 2 先做 `local` 時插在 `basic` 之後，Phase 3 再把 `curves` 插到兩者之間 |
 | Modify | `src/FilmBatch.Core/Params/SettingsJsonConverter.cs` | 新 kind 的驗證 |
 | Modify | `src/FilmBatch.Core/Presets/PresetFile.cs` | 文字值 YAML 讀寫（確認長字串不被折行破壞） |
 | Modify | `src/FilmBatch.Core/Projects/PhotoOperations.cs`、`SettingsClipboard.cs` | 新貼上分類、遮罩鏡像 |
 | Modify | `src/FilmBatch.Core/Projects/ProjectStorage.cs` | 專案格式版本 +1 |
 | Create | `src/FilmBatch.Core/Curves/ToneCurve.cs` | 曲線資料、parse / 序列化、單調樣條烘焙 |
 | Create | `src/FilmBatch.Core/Curves/ParametricCurve.cs` | 參數式四區段曲線烘焙（Phase 3） |
-| Create | `src/FilmBatch.Core/Curves/HueCurve.cs` | 週期性色相曲線（Phase 3，選做） |
 | Create | `src/FilmBatch.Core/Curves/CurvePresets.cs` | 曲線範本（Phase 3） |
 | Create | `src/FilmBatch.Core/Masks/MaskModels.cs` | `MaskStack`、`MaskLayer`、各形狀 record、`LocalAdjust` |
 | Create | `src/FilmBatch.Core/Masks/MaskStackCodec.cs` | JSON 正規化序列化、限制檢查 |
@@ -180,6 +200,7 @@ CPU 參考實作用同一份數學（dab 展開共用 `BrushDabs.Expand`），�
 | Create | `src/FilmBatch.Engine/Rendering/OkLab.cs` | 線性 sRGB ↔ OkLab（顏色遮罩與取色共用） |
 | Create | `src/FilmBatch.Engine/Rendering/LocalAdjustments.cs` | CPU 遮罩評估（透明度圖）與局部調整套用 |
 | Create | `src/FilmBatch.Engine/Rendering/RenderOverlay.cs` | 預覽專用的疊色 / 暫停選項（不進 Settings） |
+| Create | `src/FilmBatch.Engine/Rendering/CurveHistogram.cs` | 曲線編輯器的直方圖：曲線**之前**的影像分佈（Phase 3） |
 | Modify | `src/FilmBatch.Engine/Rendering/ModuleParams.cs` | 解析 crop / local / curves；短邊改用裁切後尺寸 |
 | Modify | `src/FilmBatch.Engine/Rendering/CpuPipeline.cs` | 插入 crop、local、curves |
 | Modify | `src/FilmBatch.Engine/Rendering/GpuEffectPipeline.cs` | 新 kernel、工作紋理以輸出尺寸配置、uniform record |
@@ -197,17 +218,19 @@ CPU 參考實作用同一份數學（dab 展開共用 `BrushDabs.Expand`），�
 | Modify | `src/FilmBatch.App/Controls/PreviewCanvas.cs` | `ActiveTool` 屬性；工具優先於控制點 |
 | Create | `src/FilmBatch.App/Controls/CurveEditor.cs` | 曲線編輯器控制項 |
 | Create | `src/FilmBatch.App/ViewModels/Tools/CropToolViewModel.cs` | 裁切工具狀態、比例、套用 / 取消 |
+| Create | `src/FilmBatch.App/Views/CropPanelView.axaml(.cs)` | 「裁切」分頁 |
+| Modify | `src/FilmBatch.App/ViewModels/InspectorViewModel.cs` | 依 `ModuleGroup` 集合過濾，供「照片資訊與模組」與「底片效果」兩個分頁共用；略過 `crop`、`local` |
 | Create | `src/FilmBatch.App/ViewModels/Local/MasksPanelViewModel.cs`、`MaskLayerViewModel.cs`、`MaskShapeViewModel.cs`、`MaskAdjustHost.cs` | 遮罩面板 |
 | Create | `src/FilmBatch.App/ViewModels/CurveParamViewModel.cs` | 曲線參數（Inspector 與遮罩共用） |
 | Modify | `src/FilmBatch.App/ViewModels/ParamViewModels.cs` | `Create` 支援 `Curve`；`MaskStack` 不在 Inspector 顯示 |
-| Modify | `src/FilmBatch.App/ViewModels/SidebarViewModel.cs`、`MainWindowViewModel.cs`、`PreviewViewModel.cs` | 新分頁、工具模式、預覽請求調整 |
-| Create | `src/FilmBatch.App/Views/MasksPanelView.axaml(.cs)` | 遮罩分頁 |
-| Modify | `src/FilmBatch.App/Views/InspectorView.axaml`、`PreviewView.axaml`、`SidebarView.axaml` | 曲線 DataTemplate、裁切工具列、遮罩分頁 |
+| Modify | `src/FilmBatch.App/ViewModels/SidebarViewModel.cs`、`MainWindowViewModel.cs`、`PreviewViewModel.cs` | 六個分頁（D8）、工具模式、預覽請求調整 |
+| Create | `src/FilmBatch.App/Views/MasksPanelView.axaml(.cs)` | 「細部調整」分頁 |
+| Modify | `src/FilmBatch.App/Views/InspectorView.axaml`、`PreviewView.axaml`、`SidebarView.axaml` | 曲線 DataTemplate、分頁圖示列與內容切換 |
 | Modify | `src/FilmBatch.App/Themes/Icons.axaml`、`Controls.axaml` | 新圖示與樣式 |
 | Modify | `src/FilmBatch.App/Localization/Strings.resx`、`Strings.en.resx` | 文字 |
 | Modify | `THIRD-PARTY-NOTICES.txt` | 若移植 LightCraft 的公式 / 常數，加註 Apache-2.0 說明（D7） |
 | Test | `tests/FilmBatch.Core.Tests/ToneCurveTests.cs`、`ParametricCurveTests.cs`、`MaskStackCodecTests.cs`、`MaskEditsTests.cs`、`CropGeometryTests.cs`、`MaskMathTests.cs`、`LocalPipelineTests.cs`、`CurvesPipelineTests.cs` | 新測試 |
-| Test | `tests/FilmBatch.App.Tests/CropToolTests.cs`、`MasksPanelTests.cs`、`CurveEditorTests.cs` | ViewModel / 控制項測試 |
+| Test | `tests/FilmBatch.App.Tests/SidebarTabsTests.cs`、`CropToolTests.cs`、`MasksPanelTests.cs`、`CurveEditorTests.cs` | ViewModel / 控制項測試 |
 
 ---
 
@@ -279,7 +302,7 @@ public static ParamDef MirrorAngle(string key, string label, double def, double 
 
 // ModuleSchema.cs
 public enum PasteCategory { Color, Optical, Surface, Crop, Local }
-// PasteCategoryLabel 補 Crop => "裁切", Local => "局部調整"
+// PasteCategoryLabel 補 Crop => "裁切", Local => "細部調整"（與 D8 的分頁名稱一致）
 
 // ModuleCatalog.cs —— Modules 陣列第一個元素
 new("crop", "裁切", ModuleGroup.Geometry, PasteCategory.Crop,
@@ -734,12 +757,84 @@ public async Task Export_CroppedPhoto_HasCroppedDimensions()
 
 ---
 
-### Task 1.6：畫布工具框架 + 裁切工具
+### Task 1.6：側邊欄分頁重整（D8）
+
+> 先把分頁架構做好，Task 1.7 的「裁切」分頁與 Task 2.8 的「細部調整」分頁直接放進來。這個 Task 只搬移既有模組，不改任何算圖。
+
+**Files:**
+- Modify: `src/FilmBatch.App/ViewModels/SidebarViewModel.cs`（`SidePanel` 加 `Crop`、`FilmEffects`、`Masks`；`IsCrop`、`IsFilmEffects`、`IsMasks`）
+- Modify: `src/FilmBatch.App/ViewModels/InspectorViewModel.cs`（建構子多一個 `IReadOnlySet<ModuleGroup> groups`；`Modules` 只含這些群組的模組，並略過 `crop`、`local`）
+- Modify: `src/FilmBatch.App/ViewModels/MainWindowViewModel.cs`（建立兩個 `InspectorViewModel`：模組分頁與底片效果分頁；畫布控制點只看目前分頁）
+- Modify: `src/FilmBatch.App/Views/SidebarView.axaml`、`Themes/Icons.axaml`
+- Test: `tests/FilmBatch.App.Tests/SidebarTabsTests.cs`
+
+**Interfaces:**
+
+```csharp
+public enum SidePanel { Presets, Inspector, Crop, FilmEffects, Masks, Export }   // 列舉順序 = 分頁圖示由上到下的順序
+
+// SidebarViewModel
+public InspectorViewModel Inspector { get; }       // Basic、Geometry、Optical
+public InspectorViewModel FilmEffects { get; }     // Film、Surface
+```
+
+- 「照片資訊」（EXIF）只在 `Inspector` 分頁顯示；`FilmEffects` 分頁只有模組清單。
+- 「隱藏停用的模組」設定兩個分頁共用（同一個 `AppSettings.HideDisabledModules`）。
+- `Crop`、`Masks` 兩個分頁在 Task 1.7、2.8 之前先放空白占位內容，避免這個 Task 依賴後面的 Task。
+- 每個分頁維持「ViewModel 常駐、切換時保留捲動與輸入狀態」的既有行為。
+
+- [ ] **Step 1: 寫失敗的測試**
+
+```csharp
+public sealed class SidebarTabsTests
+{
+    [Fact]
+    public void Tabs_AreOrdered_AsDesigned()
+    {
+        Assert.Equal(
+            [SidePanel.Presets, SidePanel.Inspector, SidePanel.Crop, SidePanel.FilmEffects, SidePanel.Masks, SidePanel.Export],
+            Enum.GetValues<SidePanel>());
+    }
+
+    [Fact]
+    public void ModuleTabs_SplitModulesByGroup()
+    {
+        var main = CreateMainWindow();                       // App.Tests 既有的建立方式
+        var inspector = main.Sidebar.Inspector.Modules.Select(m => m.Schema.Group).Distinct();
+        var film = main.Sidebar.FilmEffects.Modules.Select(m => m.Schema.Group).Distinct();
+        Assert.All(inspector, g => Assert.Contains(g, new[] { ModuleGroup.Basic, ModuleGroup.Geometry, ModuleGroup.Optical }));
+        Assert.All(film, g => Assert.Contains(g, new[] { ModuleGroup.Film, ModuleGroup.Surface }));
+        Assert.Equal(ModuleCatalog.Modules.Count(m => m.Key is not ("crop" or "local")),
+            main.Sidebar.Inspector.Modules.Count + main.Sidebar.FilmEffects.Modules.Count);
+    }
+
+    [Fact]
+    public void CanvasPoint_FollowsVisibleTab()
+    {
+        var main = CreateMainWindow();
+        main.Sidebar.FilmEffects.Modules.First(m => m.Schema.HasCanvasPoint).IsExpanded = true;
+        main.Sidebar.Active = SidePanel.Inspector;
+        Assert.DoesNotContain(main.Sidebar.FilmEffects.Modules, m => m == main.Preview.PointModule);
+    }
+}
+```
+
+> 若目前底片效果群組沒有帶畫布控制點的模組，`CanvasPoint_FollowsVisibleTab` 改用光學群組的模組反向驗證。`CreateMainWindow`、`Preview.PointModule` 以 App.Tests 現有的輔助方法與屬性名稱為準。
+
+- [ ] **Step 2:** Run `dotnet test tests/FilmBatch.App.Tests --filter "FullyQualifiedName~SidebarTabsTests"` → FAIL
+- [ ] **Step 3:** 實作；既有的 `InspectorViewModel` 測試改用「全部群組」建構，確保行為不變。
+- [ ] **Step 4:** Run `dotnet test` → PASS；`--gallery` 檢查六個分頁圖示與兩個模組分頁的外觀。
+- [ ] **Step 5:** 文字（`Panel.Crop`＝裁切 / Crop、`Panel.FilmEffects`＝底片效果 / Film Effects、`Panel.Masks`＝細部調整 / Local Adjustments）→ Commit `git commit -am "Split sidebar into six tabs with separate film effects tab"`
+
+---
+
+### Task 1.7：畫布工具框架 + 裁切工具（「裁切」分頁）
 
 **Files:**
 - Create: `src/FilmBatch.App/Controls/Tools/ICanvasTool.cs`、`CanvasMapping.cs`、`CropTool.cs`
 - Create: `src/FilmBatch.App/ViewModels/Tools/CropToolViewModel.cs`
-- Modify: `src/FilmBatch.App/Controls/PreviewCanvas.cs`、`ViewModels/PreviewViewModel.cs`、`ViewModels/MainWindowViewModel.cs`、`Views/PreviewView.axaml`、`Themes/Icons.axaml`
+- Create: `src/FilmBatch.App/Views/CropPanelView.axaml(.cs)`
+- Modify: `src/FilmBatch.App/Controls/PreviewCanvas.cs`、`ViewModels/PreviewViewModel.cs`、`ViewModels/MainWindowViewModel.cs`、`ViewModels/SidebarViewModel.cs`、`Views/PreviewView.axaml`、`Views/SidebarView.axaml`、`Themes/Icons.axaml`
 - Test: `tests/FilmBatch.App.Tests/CropToolTests.cs`
 
 **Interfaces:**
@@ -777,12 +872,16 @@ public interface ICanvasTool
 
 | 操作 | 行為 |
 |---|---|
-| `R` / 預覽底部工具列裁切按鈕 | 進入裁切工具；預覽請求以 `crop.enabled=false` 渲染全幅 |
-| `Enter` / 再按 `R` / 點兩下框內 | 套用（`Apply`） |
-| `Esc` | 取消，回到進入前的值 |
+| 切換到「裁切」分頁 / `R` | 進入裁切工具（`Begin`）；預覽請求以 `crop.enabled=false` 渲染全幅 |
+| `Enter` / 點兩下框內 / 離開「裁切」分頁 | 套用（`Apply`）；離開分頁時自動套用（與 Lightroom 相同） |
+| `R`（已在裁切分頁） | 套用並回到上一個分頁 |
+| `Esc` | 取消，回到進入前的值（留在裁切分頁，可重新調整） |
 | `X` | 切換直式 / 橫式比例 |
 | `[` / `]` | 向左 / 向右旋轉 90° |
-| 底部工具列 | 比例下拉、拉直滑桿、翻轉、重設 |
+| 「裁切」分頁面板 | 比例下拉、直式 / 橫式、拉直滑桿、向左 / 向右旋轉、水平 / 垂直翻轉、重設、套用 / 取消按鈕 |
+
+- 裁切的控制項全部放在「裁切」分頁，預覽底部**不另加**裁切工具列。
+- `SidebarViewModel.OnActiveChanged`：切到 `Crop` 時呼叫 `CropTool.Begin()`；從 `Crop` 切走時，若 `IsActive` 就呼叫 `Apply()`。
 
 - [ ] **Step 1: 寫失敗的測試**
 
@@ -839,6 +938,18 @@ public sealed class CropToolTests
         vm.DragRotate(10);
         Assert.True(CropGeometry.FitsInside(400, 300, vm.Working));
     }
+
+    [Fact]
+    public void LeavingCropTab_AppliesPendingCrop()
+    {
+        var main = CreateMainWindow();                       // App.Tests 既有的建立方式，已開啟一張照片
+        main.Sidebar.Active = SidePanel.Crop;
+        Assert.True(main.CropTool.IsActive);
+        main.CropTool.DragHandle(CropHandle.Left, new Point(0.25, 0), false);
+        main.Sidebar.Active = SidePanel.Inspector;
+        Assert.False(main.CropTool.IsActive);
+        Assert.True(main.FocusedResolved.Bool("crop.enabled"));
+    }
 }
 ```
 
@@ -846,11 +957,12 @@ public sealed class CropToolTests
 - [ ] **Step 3: 實作 ViewModel 與工具**
   - `MainWindowViewModel`：持有 `CropTool`（`CropToolViewModel`）；`commit` 委派呼叫新的 `ProjectService.SetValues(IReadOnlyList<string> files, Settings values, string description)`（依 architecture.md 5.3 新增：`PhotoOperations.SetValues` 純函式 + 一筆 `PhotoEditCommand`，並在 `ProjectServiceTests` 加「一次復原就還原全部 crop 鍵」的測試）。
   - `RequestPreview`：`CropTool.IsActive` 時送出的設定為 `resolved.With("crop.enabled", false)`；`PreviewViewModel.ActiveTool` 指向 `CropTool` 的畫布工具。
-  - 多選時裁切只作用於焦點照片（裁切工具按鈕在多選時仍可用，套用後提示「只套用到目前照片」——toast 文字 `Toast.CropFocusedOnly`）。
-- [ ] **Step 4:** Run `dotnet test` → PASS；`dotnet run --project src/FilmBatch.App -- --gallery` 檢查裁切工具列外觀，再實際開一張照片操作（拖曳、旋轉、固定比例、Esc、Enter、復原）。
-- [ ] **Step 5:** 文字（`Tool.Crop`、`Tool.Crop.Apply`、`Tool.Crop.Cancel`、`Tool.Crop.Straighten`、`Tool.Crop.RotateLeft/Right`、`Tool.Crop.FlipH/V`、`Tool.Crop.Reset`、`Toast.CropFocusedOnly`、快捷鍵說明）→ Commit `git commit -am "Add canvas tool framework and interactive crop tool"`
+  - 多選時裁切只作用於焦點照片（裁切分頁在多選時仍可用，面板頂端顯示「只套用到目前照片」，套用後也以 toast `Toast.CropFocusedOnly` 提示）。
+  - `CropPanelView`：放進 Task 1.6 預留的「裁切」分頁，取代占位內容；綁定 `CropToolViewModel`。
+- [ ] **Step 4:** Run `dotnet test` → PASS；`dotnet run --project src/FilmBatch.App -- --gallery` 檢查「裁切」分頁外觀，再實際開一張照片操作（拖曳、旋轉、固定比例、Esc、Enter、切換分頁自動套用、復原）。
+- [ ] **Step 5:** 文字（`Tool.Crop`、`Tool.Crop.Apply`、`Tool.Crop.Cancel`、`Tool.Crop.Straighten`、`Tool.Crop.RotateLeft/Right`、`Tool.Crop.FlipH/V`、`Tool.Crop.Reset`、`Tool.Crop.FocusedOnly`、`Toast.CropFocusedOnly`、快捷鍵說明）→ Commit `git commit -am "Add canvas tool framework and crop tab"`
 
-### Task 1.7（選做）：裁切後預覽清晰度
+### Task 1.8（選做）：裁切後預覽清晰度
 
 裁切是在預覽代理圖上做的；大幅裁切後放大會變糊。
 
@@ -1149,10 +1261,10 @@ public static class MaskStackCodec
 }
 ```
 
-- `local` 模組（插在 `basic` 之後）：
+- `local` 模組（插在 `basic` 之後；Phase 3 的 `curves` 之後會插在 `basic` 與 `local` 之間）：
 
 ```csharp
-new("local", "局部調整", ModuleGroup.Basic, PasteCategory.Local,
+new("local", "細部調整", ModuleGroup.Basic, PasteCategory.Local,
 [
     Bool(ModuleSchema.EnabledKey, "啟用", true),
     MaskStack("masks", "遮罩"),
@@ -1505,7 +1617,7 @@ public sealed class MaskMathTests
 **Files:**
 - Create: `src/FilmBatch.Engine/Rendering/LocalAdjustments.cs`
 - Modify: `src/FilmBatch.Engine/Rendering/ModuleParams.cs`（`LocalOn`、`Masks`：解析後、去除 `IsNoOp` 的圖層、預先烘焙每層曲線 LUT、展開筆刷 dab）
-- Modify: `src/FilmBatch.Engine/Rendering/CpuPipeline.cs`（基本調整線性段之後呼叫）
+- Modify: `src/FilmBatch.Engine/Rendering/CpuPipeline.cs`（基本調整線性段之後呼叫；Phase 3 的曲線會插在兩者之間，見 D2）
 - Create: `src/FilmBatch.Engine/Rendering/RenderOverlay.cs`
 - Test: `tests/FilmBatch.Core.Tests/LocalPipelineTests.cs`
 
@@ -1747,7 +1859,7 @@ public void Gpu_AlphaCache_ReusedWhenOnlyAdjustChanges()
 **Interfaces:**
 - `CanvasMapping` 擴充：`CanvasMapping(Rect ImageRect, CropTransform Crop)`；`Point ToOriented(Point canvas)`（畫布 → 輸出 0–1 → 輸出像素 → `OutToOriented` → 定向 0–1）、`Point FromOriented(Point oriented)`（反向，用 `OutToOriented.Inverse()`）、`double ShortSidePixels`（短邊在畫布上的像素長度，用來畫半徑 / 筆刷大小）。
 - 每個工具建構子注入 `MaskEditorViewModel`（Task 2.8）並只呼叫它的方法：`BeginShapeEdit()`、`PreviewShape(MaskShape)`（拖曳中，`mergeKey` 非 null）、`CommitShape(MaskShape)`（放開）、`CommitStroke(BrushStroke)`。
-- `ColorPickTool` 透過 `Func<Point, OkLabColor?> sampleAt`（參數為定向 0–1 座標）取樣。取樣色**不能**從預覽點陣圖讀：預覽已經套過底片色彩等效果，與遮罩評估時看到的像素不同。改由 Engine 新增的 `LocalSampler.Sample(SourceImage proxy, Settings s, int layerIndex, double ox, double oy) → OkLabColor`：在預覽代理圖上只對取樣點周圍 3×3 像素執行「裁切取樣 → 基本調整（線性）→ 前 `layerIndex` 個圖層」（這些步驟都是逐像素運算，計算量極小，可在 UI 執行緒直接呼叫），平均後轉 OkLab。LightCraft 也是用類似的專用函式取色（`pipeline/src/lib.rs` 中取「曝光後的場景色」）。`LocalSampler` 的測試：取樣結果與 `CpuPipeline` 跑到同一階段的像素一致。
+- `ColorPickTool` 透過 `Func<Point, OkLabColor?> sampleAt`（參數為定向 0–1 座標）取樣。取樣色**不能**從預覽點陣圖讀：預覽已經套過底片色彩等效果，與遮罩評估時看到的像素不同。改由 Engine 新增的 `LocalSampler.Sample(SourceImage proxy, Settings s, int layerIndex, double ox, double oy) → OkLabColor`：在預覽代理圖上只對取樣點周圍 3×3 像素執行「裁切取樣 → 基本調整（線性）→ 曲線（Phase 3 加入後）→ 前 `layerIndex` 個圖層」（這些步驟都是逐像素運算，計算量極小，可在 UI 執行緒直接呼叫），平均後轉 OkLab。LightCraft 也是用類似的專用函式取色（`pipeline/src/lib.rs` 中取「曝光後的場景色」）。`LocalSampler` 的測試：取樣結果與 `CpuPipeline` 跑到同一階段的像素一致。
 
 | 工具 | 建立 | 編輯 |
 |---|---|---|
@@ -1806,13 +1918,13 @@ public void BrushTool_OneDrag_IsOneStroke_WithAltErasing()
 
 ---
 
-### Task 2.8：遮罩面板（側邊欄「局部調整」分頁）
+### Task 2.8：遮罩面板（側邊欄「細部調整」分頁）
 
 **Files:**
 - Create: `src/FilmBatch.App/ViewModels/Local/IMaskEditor.cs`、`MaskEditorViewModel.cs`、`MaskLayerViewModel.cs`、`MaskShapeViewModel.cs`、`MaskAdjustHost.cs`、`LocalAdjustSchema.cs`
 - Create: `src/FilmBatch.App/Views/MasksPanelView.axaml(.cs)`
 - Modify: `src/FilmBatch.App/ViewModels/SidebarViewModel.cs`、`MainWindowViewModel.cs`、`PreviewViewModel.cs`、`Views/SidebarView.axaml`、`Services/PreviewService.cs`、`Themes/Icons.axaml`
-- Modify: `src/FilmBatch.App/ViewModels/InspectorViewModel.cs`（模組清單略過 `local`——它只在遮罩分頁編輯）
+- 不需修改 `InspectorViewModel`：Task 1.6 已讓兩個模組分頁略過 `local`，它只在「細部調整」分頁編輯
 - Test: `tests/FilmBatch.App.Tests/MasksPanelTests.cs`
 
 **Interfaces:**
@@ -1848,9 +1960,10 @@ public sealed class MaskAdjustHost(MaskEditorViewModel editor) : IParamHost { �
   - 多選：遮罩只編輯焦點照片；面板頂端顯示「只編輯目前照片」提示。
 - `MaskLayerViewModel`：名稱（可重新命名）、可見、反轉、不透明度、`Adjust` 的 8 個 `SliderParamViewModel`（`ParamViewModel.Create("local", def, MaskAdjustHost)`）、一個 `CurveParamViewModel`（flatKey `local.masks/{id}/curve`）。
 - `MaskShapeViewModel`：類型圖示、組合模式（+ / − / ∩ 分段按鈕）、反轉、類型專屬參數（圓形：羽化；多邊形：羽化；筆刷：大小 / 硬度 / 流量 / 擦除——這些是「下一筆」的設定，存在 `AppSettings` 而非照片；顏色：取樣色色塊列表（每個可刪除）＋「精細度」一個滑桿，滑桿下方一行說明「數值越大，選取越接近的顏色範圍越寬」）。
-- 預覽：遮罩分頁開啟時，`RequestPreview` 送 `RenderOverlay(SuspendGeometry: true, MaskOverlayLayerId: ShowOverlay ? SelectedLayer?.Id : null)`；`PreviewService` 把 overlay 傳給 `RenderScheduler.RequestPreview`（新增參數）。縮圖與匯出永遠不帶 overlay。
+- 分頁位置：放進 Task 1.6 預留的 `SidePanel.Masks`（第 5 個分頁，在「底片效果」與「照片匯出」之間），取代占位內容。
+- 預覽：「細部調整」分頁開啟時，`RequestPreview` 送 `RenderOverlay(SuspendGeometry: true, MaskOverlayLayerId: ShowOverlay ? SelectedLayer?.Id : null)`；`PreviewService` 把 overlay 傳給 `RenderScheduler.RequestPreview`（新增參數）。縮圖與匯出永遠不帶 overlay。
 - 版面（側邊欄分頁，由上到下）：
-  1. 標題列：「局部調整」＋ 模組開關（眼睛圖示，對應 `local.enabled`）＋ 疊色切換（`O`）
+  1. 標題列：「細部調整」＋ 模組開關（眼睛圖示，對應 `local.enabled`）＋ 疊色切換（`O`）
   2. 新增遮罩按鈕列：線性、圓形、多邊形、筆刷、顏色（圖示按鈕 + tooltip）
   3. 圖層清單：每列為眼睛、名稱、形狀數；選取列以 `FB.SelectedBrush` 底色；右鍵 / `⋯`：重新命名、複製、上移、下移、刪除
   4. 選取圖層的形狀清單：每列為類型圖示 + 組合模式 + 刪除；「＋ 加入形狀」下拉
@@ -1922,12 +2035,12 @@ public sealed class MasksPanelTests
 }
 ```
 
-另在 `MainWindowViewModelTests` 加：開啟遮罩分頁時預覽請求帶 `SuspendGeometry = true`；關閉後不帶；縮圖請求永遠沒有 overlay。
+另在 `MainWindowViewModelTests` 加：開啟「細部調整」分頁時預覽請求帶 `SuspendGeometry = true`；關閉後不帶；縮圖請求永遠沒有 overlay。
 
 - [ ] **Step 2:** Run `dotnet test tests/FilmBatch.App.Tests --filter "FullyQualifiedName~MasksPanelTests"` → FAIL
-- [ ] **Step 3:** 實作 ViewModel、View、側邊欄分頁（圖示 `Icon.Mask`）與快捷鍵（`M` 開啟遮罩分頁、`O` 疊色、`Delete` 刪除選取形狀、`Ctrl+D` 複製圖層）。
+- [ ] **Step 3:** 實作 ViewModel、View、分頁圖示（`Icon.Mask`）與快捷鍵（`M` 開啟「細部調整」分頁、`O` 疊色、`Delete` 刪除選取形狀、`Ctrl+D` 複製圖層）。
 - [ ] **Step 4:** Run `dotnet test` → PASS；`--gallery` 加入遮罩面板的空 / 有圖層 / 多選三種狀態並目視檢查；實際操作五種遮罩各一次、復原 / 重做、切換照片、重新開啟專案。
-- [ ] **Step 5:** 文字（`Sidebar.Masks`、`Masks.Add.Linear/Radial/Polygon/Brush/Color`、`Masks.Layer.*`、`Masks.Shape.*`、`Masks.Combine.Add/Subtract/Intersect`、`Masks.Overlay`、`Masks.FocusedOnly`、`Masks.Adjust.*`、`Masks.Curve`、`Masks.Limit`（達到上限的提示））→ Commit `git commit -am "Add masks sidebar panel with layer adjustments and curve"`
+- [ ] **Step 5:** 文字（分頁名稱 `Panel.Masks` 已在 Task 1.6 加入；`Masks.Add.Linear/Radial/Polygon/Brush/Color`、`Masks.Layer.*`、`Masks.Shape.*`、`Masks.Combine.Add/Subtract/Intersect`、`Masks.Overlay`、`Masks.FocusedOnly`、`Masks.Adjust.*`、`Masks.Curve`、`Masks.Limit`（達到上限的提示））→ Commit `git commit -am "Add masks sidebar panel with layer adjustments and curve"`
 
 ---
 
@@ -1950,8 +2063,9 @@ public sealed class MasksPanelTests
 ### Task 3.1：`curves` 模組（RGB 主曲線 + R / G / B，RGB / 明度模式）
 
 **Files:**
-- Modify: `src/FilmBatch.Core/Params/ModuleCatalog.cs`（插在 `film` 之後、`tone`（色調分離）之前；依 `CpuPipeline` 的實際顯示段順序放在「基本調整（顯示）」之後）
-- Modify: `src/FilmBatch.Engine/Rendering/ModuleParams.cs`、`CpuPipeline.cs`
+- Modify: `src/FilmBatch.Core/Params/ModuleCatalog.cs`（緊接在 `basic` 之後、`local` 之前；見 D2）
+- Modify: `src/FilmBatch.Engine/Rendering/ModuleParams.cs`、`CpuPipeline.cs`（基本調整線性段之後、遮罩之前）
+- Modify: `src/FilmBatch.Engine/Rendering/LocalSampler.cs`（顏色取樣也要經過曲線）
 - Create: `src/FilmBatch.Gpu/Shaders/v1/color/curves.wgsl`
 - Modify: `src/FilmBatch.Engine/Rendering/GpuEffectPipeline.cs`
 - Test: `tests/FilmBatch.Core.Tests/CurvesPipelineTests.cs`
@@ -1972,11 +2086,18 @@ new("curves", "曲線", ModuleGroup.Basic, PasteCategory.Color,
 ]),
 ```
 
-> `ModuleGroup` 若顯示順序需要「曲線」緊接在「基本調整」之下，以 `ModuleCatalog` 的陣列位置為準（陣列順序 = 面板順序 = 處理順序，見 architecture.md 4.1）。面板位置與處理位置必須一致——因為它在顯示段，陣列位置要在 `film` 之後。
+> 陣列順序 = 面板順序 = 處理順序（architecture.md 4.1）。`curves` 緊接在 `basic` 之後，所以在「照片資訊與模組」分頁中顯示在「基本調整」正下方，處理上也在底片之前（D2）。
 
-套用公式（顯示 sRGB，0–1）：
-- RGB 模式：`c' = Ch(Master(c))`，各通道獨立。
-- 明度模式：`Y = luma(rgb)`；`Y' = Master(Y)`；`rgb *= Y' / max(Y, 1e-5)`（保色），再套 R / G / B 通道曲線；結果夾到 0–1。
+處理位置在**線性段**，所以曲線 pass 自己做色彩編碼轉換（與 `local_apply` 相同的作法）：
+
+1. 線性 → sRGB（`LinearToSrgb`，負值先夾到 0）。
+2. 套曲線（顯示 sRGB，0–1）：
+   - RGB 模式：`c' = Ch(Master(c))`，各通道獨立。
+   - 明度模式：`Y = luma(rgb)`；`Y' = Master(Y)`；`rgb *= Y' / max(Y, 1e-5)`（保色），再套 R / G / B 通道曲線。
+3. **大於 1 的值**（例如基本調整提高曝光後的亮部）不截斷：查表時以 1 查，再加回超出的部分，`c' = lut(1) + (c − 1)`。這樣曲線不會比原本的管線更早截掉亮部，後面的光暈、底片仍拿得到亮部資訊。
+4. sRGB → 線性（`SrgbToLinear`）。
+
+`CurvesOn = false`（全部恆等）時完全不派送這個 pass，維持逐位元 identity。
 
 - [ ] **Step 1: 寫失敗的測試**
 
@@ -2011,6 +2132,30 @@ public sealed class CurvesPipelineTests
     }
 
     [Fact]
+    public void Curves_RunBeforeFilm()
+    {
+        // 黑白底片之前把紅色版壓暗：紅色色塊在黑白結果中應比不套曲線時更暗
+        var src = Solid(4, 4, 60000, 10000, 10000);
+        var film = ModuleCatalog.Defaults.With("film.enabled", true).With("film.look", "kodak-tri-x-400");
+        var withCurve = film.With("curves.enabled", true).With("curves.red", "0,0;1,0.5");
+        Assert.True(Pixel(CpuPipeline.Process(src, withCurve, null, default), 0, 0)
+                    < Pixel(CpuPipeline.Process(src, film, null, default), 0, 0) - 2000);
+    }
+
+    [Fact]
+    public void ValuesAboveOne_AreNotClippedByCurves()
+    {
+        // 曝光 +2 後整張都大於 1；只改中間調的曲線（lut(1) = 1）不應改變任何像素，
+        // 光暈會讀大於 1 的亮部，所以若曲線截斷了亮部，輸出就會不同
+        var src = Flat(8, 8, 50000);
+        var bright = ModuleCatalog.Defaults.With("basic.exposure", 2.0)
+            .With("halation.enabled", true).With("halation.amount", 50.0);
+        var withCurve = bright.With("curves.enabled", true).With("curves.master", "0,0;0.5,0.6;1,1");
+        Assert.Equal(CpuPipeline.Process(src, bright, null, default).Rgba16,
+            CpuPipeline.Process(src, withCurve, null, default).Rgba16);
+    }
+
+    [Fact]
     public void LuminanceMode_PreservesHueRatio()
     {
         var src = Solid(4, 4, 40000, 20000, 10000);
@@ -2035,8 +2180,12 @@ public sealed class CurvesPipelineTests
 }
 ```
 
+> `Curves_RunBeforeFilm` 使用 `dev-film-param` 分支的底片 key（`film.look`），需在該分支合併進 master 之後執行；若當時還沒合併，改用目前 `film` 模組可以產生黑白輸出的參數。`halation.amount` 以光暈模組實際的參數名稱為準。
+
+另在 `LocalPipelineTests` 加：曲線把畫面整體提亮時，顏色遮罩取樣到的是套用曲線後的顏色（`LocalSampler` 與 `CpuPipeline` 跑到同一階段的像素一致）。
+
 - [ ] **Step 2:** Run `dotnet test tests/FilmBatch.Core.Tests --filter "FullyQualifiedName~CurvesPipelineTests"` → FAIL
-- [ ] **Step 3:** 實作 CPU、shader（LUT 以 storage buffer `array<f32, 4096>` 傳入，線性內插）、管線接線、`CheckShaders`。
+- [ ] **Step 3:** 實作 CPU、shader（`color/curves.wgsl` include `common/color.wgsl` 的 sRGB 轉換；LUT 以 storage buffer `array<f32, 4096>` 傳入，線性內插）、管線接線（`GpuEffectPipeline` 在基本調整線性段之後、`local` 之前派送）、`LocalSampler` 加入曲線、`CheckShaders`。
 - [ ] **Step 4:** Run `dotnet test` → PASS
 - [ ] **Step 5:** 文字 `Module.curves`、`Param.curves.*`、`Choice.curves.mode.*` → Commit `git commit -am "Add global tone curves module with RGB and luminance modes"`
 
@@ -2170,6 +2319,7 @@ public sealed class ParametricCurveTests
 **Files:**
 - Modify: `src/FilmBatch.App/Controls/CurveEditor.cs`
 - Create: `src/FilmBatch.App/ViewModels/CurvesModuleViewModel.cs`（把 `curves` 的參數式滑桿與 4 條點曲線合成一個帶通道分頁的編輯器）
+- Create: `src/FilmBatch.Engine/Rendering/CurveHistogram.cs`（曲線之前的直方圖）
 - Modify: `src/FilmBatch.App/ViewModels/ModuleSectionViewModel.cs`（`curves` 模組用自訂內容而不是 4 個獨立參數列）、`Views/InspectorView.axaml`
 - Test: `tests/FilmBatch.App.Tests/CurveEditorTests.cs`
 
@@ -2179,11 +2329,11 @@ public sealed class ParametricCurveTests
 |---|---|
 | 參數式 / 點曲線切換 | 編輯器上方兩個分段按鈕：「區段」（參數式）與「點」。區段模式下圖表下方顯示四個滑桿（亮部 / 亮調 / 暗調 / 陰影，沿用 `ParamRow`），圖表底部有三個可拖曳的分界點三角形；圖表畫的是組合後的曲線，並以淡色帶標示目前滑鼠所在的區段（與 Lightroom、LightCraft 的參數式曲線相同的操作方式） |
 | 通道分頁 | 點模式下：RGB / 紅 / 綠 / 藍；非作用中通道以淡色顯示在背後；有修改的通道分頁加琥珀色小點（「被覆寫」語意一致） |
-| 直方圖底圖 | 使用 `PreviewViewModel` 既有的直方圖資料，依通道顯示對應分佈 |
+| 直方圖底圖 | 顯示**曲線的輸入**（曲線之前）的分佈，依通道顯示。曲線在底片之前，不能用 `PreviewViewModel` 既有的直方圖（那是最終輸出）。由 `CurveHistogram.Compute(SourceImage proxy, Settings s)` 在預覽代理圖縮到長邊 256 px 後跑「裁切 → 基本調整（線性）→ 轉 sRGB」並統計；只在 `curves` 模組展開時於背景計算，`crop.*`、`basic.*` 或照片改變時重算 |
 | 精確數值 | 選取點時顯示「輸入 / 輸出」數值框（0–255 顯示，內部 0–1），可直接輸入 |
 | 鍵盤 | 方向鍵移動選取點 1/255（`Shift` 10/255），`Tab` 切換點，`Delete` 刪除 |
 | 微調拖曳 | 拖曳時按住 `Shift` 移動量 ×0.25 |
-| 取樣到曲線 | 在預覽上按住 `Ctrl` 點擊：在曲線上對應該像素亮度的位置新增點（Lightroom 的 targeted adjustment） |
+| 取樣到曲線 | 在預覽上按住 `Ctrl` 點擊：在曲線上對應該像素亮度的位置新增點（Lightroom 的 targeted adjustment）。亮度取的是**曲線輸入**的值（以 `LocalSampler` 跑到基本調整線性段為止），不是預覽上看到的最終顏色 |
 | 重設 | 雙擊空白處重設目前通道；模組 `⋯` 選單「重設全部曲線」 |
 | 黑白點 | 端點可水平移動（裁切黑 / 白）或垂直移動（褪色 / 壓白） |
 
@@ -2237,6 +2387,8 @@ public void RegionMode_SliderAndSplitDrag_WriteParametricKeys()
 }
 ```
 
+另在 `tests/FilmBatch.Core.Tests/CurvesPipelineTests.cs` 加 `CurveHistogram_IgnoresCurveAndFilm`：同一張照片改變 `curves.*` 與 `film.*` 時直方圖不變，改變 `basic.exposure` 時直方圖改變。
+
 - [ ] **Step 2:** Run → FAIL
 - [ ] **Step 3:** 實作；遮罩圖層的曲線（Task 2.8）同樣改用新的編輯器（遮罩只有主曲線，所以隱藏通道分頁與「區段」模式——`CurveEditor.ShowChannels = false`、`ShowRegions = false`）。
 - [ ] **Step 4:** Run `dotnet test` → PASS；`--gallery` 加曲線編輯器各狀態；實際操作檢查直方圖、鍵盤、取樣。
@@ -2259,7 +2411,7 @@ public void RegionMode_SliderAndSplitDrag_WriteParametricKeys()
   - `film-fade`：`0,0.06;0.25,0.24;0.75,0.78;1,0.96`
   - `matte`：`0,0.12;0.2,0.18;0.8,0.85;1,0.94`
   - `cross-low`：`0,0.04;0.5,0.5;1,0.94`（套到藍色版，其他版恆等）
-- 範本只是一次性帶入目前通道的值（與底片配方相同的「原子帶入、之後可改」語意），不存範本 key。
+- 範本只是一次性帶入目前通道的值（「原子帶入、之後可改」，一筆復原紀錄），不存範本 key。
 
 - [ ] **Step 1:** 測試：每個範本可 parse 且 `Serialize()` 與定義字串相同；`ApplyPreset("film-fade")` 只寫目前通道的 key，一筆復原紀錄。
 - [ ] **Step 2:** Run → FAIL
@@ -2269,68 +2421,13 @@ public void RegionMode_SliderAndSplitDrag_WriteParametricKeys()
 
 ---
 
-### Task 3.5（選做）：色相曲線（色相對色相 / 飽和度 / 明度，明度對飽和度）
-
-> 時程不夠時延後。LightCraft 沒有色相曲線，而是用 8 色 HSL 混色器處理同樣的需求；日後若加入 HSL 混色器，可改為不做這個 Task。
-
-**Files:**
-- Create: `src/FilmBatch.Core/Curves/HueCurve.cs`
-- Modify: `ModuleCatalog.cs`（`curves` 加 4 個 `Curve` 參數，預設為水平線 `0,0.5;1,0.5`）、`ModuleParams.cs`、`CpuPipeline.cs`、`color/curves.wgsl`、`GpuEffectPipeline.cs`、`CurvesModuleViewModel.cs`、`CurveEditor.cs`
-- Test: `tests/FilmBatch.Core.Tests/ToneCurveTests.cs`、`CurvesPipelineTests.cs`
-
-**Interfaces:**
-- flat keys：`curves.hue_hue`、`curves.hue_sat`、`curves.hue_lum`、`curves.lum_sat`
-- `HueCurve`：包裝 `ToneCurve`，`Evaluate` 時把控制點在 x 方向複製到 ±1 形成週期樣條（`hue_*` 三條；`lum_sat` 不是週期性，直接用 `ToneCurve`）；`static bool IsNeutral(ToneCurve c)`（所有點 y = 0.5）。
-- 語意：y = 0.5 不變；`hue_hue`：色相位移 `(y − 0.5) × 120°`；`hue_sat`、`lum_sat`：飽和度乘 `2y`；`hue_lum`：明度位移 `(y − 0.5) × 0.5`，以飽和度加權（灰色不受影響）。
-- 處理位置：在 RGB 曲線之後，於 HSL 空間套用；`CurveEditor` 對色相曲線顯示彩虹底色條，`ShowChannels` 分頁增加「色相」群組。
-
-- [ ] **Step 1: 寫失敗的測試**
-
-```csharp
-[Fact]
-public void HueCurve_IsPeriodic_AcrossRedWrap()
-{
-    Assert.True(ToneCurve.TryParse("0,0.5;0.02,0.8;0.98,0.8;1,0.5", out var c));
-    var h = new HueCurve(c);
-    Assert.Equal(h.Evaluate(0.999), h.Evaluate(0.001), 2);
-}
-
-[Fact]
-public void NeutralHueCurves_AreBitIdentical()
-{
-    var src = ColorField(32, 32);
-    var s = ModuleCatalog.Defaults.With("curves.enabled", true);
-    Assert.Equal(src.Rgba16, CpuPipeline.Process(src, s, null, default).Rgba16);
-}
-
-[Fact]
-public void HueSat_DesaturatesOnlyBlues()
-{
-    var s = ModuleCatalog.Defaults.With("curves.enabled", true)
-        .With("curves.hue_sat", "0,0.5;0.5,0.5;0.6,0;0.7,0.5;1,0.5");     // 約 216° 降到 0 飽和
-    var blue = CpuPipeline.Process(Solid(2, 2, 10000, 25000, 60000), s, null, default);
-    var orange = CpuPipeline.Process(Solid(2, 2, 60000, 30000, 10000), s, null, default);
-    Assert.True(Spread(blue) < 3000);       // 幾乎變灰
-    Assert.True(Spread(orange) > 40000);    // 不受影響
-}
-```
-
-GPU 一致性：在 `Gpu_MatchesCpu_Curves` 加一組四條色相曲線皆非中性的情境。
-
-- [ ] **Step 2:** Run → FAIL
-- [ ] **Step 3:** 實作（LUT 增加 4 × 1024；中性時跳過 HSL 轉換以保持 identity）；`CheckShaders`。
-- [ ] **Step 4:** Run `dotnet test` → PASS
-- [ ] **Step 5:** Commit `git commit -am "Add hue and luminance-vs-saturation curves"`
-
----
-
 # 收尾
 
 ### Task 4.1：文件與冒煙測試
 
 **Files:**
-- Modify: `docs/plan.md`（版本 v0.12：1.4 移除「局部調整、筆刷遮罩」的不做項目；5.2 處理順序加 crop / local / curves；5.3 模組清單；版本變更表）
-- Modify: `docs/architecture.md`（名詞速查加「遮罩圖層、形狀、定向座標」；4.1 新 ParamKind；4.6 處理順序表；4.10 畫布工具與遮罩面板；5 修改食譜加「新增一種遮罩形狀」；6 測試對照）
+- Modify: `docs/plan.md`（版本 v0.12：1.4 移除「局部調整、筆刷遮罩」的不做項目；5.2 處理順序加 crop / curves / local（曲線在底片之前）；5.3 模組清單；側邊欄六個分頁；版本變更表）
+- Modify: `docs/architecture.md`（名詞速查加「遮罩圖層、形狀、定向座標」；4.1 新 ParamKind；4.6 處理順序表，寫明曲線在基本調整對比之前、底片之前；4.10 側邊欄六個分頁、畫布工具與遮罩面板，以及分頁順序與處理順序不一致的取捨（D8）；5 修改食譜加「新增一種遮罩形狀」；6 測試對照）
 - Modify: `README.md`（功能清單）
 - Modify: `THIRD-PARTY-NOTICES.txt`（確認 Task 2.4、3.2 移植 LightCraft 公式的說明已加入）
 - Modify: `src/FilmBatch.App/Services/SmokeTest.cs`（`--smoke` 流程加：設定裁切、新增一個圓形遮罩、設定一條曲線、匯出一張，檢查輸出尺寸）
@@ -2355,13 +2452,14 @@ dotnet run build/CheckShaders.cs
 
 | # | 標準 |
 |---|---|
-| A1 | 裁切：自由 / 8 種比例、拉直 ±45° 自動內縮、90° 旋轉、翻轉；拖出邊界時框先移回影像內、放不下才縮小；`Esc` 取消、`Enter` 套用；一次復原還原整個裁切 |
+| A0 | 側邊欄六個分頁依序為：預設庫、照片資訊與模組（基本調整含曲線、幾何、光學）、裁切、底片效果（底片、表面）、細部調整、照片匯出；`crop`、`local` 不出現在模組分頁 |
+| A1 | 裁切：在「裁切」分頁操作；自由 / 8 種比例、拉直 ±45° 自動內縮、90° 旋轉、翻轉；拖出邊界時框先移回影像內、放不下才縮小；`Esc` 取消、`Enter` 或離開分頁套用；一次復原還原整個裁切 |
 | A2 | 裁切後暗角、漏光、顆粒、多格分鏡以裁切後畫框計算；縮圖、預覽、匯出（含 CLI）尺寸一致 |
 | A3 | 五種遮罩形狀皆可建立與編輯；顏色遮罩可多點取樣（最多 5 個）、只用一個「精細度」滑桿；同一圖層的形狀可加 / 減 / 交集；圖層可反轉、調不透明度、隱藏、複製、排序 |
 | A4 | 每個遮罩圖層可調 8 個基本參數與曲線；`O` 顯示紅色疊色 |
 | A5 | 重新裁切後，遮罩仍貼在原本的畫面內容上 |
 | A6 | 遮罩、曲線、裁切皆可復原 / 重做、存於專案、可存成預設；選擇性貼上可選擇是否帶入，鏡像貼上會鏡像幾何 |
-| A7 | 全域曲線：參數式四區段 + 分界點、RGB / 紅 / 綠 / 藍點曲線、RGB / 明度模式、直方圖底圖、精確數值、鍵盤、預覽取樣、範本 |
+| A7 | 全域曲線：顯示在基本調整正下方、處理位置在底片之前且不截斷大於 1 的亮部；參數式四區段 + 分界點、RGB / 紅 / 綠 / 藍點曲線、RGB / 明度模式、直方圖底圖（曲線之前的分佈）、精確數值、鍵盤、預覽取樣、範本；不做色相曲線（依顏色調整由底片的 8 色相帶負責） |
 | A8 | 所有新模組關閉或為預設值時逐位元 identity；CPU / GPU 一致性測試通過；`CheckShaders` 通過 |
 | A9 | 4K 預覽、8 個遮罩圖層時拖曳滑桿仍流暢（單次算圖 < 50 ms，RTX 3060 等級）；只改圖層調整值時不重算遮罩 |
 | A10 | 英文介面無中文殘留（`LocalizationTests`） |
@@ -2370,11 +2468,15 @@ dotnet run build/CheckShaders.cs
 
 | 風險 | 對策 |
 |---|---|
-| 裁切讓預覽代理圖解析度不足 | Task 1.7 依裁切比例放大代理圖解碼尺寸（上限 2 倍） |
+| 裁切讓預覽代理圖解析度不足 | Task 1.8 依裁切比例放大代理圖解碼尺寸（上限 2 倍） |
 | 遮罩文字值太大（大量筆刷）拖慢存檔與比較 | 點數上限 + RDP 簡化 + 512 KB 上限；超過時提示 |
 | 舊版程式開啟新專案 | 專案格式版本 +1，舊版顯示明確訊息（D6） |
 | 抽出 basic 的單像素函式時改到數學 | 以既有 `Gpu_MatchesCpu_*` 與 basic 測試鎖定；抽函式的 commit 不混入新功能 |
-| 編輯遮罩時暫停幾何效果造成「看到的不是最終結果」 | 只在遮罩分頁開啟時暫停，狀態列顯示「編輯遮罩時暫停鏡頭變形與多格分鏡」 |
+| 編輯遮罩時暫停幾何效果造成「看到的不是最終結果」 | 只在「細部調整」分頁開啟時暫停，狀態列顯示「編輯遮罩時暫停鏡頭變形與多格分鏡」 |
+| 分頁順序與處理順序不一致（遮罩、裁切），使用者誤以為遮罩疊在底片上 | D8 的已知取捨；在 architecture.md 4.10 與使用說明寫明，「細部調整」分頁頂端顯示一行說明「遮罩在底片效果之前套用」 |
+| 曲線在基本調整的對比之前執行，和 Lightroom 的順序相反 | 使用者決定的取捨（D2）；兩者效果疊加，不會互相抵銷；在 architecture.md 4.6 寫明 |
+| 曲線與底片 8 色相帶同時調整同一個顏色 | 刻意設計（0.2）：曲線修原始照片、色相帶修底片成色；曲線編輯器不提供依顏色調整的模式，避免第三個入口 |
+| 與 `dev-film-param` 合併 | 該分支已改寫 `ModuleCatalog`、`ModuleParams`、`CpuPipeline`、`GpuEffectPipeline`、`InspectorView.axaml` 與文字資源；建議先合併 `dev-film-param` 再開始實作，計畫中的程式片段以合併後的程式碼為準 |
 | 顏色遮罩選到太多（例如整片灰色都被選到） | 採用 LightCraft 修正過的容許距離與「L 權重 ¼」，以 issue #157 的情境寫成測試鎖定（Task 2.4）；因 FilmBatch 不做 LightCraft 的取色色調映射，係數不符時只調係數 |
 | 透明度圖快取吃顯示記憶體 | 只在預覽快取（最多 8 張、代理圖尺寸）；匯出共用一張暫存紋理（D4） |
 | 大量筆刷 dab 讓單一 GPU pass 太久（驅動逾時） | 每筆包圍盒剔除；dab 超過 65,536 個時改由 CPU 點陣化後上傳（Task 2.9） |
