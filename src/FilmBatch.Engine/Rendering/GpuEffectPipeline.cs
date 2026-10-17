@@ -33,7 +33,7 @@ internal sealed class GpuEffectPipeline : IDisposable
     private uint _width, _height, _bandRows;
     private int _uniformIndex;
     private readonly ComputeKernel _decode, _encode8, _encode16, _display, _spike, _blur, _box,
-        _basicLinear, _lens, _multi, _double, _bokeh, _zoom, _motion, _vignette,
+        _crop, _basicLinear, _lens, _multi, _double, _bokeh, _zoom, _motion, _vignette,
         _halExtract, _halAdd, _leak, _look, _plate,
         _basicDisplay, _tone, _detail, _dirt, _grain, _texture;
 
@@ -58,6 +58,7 @@ internal sealed class GpuEffectPipeline : IDisposable
         _spike = K("spike/adjust", tex, storage, uniform);
         _blur = K("common/gaussian", tex, storage, uniform, BindingSpec.StorageRead);
         _box = K("geometry/box_blur", tex, storage);
+        _crop = K("geometry/crop", tex, storage, uniform);
         _basicLinear = K("linear/basic_linear", tex, storage, uniform);
         _lens = K("geometry/lens_distortion", tex, tex, storage, uniform);
         _multi = K("geometry/multi_lens", tex, storage, uniform);
@@ -83,8 +84,9 @@ internal sealed class GpuEffectPipeline : IDisposable
     public bool CanRender(SourceImage source, ModuleParams? p = null)
     {
         if (!FitsDevice(source, p)) return false;
-        // Four work textures + linear source + banded output/readback; include external assets.
-        var bytes = WorkspaceBytes((uint)source.Width, (uint)source.Height) + CachedSource.BytesFor(source.Width, source.Height);
+        // Four work textures (output size) + linear source + banded output/readback; include external assets.
+        var (w, h) = OutputSize(source, p);
+        var bytes = WorkspaceBytes(w, h) + CachedSource.BytesFor(source.Width, source.Height);
         if (p?.DoubleAsset is { } doubleAsset) bytes += AssetBytes(doubleAsset);
         if (p?.LeakAsset is { } leakAsset) bytes += AssetBytes(leakAsset);
         if (p?.DirtAsset is { } dirtAsset) bytes += AssetBytes(dirtAsset);
@@ -96,11 +98,16 @@ internal sealed class GpuEffectPipeline : IDisposable
     {
         var limit = _gpu.AdapterInfo.MaxTextureDimension2D;
         bool Fits(SourceImage image) => (uint)image.Width <= limit && (uint)image.Height <= limit;
-        return Fits(source)
+        var (w, h) = OutputSize(source, p);
+        return Fits(source) && w <= limit && h <= limit
             && (p?.DoubleAsset is null || Fits(p.DoubleAsset.Image))
             && (p?.LeakAsset is null || Fits(p.LeakAsset.Image))
             && (p?.DirtAsset is null || Fits(p.DirtAsset.Image));
     }
+
+    /// <summary>算圖結果（工作紋理）的尺寸：裁切後的畫框；沒有參數時同來源。</summary>
+    private static (uint Width, uint Height) OutputSize(SourceImage source, ModuleParams? p) =>
+        p is null ? ((uint)source.Width, (uint)source.Height) : ((uint)p.OutWidth, (uint)p.OutHeight);
 
     private static ulong AssetBytes(EffectImage image) => CachedSource.BytesFor(image.Image.Width, image.Image.Height);
 
@@ -116,7 +123,7 @@ internal sealed class GpuEffectPipeline : IDisposable
         ClearSources();
         var error = _gpu.TryAllocate(() =>
         {
-            EnsureWorkspace(source);
+            EnsureWorkspace((uint)p.OutWidth, (uint)p.OutHeight);
             Acquire(source);
             if (p.DoubleAsset is not null) Acquire(p.DoubleAsset.Image);
             if (p.LeakAsset is not null) Acquire(p.LeakAsset.Image);
@@ -140,7 +147,8 @@ internal sealed class GpuEffectPipeline : IDisposable
     public void Render<T>(SourceImage source, ModuleParams p, T[] destination, CancellationToken token) where T : unmanaged
     {
         token.ThrowIfCancellationRequested();
-        EnsureWorkspace(source);
+        // 來源上傳 / 解碼紋理維持原尺寸；工作紋理以輸出（裁切後）尺寸配置
+        EnsureWorkspace((uint)p.OutWidth, (uint)p.OutHeight);
         var input = Acquire(source);
         var second = p.DoubleAsset is null ? null : Acquire(p.DoubleAsset.Image);
         var leak = p.LeakAsset is null ? null : Acquire(p.LeakAsset.Image);
@@ -154,7 +162,7 @@ internal sealed class GpuEffectPipeline : IDisposable
 
     public void RenderSpike(SourceImage source, SpikeParams p, byte[] destination)
     {
-        EnsureWorkspace(source);
+        EnsureWorkspace((uint)source.Width, (uint)source.Height);
         var input = Acquire(source);
         _uniformIndex = 0;
         var commands = _gpu.BeginCommands();
@@ -185,6 +193,13 @@ internal sealed class GpuEffectPipeline : IDisposable
         {
             var blurred = Blur(commands, current, Math.Max(1, (int)MathF.Round(shortSide * radiusScale)), reserve);
             return Apply(_detail, new Vector4(amount, 0, 0, 0), blurred, reserve);
+        }
+        // 裁切：來源尺寸的線性紋理 → 輸出尺寸的工作紋理（關閉時不多一個 pass）
+        if (p.Crop.On)
+        {
+            var m = p.CropT.OutToSource;
+            current = Apply(_crop, new CropUniforms((float)m.M00, (float)m.M01, (float)m.M02, current.Width,
+                (float)m.M10, (float)m.M11, (float)m.M12, current.Height));
         }
         if (p.BasicOn && (p.Exposure != 0 || p.Temperature != 0 || p.Tint != 0))
             current = Apply(_basicLinear, new Vector4(p.Exposure, p.Temperature / 100, p.Tint / 100, 0));
@@ -371,12 +386,12 @@ internal sealed class GpuEffectPipeline : IDisposable
         return (uint)Math.Clamp(rows, 1UL, height);
     }
 
-    private void EnsureWorkspace(SourceImage source)
+    private void EnsureWorkspace(uint width, uint height)
     {
-        if (_width == source.Width && _height == source.Height) return;
+        if (_width == width && _height == height) return;
         foreach (var texture in _work) texture?.Dispose();
         _output?.Dispose(); _readback?.Dispose();
-        _width = (uint)source.Width; _height = (uint)source.Height;
+        _width = width; _height = height;
         _bandRows = BandRows(_width, _height);
         for (var i = 0; i < _work.Length; i++)
             _work[i] = _gpu.CreateTexture(_width, _height, GpuTextureFormat.Rgba32Float, GpuTextureUsage.Sampled | GpuTextureUsage.Storage, "effect work");
@@ -461,6 +476,8 @@ internal sealed class GpuEffectPipeline : IDisposable
     }
 
     [StructLayout(LayoutKind.Sequential)] private readonly record struct BandUniforms(uint Row, uint Rows, uint Pad0, uint Pad1);
+    /// <summary>geometry/crop.wgsl：OutToSource 仿射（列主序）＋ 來源尺寸，32 位元組。</summary>
+    [StructLayout(LayoutKind.Sequential)] private readonly record struct CropUniforms(float M00, float M01, float M02, float SrcW, float M10, float M11, float M12, float SrcH);
     [StructLayout(LayoutKind.Sequential)] private readonly record struct BlurUniforms(int X, int Y, int Radius, float Pad);
     [StructLayout(LayoutKind.Sequential)] private readonly record struct LensUniforms(float Amount, float Chromatic, float Soften, float Crop, float Aspect, float ShortSide, float Pad0, float Pad1);
     [StructLayout(LayoutKind.Sequential)] private readonly record struct DoubleUniforms(int Source, int Blend, int Mirror, float Opacity, float X, float Y, float Scale, float Rotation, float Exposure, float Pad0, float Pad1, float Pad2);

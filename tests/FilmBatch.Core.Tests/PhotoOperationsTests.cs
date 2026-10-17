@@ -132,14 +132,15 @@ public class PhotoOperationsTests
     }
 
     [Fact]
-    public void Schema_Has16ModulesInPipelineOrder()
+    public void Schema_Has17ModulesInPipelineOrder()
     {
-        Assert.Equal(16, ModuleCatalog.Modules.Count);
-        Assert.Equal("basic", ModuleCatalog.Modules[0].Key);
+        Assert.Equal(17, ModuleCatalog.Modules.Count);
+        Assert.Equal("crop", ModuleCatalog.Modules[0].Key);
+        Assert.Equal("basic", ModuleCatalog.Modules[1].Key);
         Assert.Equal("grain", ModuleCatalog.Modules[^1].Key);
         Assert.All(ModuleCatalog.Modules, m => Assert.Equal(ModuleSchema.EnabledKey, m.Params[0].Key));
-        // 群組順序與處理階段一致
-        var groups = ModuleCatalog.Modules.Select(m => (int)m.Group).ToList();
+        // 群組順序與處理階段一致（裁切在管線最前面、有自己的分頁，不參與模組面板分組）
+        var groups = ModuleCatalog.Modules.Where(m => m.Key != "crop").Select(m => (int)m.Group).ToList();
         Assert.Equal(groups.Order(), groups);
     }
 
@@ -151,5 +152,48 @@ public class PhotoOperationsTests
             var def = ModuleCatalog.Param(key)!;
             Assert.Equal(def.Default, def.Coerce(def.Default));
         }
+    }
+
+    [Fact]
+    public void Crop_Defaults_AreFullFrameAndDisabled()
+    {
+        var d = ModuleCatalog.Defaults;
+        Assert.False(d.Bool("crop.enabled"));
+        Assert.Equal(0.5, d.Number("crop.rect_cx"));
+        Assert.Equal(1.0, d.Number("crop.rect_w"));
+        Assert.Equal("free", d.Text("crop.aspect"));
+        Assert.Equal("crop", ModuleCatalog.Modules[0].Key);
+    }
+
+    [Fact]
+    public void Crop_Mirror_FlipsCenterAndNegatesAngle()
+    {
+        Assert.Equal(0.3, PhotoOperations.MirrorValue(ModuleCatalog.Param("crop.rect_cx")!, 0.7).AsNumber, 6);
+        Assert.Equal(-5.0, PhotoOperations.MirrorValue(ModuleCatalog.Param("crop.angle")!, 5.0).AsNumber, 6);
+        Assert.Equal(0.4, PhotoOperations.MirrorValue(ModuleCatalog.Param("crop.rect_cy")!, 0.4).AsNumber, 6);
+    }
+
+    [Fact]
+    public void PasteAll_ExcludesCropAndLocalByDefault()
+    {
+        var overrides = S(("crop.enabled", true), ("crop.rect_w", 0.5), ("vignette.amount", 30.0));
+        var clip = new SettingsClipboard("a.jpg", null, overrides, ModuleCatalog.Defaults.Overlay(overrides));
+        var target = new PhotoEntry("b.jpg", null, S(("crop.rect_h", 0.4)));
+        var pasted = PhotoOperations.Paste(clip, target, new PasteOptions { Mode = PasteMode.Full }, BaseFor);
+        Assert.False(pasted.Overrides.ContainsKey("crop.rect_w"));
+        Assert.False(pasted.Overrides.ContainsKey("crop.enabled"));
+        Assert.Equal(0.4, pasted.Overrides.Number("crop.rect_h"));   // 目標自己的裁切保留
+        Assert.Equal(30.0, pasted.Overrides.Number("vignette.amount"));
+    }
+
+    [Fact]
+    public void PasteSelective_CropModule_CopiesCrop()
+    {
+        var overrides = S(("crop.enabled", true), ("crop.rect_w", 0.5));
+        var clip = new SettingsClipboard("a.jpg", null, overrides, ModuleCatalog.Defaults.Overlay(overrides));
+        var pasted = PhotoOperations.Paste(clip, PhotoEntry.New("b.jpg", null),
+            new PasteOptions { Mode = PasteMode.Selective, Modules = new HashSet<string> { "crop" } }, BaseFor);
+        Assert.Equal(0.5, pasted.Overrides.Number("crop.rect_w"));
+        Assert.Equal(PasteCategory.Crop, ModuleCatalog.Module("crop").PasteCategory);
     }
 }

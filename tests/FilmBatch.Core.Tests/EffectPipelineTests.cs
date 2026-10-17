@@ -565,4 +565,133 @@ public sealed class EffectPipelineTests
         Assert.Equal(single!.Render16(src, settings, ct).Rgba16, banded!.Render16(src, settings, ct).Rgba16);
         Assert.Equal(single.Render(src, settings).Bgra, banded.Render(src, settings).Bgra);
     }
+
+    // ───────────── 裁切（docs/cut-and-mask/plan.md Task 1.3、1.4）─────────────
+
+    /// <summary>左暗右亮的水平漸層：R = G = B 依 x 線性 0 → 65535。</summary>
+    private static SourceImage HGradient(int w, int h)
+    {
+        var px = new ushort[w * h * 4];
+        for (var y = 0; y < h; y++)
+        for (var x = 0; x < w; x++)
+        {
+            var i = (y * w + x) * 4;
+            px[i] = px[i + 1] = px[i + 2] = (ushort)Math.Round(x * 65535.0 / (w - 1));
+            px[i + 3] = ushort.MaxValue;
+        }
+        return new SourceImage(w, h, px);
+    }
+
+    /// <summary>某一欄的 R 值（由上到下）。</summary>
+    private static ushort[] Column(SourceImage img, int x) =>
+        [.. Enumerable.Range(0, img.Height).Select(y => img.Rgba16[(y * img.Width + x) * 4])];
+
+    /// <summary>某一點的 R 值。</summary>
+    private static int Pixel(SourceImage img, int x, int y) => img.Rgba16[(y * img.Width + x) * 4];
+
+    [Fact]
+    public void Crop_Disabled_IsBitIdentical()
+    {
+        var src = HGradient(64, 48);
+        var ct = TestContext.Current.CancellationToken;
+        var plain = CpuPipeline.Process(src, ModuleCatalog.Defaults, null, ct);
+        // 裁切關閉時，其餘裁切參數不影響結果，也不多做任何取樣
+        var off = ModuleCatalog.Defaults.With("crop.rect_w", 0.5).With("crop.angle", 10.0).With("crop.quarter", 1.0);
+        var outImg = CpuPipeline.Process(src, off, null, ct);
+        Assert.Equal((64, 48), (outImg.Width, outImg.Height));
+        Assert.Equal(plain.Rgba16, outImg.Rgba16);
+    }
+
+    [Fact]
+    public void Crop_FullFrameEnabled_MatchesDisabled()
+    {
+        var src = HGradient(64, 48);
+        var ct = TestContext.Current.CancellationToken;
+        var plain = CpuPipeline.Process(src, ModuleCatalog.Defaults, null, ct);
+        var full = CpuPipeline.Process(src, ModuleCatalog.Defaults.With("crop.enabled", true), null, ct);
+        Assert.Equal(plain.Rgba16, full.Rgba16);   // 像素中心對齊，雙線性權重為 0 → 原值
+    }
+
+    [Fact]
+    public void Crop_HalfWidth_OutputsCroppedRegion()
+    {
+        var src = HGradient(64, 48);
+        var s = ModuleCatalog.Defaults.With("crop.enabled", true).With("crop.rect_w", 0.5).With("crop.rect_cx", 0.75);
+        var outImg = CpuPipeline.Process(src, s, null, TestContext.Current.CancellationToken);
+        Assert.Equal((32, 48), (outImg.Width, outImg.Height));
+        Assert.True(MaxAbsDiff(Column(outImg, 0), Column(src, 32)) <= 2);   // 只有雙線性四捨五入誤差
+    }
+
+    [Fact]
+    public void Crop_Quarter1_RotatesClockwise()
+    {
+        var src = HGradient(64, 48);   // 左暗右亮 → 順時針 90° 後上暗下亮
+        var s = ModuleCatalog.Defaults.With("crop.enabled", true).With("crop.quarter", 1.0);
+        var outImg = CpuPipeline.Process(src, s, null, TestContext.Current.CancellationToken);
+        Assert.Equal((48, 64), (outImg.Width, outImg.Height));
+        Assert.True(Pixel(outImg, 10, 0) < 1000 && Pixel(outImg, 10, 63) > 64000);
+    }
+
+    [Fact]
+    public void Crop_VignetteUsesCroppedFrame()
+    {
+        var src = Flat(80, 40, 40000);
+        var s = ModuleCatalog.Defaults.With("crop.enabled", true).With("crop.rect_w", 0.5).With("crop.rect_cx", 0.25)
+            .With("vignette.enabled", true).With("vignette.amount", 80.0);   // 正值 = 壓暗邊緣
+        var outImg = CpuPipeline.Process(src, s, null, TestContext.Current.CancellationToken);
+        Assert.Equal((40, 40), (outImg.Width, outImg.Height));
+        // 暗角中心在裁切後畫框中心（40×40 的中心），不是原圖中心
+        Assert.True(Pixel(outImg, 20, 20) > Pixel(outImg, 0, 0));
+        Assert.True(Math.Abs(Pixel(outImg, 0, 20) - Pixel(outImg, 39, 20)) <= 2);
+    }
+
+    [Theory]
+    [InlineData(0.0, 0, false)]
+    [InlineData(7.5, 0, false)]
+    [InlineData(0.0, 1, true)]
+    [InlineData(-12.0, 3, false)]
+    public void Gpu_MatchesCpu_Crop(double angle, int quarter, bool flip)
+    {
+        using var gpu = TryCreateGpu();
+        Assert.SkipWhen(gpu is null, "沒有可用的 GPU 介面卡");
+        var src = HGradient(96, 64);
+        var s = ModuleCatalog.Defaults.With("crop.enabled", true).With("crop.rect_w", 0.6).With("crop.rect_h", 0.6)
+            .With("crop.angle", angle).With("crop.quarter", (double)quarter).With("crop.flip_h", flip)
+            .With("vignette.enabled", true).With("vignette.amount", 50.0);   // 之後的效果也以裁切後尺寸計算
+        var ct = TestContext.Current.CancellationToken;
+        var cpu = CpuPipeline.Process(src, s, null, ct);
+        var gpuOut = gpu!.Render16(src, s, ct);
+        Assert.Equal((cpu.Width, cpu.Height), (gpuOut.Width, gpuOut.Height));
+        var max = MaxAbsDiff(cpu.Rgba16, gpuOut.Rgba16);
+        Assert.True(max <= 64, $"GPU 與 CPU 16-bit 差異 {max}/65535");   // 與其他幾何模組相同容差
+
+        var preview = gpu.Render(src, s);   // 預覽（BGRA8）也是裁切後尺寸
+        Assert.Equal((cpu.Width, cpu.Height), (preview.Width, preview.Height));
+        Assert.Equal(cpu.Width * cpu.Height * 4, preview.Bgra.Length);
+    }
+
+    [Fact]
+    public void Gpu_Crop_ThenUncropped_ReallocatesWorkspace()
+    {
+        using var gpu = TryCreateGpu();
+        Assert.SkipWhen(gpu is null, "沒有可用的 GPU 介面卡");
+        var src = HGradient(64, 48);
+        var ct = TestContext.Current.CancellationToken;
+        var cropped = ModuleCatalog.Defaults.With("crop.enabled", true).With("crop.rect_w", 0.5);
+        Assert.Equal(32, gpu!.Render16(src, cropped, ct).Width);
+        var full = gpu.Render16(src, ModuleCatalog.Defaults, ct);
+        Assert.Equal((64, 48), (full.Width, full.Height));
+        Assert.True(MaxAbsDiff(full.Rgba16, CpuPipeline.Process(src, ModuleCatalog.Defaults, null, ct).Rgba16) <= 64);
+    }
+
+    [Fact]
+    public void Crop_ModuleParams_ExposeOutputSize()
+    {
+        var src = Flat(80, 40, 40000);
+        var p = ModuleParams.From(src, ModuleCatalog.Defaults.With("crop.enabled", true).With("crop.rect_w", 0.5));
+        Assert.True(p.Crop.On);
+        Assert.Equal((40, 40), (p.OutWidth, p.OutHeight));
+        var off = ModuleParams.From(src, ModuleCatalog.Defaults);
+        Assert.Equal((80, 40), (off.OutWidth, off.OutHeight));
+    }
 }

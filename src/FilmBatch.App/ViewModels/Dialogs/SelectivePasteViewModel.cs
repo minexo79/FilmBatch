@@ -40,8 +40,11 @@ public sealed partial class SelectivePasteViewModel : ObservableObject
         var firstTime = last.Count == 0;
         Groups = new(ModuleCatalog.Modules
             .GroupBy(m => m.PasteCategory)
+            .OrderBy(g => g.Key)
             .Select(g => new ModuleCheckGroupViewModel(Localization.Loc.PasteCategoryLabel(g.Key),
-                g.Select(m => new ModuleCheckViewModel(m, firstTime || last.Contains(m.Key))))));
+                // 第一次開啟時全選，但裁切 / 細部調整只屬於單張照片，預設不勾選
+                g.Select(m => new ModuleCheckViewModel(m,
+                    (firstTime && !PhotoOperations.IsPerPhoto(m.PasteCategory)) || last.Contains(m.Key))))));
         IncludeSeeds = settings.SelectivePasteIncludeSeeds;
         MirrorPositions = settings.SelectivePasteMirror;
         foreach (var m in All) m.PropertyChanged += (_, _) => OnPropertyChanged(nameof(CheckedCount));

@@ -43,16 +43,17 @@ public sealed class GpuSpikeRenderer : IPreviewRenderer
             : _pipeline.Reserve(source, parameters) is { } error ? CoreText.T($"GPU 顯示記憶體不足：{error}", $"not enough GPU memory: {error}")
             : null;
         if (UsingCpu) return CpuPipeline.Process(source, parameters, null, cancellationToken);
-        var output = new ushort[source.Rgba16.Length];
+        var output = new ushort[parameters.OutWidth * parameters.OutHeight * 4];
         _pipeline.Render(source, parameters, output, cancellationToken);
-        return new SourceImage(source.Width, source.Height, output) { FilePath = source.FilePath };
+        return new SourceImage(parameters.OutWidth, parameters.OutHeight, output) { FilePath = source.FilePath };
     }
 
     public RenderResult Render(SourceImage source, Settings settings)
     {
         var timer = Stopwatch.StartNew();
         var parameters = Prepare(source, settings);
-        var output = new byte[source.Rgba16.Length];
+        // 輸出為裁切後的尺寸
+        var output = new byte[parameters.OutWidth * parameters.OutHeight * 4];
         if (UsingCpu)
         {
             var rendered = CpuPipeline.Process(source, parameters, null, default).Rgba16;
@@ -65,7 +66,7 @@ public sealed class GpuSpikeRenderer : IPreviewRenderer
             }
         }
         else _pipeline.Render(source, parameters, output, default);
-        return new(source.Width, source.Height, output, timer.Elapsed);
+        return new(parameters.OutWidth, parameters.OutHeight, output, timer.Elapsed);
     }
 
     private ModuleParams Prepare(SourceImage source, Settings settings)
