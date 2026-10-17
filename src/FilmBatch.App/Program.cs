@@ -61,12 +61,22 @@ internal static class Program
     /// <summary>預設字型與後備字型（計畫書 2.2.3）。</summary>
     internal static FontManagerOptions FontOptions()
     {
-        var (primary, fallbacks) = OperatingSystem.IsWindows() ? ("Microsoft JhengHei UI", new[] { "Microsoft JhengHei", "Segoe UI" })
-            : OperatingSystem.IsMacOS() ? ("PingFang TC", new[] { "Heiti TC", "Helvetica Neue" })
-            : ("Noto Sans CJK TC", new[] { "Noto Sans TC", "Noto Sans" });
+        // DefaultFamilyName 以複合字型清單表示：首名缺席時逐一解析，尾端固定為
+        // 各平台必然存在的字型（Windows 的 Arial；macOS 的 Helvetica Neue；Linux 的
+        // sans）。TextRunProperties.CachedGlyphTypeface 在預設家族整個解析不到時
+        // 會直接擲回（例如沒有繁中字型的 Windows 找不到 Microsoft JhengHei UI），
+        // 空白 TextBlock 也會踩到。FontFallbacks 仍提供逐字碼的備援。
+        var (family, fallbacks) = OperatingSystem.IsWindows()
+            ? ("Microsoft JhengHei UI, Microsoft JhengHei, Segoe UI, Arial",
+               new[] { "Microsoft JhengHei", "Segoe UI" })
+            : OperatingSystem.IsMacOS()
+            ? ("PingFang TC, Heiti TC, Helvetica Neue",
+               new[] { "Heiti TC", "Helvetica Neue" })
+            : ("Noto Sans CJK TC, Noto Sans TC, Noto Sans, sans",
+               new[] { "Noto Sans TC", "Noto Sans" });
         return new FontManagerOptions
         {
-            DefaultFamilyName = primary,
+            DefaultFamilyName = family,
             FontFallbacks = fallbacks.Select(f => new FontFallback { FontFamily = new FontFamily(f) }).ToArray(),
         };
     }
