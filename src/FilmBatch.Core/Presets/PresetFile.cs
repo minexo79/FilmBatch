@@ -35,6 +35,7 @@ public static class PresetFile
                     if (keyNode is not YamlScalarNode { Value: { } key } || valueNode is not YamlScalarNode scalar)
                         throw new InvalidDataException("Preset parameters must be scalar values.");
                     var flatKey = module + "." + key;
+                    if (RetiredParams.IsRetired(flatKey)) continue;
                     var definition = ModuleCatalog.Param(flatKey) ?? throw new InvalidDataException($"Unknown parameter: {flatKey}");
                     var text = scalar.Value ?? "";
                     var value = definition.Kind switch

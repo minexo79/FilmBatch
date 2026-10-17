@@ -42,8 +42,8 @@ public sealed class GalleryViewModel : IParamHost
         NormalParam.Load(0.0, overridden: false);
         OverriddenParam = new SliderParamViewModel("basic", basic.Params[4], this);
         OverriddenParam.Load(25.0, overridden: true);
-        ChoiceParam = new ChoiceParamViewModel("film", film.Params.First(p => p.Key == "style"), this);
-        ChoiceParam.Load("vivid", overridden: true);
+        ChoiceParam = new ChoiceParamViewModel("film", film.Params.First(p => p.Key == "look"), this);
+        ChoiceParam.Load("fuji-velvia-50", overridden: true);
         ToggleParam = new ToggleParamViewModel("lens_distortion", ModuleCatalog.Module("lens_distortion").Params[4], this);
         ToggleParam.Load(true, overridden: false);
 

@@ -1,5 +1,6 @@
 using System.Numerics;
 using FilmBatch.Core.Film;
+using FilmBatch.Core.Params;
 
 namespace FilmBatch.Core.Tests;
 
@@ -48,5 +49,27 @@ public class FilmLookTests
         var lut = FilmLookLibrary.TryLut("fuji-velvia-50")!;
         var input = new Vector3(.25f, .5f, .3f);
         Assert.True(Vector3.Distance(input, lut.Sample(input)) > .01f);
+    }
+
+    [Fact]
+    public void HuePresets_FirstIsNone_AllKeysAreKnownBands()
+    {
+        Assert.Equal("none", HuePresets.All[0].Key);
+        Assert.All(HuePresets.All[0].ToSettings(), kv => Assert.Equal(0, kv.Value.Number));
+        foreach (var preset in HuePresets.All)
+        {
+            var settings = preset.ToSettings();
+            Assert.Equal(24, settings.Count());
+            Assert.All(preset.Values.Keys, key => Assert.Contains(key, HueBands.FlatKeys));
+        }
+    }
+
+    [Fact]
+    public void HuePresets_Find_MatchesExactValues_ElseNull()
+    {
+        var warm = HuePresets.All.First(p => p.Key == "warm-skin");
+        var resolved = warm.ToSettings().Aggregate(ModuleCatalog.Defaults, (s, kv) => s.With(kv.Key, kv.Value));
+        Assert.Equal("warm-skin", HuePresets.Find(resolved)?.Key);
+        Assert.Null(HuePresets.Find(resolved.With("film.hue_blue_s", ParamValue.Of(37.0))));
     }
 }
