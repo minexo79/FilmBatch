@@ -21,8 +21,22 @@ internal static class RawSourceLoader
         || Path.GetExtension(path).Equals(".tiff", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>一般影像回傳 null；可辨識但不支援或損毀的 RAW 一律回報錯誤，不改用嵌入 JPEG。</summary>
-    internal static SourceImage? TryLoad(string path, int edge, RawLoadOptions rawOptions = default)
+    internal static SourceImage? TryLoad(string path, int edge, RawLoadOptions rawOptions = default) =>
+        TryLoad(path, edge, rawOptions, finisher: null, cancellationToken: default,
+            out _, out _);
+
+    /// <summary>
+    /// 全解析度匯出用：與 <see cref="TryLoad(string, int, RawLoadOptions)"/> 相同，但 finishing 可走
+    /// 呼叫端傳入的 renderer-owned GPU encoder（同一匯出執行緒；絕不在此建立 GPU）。
+    /// <paramref name="finisher"/> 為 null 時走 CPU；GPU 回傳 (null, reason) 時誠實 fallback 並回報原因。
+    /// 直接預覽／縮圖載入一律用 CPU overload，不經 GPU。
+    /// </summary>
+    internal static SourceImage? TryLoad(string path, int edge, RawLoadOptions rawOptions,
+        RawDisplayFinisher? finisher, CancellationToken cancellationToken,
+        out bool usedGpu, out string? fallbackReason)
     {
+        usedGpu = false;
+        fallbackReason = null;
         if (!IsCandidate(path)) return null;
         if (!IsRawExtension(path))
         {
@@ -37,7 +51,23 @@ internal static class RawSourceLoader
         var info = raw.Info();
         var masks = rawOptions.IncludeSemanticMasks ? FilmBatch.Raw.RawSemanticMasks.Read(bytes) : [];
         var (image, tone) = DevelopLinear(raw, bytes, edge, rawOptions);
-        return new SourceImage(image.Width, image.Height, RawDisplay.Encode(image, tone))
+        ushort[] rgba16;
+        if (finisher is not null)
+        {
+            var finished = finisher(image, tone, cancellationToken);
+            if (finished is { Pixels: { } pixels })
+            {
+                usedGpu = true;
+                rgba16 = pixels;
+            }
+            else
+            {
+                fallbackReason = finished.FallbackReason;
+                rgba16 = RawDisplay.Encode(image, tone);
+            }
+        }
+        else rgba16 = RawDisplay.Encode(image, tone);
+        return new SourceImage(image.Width, image.Height, rgba16)
         {
             FilePath = Path.GetFullPath(path), RawOptions = rawOptions, RawInfo = info, SemanticMasks = masks,
         };

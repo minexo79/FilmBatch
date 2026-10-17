@@ -1,0 +1,116 @@
+# ADR 0003：GPU 運算堆疊定案與 CPU 向量化
+
+- 狀態：**已採用**（M0 後評估，2026-10-17）
+- 範圍：`src/FilmBatch.Gpu`、`src/FilmBatch.Engine/Rendering/CpuPipeline.cs`、`src/FilmBatch.Engine/Imaging/Raw/`、`src/FilmBatch.Engine/Exporting/BatchExporter.cs`
+
+## 背景
+
+M0 之後需要正式回答兩個問題：
+
+1. GPU 效果管線是否維持現行堆疊，或改用 ILGPU／Vortice／ComputeSharp 等 C# 原生方案？
+2. CPU 參考路徑（無 GPU、偵錯比對、超大影像降級用）如何在不多寫一套程式碼的前提下加速？
+
+## 決策
+
+1. **GPU 維持 WebGPUSharp 0.5.7（Dawn）。**沿用既有 WGSL、裝置、資源繫結與讀回模型，符合使用者「可行時延用同一技術」的要求。[ADR 0001](0001-webgpu-binding.md) 已記錄 DX12／Vulkan／Metal 的 spike；本次沒有足以支持遷移的已量測收益。
+2. **CPU 使用 `Vector128<float>` 處理 RGBA 算術、模糊累積與量化。**不新增相依套件，不改公開 API。非線性的 sRGB 曲線與亮度 gamma 保留 `MathF.Pow`，理由見量測。
+3. **RAW 解碼、demosaic 與線性 Rec.2020 顯影保留 CPU；顯示收尾沿用 Dawn。**GPU 工作使用 `GpuSpikeRenderer` 擁有的裝置，不另設全域 GPU 單例；全解析度批次匯出使用此路徑，直接影像／預覽載入仍使用既有 CPU 顯影。
+4. **Halide AOT 暫不採用，記錄為未來選項**，理由與重估觸發條件見下節。
+
+## 候選比較
+
+| 候選 | 證據與理由 | 結果 |
+|---|---|---|
+| WebGPUSharp＋Dawn | 使用者既有選擇；ADR 0001 已驗證 DX12／Vulkan／Metal | **維持** |
+| ILGPU | 官方提供 [CPU／CUDA／OpenCL accelerator](https://ilgpu.net/docs/02-beginner/01-context-and-accelerators)，無 Metal 後端；macOS GPU 依賴已棄用的 [OpenCL](https://developer.apple.com/opencl)。需另行移植 kernel 與資源模型 | 不遷移 |
+| ComputeSharp | [官方](https://github.com/Sergio0694/ComputeSharp)以 DirectX 12／Direct2D 為基礎，不能取代 macOS Metal 路徑 | 不採用 |
+| Vortice.Windows | [Windows Direct3D 等繫結](https://github.com/amerkoleci/Vortice.Windows)，不是跨平台 Metal 方案 | 不採用 |
+| Veldrid | [官方](https://github.com/mellinoe/veldrid)支援跨平台算圖、Metal 與 compute；問題是 shader／資源／管線遷移成本，不是缺少 compute。維護狀態以其 README 的公告為準 | 不遷移 |
+| Silk.NET.WebGPU | ADR 0001 記錄當時版本的 DX12 後端問題，不泛推所有新版 | 不遷移 |
+| `Vector128<float>`（本工作） | 僅 CPU 參考路徑加速，不改架構 | **採用** |
+| Halide AOT | 見下節 | 未來選項 |
+
+替代方案平台資訊查核日期：2026-10-17。未安裝或基準測試這些方案；本表不是跨函式庫效能排名。Apple 自 macOS 10.14 起棄用 OpenCL。
+
+## CPU 向量化範圍
+
+逐像素算術以四條 lane 處理 RGBA；模糊仍讀取鄰近像素，只把每個 tap 的四通道累積向量化。
+
+| Pass | 實作 |
+|---|---|
+| `DecodeLinear` | `Vector64<ushort>` 只載入一個像素，再展寬、轉 float、正規化；RGB 曲線保留純量 `MathF.Pow`，alpha 直通 |
+| `BasicLinear` | 曝光／色溫／色調常數向量逐像素乘 |
+| `BasicDisplay` | 對比、亮暗部、飽和度與 structure 使用 RGB 向量算術；gamma 保留純量，亮度權重只算一次 |
+| `ToneSplit` | 純量亮度／smoothstep 權重與向量混色 |
+| `Detail` | 向量載入原值與模糊基底，RGB 縮放後還原原始 alpha |
+| `Linear→sRGB` | 沿用純量曲線，向量載入與儲存保留 alpha |
+| RGBA16 量化 | clamp → 乘 65535 → nearest-even round → 整數轉換 → unsigned narrow；值域先限制為 0–65535，不依賴 narrow 飽和 |
+| `SeparableBlur` | 每個 tap 一次累積 RGBA，維持原取樣邊界、權重與加總順序 |
+
+幾何／雙線性取樣、程序化雜訊、底片查表與 RAW demosaic 沒有在本次重寫；不由程式結構推論其效能上限。
+
+## 精度與效能取捨
+
+- 起初以 `Exp(Log(x)·k)` 代替向量 `Pow`，但同程序、相同輸入的配對基準顯示明顯退步，因此移除；沒有保留近似數學的第二套實作。
+- M3 上改回 `MathF.Pow` 後，28 組小影像／設定與五組 1600×1067 影像均與原始純量版逐值一致；完整 65536 種 u16 RGBA 解碼與 18 組模糊案例也沒有觀察到浮點差異。這是已測輸入的結果，不是所有平台的逐位元保證。
+- RGB-only 效果不得改變 alpha；單像素／奇數尺寸與完整 16-bit 色階列入回歸檢查。
+
+## RAW 邊界（本次決策）
+
+- CPU 保留：RAW 解碼、demosaic、線性 Rec.2020 顯影（`RawSourceLoader` 既有路徑）。
+- GPU 新增：`Imaging/Raw/RawDisplayGpu.cs` 與 `Shaders/v1/io/raw_display_finish.wgsl`，完成相機／預設色調映射、色度、高光、色域及 sRGB RGBA16 編碼。kernel 由 `GpuSpikeRenderer.FinishRaw` 延遲建立並快取，使用算圖器原有裝置。
+- 輸入 RGB float（12 B／像素）與輸出 RGBA16（8 B／像素）都依裝置上限及既有 `MaxBandBytes` 分帶；列數不超過實際影像高度，資源在每次收尾結束時釋放，包含部分配置失敗與取消。
+- 超限／GPU OOM 改用 CPU 並保留原因；shader 編譯、提交及讀回錯誤直接回報，不偽裝成功或靜默退回 CPU。
+- 整合點為 `BatchExporter.ProcessOne` → `ImageLoader.LoadFull` 內部多載 → `RawSourceLoader.TryLoad`。直接影像載入與預覽仍使用 CPU；不新增全域 GPU、使用者設定或相依套件。
+- 每筆 `export_log.json` 的 `Renderer` 分別標示效果算圖與 RAW 收尾，例如 `Apple M3 · Metal + RAW GPU`、`… + RAW CPU（原因）`；純 CPU 算圖器維持原有 CPU 標示，混合批次不沿用前一張的狀態。
+
+### 浮點精度
+
+大圖 smoke 曾在高光接近色域邊界時觀察到 6／4／3 個 16-bit 色碼的差異；擴大到五個隨機種子後，又找出 5-code 的青色高光輸入。四組輸入均保留於 `RawGpuDisplayTests.Gpu_SaturatedHighlightNearGamutBoundary_MatchesCpu`，未放寬 2-code 容差。
+
+Metal 的乘加重結合與 LUT 座標捨入、原生 `log2` 容許誤差會在色域壓縮後放大。WGSL 保留逐項 f32 捨入，以餘差校正除法，並以 mantissa 範圍縮減、atanh 級數與 high／low 餘差計算 LUT 用的 log2；CPU 曲線不變。固定為 0 的 uniform `RoundingMask` 是阻止編譯器跨捨入點重結合的數值屏障，不是可調參數，也不可直接替換為編譯期常數。此做法不依賴 Dawn 私有 ABI。
+
+補償項本身也必須逐項保留捨入點；僅保護最終 high／low 相加仍不足。5-code 案例的第一個差異位於 LUT 用的 log2，放大後的紅通道走 sRGB 線性分支，因此不是末端 `pow` 的誤差。修正補償餘差的捨入屏障後，五個種子（147、1、42、2026、888）各跑預設與相機曲線，共十組 1600×1067 HDR 影像的最大 RGB 差均為 1／65535，alpha 完全一致。另以 1,048,576 個線性／對數分布輸入獨立檢查 sRGB 編碼，原 `pow` 路徑最大差為 1 code；未將它替換成未證明必要的 log2／exp2 路徑。
+
+## Halide AOT（未來選項）
+
+- Halide 為內嵌於 C++ 的影像管線語言，演算法與排程分離；目標含 x86／ARM 等 CPU、Linux／Windows／macOS 等系統，GPU 含 CUDA／OpenCL／Metal／DX12（[官網總覽](https://halide-lang.org/)）。
+- AOT 流程為：產生器定義管線與排程 → 編出靜態函式庫與標頭（如 `lesson_10_halide.a`）→ 連結進執行檔；最終程式執行期不做 JIT、不相依 libHalide（[官方 AOT 教學](https://halide-lang.org/docs/tutorial/lesson_10_aot_compilation_generate.html)）。
+- 代價：引入外部 codegen 工具鏈、C++ 產生器、多目標產物與額外建置步驟；排程需逐目標調校。本次不新增相依。
+- 重估觸發：CPU 在 pass fusion 後仍有可證實瓶頸，或需要同一排程同時產出跨平台 SIMD 與 GPU 版本且收益可量測時，再評估。
+
+## 本機 CPU 基準
+
+Apple M3、.NET 10.0.13、Release、`DOTNET_TieredCompilation=0`。基準將原始純量 `CpuPipeline` 與修改版編入同一個拋棄式程式；影像 1600×1067、`Random(42)`，各暖機四次，交錯執行十二組，取中位數；輸出緩衝區重用，兩版工作區配置一致。
+
+| 設定 | 純量中位數 | SIMD 中位數 | 加速比 |
+|---|---:|---:|---:|
+| 系統預設 | 20.45 ms | 18.70 ms | 1.09× |
+| 基本調整 | 59.41 ms | 49.46 ms | 1.20× |
+| 色調分離 | 27.26 ms | 24.48 ms | 1.11× |
+| 清晰／銳化 | 84.14 ms | 70.22 ms | 1.20× |
+| 三者合併 | 129.14 ms | 105.68 ms | 1.22× |
+
+基本調整：曝光 0.7、色溫 30、色調 −20、亮度 10、對比 15、飽和度 20、亮部 −10、暗部 15、structure 20。色調分離：暗部色相 210／量 40、亮部色相 45／量 30、平衡 −15。清晰 30／銳化 25。這不是「全部模組開啟」基準，也沒有證明記憶體頻寬為瓶頸；數值不保證其他硬體的加速幅度。
+
+## 本機 RAW 收尾基準
+
+Apple M3／Metal、Release、`DOTNET_TieredCompilation=0`；1600×1067 線性 RGB，`rng = new Random(147)` 連續抽樣 `(float)rng.NextDouble() * 2.5f` 產生有限 HDR 值，前兩像素設為黑與 `1e-10f`；相機曲線／色度沿用 `RawGpuDisplayTests` 的合成 fixture。各暖機兩次，交錯量測六組，取中位數。以下為補償餘差屏障修正後的重新量測。
+
+| 色調 | CPU 收尾 | GPU 收尾（含配置、上傳、compute、讀回） | 與 CPU 的最大 RGB 差 |
+|---|---:|---:|---:|
+| 預設 | 15.45 ms | 11.43 ms | 1／65535 |
+| 相機曲線＋色度 | 22.14 ms | 8.80 ms | 1／65535 |
+
+兩組 alpha 完全一致。這些時間不包含 RAW 解碼、demosaic 或外觀擬合，不代表整個 RAW 匯出的加速比。
+
+
+## 驗證界線
+
+- `dotnet test FilmBatch.sln -c Release`：896 通過、313 略過、0 失敗；其中 Core 228、Raw 613、App 55 通過。外部 `FILMBATCH_RAW_SAMPLES`／`FILMBATCH_RAW_ORACLE` 未設定，相關語料／對照測試未執行。
+- RAW GPU 的 14 個案例在真實 GPU 上執行：預設／相機曲線、色度、高光與色域邊界、黑白與暗部 LUT 外插／上限、分帶尾端、取消、CPU 降級、DNG 匯出的像素／中繼資料／裝置紀錄。
+- `dotnet run build/CheckShaders.cs -- --naga <naga-30.0.1>`：33 個嵌入 WGSL 全數通過。
+- 實際 CLI 將生成的 257×129 DNG 分別以 `--backend Metal` 與 `--software` 匯出 PNG，像素最大差 1／65535，alpha、尺寸與相機中繼資料一致；Metal 紀錄 `RAW GPU`，無軟體 GPU 時明確顯示原因後以 CPU 成功匯出。
+- 強制 RAW 分帶預算不足時，CPU 降級像素與原 CPU 載入完全一致；故意損毀 WGSL 時，編譯錯誤直接傳播。
+- `DOTNET_EnableHWIntrinsic=0` 的 CPU smoke 仍與原純量版一致；Windows／Linux 的本次效能與 RAW GPU 實機路徑尚未量測。
+- 未宣稱所有平台／輸入逐位元一致，也未把 RAW 解碼、demosaic、外觀擬合說成已 GPU 化。

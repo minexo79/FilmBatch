@@ -36,9 +36,22 @@ public static class ImageLoader
     }
 
     /// <summary>全解析度解碼（匯出用）：EXIF 轉正、不縮放，保留 16-bit 資料。</summary>
-    public static SourceImage LoadFull(string path, RawLoadOptions rawOptions = default)
+    public static SourceImage LoadFull(string path, RawLoadOptions rawOptions = default) =>
+        LoadFull(path, rawOptions, null, default, out _, out _);
+
+    /// <summary>
+    /// 全解析度匯出載入：RAW finishing 可走呼叫端傳入的 renderer-owned GPU encoder
+    /// （同一匯出執行緒；絕不在此建立 GPU）。GPU fallback 時回報原因；一般影像不受影響。
+    /// 直接預覽／縮圖一律用 CPU overload。
+    /// </summary>
+    internal static SourceImage LoadFull(string path, RawLoadOptions rawOptions,
+        RawDisplayFinisher? finisher, CancellationToken cancellationToken,
+        out bool usedGpu, out string? fallbackReason)
     {
-        if (RawSourceLoader.TryLoad(path, int.MaxValue, rawOptions) is { } raw) return raw;
+        if (RawSourceLoader.TryLoad(path, int.MaxValue, rawOptions, finisher, cancellationToken,
+            out usedGpu, out fallbackReason) is { } raw) return raw;
+        usedGpu = false;
+        fallbackReason = null;
         using var image = new MagickImage(path);
         image.AutoOrient();
         return ToSource(image, path, rawOptions);

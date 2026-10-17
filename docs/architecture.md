@@ -248,7 +248,7 @@ flowchart LR
 |---|---|---|
 | `IPreviewRenderer` | `IPreviewRenderer.cs` | 算圖器介面：`Render`（預覽，8-bit BGRA）、`Render16`（匯出，16-bit RGBA）、`DeviceName`、`IsSoftware` |
 | `ModuleParams` | `ModuleParams.cs` | 把 `Settings` 解析成一個個欄位（`VignetteOn`、`VigAmount`…），並計算各模組的種子。**CPU 與 GPU 共用同一份解析結果**，保證兩端讀到相同的值 |
-| `CpuPipeline` | `CpuPipeline.cs` | CPU 完整管線，`Process` 方法裡依序呼叫每個模組，是閱讀處理順序最好的入口 |
+| `CpuPipeline` | `CpuPipeline.cs` | CPU 完整管線，`Process` 依序執行模組；RGBA 算術、模糊累積與量化使用 `Vector128`，sRGB 曲線與 gamma 保留純量 `MathF.Pow` |
 | `GpuEffectPipeline` | `GpuEffectPipeline.cs` | GPU 管線。建構子以 `K("optical/vignette", …)` 載入每支 shader；`Process` 依序派送 pass；檔案底部是各 shader 的 uniform 結構（例如 `VignetteUniforms`） |
 | `GpuSpikeRenderer` | `GpuSpikeRenderer.cs` | **正式的 GPU 算圖器**（名稱沿用自 M0 技術驗證）。超過 GPU 紋理上限或顯示記憶體不足時，自動改走 CPU 並在 `DeviceName` 標示原因 |
 | `CpuFakeRenderer` | `CpuFakeRenderer.cs` | **正式的 CPU 算圖器**（名稱同樣是歷史遺留），內部呼叫 `CpuPipeline`；無 GPU 或使用者強制軟體模式時使用 |
@@ -296,7 +296,7 @@ App 端由 `App/Services/PreviewService.cs` 包裝：負責 `generation` 比對�
 | 型別 | 說明 |
 |---|---|
 | `Imaging/ImageLoader` | 以 Magick.NET 解碼，來源 ICC 轉成 sRGB、套用方向，產生 16-bit RGBA 的 `SourceImage`；可指定長邊產生預覽代理圖。RAW（與含感光資料的 TIFF）先交給 `RawSourceLoader` |
-| `Imaging/Raw/RawSourceLoader` | RAW 來源：`FilmBatch.Raw` 解碼 → 以相機內嵌 JPEG 擬合起始外觀（`CameraPreview`）→ 分箱或去馬賽克顯影、高光重建、色彩 → 相機色調與 sRGB 編碼（`RawDisplay`）；可辨識但不支援或損毀的 RAW 一律報錯，不以內嵌 JPEG 代替 |
+| `Imaging/Raw/RawSourceLoader` | RAW 來源：`FilmBatch.Raw` 解碼 → 以相機內嵌 JPEG 擬合起始外觀（`CameraPreview`）→ 分箱或去馬賽克顯影、高光重建、色彩 → 相機色調與 sRGB 編碼；GPU 批次匯出的最後一步沿用算圖器的 Dawn 裝置，直接載入與預覽仍使用 CPU `RawDisplay`。不支援或損毀的 RAW 一律報錯，不以內嵌 JPEG 代替 |
 | `Imaging/SourceImage` | 記憶體中的影像：寬、高、`Rgba16` 像素、`FilePath`（種子由檔名計算） |
 | `Imaging/ImageHistogram` | 直方圖與裁切比例 |
 | `Imaging/SampleImages` | 產生「開啟範例照片」用的測試圖 |
@@ -319,7 +319,7 @@ RAW 中繼資料的標頭辨識與感光解碼一致：RW2 的 `0x0055`、ORF �
 
 ### 4.9 Gpu．WebGPU 薄封裝與 Shader
 
-**職責**：把 WebGPUSharp（Dawn）包成少數幾個簡單型別，Engine 只透過它們使用 GPU。選型理由見 [adr/0001-webgpu-binding.md](adr/0001-webgpu-binding.md)。
+**職責**：把 WebGPUSharp（Dawn）包成少數幾個簡單型別，Engine 只透過它們使用 GPU。初始選型見 [ADR 0001](adr/0001-webgpu-binding.md)；CPU SIMD、RAW 顯示收尾與 Halide AOT 取捨見 [ADR 0003](adr/0003-gpu-stack-decision.md)。
 
 | 型別 | 檔案 | 說明 |
 |---|---|---|

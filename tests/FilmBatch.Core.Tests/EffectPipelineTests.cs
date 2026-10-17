@@ -97,6 +97,63 @@ public sealed class EffectPipelineTests
         Assert.True(maxAlpha <= 1, $"alpha 應原樣保留，最大差 {maxAlpha}/65535");
     }
 
+    [Theory]
+    [InlineData(70.0, 0.0)]
+    [InlineData(0.0, 70.0)]
+    [InlineData(70.0, 70.0)]
+    [InlineData(-70.0, 0.0)]
+    public void Detail_ChangesRgbWithoutChangingOpacity(double clarity, double sharpen)
+    {
+        const int w = 5, h = 3;
+        var pixels = new ushort[w * h * 4];
+        for (var i = 0; i < w * h; i++)
+        {
+            var value = (ushort)(i == 7 ? 50000 : 8000);
+            pixels[i * 4] = pixels[i * 4 + 1] = pixels[i * 4 + 2] = value;
+            pixels[i * 4 + 3] = (ushort)((i % 4) switch { 0 => 0, 1 => 1, 2 => 32768, _ => 65535 });
+        }
+        var source = new SourceImage(w, h, pixels);
+        var settings = ModuleCatalog.Defaults.With("detail.enabled", true)
+            .With("detail.clarity", clarity).With("detail.sharpen", sharpen);
+        using var cpu = new CpuFakeRenderer();
+        var output = cpu.Render16(source, settings, TestContext.Current.CancellationToken).Rgba16;
+
+        if (clarity < 0)
+            Assert.True(output[7 * 4] < 50000, "負清晰度應降低亮點的局部對比");
+        else
+            Assert.True(output[7 * 4] > 50000, "清晰度／銳化應提高亮點的局部對比");
+        for (var i = 3; i < pixels.Length; i += 4)
+            Assert.Equal(pixels[i], output[i]);
+    }
+
+    [Theory]
+    [InlineData(1, 1)]
+    [InlineData(3, 5)]
+    [InlineData(256, 256)]
+    public void NeutralPipeline_RoundTrips16BitCodesIncludingTailPixels(int width, int height)
+    {
+        var pixels = new ushort[width * height * 4];
+        for (var p = 0; p < width * height; p++)
+        {
+            var code = width == 256 ? p : p * 4369;
+            pixels[p * 4] = (ushort)code;
+            pixels[p * 4 + 1] = (ushort)(65535 - code);
+            pixels[p * 4 + 2] = (ushort)((code + 2650) & 65535);
+            pixels[p * 4 + 3] = (ushort)code;
+        }
+        using var cpu = new CpuFakeRenderer();
+        var output = cpu.Render16(new SourceImage(width, height, pixels),
+            ModuleCatalog.Defaults, TestContext.Current.CancellationToken).Rgba16;
+
+        for (var i = 0; i < pixels.Length; i++)
+        {
+            if (i % 4 == 3)
+                Assert.Equal(pixels[i], output[i]);
+            else
+                Assert.InRange(Math.Abs(pixels[i] - output[i]), 0, 1);
+        }
+    }
+
 
     [Fact]
     public void Render16_IsTrue16Bit_NotExpandedBgra8()

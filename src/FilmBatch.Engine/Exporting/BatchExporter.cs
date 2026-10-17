@@ -2,6 +2,7 @@ using System.Text.Json;
 using FilmBatch.Core;
 using FilmBatch.Core.Projects;
 using FilmBatch.Engine.Imaging;
+using FilmBatch.Engine.Imaging.Raw;
 using FilmBatch.Engine.Rendering;
 using ImageMagick;
 using FilmBatch.Raw;
@@ -144,11 +145,13 @@ public static class BatchExporter
             try
             {
                 // 同一執行緒直接處理（算圖器親和性；GUI 端已在背景 Task 內）
-                var (w, h, metadataWarning) = ProcessOne(job, outputs[i], options, renderer, ct);
+                var (w, h, metadataWarning, rawDevice) = ProcessOne(job, outputs[i], options, renderer, ct);
                 deviceName = renderer.DeviceName;
                 isSoftware |= renderer.IsSoftware;
+                // RAW 收尾的裝置與效果算圖裝置分開記錄，混合批次不沿用上一張的診斷。
+                var entryDevice = rawDevice is null ? deviceName : $"{deviceName} + {rawDevice}";
                 outputFiles.Add(outputs[i]);
-                entries[i] = LogEntry(job, outputs[i], options, deviceName, w, h, "ok", null);
+                entries[i] = LogEntry(job, outputs[i], options, entryDevice, w, h, "ok", null);
                 entries[i].MetadataWarning = metadataWarning;
             }
             catch (OperationCanceledException)
@@ -207,15 +210,23 @@ public static class BatchExporter
         Error = error,
     };
 
-    private static (int Width, int Height, string? MetadataWarning) ProcessOne(
+    private static (int Width, int Height, string? MetadataWarning, string? RawDevice) ProcessOne(
         ExportJob job, string outputPath, ExportOptions options, IPreviewRenderer renderer, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
         if (!File.Exists(job.SourcePath))
             throw new FileNotFoundException(CoreText.T($"找不到來源照片：{job.FileName}", $"Source photo not found: {job.FileName}"), job.SourcePath);
 
-        // 1. 全解析度解碼（EXIF 已轉正；FilePath 供算圖器解析相對素材/種子）
-        var source = ImageLoader.LoadFull(job.SourcePath, RawLoadOptions.FromSettings(job.Settings));
+        // 1. 全解析度解碼（EXIF 已轉正；FilePath 供算圖器解析相對素材/種子）。
+        // RAW 顯示收尾沿用匯出算圖器的裝置；CPU 算圖器與一般影像維持原路徑。
+        RawDisplayFinisher? finisher = renderer is GpuSpikeRenderer gpu
+            ? gpu.FinishRaw : null;
+        var source = ImageLoader.LoadFull(job.SourcePath, RawLoadOptions.FromSettings(job.Settings),
+            finisher, ct, out var rawUsedGpu, out var rawFallback);
+        // 區域變數保留此張的 RAW fallback 原因，不受後續效果算圖的裝置選擇影響。
+        string? rawDevice = source.RawInfo is null ? null
+            : rawUsedGpu ? "RAW GPU"
+            : renderer is GpuSpikeRenderer ? $"RAW CPU（{rawFallback ?? "unknown"}）" : null;
         ct.ThrowIfCancellationRequested();
 
         // 2. 完整 16-bit 算圖（GPU 或 CPU 等效；超限時算圖器內部以等效路徑處理，不靜默截斷）
@@ -229,7 +240,7 @@ public static class BatchExporter
 
         // 4. 編碼寫檔（原子寫入；絕不覆寫既有檔；取消時刪除未完成暫存）
         var metadataWarning = Encode(sized, job, outputPath, options, ct);
-        return (sized.Width, sized.Height, metadataWarning);
+        return (sized.Width, sized.Height, metadataWarning, rawDevice);
     }
 
     internal static SourceImage DownscaleLongEdge(SourceImage image, int longEdge, CancellationToken ct)

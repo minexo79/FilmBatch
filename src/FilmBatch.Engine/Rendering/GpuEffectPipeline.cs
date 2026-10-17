@@ -21,7 +21,10 @@ public sealed record EffectRendererOptions
 internal sealed class GpuEffectPipeline : IDisposable
 {
     private readonly GpuDevice _gpu;
+    private readonly ShaderLibrary _shaders;
     private readonly ulong _budget, _bandCap;
+    internal ShaderLibrary Shaders => _shaders;
+    internal ulong BandCap => _bandCap;
     private readonly List<ComputeKernel> _kernels = [];
     private readonly List<GpuBuffer> _uniforms = [];
     private readonly Dictionary<int, GpuBuffer> _gaussians = [];
@@ -38,6 +41,7 @@ internal sealed class GpuEffectPipeline : IDisposable
     public GpuEffectPipeline(GpuDevice gpu, ShaderLibrary shaders, EffectRendererOptions? options = null)
     {
         _gpu = gpu;
+        _shaders = shaders;
         _budget = options is { MemoryBudgetBytes: > 0 } ? options.MemoryBudgetBytes : 768UL * 1024 * 1024;
         _bandCap = options is { MaxBandBytes: > 0 } ? options.MaxBandBytes : 64UL * 1024 * 1024;
         var tex = BindingSpec.TextureFloat;

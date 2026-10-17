@@ -66,6 +66,7 @@ macOS（Apple Silicon）改用 `osx-arm64`；不再提供 Intel Mac 建置。
 
 - [docs/architecture.md](docs/architecture.md)：專案架構與算圖流程
 - [docs/building.md](docs/building.md)：建置、測試、CI、發佈與 CLI 用法
+- [docs/adr/0003-gpu-stack-decision.md](docs/adr/0003-gpu-stack-decision.md)：CPU SIMD、RAW GPU 收尾與 Halide AOT 選型紀錄
 - [docs/film-provenance.md](docs/film-provenance.md)、[docs/film-calibration.md](docs/film-calibration.md)：底片配方來源與色彩校正
 - [docs/plan.md](docs/plan.md)：完整計畫書
 - [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt)：第三方元件授權

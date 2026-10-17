@@ -127,6 +127,8 @@ filmbatch-cli gpu-info
 - 匯出使用已保存的專案設定，CLI 不會自動更新預設快照。
 - `--software` 要求軟體 GPU 介面卡；若不可用則以 CPU 算圖並顯示原因。
 - `--presets-folder` 指定獨立預設庫。
+- GPU 算圖器匯出 RAW 時，顯示收尾沿用同一 Dawn 裝置，分帶處理並保留 CPU 降級原因；解碼與 demosaic 仍由 CPU 執行，直接預覽載入不變。
+- 每筆 `export_log.json` 的 `Renderer` 會附上 `RAW GPU` 或 `RAW CPU（原因）`；整批使用 CPU 算圖器時維持原有 CPU 標示。精度、量測與 Halide AOT 取捨見 [ADR 0003](adr/0003-gpu-stack-decision.md)。
 
 ## 資料位置
 
