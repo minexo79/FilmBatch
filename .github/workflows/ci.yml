@@ -26,8 +26,6 @@ jobs:
           # 較低 macOS 由 dawn-build 產物（artifacts/dawn/）涵蓋，矩陣 runner 仍反映內附 ABI 的真實需求。
           - os: macos-26
             rid: osx-arm64
-          - os: macos-26-intel
-            rid: osx-x64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
