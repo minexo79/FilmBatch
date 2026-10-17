@@ -108,6 +108,9 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
 
     private string? _controlModule;
 
+    /// <summary>目前畫布控制點所屬的模組 key；沒有顯示控制點時為 null。</summary>
+    public string? ControlPointModule => _controlModule;
+
     public void SetBackground(PreviewBackground bg) => Background = new SolidColorBrush(bg switch
     {
         PreviewBackground.MidGray => Color.FromRgb(0x80, 0x80, 0x80),

@@ -37,7 +37,15 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     public PresetLibraryViewModel Presets { get; }
     public FilmstripViewModel Filmstrip { get; }
+    /// <summary>「照片資訊與模組」分頁：照片資訊 + 基本調整、幾何、光學群組。</summary>
     public InspectorViewModel Inspector { get; }
+
+    /// <summary>「底片效果」分頁：底片、表面群組（含底片風格縮圖格）。</summary>
+    public InspectorViewModel FilmEffects { get; }
+
+    /// <summary>film 模組的底片風格縮圖格與色相帶編輯器（在「底片效果」分頁）。</summary>
+    public FilmLookViewModel FilmLook => FilmEffects.FilmLook!;
+
     public SidebarViewModel Sidebar { get; }
     public PreviewViewModel Preview { get; }
     public ToastViewModel Toast { get; }
@@ -95,8 +103,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         Preview = new PreviewViewModel(this);
         Presets = new PresetLibraryViewModel(this);
         Filmstrip = new FilmstripViewModel(this);
-        Inspector = new InspectorViewModel(this);
-        Sidebar = new SidebarViewModel(Presets, Inspector, new ExportViewModel(this), Preview);
+        Inspector = new InspectorViewModel(this, new HashSet<ModuleGroup> { ModuleGroup.Basic, ModuleGroup.Geometry, ModuleGroup.Optical });
+        FilmEffects = new InspectorViewModel(this, new HashSet<ModuleGroup> { ModuleGroup.Film, ModuleGroup.Surface }, showsPhotoInfo: false);
+        Sidebar = new SidebarViewModel(Presets, Inspector, FilmEffects, new ExportViewModel(this), Preview);
         Sidebar.Export.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(ExportViewModel.IsExporting))
@@ -143,8 +152,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         };
         Renderer.ThumbnailReady += Presets.Hover.OnThumbnailReady;
         Renderer.Failed += Presets.Hover.OnThumbnailFailed;
-        Renderer.ThumbnailReady += Inspector.FilmLook.Thumbnails.OnThumbnailReady;
-        Renderer.Failed += Inspector.FilmLook.Thumbnails.OnThumbnailFailed;
+        Renderer.ThumbnailReady += FilmLook.Thumbnails.OnThumbnailReady;
+        Renderer.Failed += FilmLook.Thumbnails.OnThumbnailFailed;
         Renderer.Failed += (file, message) =>
         {
             Filmstrip.SetError(file, message);
@@ -181,7 +190,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         if (_disposed || generation != _openGeneration) return;
         Renderer.CancelThumbnails();
         Presets.Hover.InvalidateCache();
-        Inspector.FilmLook.InvalidateThumbnails();
+        FilmLook.InvalidateThumbnails();
         Images.Clear();
         if (Service is not null) Service.Project.EntriesChanged -= OnEntriesChanged;
 
@@ -214,7 +223,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         Presets.Hover.OnFocusChanged();
         SelectionText = Service is null ? Loc.Get("Status.NoProject") : Loc.Format("Status.Selected", selection.Count);
         OnPropertyChanged(nameof(HasSelection));
-        Inspector.Refresh();
+        RefreshModulePanels();
         if (Sidebar.IsExport) Sidebar.Export.Refresh();
         _ = LoadPreviewAsync();
         NotifyCommands();
@@ -269,7 +278,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         if (FocusFile is not null && files.Contains(FocusFile))
         {
             Presets.Hover.InvalidateForPhoto(FocusFile);
-            Inspector.Refresh();
+            RefreshModulePanels();
             RequestPreview();
         }
         // 背景重算縮圖（低優先）
@@ -288,7 +297,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         var all = Service.Project.FileNames;
         Filmstrip.UpdateMarkers(all);
         foreach (var f in all) Filmstrip.RequestThumbnail(f);
-        Inspector.Refresh();
+        RefreshModulePanels();
         RequestPreview();
     }
 
@@ -552,7 +561,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             Settings.ForceSoftwareGpu ? null : () => PreviewService.CreateCpuRenderer(Settings));
         Images.SetPreviewLongEdge(Settings.PreviewLongEdge);
         Presets.Hover.InvalidateCache();
-        Inspector.FilmLook.InvalidateThumbnails();
+        FilmLook.InvalidateThumbnails();
         RequestPreview();
         _ = LoadPreviewAsync();
         if (Service is { } service)
@@ -562,7 +571,16 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     public void ApplyHideDisabledModules(bool hide)
     {
         Settings.HideDisabledModules = hide;
+        Inspector.NotifyHideDisabledModulesChanged();
+        FilmEffects.NotifyHideDisabledModulesChanged();
+        RefreshModulePanels();
+    }
+
+    /// <summary>重新載入兩個模組分頁（照片資訊與模組、底片效果）。</summary>
+    private void RefreshModulePanels()
+    {
         Inspector.Refresh();
+        FilmEffects.Refresh();
     }
 
     private void NotifyCommands()

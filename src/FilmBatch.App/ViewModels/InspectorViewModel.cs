@@ -8,6 +8,7 @@ namespace FilmBatch.App.ViewModels;
 /// <summary>
 /// 右面板：照片資訊 + 模組面板（計畫書 2.4.5）。模組區塊依 schema 建立一次，切換照片時只更新數值。
 /// 修改套用到所有選取照片；顯示的是焦點照片的值與覆寫狀態。
+/// 「照片資訊與模組」與「底片效果」兩個分頁各一個實例，以要顯示的 <see cref="ModuleGroup"/> 集合區分（cut-and-mask D8）。
 /// </summary>
 public sealed partial class InspectorViewModel : ObservableObject, IParamHost
 {
@@ -17,8 +18,28 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
     public ObservableCollection<ModuleGroupViewModel> Groups { get; }
     public IReadOnlyList<ModuleSectionViewModel> Modules { get; }
 
-    /// <summary>film 模組頂部的底片風格縮圖格與色相帶編輯器。</summary>
-    public FilmLookViewModel FilmLook { get; }
+    /// <summary>film 模組頂部的底片風格縮圖格與色相帶編輯器；只有包含 film 模組的分頁才有。</summary>
+    public FilmLookViewModel? FilmLook { get; }
+
+    /// <summary>是否顯示照片資訊（檔名、預設、重設與預設按鈕）；只有「照片資訊與模組」分頁顯示。</summary>
+    public bool ShowsPhotoInfo { get; }
+
+    /// <summary>是否為目前顯示中的分頁；畫布控制點只採用顯示中分頁裡展開的模組。由 <see cref="SidebarViewModel"/> 設定。</summary>
+    public bool IsActive
+    {
+        get => _isActive;
+        set
+        {
+            if (!SetProperty(ref _isActive, value) || !value) return;
+            if (_main.Service is not null && _main.FocusFile is not null)
+                UpdateControlPoint(_main.Service.SettingsFor(_main.FocusFile));
+        }
+    }
+
+    private bool _isActive;
+
+    /// <summary>只在各自分頁編輯、不出現在模組面板中的模組（裁切、細部調整）。</summary>
+    private static readonly HashSet<string> TabOnlyModules = ["crop", "local"];
     public ObservableCollection<PresetItemViewModel> PresetOptions { get; } = [];
 
     [ObservableProperty]
@@ -39,11 +60,13 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
     [ObservableProperty]
     private PresetItemViewModel? _selectedPreset;
 
-    public InspectorViewModel(MainWindowViewModel main)
+    public InspectorViewModel(MainWindowViewModel main, IReadOnlySet<ModuleGroup> groups, bool showsPhotoInfo = true)
     {
         _main = main;
-        FilmLook = new FilmLookViewModel(main);
-        Modules = ModuleCatalog.Modules
+        ShowsPhotoInfo = showsPhotoInfo;
+        var schemas = ModuleCatalog.Modules.Where(s => groups.Contains(s.Group) && !TabOnlyModules.Contains(s.Key)).ToList();
+        FilmLook = schemas.Any(s => s.Key == "film") ? new FilmLookViewModel(main) : null;
+        Modules = schemas
             .Select(s => new ModuleSectionViewModel(s, this,
                 m => { if (_main.Service is { } svc) svc.ResetModule(_main.Selection, m.Key); },
                 m => _main.CopyModuleOnly(m.Key), FilmLook))
@@ -55,7 +78,8 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
             foreach (var m in vm.Modules) m.RefreshLabels();
             vm.Refresh();
         });
-        Modules[0].IsExpanded = true;
+        // 預設只展開目錄中的第一個模組（基本調整）；底片效果分頁預設全部收合，film 縮圖格不會在背景算圖
+        if (Modules.Count > 0 && Modules[0].Schema == ModuleCatalog.Modules[0]) Modules[0].IsExpanded = true;
         Groups = new(Modules.GroupBy(m => m.Schema.Group).Select(g => new ModuleGroupViewModel(g.Key, g)));
         RefreshPresetOptions();
     }
@@ -67,9 +91,11 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
         {
             if (value == _main.Settings.HideDisabledModules) return;
             _main.ApplyHideDisabledModules(value);
-            OnPropertyChanged();
         }
     }
+
+    /// <summary>「隱藏停用的模組」由兩個模組分頁共用；設定改變後由 <see cref="MainWindowViewModel"/> 通知每個分頁。</summary>
+    internal void NotifyHideDisabledModulesChanged() => OnPropertyChanged(nameof(HideDisabledModules));
 
     public void RefreshPresetOptions()
     {
@@ -93,8 +119,8 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
             Dimensions = "";
             OverrideText = "";
             HasOverrides = false;
-            _main.Preview.ShowControlPoint(null, null);
-            FilmLook.OnSettingsChanged();
+            if (IsActive) _main.Preview.ShowControlPoint(null, null);
+            FilmLook?.OnSettingsChanged();
             return;
         }
 
@@ -110,7 +136,7 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
         _loadingPreset = false;
 
         foreach (var m in Modules) m.Load(resolved, entry.Overrides, HideDisabledModules);
-        FilmLook.OnSettingsChanged();
+        FilmLook?.OnSettingsChanged();
         UpdateControlPoint(resolved);
     }
 
@@ -154,6 +180,9 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
             UpdateControlPoint(_main.Service.SettingsFor(_main.FocusFile));
     }
 
-    private void UpdateControlPoint(Settings resolved) =>
+    private void UpdateControlPoint(Settings resolved)
+    {
+        if (!IsActive) return;
         _main.Preview.ShowControlPoint(_pointModule?.Key, _pointModule is null ? null : resolved);
+    }
 }

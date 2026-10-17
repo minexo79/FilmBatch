@@ -157,7 +157,7 @@ public partial class LocalizationTests
         var window = new MainWindow(vm) { Width = 1440, Height = 900 };
         window.Show();
         await TestEnv.OpenSamplesAsync(vm);
-        vm.Inspector.Modules.First(m => m.Key == "film").IsExpanded = true;
+        vm.FilmEffects.Modules.First(m => m.Key == "film").IsExpanded = true;
         TestEnv.PumpUntil(() => !vm.Preview.IsBusy);
         // 尚未開啟資料夾的視窗：中間的「開啟照片資料夾」提示
         using var emptyVm = TestEnv.CreateViewModel();
@@ -172,10 +172,13 @@ public partial class LocalizationTests
                 vm.Preview.EmptyText, vm.GpuName, vm.Filmstrip.CountText, vm.Preview.ZoomText, vm.Preview.HistogramClipping, vm.SelectionText, vm.BackgroundText,
                 vm.Inspector.OverrideText, vm.Sidebar.Export.Summary, vm.Sidebar.Export.StatusText,
             };
-            texts.AddRange(vm.Inspector.Groups.Select(g => g.Label));
-            texts.AddRange(vm.Inspector.Modules.Select(m => m.Label));
-            texts.AddRange(vm.Inspector.Modules.SelectMany(m => m.Params).Select(p => p.Label));
-            texts.AddRange(vm.Inspector.Modules.SelectMany(m => m.Params).OfType<ChoiceParamViewModel>().SelectMany(p => p.Options).Select(o => o.Label));
+            foreach (var panel in new[] { vm.Inspector, vm.FilmEffects })
+            {
+                texts.AddRange(panel.Groups.Select(g => g.Label));
+                texts.AddRange(panel.Modules.Select(m => m.Label));
+                texts.AddRange(panel.Modules.SelectMany(m => m.Params).Select(p => p.Label));
+                texts.AddRange(panel.Modules.SelectMany(m => m.Params).OfType<ChoiceParamViewModel>().SelectMany(p => p.Options).Select(o => o.Label));
+            }
             texts.AddRange(vm.Filmstrip.FilterOptions.Select(o => o.Label));
             texts.AddRange(vm.Sidebar.Export.Scopes.Select(o => o.Label));
             texts.AddRange(vm.Presets.Categories.SelectMany(c => c.Presets).Select(p => p.Summary));

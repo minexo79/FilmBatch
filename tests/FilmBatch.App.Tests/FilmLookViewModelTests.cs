@@ -13,7 +13,7 @@ public class FilmLookViewModelTests
         await TestEnv.OpenSamplesAsync(vm).WaitAsync(TestContext.Current.CancellationToken);
         var files = vm.Filmstrip.Items.Take(2).Select(t => t.FileName).ToList();
         vm.OnSelectionChanged(files, files[^1]);
-        var film = vm.Inspector.FilmLook;
+        var film = vm.FilmLook;
 
         film.SelectedGroup = "fuji";
         var velvia = film.Looks.Single(t => t.Key == "fuji-velvia-50");
@@ -38,7 +38,7 @@ public class FilmLookViewModelTests
     {
         using var vm = TestEnv.CreateViewModel();
         await TestEnv.OpenSamplesAsync(vm).WaitAsync(TestContext.Current.CancellationToken);
-        var film = vm.Inspector.FilmLook;
+        var film = vm.FilmLook;
 
         var clearSky = film.HuePresets.Single(t => t.Key == "clear-sky");
         film.ApplyHuePresetCommand.Execute(clearSky);
@@ -60,12 +60,12 @@ public class FilmLookViewModelTests
     public void FilmModule_GenericParams_ExcludeLookAndHueBands()
     {
         using var vm = TestEnv.CreateViewModel();
-        var section = vm.Inspector.Modules.Single(m => m.Key == "film");
+        var section = vm.FilmEffects.Modules.Single(m => m.Key == "film");
         Assert.Equal(["strength", "warmth", "fade"], section.Params.Select(p => p.Def.Key));
-        Assert.Same(vm.Inspector.FilmLook, section.FilmLook);
+        Assert.Same(vm.FilmLook, section.FilmLook);
         Assert.Equal(8, section.FilmLook!.Bands.Count);
         Assert.Equal("film.hue_blue_l", section.FilmLook.Bands[5].Lightness.FlatKey);
-        Assert.All(vm.Inspector.Modules.Where(m => m.Key != "film"), m => Assert.Null(m.FilmLook));
+        Assert.All(vm.Inspector.Modules.Concat(vm.FilmEffects.Modules).Where(m => m.Key != "film"), m => Assert.Null(m.FilmLook));
     }
 
     [AvaloniaFact]
@@ -79,10 +79,10 @@ public class FilmLookViewModelTests
             var keys = new List<string>();
             vm.Renderer.ThumbnailReady += (key, _) => keys.Add(key);
             await TestEnv.OpenSamplesAsync(vm).WaitAsync(TestContext.Current.CancellationToken);
-            var section = vm.Inspector.Modules.Single(m => m.Key == "film");
+            var section = vm.FilmEffects.Modules.Single(m => m.Key == "film");
 
             section.IsExpanded = false;
-            vm.Inspector.Refresh();
+            vm.FilmEffects.Refresh();
             // 讓出 UI 執行緒夠久，若有排程的防抖計時器必定已觸發
             await Task.Delay(300, TestContext.Current.CancellationToken);
             TestEnv.PumpUntil(() => vm.Renderer.PendingThumbnails == 0);

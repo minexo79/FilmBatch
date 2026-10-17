@@ -42,6 +42,9 @@
   <data name="Panel.Inspector" xml:space="preserve"><value>照片資訊與模組</value></data>
   <data name="Panel.Filmstrip" xml:space="preserve"><value>縮圖列</value></data>
   <data name="Panel.Export" xml:space="preserve"><value>照片匯出</value></data>
+  <data name="Panel.Crop" xml:space="preserve"><value>裁切</value></data>
+  <data name="Panel.FilmEffects" xml:space="preserve"><value>底片效果</value></data>
+  <data name="Panel.Masks" xml:space="preserve"><value>細部調整</value></data>
   <data name="Inspector.NoPhoto" xml:space="preserve"><value>尚未選取照片</value></data>
   <data name="Inspector.Preset" xml:space="preserve"><value>預設</value></data>
   <data name="Inspector.ResetPhoto" xml:space="preserve"><value>重設此張</value></data>
