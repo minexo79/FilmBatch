@@ -268,8 +268,11 @@ internal static class Raf
             WbMultipliers = wb,
             Linearized = false,
             PixelAspect = 1f,
-            // raf_lens corrections 不在本次移植範圍（上游 opcodes.list3；FilmBatch 於載入時移除）。
-            Opcodes = new Opcodes.OpcodeLists(),
+            // Fujifilm 每拍鏡頭校正（上游 raf.rs 語意：list3 warp＋vignette；CA 永不套用）。
+            Opcodes = new Opcodes.OpcodeLists
+            {
+                List3 = FujiLens.Corrections(CameraName(bytes.Span), ifd, active),
+            },
             Metadata = metadata,
         };
         img.ValidateFor(mode);

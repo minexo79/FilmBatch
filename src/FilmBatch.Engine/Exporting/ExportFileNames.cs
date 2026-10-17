@@ -15,6 +15,7 @@ public static class ExportFileNames
         ExportFormat.Jpeg => ".jpg",
         ExportFormat.Tiff16 => ".tif",
         ExportFormat.Png16 => ".png",
+        ExportFormat.Dng => ".dng",
         _ => throw new ArgumentOutOfRangeException(nameof(format)),
     };
 

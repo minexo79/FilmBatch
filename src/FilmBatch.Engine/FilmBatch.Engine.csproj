@@ -15,5 +15,6 @@
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="Imaging\Raw\Profiles\*.json" />
+    <EmbeddedResource Include="Imaging\Raw\Profiles\*.icc" />
   </ItemGroup>
 </Project>

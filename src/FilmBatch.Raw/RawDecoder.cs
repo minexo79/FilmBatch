@@ -73,6 +73,24 @@ public static class RawDecoder
 
     public static RawImage Decode(ReadOnlyMemory<byte> bytes) => DecodeWith(bytes, DecodeMode.Full);
 
+    /// <summary>
+    /// 由檔案路徑探測（上游 <c>sparse</c> 匯入路徑）：先以稀疏規劃只讀檔頭／中繼資料所需位元組，
+    /// <c>Ready</c> 時探測結果與整檔一致；檔案過大、不支援稀疏或規劃 <c>Whole</c> 時回退整檔。
+    /// 一般 TIFF 直接 Whole（只讀檔頭即知不是支援的 RAW），不為分類緩衝樣本。
+    /// </summary>
+    public static RawInfo ProbeInfoFile(string path)
+    {
+        long length = new FileInfo(path).Length;
+        byte[] buffer;
+        RawHeaderPlan plan;
+        using (var stream = File.OpenRead(path))
+        {
+            (buffer, _, plan) = RawSparse.LoadIntoCore(stream, length, includePreview: false);
+        }
+        if (plan is RawHeaderPlan.Ready) return ProbeInfo(new ReadOnlyMemory<byte>(buffer));
+        return ProbeInfo(File.ReadAllBytes(path));
+    }
+
     /// <summary>只讀解碼幾何、相機色彩與中繼資料；依格式讀取判斷遮光邊所需的最少感光列。</summary>
     public static RawInfo ProbeInfo(ReadOnlyMemory<byte> bytes) => DecodeWith(bytes, DecodeMode.Header).Info();
 

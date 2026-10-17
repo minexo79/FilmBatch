@@ -1,44 +1,26 @@
 // 移植自 LightCraft crates/engine/src/files.rs（decode_raw_preview 色彩詮釋順序）、
-// crates/codecs/src/convert.rs（finish 線性化／線性光縮放／to_working）、jpeg.rs
-//（decode_with_fallback 的 DCT 縮放觸發條件）、space.rs（SourceSpace::to_space）與
-// exif.rs（adobe_rgb_hint）——均以 Magick.NET 為 JPEG 後端重寫。
+// crates/codecs/src/convert.rs（finish 線性化／線性光縮放／to_working、rgb_or_gray／cmyk 的 CMS 分支）、
+// jpeg.rs（decode_with_fallback 的 DCT 縮放觸發條件與雙後端分派）、space.rs（SourceSpace::to_space）與
+// exif.rs（adobe_rgb_hint）——JPEG 解碼改用 FilmBatch.Raw.Codecs.JpegPreview（zune-jpeg 埠／jpeg-decoder 埠，
+// 與上游逐位元一致）；LUT／CMYK 設定檔走真正 CMS（PreviewCms，LCMS 經 Magick.NET）。
 // Copyright (c) 2026 ArtCraft Team and the LightCraft contributors，MIT OR Apache-2.0；為 FilmBatch 改寫為 C#。
 using FilmBatch.Raw;
 using FilmBatch.Raw.Color;
 using FilmBatch.Raw.Raster;
-using ImageMagick;
 
 namespace FilmBatch.Engine.Imaging.Raw;
 
 /// <summary>
 /// 嵌入預覽 JPEG → 線性 Rec.2020 工作空間（上游 <c>files::decode_raw_preview</c> `files.rs:704-722`）。
-/// 色彩詮釋順序（上游 <c>rgb_or_gray</c> + <c>decode_with_fallback</c>）：
+/// 色彩詮釋順序（上游 <c>rgb_or_gray</c> + <c>cmyk</c> + <c>decode_with_fallback</c>）：
 /// JPEG 自帶 ICC（APP2）→ 可解析矩陣／TRC（或灰階 kTRC）用其 TRC 線性化＋D50 色料矩陣；
-/// 上游會送 CMS 的 LUT 型設定檔 FilmBatch 無 CMS，按上游「存在但不可用 → sRGB」分支處理（見偏差）；
+/// LUT／CMYK 型設定檔（NeedsCms）走真正 CMS 直達線性 Rec.2020（CMS 失敗才按上游「存在但不可用 → sRGB」分支）；
 /// 否則容器宣告（<c>RawPreview.EmbeddedPreviewColorSpace</c>）僅在 JPEG 既無 ICC 又無自帶 Exif 時生效；
 /// 否則 JPEG 自帶 Exif 的 Adobe RGB 提示（ColorSpace 0xFFFF＋InteropIndex R03；上游 <c>exif::summarize</c>）；
 /// 否則 sRGB。Adobe RGB TRC 為 gamma 563/256（上游 <c>space.rs</c> 同值）。
 /// </summary>
 internal static class PreviewDecode
 {
-    /// <summary>
-    /// 上游 <c>decode_with_fallback</c> `jpeg.rs:175-197` 的 DCT 縮放觸發條件：
-    /// JPEG 任一邊 ≥ 目標盒兩倍才請求縮放。ImageMagick 以 `jpeg:size` 讀取定義重現
-    /// jpeg-decoder 的 IDCT 縮放選擇（上游 `idct.rs:14-28` 的 M∈{1,2,4,8}/8）：
-    /// libjpeg-turbo 由 `size` 請求得 scale_denom 並取 M＝ceil(8/scale_denom)，
-    /// 故請求 `rw = floor(W·M/8)`、`rh = floor(H·M/8)` 即得目標 M（parent 實測驗證），M = 8 時省略定義。
-    /// 此處直接移植 `choose_idct_size`：`scaled_request` 盒上仍覆蓋任一邊的最小 M∈{1,2,4}，否則 8。
-    /// </summary>
-    internal static int DctScale(uint w, uint h, uint mw, uint mh)
-    {
-        var (rw, rh) = PreviewJpegColour.ScaledRequest(w, h, mw, mh);
-        foreach (var m in new[] { 1, 2, 4 })
-        {
-            if ((w * m + 7) / 8 >= rw || (h * m + 7) / 8 >= rh)
-                return m;
-        }
-        return 8;
-    }
     internal static bool AdobeRgbHint(byte[] exifBlob)
     {
         var t = new ExifBlob(exifBlob);
@@ -163,11 +145,16 @@ internal static class PreviewDecode
     }
 
     /// <summary>
-    /// 色彩詮釋解析（上游 <c>rgb_or_gray</c> `convert.rs:230-290` 的分支順序）：
-    /// ICC → 容器宣告 → Exif Adobe 提示 → sRGB。回傳線性化 TRC、D50 色料矩陣與具名空間
-    ///（具名者矩陣走 `RgbSpace.ToSpace`，與上游 `SourceSpace::to_space` 的 D65 白點分支一致）。
+    /// 色彩詮釋解析（上游 <c>rgb_or_gray</c> `convert.rs:255-312` 的分支順序）：
+    /// ICC 矩陣／TRC → ICC 灰階 kTRC → ICC NeedsCms（模型合致者走真正 CMS，
+    /// 見 <see cref="PreviewCms"/>；模型不合或 CMS 失敗由呼叫端按上游 `icc.is_some` 分支走 sRGB）
+    /// → 容器宣告（僅 JPEG 既無 ICC 又無自帶 Exif）→ Exif Adobe 提示 → sRGB。
+    /// 回傳線性化 TRC、D50 色料矩陣與具名空間；NeedsCms 成功時 <c>Cms</c> 非 null，
+    /// 呼叫端直接採用其輸出（已為線性 Rec.2020，上游 `SourceSpace::named(Rec2020, IccCms)`、trc 無）。
     /// </summary>
-    internal static (PreviewTrc[] Trc, Mat3 ToXyzD50, RgbSpace? Named) ResolveSpace(
+    internal sealed record ResolvedSpace(PreviewTrc[] Trc, Mat3 ToXyzD50, RgbSpace? Named, PreviewIccInfo? Cms);
+
+    internal static ResolvedSpace ResolveSpace(
         byte[]? icc, byte[]? jpegExif, PreviewColorSpace? declared, int components)
     {
         var gray = components == 1;
@@ -177,90 +164,145 @@ internal static class PreviewDecode
             if (info is not null)
             {
                 if (info.Kind == PreviewIccKind.MatrixTrc && !gray)
-                    return (info.Trc, info.ToXyzD50, info.Named);
+                    return new ResolvedSpace(info.Trc, info.ToXyzD50, info.Named, null);
                 if (info.Kind == PreviewIccKind.MatrixTrc && gray)
                 {
                     // 灰階配 RGB 設定檔：中性軸只需綠曲線（上游同分支）。
                     var g = info.Trc[1];
-                    return ([g, g, g], info.ToXyzD50, info.Named);
+                    return new ResolvedSpace([g, g, g], info.ToXyzD50, info.Named, null);
                 }
                 if (info.Kind == PreviewIccKind.Gray && gray)
-                    return (info.Trc, PreviewIcc.RgbToXyzD50(ColorSpaces.Srgb), ColorSpaces.Srgb);
+                    return new ResolvedSpace(info.Trc, PreviewIcc.RgbToXyzD50(ColorSpaces.Srgb), ColorSpaces.Srgb, null);
                 if (info.Kind == PreviewIccKind.NeedsCms
-                    && ((info.Model == PreviewIccModel.Gray) == gray))
+                    && ((info.Model == PreviewIccModel.Gray) == gray)
+                    && info.Model != PreviewIccModel.Cmyk)
                 {
-                    // FilmBatch 無 CMS（moxcms）：上游會送 `cms_to_linear_rec2020`；
-                    // 按上游「存在但不可用 → sRGB」分支處理（見偏差說明）。
+                    // 上游 `cms_to_linear_rec2020` 分支：RGB／Gray 模型合致者走真正 CMS（見 PreviewCms）；
+                    // CMYK 設定檔配 RGB／灰階資料為模型不合 → 下方 sRGB；失敗時亦走 sRGB。
+                    return new ResolvedSpace([], Mat3.Identity, ColorSpaces.Working, info);
                 }
             }
             // 存在但不可用（損毀、模型不合、CMS 失敗）：一律 sRGB（上游 `icc.is_some` 分支）。
             var unsupported = PreviewTrc.Srgb;
-            return ([unsupported, unsupported, unsupported], PreviewIcc.RgbToXyzD50(ColorSpaces.Srgb), ColorSpaces.Srgb);
+            return new ResolvedSpace([unsupported, unsupported, unsupported], PreviewIcc.RgbToXyzD50(ColorSpaces.Srgb), ColorSpaces.Srgb, null);
         }
         if (declared is { } space && jpegExif is null)
         {
             // 容器外界宣告僅在 JPEG 既無 ICC 又無自帶 Exif 時生效（上游 `hint` filter）。
             var named = space == PreviewColorSpace.AdobeRgb ? ColorSpaces.AdobeRgb : ColorSpaces.Srgb;
             var t = named == ColorSpaces.AdobeRgb ? PreviewTrc.Gamma(563f / 256f) : PreviewTrc.Srgb;
-            return ([t, t, t], PreviewIcc.RgbToXyzD50(named), named);
+            return new ResolvedSpace([t, t, t], PreviewIcc.RgbToXyzD50(named), named, null);
         }
         if (jpegExif is not null && AdobeRgbHint(jpegExif))
         {
             var t = PreviewTrc.Gamma(563f / 256f);
-            return ([t, t, t], PreviewIcc.RgbToXyzD50(ColorSpaces.AdobeRgb), ColorSpaces.AdobeRgb);
+            return new ResolvedSpace([t, t, t], PreviewIcc.RgbToXyzD50(ColorSpaces.AdobeRgb), ColorSpaces.AdobeRgb, null);
         }
         var srgb = PreviewTrc.Srgb;
-        return ([srgb, srgb, srgb], PreviewIcc.RgbToXyzD50(ColorSpaces.Srgb), ColorSpaces.Srgb);
+        return new ResolvedSpace([srgb, srgb, srgb], PreviewIcc.RgbToXyzD50(ColorSpaces.Srgb), ColorSpaces.Srgb, null);
     }
 
     /// <summary>
-    /// 單次 8-bit 讀取 → LUT 線性化（上游 `linearize` `convert.rs:185-209` 的 U8 分支；
-    /// 灰階複用綠通道 LUT）→ 線性光縮放（`factor >= 2 ? Box : Mitchell`）→ 來源→工作矩陣
-    ///（上游 `to_working` 經 `SourceSpace::to_space`，`lib.rs:253-262`）。
-    /// 8-bit JPEG 以 `ToByteArray` 單次讀取編碼值；灰階以單通道讀取後複用三通道。
+    /// 原生 JPEG 解碼（<see cref="FilmBatch.Raw.Codecs.JpegPreview"/>，上游 `decode_with_fallback` 分派：
+    /// zune-jpeg 埠／jpeg-decoder 埠；DCT 縮放、CMYK 系列、lossless 16-bit 皆由其處理）
+    /// → 色彩詮釋（上游 `rgb_or_gray`／`cmyk`，`convert.rs:255-336`）→ 線性光縮放
+    /// （`factor &gt;= 2 ? Box : Mitchell`，`convert.rs:129-133`）→ 來源→工作矩陣
+    /// （上游 `to_working` 經 `SourceSpace::to_space`，`lib.rs:253-262`）。
+    /// NeedsCms（LUT／CMYK 設定檔）走真正 CMS（<see cref="PreviewCms"/>，
+    /// 上游 `cms_to_linear_rec2020`，relative colorimetric；輸出已為線性 Rec.2020，
+    /// 寬範圍 float 不削波）；CMS 失敗時按上游 `icc.is_some` 分支走 sRGB。
+    /// 灰階線性化複用綠通道 LUT（上游 `linearize` 取 `luts[1]`）；CMYK 無 ICC 時走 naive
+    /// sRGB 假設（上游 `cmyk`：`RGB = (1-C)(1-K)…` 視為 sRGB 編碼）。
     /// </summary>
     internal static RgbImage Decode8(
         byte[] jpeg, JpegColourMarkers markers, PreviewColorSpace? declared, uint edge)
     {
-        var space = ResolveSpace(markers.Icc, markers.Exif, declared, markers.Components);
-        var (trc, toXyzD50, named) = space;
-        var luts = trc.Select(PreviewJpegColour.Lut8).ToArray();
-        var grayLut = luts[1];
-        var gray = markers.Components == 1;
-
         var maxEdge = (int)Math.Min(edge, int.MaxValue);
         // edge = 0 時上游 max_size (0,0) 被 filter 丟掉：不做任何縮放（見 decode_with_fallback）。
         var box = edge == 0 ? 0u : (uint)Math.Max(1, maxEdge);
-        var settings = new MagickReadSettings();
-        if (box != 0 && (markers.Width >= box * 2 || markers.Height >= box * 2))
+        var decoded = FilmBatch.Raw.Codecs.JpegPreview.Decode(jpeg, box, box);
+        var gray = decoded.Channels == 1;
+        var cmyk = decoded.Channels == 4;
+        if ((!gray && !cmyk && decoded.Channels != 3) || decoded.Width <= 0 || decoded.Height <= 0)
+            throw new InvalidDataException("預覽像素分量不合。");
+        var n = checked((long)decoded.Width * decoded.Height);
+        var ch = decoded.Channels;
+        float[] samples;
+        if (decoded.U8 is { } u8)
         {
-            // DCT 縮放（上游 `decode_jpeg_decoder` + `scaled_request` 經 `jpeg:size` 讀取定義；M = 8 時省略）。
-            var m = DctScale(markers.Width, markers.Height, box, box);
-            if (m != 8)
-                settings.SetDefine(MagickFormat.Jpeg, "size", $"{markers.Width * m / 8}x{markers.Height * m / 8}");
+            // 上游 `Buf::U8::norm`：v / 255（jpeg-decoder 的 YCCK→CMYK 系列位元組已由解碼端轉換，直接取用）。
+            if (u8.Length != n * ch)
+                throw new InvalidDataException("預覽像素長度不合。");
+            samples = new float[n * ch];
+            for (var i = 0; i < samples.Length; i++)
+                samples[i] = u8[i] / 255f;
         }
-        byte[] encoded;
-        int w, h;
-        using (var magick = new MagickImage(jpeg, settings))
+        else if (decoded.U16 is { } u16)
         {
-            w = (int)magick.Width;
-            h = (int)magick.Height;
-            using (var pixels = magick.GetPixelsUnsafe())
+            // 上游 `Buf::U16::norm`：左對齊 16-bit 值／65535（JpegPreview 已左對齊）。
+            if (u16.Length != n * ch)
+                throw new InvalidDataException("預覽像素長度不合。");
+            samples = new float[n * ch];
+            for (var i = 0; i < samples.Length; i++)
+                samples[i] = u16[i] / 65535f;
+        }
+        else throw new InvalidDataException("預覽像素為空。");
+        var w = decoded.Width;
+        var h = decoded.Height;
+
+        if (cmyk)
+            return DecodeCmyk(markers.Icc, samples, w, h, box, maxEdge);
+
+        var space = ResolveSpace(markers.Icc, markers.Exif, declared, ch);
+        if (space.Cms is not null && markers.Icc is { } iccBytes)
+        {
+            // 上游 NeedsCms 分支：裝置樣本 clamp 0..1 後送 `cms_to_linear_rec2020`（`device_samples`）。
+            var clamped = new float[samples.Length];
+            for (var i = 0; i < samples.Length; i++)
+                clamped[i] = Math.Clamp(samples[i], 0f, 1f);
+            if (PreviewCms.ToLinearRec2020(iccBytes, clamped, ch, w, h, gray) is { } cmsImage)
+                return FitWorking(cmsImage, box, maxEdge);
+            // CMS 失敗：按上游 `icc.is_some` 分支走 sRGB（見 ResolveSpace 的 unsupported 分支）。
+            var unsupported = PreviewTrc.Srgb;
+            space = new ResolvedSpace([unsupported, unsupported, unsupported], PreviewIcc.RgbToXyzD50(ColorSpaces.Srgb), ColorSpaces.Srgb, null);
+        }
+        var (trc, toXyzD50, named, _) = space;
+        var linear = new float[n * 3];
+        if (decoded.U16 is not null)
+        {
+            // 上游 `linearize` 的 U16 分支（`convert.rs:198-215`）：三通道相同（或灰階）時只建綠表複用，
+            // 灰階取 `l0 = trc[1].lut16()`；直接以 16-bit 樣本索引，保持 lossless 精度。
+            var same = trc[0].Equals(trc[1]) && trc[1].Equals(trc[2]);
+            var l0 = PreviewJpegColour.Lut16(trc[1]);
+            var lr = same || gray ? l0 : PreviewJpegColour.Lut16(trc[0]);
+            var lb = same || gray ? l0 : PreviewJpegColour.Lut16(trc[2]);
+            if (gray)
             {
-                // 單次傳輸解碼：絕不設 ColorSpace、不 Resize；灰階以 RGB 讀取後取綠通道（上游複用綠 LUT）。
-                encoded = pixels.ToByteArray(PixelMapping.RGB)
-                    ?? throw new InvalidDataException("無法讀取預覽像素。");
+                for (var i = 0; i < n; i++)
+                {
+                    var l = l0[U16Index(samples[i])];
+                    linear[i * 3] = l;
+                    linear[i * 3 + 1] = l;
+                    linear[i * 3 + 2] = l;
+                }
+            }
+            else
+            {
+                for (var i = 0; i < n; i++)
+                {
+                    linear[i * 3] = lr[U16Index(samples[i * 3])];
+                    linear[i * 3 + 1] = l0[U16Index(samples[i * 3 + 1])];
+                    linear[i * 3 + 2] = lb[U16Index(samples[i * 3 + 2])];
+                }
             }
         }
-        if (encoded.Length != (long)w * h * 3)
-            throw new InvalidDataException("預覽像素長度不合。");
-        var linear = new float[(long)w * h * 3];
-        if (gray)
+        else if (gray)
         {
-            // 上游 `linearize` 灰階取綠 LUT（`luts[1]`）：編碼灰即三通道中值，取 G 通道線性化後複用。
-            for (var i = 0; i < w * h; i++)
+            // 上游 `linearize` 灰階取綠 LUT（`luts[1]`）：單通道值線性化後複用三通道。
+            var grayLut = PreviewJpegColour.Lut8(trc[1]);
+            for (var i = 0; i < n; i++)
             {
-                var l = grayLut[encoded[i * 3 + 1]];
+                var l = grayLut[NormIndex(samples[i])];
                 linear[i * 3] = l;
                 linear[i * 3 + 1] = l;
                 linear[i * 3 + 2] = l;
@@ -268,21 +310,17 @@ internal static class PreviewDecode
         }
         else
         {
+            var luts = trc.Select(PreviewJpegColour.Lut8).ToArray();
             var lr = luts[0]; var lg = luts[1]; var lb = luts[2];
-            for (var i = 0; i < w * h; i++)
+            for (var i = 0; i < n; i++)
             {
-                linear[i * 3] = lr[encoded[i * 3]];
-                linear[i * 3 + 1] = lg[encoded[i * 3 + 1]];
-                linear[i * 3 + 2] = lb[encoded[i * 3 + 2]];
+                linear[i * 3] = lr[NormIndex(samples[i * 3])];
+                linear[i * 3 + 1] = lg[NormIndex(samples[i * 3 + 1])];
+                linear[i * 3 + 2] = lb[NormIndex(samples[i * 3 + 2])];
             }
         }
         var img = new RgbImage(w, h, linear);
-        if (box != 0 && ((uint)Math.Max(w, h) > box))
-        {
-            // 線性光下縮放（上游 `finish`：`factor >= 2 ? Box : Mitchell`，`convert.rs:129-133`）。
-            var factor = Math.Max(w / (double)box, h / (double)box);
-            img = Resample.Fit(img, maxEdge, maxEdge, factor >= 2.0 ? ResampleFilter.Box : ResampleFilter.Mitchell);
-        }
+        img = FitWorking(img, box, maxEdge);
         if (named is { } s && s == ColorSpaces.Working)
             return img;
         // 來源→工作矩陣（上游 `to_working`，`lib.rs:253-262`）。
@@ -294,6 +332,74 @@ internal static class PreviewDecode
             d[i] = m2[0] * r + m2[1] * g + m2[2] * b;
             d[i + 1] = m2[3] * r + m2[4] * g + m2[5] * b;
             d[i + 2] = m2[6] * r + m2[7] * g + m2[8] * b;
+        }
+        return img;
+    }
+
+    /// <summary>正規化樣本 → 256 項 LUT 索引（夾 0..1；上游 U8 即編碼值索引）。</summary>
+    private static int NormIndex(float v) => Math.Clamp((int)(v * 255f + 0.5f), 0, 255);
+
+    /// <summary>正規化樣本 → 65536 項 LUT 索引（夾 0..1；上游 U16 即左對齊樣本值）。</summary>
+    private static int U16Index(float v) => Math.Clamp((int)(v * 65535f + 0.5f), 0, 65535);
+
+    /// <summary>
+    /// CMYK 預覽（上游 `cmyk` `convert.rs:314-336`）：CMYK 模型 ICC 走真正 CMS；
+    /// 否則 naive（`RGB = (1-C)(1-K)…` 視為 sRGB 編碼，再經 sRGB→工作矩陣；
+    /// 來源標記 `IccUnsupported`／`Naive` 皆走此矩陣，上游同）。
+    /// </summary>
+    private static RgbImage DecodeCmyk(byte[]? icc, float[] samples, int w, int h, uint box, int maxEdge)
+    {
+        if (icc is not null)
+        {
+            var info = PreviewIcc.Parse(icc);
+            if (info is { } inf && inf.Kind == PreviewIccKind.NeedsCms && inf.Model == PreviewIccModel.Cmyk)
+            {
+                // 上游 `cmyk` 的模型檢查在 CMS 內（Layout::Rgba 對 Cmyk；見 cms_to_linear_rec2020）：
+                // 裝置樣本 clamp 0..1 後送 CMS；失敗或非 CMYK 設定檔走下方 naive。
+                var clamped = new float[samples.Length];
+                for (var i = 0; i < samples.Length; i++)
+                    clamped[i] = Math.Clamp(samples[i], 0f, 1f);
+                if (PreviewCms.ToLinearRec2020(icc, clamped, 4, w, h, gray: false) is { } cmsImage)
+                    return FitWorking(cmsImage, box, maxEdge);
+            }
+        }
+        var n = (long)w * h;
+        var linear = new float[n * 3];
+        var srgb = PreviewTrc.Srgb;
+        var lut = PreviewJpegColour.Lut8(srgb);
+        for (var i = 0; i < n; i++)
+        {
+            var c = Math.Clamp(samples[i * 4], 0f, 1f);
+            var m = Math.Clamp(samples[i * 4 + 1], 0f, 1f);
+            var y = Math.Clamp(samples[i * 4 + 2], 0f, 1f);
+            var k = Math.Clamp(samples[i * 4 + 3], 0f, 1f);
+            var kk = 1f - k;
+            linear[i * 3] = lut[NormIndex((1f - c) * kk)];
+            linear[i * 3 + 1] = lut[NormIndex((1f - m) * kk)];
+            linear[i * 3 + 2] = lut[NormIndex((1f - y) * kk)];
+        }
+        var img = new RgbImage(w, h, linear);
+        img = FitWorking(img, box, maxEdge);
+        var m2 = PreviewIcc.ToWorking(PreviewIcc.RgbToXyzD50(ColorSpaces.Srgb), ColorSpaces.Srgb).ToF32();
+        var d = img.Data;
+        for (var i = 0; i < d.Length; i += 3)
+        {
+            var r = d[i]; var g = d[i + 1]; var b = d[i + 2];
+            d[i] = m2[0] * r + m2[1] * g + m2[2] * b;
+            d[i + 1] = m2[3] * r + m2[4] * g + m2[5] * b;
+            d[i + 2] = m2[6] * r + m2[7] * g + m2[8] * b;
+        }
+        return img;
+    }
+
+    /// <summary>線性光下縮放（上游 `finish`：`factor &gt;= 2 ? Box : Mitchell`，`convert.rs:129-133`）。</summary>
+    private static RgbImage FitWorking(RgbImage img, uint box, int maxEdge)
+    {
+        var (ww, hh) = (img.Width, img.Height);
+        if (box != 0 && ((uint)Math.Max(ww, hh) > box))
+        {
+            var factor = Math.Max(ww / (double)box, hh / (double)box);
+            img = Resample.Fit(img, maxEdge, maxEdge, factor >= 2.0 ? ResampleFilter.Box : ResampleFilter.Mitchell);
         }
         return img;
     }

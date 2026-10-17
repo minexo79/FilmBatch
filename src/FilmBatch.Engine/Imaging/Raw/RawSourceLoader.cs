@@ -1,4 +1,3 @@
-// 移植自 LightCraft crates/engine/src/files.rs（RAW 來源顯影與色彩套用）。
 // Copyright (c) 2026 ArtCraft Team and the LightCraft contributors，MIT OR Apache-2.0；為 FilmBatch 改寫為 C#。
 using FilmBatch.Core.Projects;
 using FilmBatch.Raw;
@@ -22,19 +21,25 @@ internal static class RawSourceLoader
         || Path.GetExtension(path).Equals(".tiff", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>一般影像回傳 null；可辨識但不支援或損毀的 RAW 一律回報錯誤，不改用嵌入 JPEG。</summary>
-    internal static SourceImage? TryLoad(string path, int edge)
+    internal static SourceImage? TryLoad(string path, int edge, RawLoadOptions rawOptions = default)
     {
         if (!IsCandidate(path)) return null;
-        // M3：非 RAW 副檔名的 .tif／.tiff 可能很大（RAW 解碼器需整檔緩衝）；超過緩衝上限時不載入，由一般 Magick 路徑解碼。
-        if (!IsRawExtension(path) && !FitsBuffer(path)) return null;
+        if (!IsRawExtension(path))
+        {
+            if (!FitsBuffer(path)) return null;
+            try { _ = RawDecoder.ProbeInfoFile(path); }
+            catch (RawException ex) when (ex.Kind == RawErrorKind.NotRaw) { return null; }
+        }
         var bytes = File.ReadAllBytes(path);
         RawImage raw;
         try { raw = RawDecoder.Decode(bytes); }
         catch (RawException ex) when (!IsRawExtension(path) && ex.Kind == RawErrorKind.NotRaw) { return null; }
-        var (image, tone) = DevelopLinear(raw, bytes, edge);
+        var info = raw.Info();
+        var masks = rawOptions.IncludeSemanticMasks ? FilmBatch.Raw.RawSemanticMasks.Read(bytes) : [];
+        var (image, tone) = DevelopLinear(raw, bytes, edge, rawOptions);
         return new SourceImage(image.Width, image.Height, RawDisplay.Encode(image, tone))
         {
-            FilePath = Path.GetFullPath(path),
+            FilePath = Path.GetFullPath(path), RawOptions = rawOptions, RawInfo = info, SemanticMasks = masks,
         };
     }
 
@@ -42,7 +47,7 @@ internal static class RawSourceLoader
     {
         if (!IsCandidate(path)) return null;
         if (!IsRawExtension(path) && !FitsBuffer(path)) return null;
-        try { return RawDecoder.ProbeInfo(File.ReadAllBytes(path)); }
+        try { return RawDecoder.ProbeInfoFile(path); }
         catch (RawException ex) when (!IsRawExtension(path) && ex.Kind == RawErrorKind.NotRaw) { return null; }
     }
 
@@ -84,7 +89,7 @@ internal static class RawSourceLoader
         catch { return null; }
         if (length > Array.MaxLength) return null;
         byte[] file;
-        try { file = File.ReadAllBytes(path); }
+        try { file = RawSparse.ReadFile(path); }
         catch { return null; }
         var container = Cr3ContainerParser.Parse(new ReadOnlyMemory<byte>(file));
         if (container is null) return null;
@@ -107,7 +112,7 @@ internal static class RawSourceLoader
     private static Stream? RafExifTiff(string path)
     {
         byte[] file;
-        try { file = File.ReadAllBytes(path); }
+        try { file = RawSparse.ReadFile(path, includePreview: true); }
         catch { return null; }
         var jpeg = Raf.PreviewJpeg(new ReadOnlyMemory<byte>(file));
         if (jpeg is null || jpeg.Length < 4 || jpeg[0] != 0xFF || jpeg[1] != 0xD8)
@@ -139,11 +144,16 @@ internal static class RawSourceLoader
         }
         return null;
     }
-    /// <summary>保留線性 Rec.2020，直到相機曲線與 sRGB 編碼；嵌入 JPEG 只用來估計相機外觀。</summary>
-    internal static (RgbImage Image, CameraTone? Tone) DevelopLinear(RawImage raw, ReadOnlyMemory<byte> bytes, int edge)
+    /// <summary>保留線性 Rec.2020,直到相機曲線與 sRGB 編碼;嵌入 JPEG 只用來估計相機外觀。</summary>
+    internal static (RgbImage Image, CameraTone? Tone) DevelopLinear(RawImage raw, ReadOnlyMemory<byte> bytes, int edge, RawLoadOptions rawOptions = default)
     {
-        raw.Opcodes.List3.RemoveAll(op => op.IsLensCorrection());
-        var (xy, transform, look) = CameraPreview.StartingColour(raw, bytes);
+        var list3 = raw.Opcodes.List3;
+        var lens = rawOptions.EmbeddedLensCorrections ? CameraPreviewLens.LensGeometryOf(list3) : null;
+        var vignette = rawOptions.EmbeddedLensCorrections
+            ? EmbeddedVignette.FromList3(list3, raw.ActiveArea, raw.Crop, raw.Orientation) : null;
+        // 停用時移除鏡頭運算算碼（維持舊外觀）；啟用時保留,由 raw.Develop 在去馬賽克後套用。
+        if (!rawOptions.EmbeddedLensCorrections) list3.RemoveAll(op => op.IsLensCorrection());
+        var (xy, transform, look) = CameraPreview.StartingColour(raw, bytes, lens, vignette);
         var factor = BinFactor(raw, edge);
         var binned = factor is { } k ? raw.DevelopBinnedMasked(k, HighlightClip) : null;
         var image = binned?.Image ?? raw.Develop(edge <= 600 ? DemosaicMethod.Bilinear : DemosaicMethod.Ahd);
@@ -161,6 +171,7 @@ internal static class RawSourceLoader
         if (Math.Max(image.Width, image.Height) > edge)
             image = Resample.Fit(image, edge, edge, ResampleFilter.Box);
         image = image.Oriented(raw.Orientation);
+        CameraLocalTone.Apply(image, raw, rawOptions.CameraLocalTone);
         var tone = look?.Tone ?? DngTone(raw.Color.Profile.ToneCurve);
         return (image, tone);
     }

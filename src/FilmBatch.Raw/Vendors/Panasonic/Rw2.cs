@@ -1,4 +1,4 @@
-// 移植自 LightCraft crates/raw/src/vendor/rw2.rs（解碼路徑、層級與幾何；不含鏡頭畸變校正運算碼，見 Rw2Format8.cs 檔頭說明）
+// 移植自 LightCraft crates/raw/src/vendor/rw2.rs（解碼路徑、層級、幾何與鏡頭畸變校正；見 PanasonicLens）
 // Copyright (c) 2026 ArtCraft Team and the LightCraft contributors，MIT OR Apache-2.0；為 FilmBatch 改寫為 C#。
 
 using System.Buffers.Binary;
@@ -11,7 +11,7 @@ namespace FilmBatch.Raw.Vendors.Panasonic;
 /// <summary>
 /// Panasonic RW2／Leica RWL／舊 Panasonic `.RAW`：這些機身輸出的所有 RAW 編碼
 /// （lightcraft <c>vendor::rw2</c>）。格式依據見上游檔頭註解。
-/// 鏡頭畸變校正（標籤 <c>0x0119</c> → WarpRectilinear 運算碼）依移植計畫不在範圍內，不產生。
+/// 鏡頭畸變校正（標籤 <c>0x0119</c> → WarpRectilinear 運算碼）見 <see cref="PanasonicLens"/>。
 /// </summary>
 internal static partial class Rw2
 {
@@ -267,8 +267,11 @@ internal static partial class Rw2
             Orientation = OrientationExtensions.FromExif(ifd0.U16(Tags.Orientation) ?? 1),
             Color = new ColorData(),
             WbMultipliers = wb,
-            Linearized = false,
-            PixelAspect = 1f,
+            // 相機畸變校正（標籤 0x0119 → WarpRectilinear；上游 rw2::distortion 語意）。
+            Opcodes = new Opcodes.OpcodeLists
+            {
+                List3 = PanasonicLens.Distortion(ifd0, active) is { } warp ? [warp] : [],
+            },
             Metadata = metadata,
         };
         img.ValidateFor(mode);

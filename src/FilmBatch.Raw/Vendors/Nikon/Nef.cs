@@ -7,7 +7,6 @@ using FilmBatch.Raw.Tiff;
 
 namespace FilmBatch.Raw.Vendors.Nikon;
 
-/// <summary>Nikon NEF／NRW 解碼（lightcraft <c>vendor::nef::decode</c>）。nef_lens 內嵌修正除外（依計畫不移植）。</summary>
 internal static class Nef
 {
     private const ushort WbRbLevels = 0x000c;
@@ -204,8 +203,11 @@ internal static class Nef
             WbMultipliers = wb,
             Linearized = false,
             PixelAspect = pixelAspect,
-            // nef_lens 內嵌修正除外（計畫排除）：此處保持空清單；RawPreview 預覽路徑不受影響
-            Opcodes = new Opcodes.OpcodeLists(),
+            // Nikon 機內畸變校正（光學中心跟 sensor-shift 位移；上游 nef.rs 語意：list3 一個 warp）。
+            Opcodes = new Opcodes.OpcodeLists
+            {
+                List3 = NikonLens.Corrections(model, raw, new PixelRect(0, 0, activeW, h), crop),
+            },
             Metadata = metadata,
         };
         img.ValidateFor(mode);

@@ -10,8 +10,6 @@ using FilmBatch.Raw.Raster;
 
 namespace FilmBatch.Engine.Imaging.Raw;
 
-/// <summary>相機 JPEG 代理幾何（camera_preview 的 <c>LensGeometry</c>；k0..k3、光學中心）。</summary>
-internal sealed record LensGeometry(double[] K, double[] Center);
 
 /// <summary>
 /// 無色彩矩陣 RAW 的起始色彩（camera_preview 的執行期擬合面）：
@@ -69,8 +67,11 @@ internal static partial class CameraPreview
     /// <summary>
     /// RAW 的起始色彩（camera_preview 的 <c>starting_colour</c>）。
     /// 光譜矩陣只替中性 fallback：擬合成功時不寫入 <c>raw.Color</c>；採用時才寫入。
+    /// <paramref name="lens"/> 為檔案自家鏡頭校正 warp（parent 在移除 List3 鏡頭 ops 前快照）：
+    /// 相機對自家 JPEG 施此校正，故感光代理 warp 後配對；<paramref name="vignette"/> 為嵌入 vignette
+    /// （DNG 色調擬合用；上游 <c>embedded</c>）。兩者皆無時行為與舊版一致。
     /// </summary>
-    internal static (Xy White, CameraTransform Transform, CameraLook? Look) StartingColour(RawImage raw, ReadOnlyMemory<byte> bytes)
+    internal static (Xy White, CameraTransform Transform, CameraLook? Look) StartingColour(RawImage raw, ReadOnlyMemory<byte> bytes, CameraPreviewLens? lens = null, EmbeddedVignette? vignette = null)
     {
         Xy WhiteOf(RawImage r) => CameraColor.AsShotWhiteXy(r);
         (Xy, CameraTransform) Start(RawImage r)
@@ -82,22 +83,22 @@ internal static partial class CameraPreview
         if (!t.MatrixIsFallback)
         {
             // 檔內矩陣者：不擬合自家 JPEG／光譜／黑白；僅 DNG 自家色調可能再加（上游 starting_colour 外層）
-            if (DngToneEligible(raw, t) && FitDngTone(raw, bytes, t) is { } dng)
+            if (DngToneEligible(raw, t) && FitDngTone(raw, bytes, t, vignette) is { } dng)
                 return (xy, t, dng);
             return (xy, t, null);
         }
-        var (look, blackAndWhite) = FitPreview(raw, bytes, t);
+        var (look, blackAndWhite) = FitPreview(raw, bytes, t, lens);
         if (look is not null)
             return (xy, t, look);
         var camera = raw.Metadata.Model is { } model ? Spectral.Find(raw.Metadata.Make, model) : null;
         if (camera is not null && camera.Fill(raw.Color))
             (xy, t) = Start(raw);
-        CameraLook? bw = blackAndWhite ? MonochromeLook(raw, bytes, t) : null;
+        CameraLook? bw = blackAndWhite ? MonochromeLook(raw, bytes, t, lens) : null;
         if (bw is not null)
             return (xy, t, bw);
         if (DngToneEligible(raw, t))
         {
-            var dng = FitDngTone(raw, bytes, t);
+            var dng = FitDngTone(raw, bytes, t, vignette);
             if (dng is not null)
                 return (xy, t, dng);
         }
@@ -126,11 +127,11 @@ internal static partial class CameraPreview
     }
 
     /// <summary>自家 JPEG 的外觀擬合與是否黑白（camera_preview 的 <c>fit_preview</c>）。</summary>
-    internal static (CameraLook? Look, bool BlackAndWhite) FitPreview(RawImage raw, ReadOnlyMemory<byte> bytes, CameraTransform transform)
+    internal static (CameraLook? Look, bool BlackAndWhite) FitPreview(RawImage raw, ReadOnlyMemory<byte> bytes, CameraTransform transform, CameraPreviewLens? lens = null)
     {
         if (!transform.MatrixIsFallback || !FileLocalLook(raw.Format))
             return (null, false);
-        if (Proxies(raw, bytes, transform, ProxySize, 0.0) is not { } pr)
+        if (Proxies(raw, bytes, transform, ProxySize, 0.0, lens) is not { } pr)
             return (null, false);
         var blackAndWhite = Monochrome(pr.Reference);
         var profile = raw.Metadata.Model is { } model ? CameraProfiles.Get(model) : null;
@@ -156,11 +157,11 @@ internal static partial class CameraPreview
     }
 
     /// <summary>黑白 JPEG 的外觀（camera_preview 的 <c>monochrome_look</c>；僅色調曲線）。</summary>
-    internal static CameraLook? MonochromeLook(RawImage raw, ReadOnlyMemory<byte> bytes, CameraTransform transform)
+    internal static CameraLook? MonochromeLook(RawImage raw, ReadOnlyMemory<byte> bytes, CameraTransform transform, CameraPreviewLens? lens = null)
     {
         if (!FileLocalLook(raw.Format))
             return null;
-        if (Proxies(raw, bytes, transform, ProxySize, 0.0) is not { } pr)
+        if (Proxies(raw, bytes, transform, ProxySize, 0.0, lens) is not { } pr)
             return null;
         if (!Monochrome(pr.Reference))
             return null;
@@ -194,31 +195,5 @@ internal static partial class CameraPreview
                 coloured++;
         }
         return (long)coloured * 1000 <= data.Length / 3;
-    }
-
-    /// <summary>
-    /// 相機 JPEG 幾何（camera_preview 的 <c>lens_geometry</c>：第一個 WarpRectilinear 綠平面；DNG 1.6 鏈無）。
-    /// </summary>
-    internal static LensGeometry? LensGeometryOf(IReadOnlyList<Opcode> list3)
-    {
-        var applied = OpcodeOps.AppliedOps(list3).ToList();
-        if (applied.Any(op => op is WarpRectilinear2))
-            return null;
-        foreach (var op in applied)
-        {
-            if (op is not WarpRectilinear wr)
-                continue;
-            var plane = wr.Planes.Length > 1 ? wr.Planes[1] : wr.Planes.FirstOrDefault();
-            if (plane is null || plane.Length < 4 || wr.Center.Length < 2)
-                continue;
-            var k = new[] { plane[0], plane[1], plane[2], plane[3] };
-            var center = new[] { wr.Center[0], wr.Center[1] };
-            if (!k.Concat(center).All(double.IsFinite))
-                continue;
-            if (center[0] is < 0.0 or > 1.0 || center[1] is < 0.0 or > 1.0)
-                continue;
-            return new LensGeometry(k, center);
-        }
-        return null;
     }
 }

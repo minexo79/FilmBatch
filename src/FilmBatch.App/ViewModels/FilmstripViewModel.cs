@@ -124,10 +124,18 @@ public sealed partial class FilmstripViewModel : ObservableObject
         var generation = _main.Images.FolderGeneration;
         try
         {
-            vm.Source = await _main.Images.GetThumbnailSourceAsync(project.PathOf(vm.FileName));
-            if (_main.Service?.Project != project) return;
-            if (!_main.Images.IsCurrent(generation)) return; // 跨資料夾的舊結果：丟棄
-            _main.RequestThumbnail(vm.FileName, vm.Source);
+            var service = _main.Service;
+            if (service?.Project != project) return;
+            var rawOptions = RawLoadOptions.FromSettings(service.SettingsFor(vm.FileName));
+            var source = await _main.Images.GetThumbnailSourceAsync(project.PathOf(vm.FileName), rawOptions);
+            if (_main.Service?.Project != project || !_main.Images.IsCurrent(generation)) return;
+            if (rawOptions != RawLoadOptions.FromSettings(service.SettingsFor(vm.FileName)))
+            {
+                _ = LoadThumbnailAsync(vm, project);
+                return;
+            }
+            vm.Source = source;
+            _main.RequestThumbnail(vm.FileName, source);
         }
         catch (Exception ex)
         {
@@ -138,8 +146,11 @@ public sealed partial class FilmstripViewModel : ObservableObject
 
     public void RequestThumbnail(string file)
     {
-        if (_byName.TryGetValue(file, out var vm) && vm.Source is { } src)
-            _main.RequestThumbnail(file, src);
+        if (!_byName.TryGetValue(file, out var vm) || _main.Service is not { } service) return;
+        if (vm.Source is { } source && source.RawOptions == RawLoadOptions.FromSettings(service.SettingsFor(file)))
+            _main.RequestThumbnail(file, source);
+        else
+            _ = LoadThumbnailAsync(vm, service.Project);
     }
 
     public void SetThumbnail(string file, RenderResult r)

@@ -2,8 +2,9 @@
   <!-- RAW 解碼與顯影：移植自 LightCraft（lightcraft-raw 等，MIT OR Apache-2.0）。純 C#，不依賴 UI、GPU 與 Magick.NET -->
   <PropertyGroup>
     <IsTrimmable>true</IsTrimmable>
-  <NoWarn>CA2014</NoWarn>
-</PropertyGroup>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <NoWarn>CA2014</NoWarn>
+  </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="FilmBatch.Raw.Tests" />
     <InternalsVisibleTo Include="FilmBatch.Engine" />

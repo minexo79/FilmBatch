@@ -47,7 +47,8 @@ public class MainWindowViewModelTests
         using var vm = TestEnv.CreateViewModel();
         await TestEnv.OpenSamplesAsync(vm);
         var file = vm.FocusFile!;
-        var exposure = vm.Inspector.Modules[0].Params.OfType<ViewModels.SliderParamViewModel>().First(p => p.FlatKey == "basic.exposure");
+        var basic = vm.Inspector.Modules.First(m => m.Key == "basic");
+        var exposure = basic.Params.OfType<ViewModels.SliderParamViewModel>().First(p => p.FlatKey == "basic.exposure");
 
         exposure.BeginEdit();
         exposure.Value = 0.5;
@@ -55,7 +56,7 @@ public class MainWindowViewModelTests
         exposure.EndEdit();
 
         Assert.True(exposure.IsOverridden);
-        Assert.Equal(1, vm.Inspector.Modules[0].OverrideCount);
+        Assert.Equal(1, basic.OverrideCount);
         Assert.True(vm.Filmstrip.Items.First(t => t.FileName == file).HasOverrides);
 
         vm.UndoCommand.Execute(null); // 拖曳中的兩次修改合併為一筆

@@ -2,8 +2,8 @@ using System.Text.Json.Serialization;
 
 namespace FilmBatch.Engine.Exporting;
 
-/// <summary>匯出格式：JPEG（品質 1–100）、16-bit TIFF、16-bit PNG。</summary>
-public enum ExportFormat { Jpeg, Tiff16, Png16 }
+/// <summary>匯出 JPEG、16-bit TIFF／PNG，或保留已算圖線性資料的 half-float DNG。</summary>
+public enum ExportFormat { Jpeg, Tiff16, Png16, Dng }
 
 /// <summary>匯出尺寸：原尺寸 / 長邊指定像素。</summary>
 public enum ExportSize { Original, LongEdge }
@@ -19,6 +19,12 @@ public sealed record ExportOptions
     public ExportSize Size { get; init; } = ExportSize.Original;
     /// <summary>長邊像素（Size == LongEdge 時使用；&lt;=0 視為原尺寸）。</summary>
     public int LongEdgePx { get; init; }
+
+    /// <summary>暫時覆蓋照片的原廠鏡頭校正選項；不修改專案或預設。</summary>
+    public bool? EmbeddedLensCorrections { get; init; }
+
+    /// <summary>暫時覆蓋照片的相機局部色調選項；不修改專案或預設。</summary>
+    public bool? CameraLocalTone { get; init; }
 }
 
 /// <summary>單張匯出的不可變快照（匯出期間的編輯不影響已排入的照片，計畫書 2.6）。</summary>

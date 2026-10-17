@@ -195,7 +195,7 @@ public sealed partial class ToneCurve
 
 public sealed partial class ProfileLook
 {
-    public bool IsEmpty() => HueSatMap[0] is null && HueSatMap[1] is null && LookTable is null && ToneCurve is null;
+    public bool IsEmpty() => HueSatMap[0] is null && HueSatMap[1] is null && LookTable is null && ToneCurve is null && GainTableMap is null;
 
     public HsvTable? HueSatFor(double g)
     {

@@ -236,12 +236,15 @@ internal static class TiffRaw
         }
     }
 
-    // 上游無 jxl feature：JPEG XL DNG 明確不支援（計畫內唯一的佔位壓縮路徑）。
-    private static ChunkPx JxlChunk(ReadOnlySpan<byte> _src, int _cw, int _ch, int _vw, int _vh, int _cpp, uint _bits, bool _float) =>
-        throw RawException.Unsupported("JPEG XL DNG (built without the `jxl` feature)");
+    // JPEG XL DNG（上游 jxl feature）：真解碼在 Raw/Codecs/JpegXl.cs（libjxl 原生邊界）。
+    private static ChunkPx JxlChunk(ReadOnlySpan<byte> src, int cw, int ch, int vw, int vh, int cpp, uint bits, bool isFloat)
+    {
+        var (u16, f32, floatOut) = Codecs.JpegXl.Decode(src, cw, ch, vw, vh, cpp, bits, isFloat);
+        return floatOut ? new ChunkPx(null, f32, true) : new ChunkPx(u16, null, false);
+    }
 
     private static void JxlCheck(ReadOnlySpan<byte> src, int cw, int ch, int vw, int vh, int cpp, uint bits, bool isFloat) =>
-        _ = JxlChunk(src, cw, ch, vw, vh, cpp, bits, isFloat);
+        Codecs.JpegXl.Check(src, cw, ch, vw, vh, cpp, bits, isFloat);
 
     /// <summary>解一個 baseline JPEG 區塊為 8-bit 樣本（lightcraft <c>lossy_jpeg</c>）。</summary>
     internal static (byte[] Samples, int Width, int Height, int Channels) LossyJpeg(ReadOnlyMemory<byte> src, int cpp)

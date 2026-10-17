@@ -1,3 +1,4 @@
+using FilmBatch.Cli;
 using System.CommandLine;
 using FilmBatch.Core;
 using FilmBatch.Core.Commands;
@@ -50,18 +51,21 @@ samples.SetAction(r =>
 
 var exportFolder = new Argument<string>("folder") { Description = "照片資料夾（已含 .filmbatch/project.json 或即時掃描）" };
 var outOption = new Option<string?>("--out") { Description = "輸出資料夾（預設 <照片資料夾>/export/）" };
-var formatOption = new Option<string>("--format") { Description = "jpg | tiff | png（預設 jpg）", DefaultValueFactory = _ => "jpg" };
+var formatOption = new Option<string>("--format") { Description = "jpg | tiff | png | dng（預設 jpg；DNG 保留已套用效果的線性資料）", DefaultValueFactory = _ => "jpg" };
 var qualityOption = new Option<int>("--quality") { Description = "JPEG 品質 1–100（預設 95）", DefaultValueFactory = _ => 95 };
 var longEdgeOption = new Option<int>("--long-edge") { Description = "長邊像素；0 = 原尺寸（預設 0）", DefaultValueFactory = _ => 0 };
 var presetOption = new Option<string?>("--preset") { Description = "只匯出使用此預設的照片（名稱或 Id）" };
 var onlyUnassignedOption = new Option<bool>("--only-unassigned") { Description = "只匯出未指定預設（使用預設預設）的照片" };
 var presetsFolderOption = new Option<string?>("--presets-folder") { Description = "預設庫資料夾（預設使用者 presets）" };
+var embeddedLensOption = new Option<bool>("--embedded-lens") { Description = "啟用 RAW 內嵌鏡頭校正（只影響本次匯出）" };
+var cameraLocalToneOption = new Option<bool>("--camera-local-tone") { Description = "啟用 DNG 相機局部色調（只影響本次匯出）" };
 
 var export = new Command("export", "批次匯出（與 GUI 共用匯出器）")
 {
     exportFolder, outOption, formatOption, qualityOption, longEdgeOption,
     presetOption, onlyUnassignedOption, presetsFolderOption,
     backendOption, softwareOption, lowPowerOption,
+    embeddedLensOption, cameraLocalToneOption,
 };
 export.SetAction(async (r, ct) =>
 {
@@ -79,7 +83,8 @@ export.SetAction(async (r, ct) =>
             "jpg" or "jpeg" => ExportFormat.Jpeg,
             "tiff" or "tif" => ExportFormat.Tiff16,
             "png" => ExportFormat.Png16,
-            var f => throw new InvalidDataException($"未知格式：{f}（可用 jpg、tiff、png）。"),
+            "dng" => ExportFormat.Dng,
+            var f => throw new InvalidDataException($"未知格式：{f}（可用 jpg、tiff、png、dng）。"),
         };
     }
     catch (InvalidDataException ex)
@@ -97,6 +102,8 @@ export.SetAction(async (r, ct) =>
         Quality = quality,
         Size = longEdge > 0 ? ExportSize.LongEdge : ExportSize.Original,
         LongEdgePx = longEdge,
+        EmbeddedLensCorrections = r.GetValue(embeddedLensOption) ? true : null,
+        CameraLocalTone = r.GetValue(cameraLocalToneOption) ? true : null,
     };
     try
     {
@@ -289,5 +296,5 @@ static Func<IPreviewRenderer> CreateExportFactory(GpuDeviceOptions deviceOptions
     }
 }
 
-var root = new RootCommand("FilmBatch 命令列") { gpuInfo, spike, samples, export, recipes };
+var root = new RootCommand("FilmBatch 命令列") { gpuInfo, spike, samples, export, recipes, RawCommands.Create() };
 return root.Parse(args).Invoke();

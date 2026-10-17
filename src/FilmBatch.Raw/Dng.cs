@@ -228,7 +228,7 @@ internal static class Dng
             ActiveArea = activeArea,
             Crop = crop,
             Orientation = OrientationExtensions.FromExif(ifd0.U16(Tags.Orientation) ?? 1),
-            Color = ColorData(ifd0, raw),
+            Color = ColorData(ifd0, raw, tiff.Order),
             WbMultipliers = null,
             Linearized = linearized,
             PixelAspect = DefaultScaleAspect(raw.F64s(Tags.DefaultScale)),
@@ -311,7 +311,7 @@ internal static class Dng
         v is { Length: 3 } && v.All(x => double.IsFinite(x) && x > 0.0) ? [v[0], v[1], v[2]] : null;
 
     /// <summary>色彩標籤：DNG 放 IFD0，但有些寫入器放 raw IFD；raw IFD 優先（lightcraft <c>color_data</c>）。</summary>
-    internal static ColorData ColorData(Ifd ifd0, Ifd raw)
+    internal static ColorData ColorData(Ifd ifd0, Ifd raw, ByteOrder order)
     {
         double[]? Get(ushort tag) => raw.F64s(tag) ?? ifd0.F64s(tag);
         ushort GetI(ushort tag) => raw.U16(tag) ?? ifd0.U16(tag) ?? 0;
@@ -331,13 +331,13 @@ internal static class Dng
                 ? new Xy(asShotXy[0], asShotXy[1]) : null,
             BaselineExposure = baseExp + baseOff,
             BaselineSharpness = sharp is { } s && double.IsFinite(s) && s > 0.0 && s <= 16.0 ? s : null,
-            Profile = ProfileLook(ifd0, raw),
+            Profile = ProfileLook(ifd0, raw, order),
             KelvinPresets = null,
         };
     }
 
-    /// <summary>描述檔外觀標籤；損毀的忽略（lightcraft <c>profile_look</c>；GainTableMap 依計畫除外）。</summary>
-    internal static ProfileLook ProfileLook(Ifd ifd0, Ifd raw)
+    /// <summary>描述檔外觀標籤；損毀的忽略（lightcraft <c>profile_look</c>；含 DNG 1.7 優先序的 GainTableMap）。</summary>
+    internal static ProfileLook ProfileLook(Ifd ifd0, Ifd raw, ByteOrder order)
     {
         Ifd Pick(ushort dims) => raw.Contains(dims) ? raw : ifd0;
         HsvTable? Table(ushort dims, ushort data, ushort enc)
@@ -356,7 +356,24 @@ internal static class Dng
             LookTable = Table(Tags.ProfileLookTableDims, Tags.ProfileLookTableData, Tags.ProfileLookTableEncoding),
             ToneCurve = (Pick(Tags.ProfileToneCurve).F64s(Tags.ProfileToneCurve) is { } t)
                 ? ToneCurve.FromTag(t) : null,
+            GainTableMap = GainTableMap(ifd0, raw, order),
         };
+    }
+
+    /// <summary>
+    /// 增益表映射（DNG 1.7 優先序；lightcraft <c>gain_table_map</c>）：IFD0 的
+    /// <c>ProfileGainTableMap2</c>（內嵌相機描述檔），否則 raw IFD 的 v2，再來是 raw IFD 的 v1
+    ///（DNG 1.6 的位置，Apple 寫在此），最後是 IFD0 的 v1（DNG 1.7 認為應在的位置）。
+    /// 損毀的標籤落到下一個候選。
+    /// </summary>
+    internal static GainTableMap? GainTableMap(Ifd ifd0, Ifd raw, ByteOrder order)
+    {
+        GainTableMap? Parse(Ifd ifd, ushort tag) =>
+            ifd.Bytes(tag) is { } b ? Raw.GainTableMap.Parse(b, order, tag == Tags.ProfileGainTableMap2) : null;
+        return Parse(ifd0, Tags.ProfileGainTableMap2)
+            ?? Parse(raw, Tags.ProfileGainTableMap2)
+            ?? Parse(raw, Tags.ProfileGainTableMap)
+            ?? Parse(ifd0, Tags.ProfileGainTableMap);
     }
 
     /// <summary><c>DefaultScale</c> 的像素高寬比：只有 1.5..4 的明顯比例才算（列拉伸）。</summary>

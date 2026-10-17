@@ -31,6 +31,7 @@ public sealed partial class ExportViewModel : ObservableObject
         new(Engine.Exporting.ExportFormat.Jpeg, "JPEG"),
         new(Engine.Exporting.ExportFormat.Tiff16, "16-bit TIFF"),
         new(Engine.Exporting.ExportFormat.Png16, "16-bit PNG"),
+        new(Engine.Exporting.ExportFormat.Dng, "Linear DNG"),
     ];
     public IReadOnlyList<Option<Engine.Exporting.ExportSize>> Sizes { get; } =
     [

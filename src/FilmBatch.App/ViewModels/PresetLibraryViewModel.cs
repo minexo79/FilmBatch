@@ -434,7 +434,11 @@ public sealed class PresetHoverCoordinator
         RenderResult result;
         try
         {
-            result = renderer.Render(source.Downscale(longEdge), settings);
+            var rawOptions = RawLoadOptions.FromSettings(settings);
+            var hoverSource = source.RawOptions == rawOptions
+                ? source.Downscale(longEdge)
+                : ImageLoader.Load(_main.Service.Project.PathOf(focus), longEdge, rawOptions);
+            result = renderer.Render(hoverSource, settings);
         }
         catch
         {
@@ -447,7 +451,7 @@ public sealed class PresetHoverCoordinator
         return item.HoverPreview is not null;
     }
 
-    private void OnDebounceElapsed(object? sender, EventArgs e)
+    private async void OnDebounceElapsed(object? sender, EventArgs e)
     {
         _debounceTimer?.Stop();
         var item = _pendingItem;
@@ -459,26 +463,48 @@ public sealed class PresetHoverCoordinator
         if (item is null || focus is null || preset != item.Id) return;
         // 防抖到期時仍停留在同一目標、同一焦點才送出；否則視為過期.
         if (!string.Equals(_main.FocusFile, focus, StringComparison.Ordinal)) return;
-        if (_main.Service is null || _main.Preview.Source is null) return;
+        var service = _main.Service;
+        var original = _main.Preview.Source;
+        if (service is null || original is null) return;
         if (TryServeFromCache(item, focus)) return;
         var cacheKey = KeyFor(item.Id, focus);
         var key = cacheKey + "/" + ++_requestId;
-        SourceImage hoverSource;
+        var settings = PhotoOperations.Resolve(service.BaseFor(item.Id), service.Project[focus].Overrides);
+        var rawOptions = RawLoadOptions.FromSettings(settings);
         lock (_lock)
         {
             if (_inflight.TryGetValue(item.Id, out var keys) && keys.Contains(cacheKey)) return;
             if (!_inflight.TryGetValue(item.Id, out keys)) _inflight[item.Id] = keys = [];
             keys.Add(cacheKey);
-            // 縮小後的來源與算圖鍵同生命週期保留：GPU 執行緒完成前 UI 端不得釋放或重用。
-            hoverSource = _main.Preview.Source.Downscale(HoverLongEdge);
-            _hoverSources[key] = hoverSource;
+            _hoverSources[key] = original;
         }
         item.HoverLoading = true;
         try
         {
-            var settings = PhotoOperations.Resolve(
-                _main.Service.BaseFor(item.Id),
-                _main.Service.Project[focus].Overrides);
+            var source = original.RawOptions == rawOptions
+                ? original
+                : await _main.Images.GetPreviewAsync(service.Project.PathOf(focus), rawOptions);
+            SourceImage hoverSource;
+            lock (_lock)
+            {
+                if (!_hoverSources.ContainsKey(key)) return;
+                if (_main.Service != service || !string.Equals(_main.FocusFile, focus, StringComparison.Ordinal))
+                {
+                    _hoverSources.Remove(key);
+                    if (_inflight.TryGetValue(item.Id, out var pending))
+                    {
+                        pending.Remove(cacheKey);
+                        if (pending.Count == 0)
+                        {
+                            _inflight.Remove(item.Id);
+                            item.HoverLoading = false;
+                        }
+                    }
+                    return;
+                }
+                hoverSource = source.Downscale(HoverLongEdge);
+                _hoverSources[key] = hoverSource;
+            }
             // 低優先縮圖佇列：與縮圖列共用，鍵命名空間不相交；正在進行的預覽算圖永遠優先。
             _main.Renderer.RequestThumbnail(key, hoverSource, settings);
         }

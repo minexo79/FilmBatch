@@ -14,8 +14,8 @@ internal sealed record PreviewIccInfo(
     PreviewTrc[] Trc,
     RgbSpace? Named);
 
-/// <summary>裝置色彩模型（上游 <c>IccColorModel</c>）。</summary>
-internal enum PreviewIccModel { Rgb, Gray, Other }
+/// <summary>裝置色彩模型（上游 <c>IccColorModel</c>：Rgb／Gray／Cmyk／Other）。</summary>
+internal enum PreviewIccModel { Rgb, Gray, Cmyk, Other }
 
 /// <summary>套用方式（上游 <c>IccKind</c> 的預覽解碼子集：矩陣／TRC 整形器、灰階 kTRC、其餘需 CMS）。</summary>
 internal enum PreviewIccKind { MatrixTrc, Gray, NeedsCms }
@@ -24,8 +24,8 @@ internal enum PreviewIccKind { MatrixTrc, Gray, NeedsCms }
 /// 嵌入預覽 ICC 解析（上游 <c>icc::parse</c>／<c>info_of</c> `icc.rs:41-69`）：
 /// RGB + PCS XYZ + 非零色料 + 三條 TRC 為 matrix-shaper（行列式 |det| &gt; 1e-6 且 TRC 有效），
 /// 其色料矩陣即線性 RGB → XYZ D50（PCS 白 Y = 1）；灰階 + kTRC 且無 A2B LUT 為 gray；
-/// 其餘（LUT、CMYK、Lab 等）為 <c>NeedsCms</c>——FilmBatch 無 CMS，
-/// 呼叫端按上游 `rgb_or_gray` 的「存在但不可用 → sRGB」分支處理（見下方）。
+/// 其餘（LUT、CMYK、Lab 等）為 <c>NeedsCms</c>，呼叫端按模型送真正 CMS
+///（<see cref="PreviewCms"/>），失敗或模型不合才按上游「存在但不可用 → sRGB」分支。
 /// 具名空間辨識容限 0.004（上游 `NamedSpace::recognize` `space.rs:210`）。
 /// </summary>
 internal static class PreviewIcc
@@ -81,7 +81,7 @@ internal static class PreviewIcc
                     return new PreviewIccInfo(PreviewIccModel.Gray, PreviewIccKind.NeedsCms, Mat3.Identity, [], null);
                 return new PreviewIccInfo(PreviewIccModel.Gray, PreviewIccKind.Gray, Mat3.Identity, [trc, trc, trc], null);
             }
-            var model = colorSpace == "GRAY" ? PreviewIccModel.Gray : PreviewIccModel.Other;
+            var model = colorSpace switch { "GRAY" => PreviewIccModel.Gray, "CMYK" => PreviewIccModel.Cmyk, _ => PreviewIccModel.Other };
             return new PreviewIccInfo(model, PreviewIccKind.NeedsCms, Mat3.Identity, [], null);
         }
         catch (ArgumentOutOfRangeException)

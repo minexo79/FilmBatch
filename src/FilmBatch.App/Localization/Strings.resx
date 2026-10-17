@@ -294,4 +294,7 @@
   <data name="Gallery.Thumb.Failed" xml:space="preserve"><value>讀檔失敗</value></data>
   <data name="Gallery.Thumb.FailedReason" xml:space="preserve"><value>無法解碼：檔案損毀</value></data>
   <data name="Gallery.Chromatic" xml:space="preserve"><value>彩色</value></data>
+  <data name="Module.raw" xml:space="preserve"><value>RAW 原廠處理</value></data>
+  <data name="Param.raw.embedded_lens" xml:space="preserve"><value>內嵌鏡頭校正</value></data>
+  <data name="Param.raw.camera_local_tone" xml:space="preserve"><value>相機局部色調</value></data>
 </root>

@@ -4,6 +4,10 @@ using FilmBatch.Core.Projects;
 using FilmBatch.Engine.Imaging;
 using FilmBatch.Engine.Rendering;
 using ImageMagick;
+using FilmBatch.Raw;
+using FilmBatch.Raw.Color;
+using FilmBatch.Raw.Meta;
+using FilmBatch.Raw.Tiff;
 
 namespace FilmBatch.Engine.Exporting;
 
@@ -18,7 +22,7 @@ public static class BatchExporter
     // 管線版本以 Project.PipelineVersion 記錄於每筆 job/log；此處不另設全域常數。
 
     /// <summary>由目前專案狀態建立每張照片的不可變快照（含最終參數、種子、預設名）。篩選由呼叫端先做。</summary>
-    public static IReadOnlyList<ExportJob> BuildJobs(ProjectService service, IEnumerable<string> files)
+    public static IReadOnlyList<ExportJob> BuildJobs(ProjectService service, IEnumerable<string> files, ExportOptions? options = null)
     {
         var project = service.Project;
         var jobs = new List<ExportJob>();
@@ -28,11 +32,19 @@ public static class BatchExporter
             index++;
             var entry = project[file];
             var preset = service.PresetFor(entry.PresetId);
+            var settings = service.SettingsFor(file);
+            if (options?.EmbeddedLensCorrections is not null || options?.CameraLocalTone is not null)
+            {
+                var current = RawLoadOptions.FromSettings(settings);
+                settings = settings.With("raw.enabled", true)
+                    .With("raw.embedded_lens", options.EmbeddedLensCorrections ?? current.EmbeddedLensCorrections)
+                    .With("raw.camera_local_tone", options.CameraLocalTone ?? current.CameraLocalTone);
+            }
             jobs.Add(new ExportJob
             {
                 FileName = file,
                 SourcePath = project.PathOf(file),
-                Settings = service.SettingsFor(file),
+                Settings = settings,
                 Seed = project.SeedFor(file),
                 PresetName = preset?.Name ?? CoreText.T("未命名", "Untitled"),
                 Index = index,
@@ -71,7 +83,7 @@ public static class BatchExporter
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(rendererFactory);
         ValidateOptions(request.Options);
-        var jobs = BuildJobs(request.Service, request.Files);
+        var jobs = BuildJobs(request.Service, request.Files, request.Options);
         var folder = request.Service.Project.Folder;
         return Task.Run(() => RunJobs(jobs, request.Options, rendererFactory, folder, progress, cancellationToken));
     }
@@ -203,7 +215,7 @@ public static class BatchExporter
             throw new FileNotFoundException(CoreText.T($"找不到來源照片：{job.FileName}", $"Source photo not found: {job.FileName}"), job.SourcePath);
 
         // 1. 全解析度解碼（EXIF 已轉正；FilePath 供算圖器解析相對素材/種子）
-        var source = ImageLoader.LoadFull(job.SourcePath);
+        var source = ImageLoader.LoadFull(job.SourcePath, RawLoadOptions.FromSettings(job.Settings));
         ct.ThrowIfCancellationRequested();
 
         // 2. 完整 16-bit 算圖（GPU 或 CPU 等效；超限時算圖器內部以等效路徑處理，不靜默截斷）
@@ -265,7 +277,11 @@ public static class BatchExporter
             }
         });
         ct.ThrowIfCancellationRequested();
-        return new SourceImage(w, h, dst) { FilePath = image.FilePath };
+        return new SourceImage(w, h, dst)
+        {
+            FilePath = image.FilePath, RawOptions = image.RawOptions,
+            RawInfo = image.RawInfo, SemanticMasks = image.SemanticMasks,
+        };
     }
 
     private sealed record Contrib((int Index, double Weight)[] Source);
@@ -313,48 +329,64 @@ public static class BatchExporter
         if (File.Exists(outputPath))
             throw new IOException(CoreText.T($"輸出檔已存在，拒絕覆寫：{outputPath}", $"Output file already exists; refusing to overwrite: {outputPath}"));
 
-        using var picture = new MagickImage();
-        var settings = new PixelReadSettings((uint)image.Width, (uint)image.Height, StorageType.Short, PixelMapping.RGBA);
-        var bytes = System.Runtime.InteropServices.MemoryMarshal.AsBytes(image.Rgba16.AsSpan());
-        picture.ReadPixels(bytes, settings);
-        picture.Depth = 16;
-
-        // 中繼資料：保留來源 EXIF（方向重設為 1：像素已轉正），嵌入 sRGB ICC
-        var exif = CopyExifProfile(job.SourcePath, picture, options.Format, out var metadataWarning);
-        picture.SetProfile(ColorProfiles.SRGB);
-        picture.Orientation = OrientationType.TopLeft;
-
-        switch (options.Format)
+        var exif = CopyExifProfile(job.SourcePath, (uint)image.Width, (uint)image.Height, options.Format, image.RawInfo?.Metadata, out var metadataWarning);
+        byte[]? dng = null;
+        using var picture = options.Format == ExportFormat.Dng ? null : new MagickImage();
+        if (picture is not null)
         {
-            case ExportFormat.Jpeg:
-                picture.Quality = (uint)options.Quality;
-                picture.Format = MagickFormat.Jpeg;
-                picture.Alpha(AlphaOption.Remove);
-                picture.Depth = 8;
-                break;
-            case ExportFormat.Tiff16:
-                picture.Format = MagickFormat.Tiff;
-                picture.Endian = Endian.LSB;
-                picture.Settings.Compression = CompressionMethod.Zip;
-                picture.Depth = 16;
-                break;
-            case ExportFormat.Png16:
-                picture.Format = MagickFormat.Png;
-                picture.Depth = 16;
-                picture.Settings.SetDefines(new ImageMagick.Formats.PngWriteDefines { PreserveiCCP = true });
-                break;
-            default: throw new ArgumentOutOfRangeException(nameof(options.Format));
+            var settings = new PixelReadSettings((uint)image.Width, (uint)image.Height, StorageType.Short, PixelMapping.RGBA);
+            picture.ReadPixels(System.Runtime.InteropServices.MemoryMarshal.AsBytes(image.Rgba16.AsSpan()), settings);
+            picture.Depth = 16;
+            picture.SetProfile(exif);
+            picture.SetProfile(ColorProfiles.SRGB);
+            picture.Orientation = OrientationType.TopLeft;
+            switch (options.Format)
+            {
+                case ExportFormat.Jpeg:
+                    picture.Quality = (uint)options.Quality;
+                    picture.Format = MagickFormat.Jpeg;
+                    picture.Alpha(AlphaOption.Remove);
+                    picture.Depth = 8;
+                    break;
+                case ExportFormat.Tiff16:
+                    picture.Format = MagickFormat.Tiff;
+                    picture.Endian = Endian.LSB;
+                    picture.Settings.Compression = CompressionMethod.Zip;
+                    break;
+                case ExportFormat.Png16:
+                    picture.Format = MagickFormat.Png;
+                    picture.Settings.SetDefines(new ImageMagick.Formats.PngWriteDefines { PreserveiCCP = true });
+                    break;
+                default: throw new ArgumentOutOfRangeException(nameof(options.Format));
+            }
+        }
+        else
+        {
+            var linear = new float[checked(image.Width * image.Height * 3)];
+            var input = image.Rgba16;
+            for (int s = 0, d = 0; d < linear.Length; s += 4, d += 3)
+            {
+                linear[d] = Transfer.SrgbToLinear(input[s] / 65535f);
+                linear[d + 1] = Transfer.SrgbToLinear(input[s + 1] / 65535f);
+                linear[d + 2] = Transfer.SrgbToLinear(input[s + 2] / 65535f);
+            }
+            var metadataBytes = exif.ToByteArray()!;
+            var metadata = MetadataReader.FromTiff(TiffFile.Parse(metadataBytes.AsMemory(6)));
+            dng = DngWriter.WriteRenderedDng(image.Width, image.Height, linear, ColorSpaces.Srgb, metadata);
         }
 
-        // 原子寫入：先寫暫存再搬移；取消/失敗時刪除暫存，不留假完成輸出
+        // DNG 與一般影像共用原子寫入；取消／失敗不留下假完成檔。
         var tmp = outputPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
             ct.ThrowIfCancellationRequested();
             using (var stream = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
-                picture.Write(stream);
-            if (options.Format == ExportFormat.Tiff16)
-                TiffMetadata.Append(tmp, exif);
+            {
+                if (dng is not null) stream.Write(dng);
+                else picture!.Write(stream);
+            }
+            if (options.Format is ExportFormat.Tiff16 or ExportFormat.Dng)
+                TiffMetadata.Append(tmp, exif, replaceExif: options.Format == ExportFormat.Dng);
             ct.ThrowIfCancellationRequested();
             File.Move(tmp, outputPath, overwrite: false);
             return metadataWarning;
@@ -362,15 +394,14 @@ public static class BatchExporter
         catch
         {
             try { if (File.Exists(tmp)) File.Delete(tmp); } catch (IOException) { }
-            // 搬移後若輸出已存在（競態）視為拒絕覆寫
             if (File.Exists(outputPath))
                 throw new IOException(CoreText.T($"輸出檔已存在，拒絕覆寫：{outputPath}", $"Output file already exists; refusing to overwrite: {outputPath}"));
             throw;
         }
     }
 
-    private static ExifProfile CopyExifProfile(string sourcePath, MagickImage picture, ExportFormat format,
-        out string? metadataWarning)
+    private static ExifProfile CopyExifProfile(string sourcePath, uint width, uint height, ExportFormat format,
+        Metadata? decoded, out string? metadataWarning)
     {
         IExifProfile? source = null;
         metadataWarning = null;
@@ -380,7 +411,7 @@ public static class BatchExporter
             if (FilmBatch.Engine.Imaging.Raw.RawSourceLoader.IsRawExtension(sourcePath))
             {
                 // RAW 的 EXIF 失敗與其他來源一樣，外層統一記錄 "Source EXIF omitted: …" 並輸出全新 EXIF。
-                normalized = TiffMetadata.ReadRaw(sourcePath, picture.Width, picture.Height);
+                normalized = TiffMetadata.ReadRaw(sourcePath, width, height, decoded);
             }
             else
             {
@@ -390,30 +421,27 @@ public static class BatchExporter
                 // Normalize raw directories rather than flattening through ExifProfile.Values:
                 // that model omits the interoperability directory.
                 if (source is not null)
-                    normalized = TiffMetadata.Normalize(source, picture.Width, picture.Height);
+                    normalized = TiffMetadata.Normalize(source, width, height);
                 else if (probe.Format is MagickFormat.Tiff or MagickFormat.Tiff64)
-                    normalized = TiffMetadata.Read(sourcePath, picture.Width, picture.Height);
+                    normalized = TiffMetadata.Read(sourcePath, width, height);
                 else
-                    normalized = TiffMetadata.Normalize((IExifProfile?)null, picture.Width, picture.Height);
+                    normalized = TiffMetadata.Normalize((IExifProfile?)null, width, height);
             }
             // Prefer losing a private MakerNote to silently losing the entire EXIF profile.
             if (format == ExportFormat.Jpeg && normalized.ToByteArray()!.Length > 65533)
             {
-                normalized = TiffMetadata.Normalize(normalized, picture.Width, picture.Height, omitMakerNote: true);
+                normalized = TiffMetadata.Normalize(normalized, width, height, omitMakerNote: true);
                 if (normalized.ToByteArray()!.Length > 65533)
                     throw new InvalidDataException("JPEG EXIF exceeds the 65533-byte APP1 limit even without MakerNote.");
                 metadataWarning = "JPEG EXIF exceeded the 65533-byte APP1 limit; MakerNote omitted.";
             }
-            picture.SetProfile(normalized);
             return normalized;
         }
         catch (Exception ex) when (ex is MagickException or InvalidDataException or IOException or OverflowException)
         {
             // EXIF 損毀或不支援：輸出仍帶 ICC + 方向 1，不因中繼資料失敗整張
             metadataWarning = $"Source EXIF omitted: {ex.GetType().Name}: {ex.Message}";
-            var fresh = TiffMetadata.Normalize((IExifProfile?)null, picture.Width, picture.Height);
-            picture.SetProfile((IImageProfile)fresh);
-            return fresh;
+            return TiffMetadata.Normalize((IExifProfile?)null, width, height);
         }
         finally
         {

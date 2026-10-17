@@ -106,7 +106,11 @@ public static class CpuPipeline
             outArr[s + 2] = Q16(cur[s + 2]);
             outArr[s + 3] = Q16(cur[s + 3]);
         });
-        return new SourceImage(w, h, outArr) { FilePath = source.FilePath };
+        return new SourceImage(w, h, outArr)
+        {
+            FilePath = source.FilePath, RawOptions = source.RawOptions,
+            RawInfo = source.RawInfo, SemanticMasks = source.SemanticMasks,
+        };
     }
 
     internal static float[] DecodeLinear(SourceImage source)

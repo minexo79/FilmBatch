@@ -14,8 +14,13 @@ internal static partial class CameraPreview
     /// 同尺寸的感光代理（白平衡、基準曝光、經變換矩陣）與相機 JPEG 代理（線性 Rec.2020），
     /// 以及每代理像素是否有覆蓋截斷樣本（camera_preview 的 <c>proxies</c>）。
     /// 感光代理來自 DevelopBinned；CR3 方向對齊後再套色；其餘先套色。
+    /// <paramref name="lens"/> 為檔案自家鏡頭校正 warp（parent 在移除 List3 鏡頭 ops 前以
+    /// <see cref="CameraPreviewLens.LensGeometryOf"/> 快照）：相機常對自家 JPEG 施此校正
+    /// （Nikon Z 鏡頭恆施，最大 9% zoom），感光代理亦 warp 後以 alignment 擇優配對；
+    /// 未校正 JPEG 的檔案保留原代理。CR3 不走 lens warp（上游同）。不做最終校正（見
+    /// <see cref="FilmBatch.Raw.EmbeddedLensCorrection"/>，parent 在最終解析度另行套用）。
     /// </summary>
-    private static ProxiesResult? Proxies(RawImage raw, ReadOnlyMemory<byte> bytes, CameraTransform transform, int size, double minFraction)
+    private static ProxiesResult? Proxies(RawImage raw, ReadOnlyMemory<byte> bytes, CameraTransform transform, int size, double minFraction, CameraPreviewLens? lens = null)
     {
         var edge = (uint)Math.Max(2 * size, 384);
         if (!TryDecodePreview(bytes, edge, out var reference, out var sourceW, out var sourceH))
@@ -54,12 +59,12 @@ internal static partial class CameraPreview
         var clipFlat = FlatMask(clipGrid);
         RgbImage? warped = null;
         bool[]? warpedClipped = null;
-        var lens = LensGeometryOf(raw.Opcodes.List3);
-        // CR3 不在此走 lens warp（上游同）；其餘候選 warp，alignment 擇優
+        // CR3 不在此走 lens warp（上游同）；其餘候選 warp，alignment 擇優。
+        // lens 由 parent 在移除 List3 鏡頭 ops 前快照傳入（此處不再自 List3 讀取，避免雙重校正時序依賴）。
         if (lens is not null && raw.Format != RawFormat.Cr3)
         {
-            var wimg = IntoLensGeometry(sensorImg, raw, k, lens);
-            var wclip = wimg is null ? null : IntoLensGeometry(MaskToImage(clipGrid, sensorImg.Width, sensorImg.Height), raw, k, lens);
+            var wimg = CameraPreviewLens.IntoGeometry(sensorImg, raw, k, lens);
+            var wclip = wimg is null ? null : CameraPreviewLens.IntoGeometry(MaskToImage(clipGrid, sensorImg.Width, sensorImg.Height), raw, k, lens);
             if (wimg is not null && wclip is not null)
             {
                 warped = wimg;

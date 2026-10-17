@@ -45,7 +45,11 @@ public sealed class GpuSpikeRenderer : IPreviewRenderer
         if (UsingCpu) return CpuPipeline.Process(source, parameters, null, cancellationToken);
         var output = new ushort[source.Rgba16.Length];
         _pipeline.Render(source, parameters, output, cancellationToken);
-        return new SourceImage(source.Width, source.Height, output) { FilePath = source.FilePath };
+        return new SourceImage(source.Width, source.Height, output)
+        {
+            FilePath = source.FilePath, RawOptions = source.RawOptions,
+            RawInfo = source.RawInfo, SemanticMasks = source.SemanticMasks,
+        };
     }
 
     public RenderResult Render(SourceImage source, Settings settings)

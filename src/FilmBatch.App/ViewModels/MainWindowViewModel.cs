@@ -231,8 +231,14 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         Preview.UpdateOverlay(Selection.Count);
         try
         {
-            var source = await Images.GetPreviewAsync(service.Project.PathOf(file));
+            var rawOptions = RawLoadOptions.FromSettings(service.SettingsFor(file));
+            var source = await Images.GetPreviewAsync(service.Project.PathOf(file), rawOptions);
             if (_disposed || Service != service || file != FocusFile || generation != _previewLoadGeneration) return;
+            if (source.RawOptions != RawLoadOptions.FromSettings(service.SettingsFor(file)))
+            {
+                _ = LoadPreviewAsync();
+                return;
+            }
             Preview.SetOriginal(source);
             RequestPreview();
         }
@@ -249,7 +255,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     public void RequestPreview()
     {
         if (Service is null || FocusFile is null || Preview.Source is null) return;
-        Renderer.RequestPreview(FocusFile, Preview.Source, Service.SettingsFor(FocusFile));
+        var settings = Service.SettingsFor(FocusFile);
+        if (Preview.Source.RawOptions != RawLoadOptions.FromSettings(settings))
+        {
+            _ = LoadPreviewAsync();
+            return;
+        }
+        Renderer.RequestPreview(FocusFile, Preview.Source, settings);
         Preview.IsBusy = true;
     }
 

@@ -1,9 +1,8 @@
 // 移植自 LightCraft crates/raw/src/vendor/arw.rs（Sony ARW 容器：ARW2 壓縮、packed 12-bit、LJ92、YCbCr M/S、ARW6 調度）。
 // Copyright (c) 2026 ArtCraft Team and the LightCraft contributors，MIT OR Apache-2.0；為 FilmBatch 改寫為 C#。
 //
-// 來源：H. Dietz「Sony ARW2 Compression: Artifacts And Credible Repair」（IS&T Electronic Imaging 2016）
 // 描述 ARW2（cRAW）；ExifTool Sony 標籤文件描述 0x7010 曲線門檻、0x7310 黑階、0x7313 白平衡、
-// 0x74c7/0x74c8 裁切。鏡頭校正（arw_lens*）與 lens metadata 依計畫不移植。
+// 0x74c7/0x74c8 裁切。鏡頭校正見 SonyLens（arw_lens：ILCE-7RM4A 畸變）／SonyRm6Lens（ILCE-7RM6）。
 
 using System.Buffers.Binary;
 using FilmBatch.Raw.Codecs;
@@ -12,7 +11,7 @@ using FilmBatch.Raw.Tiff;
 
 namespace FilmBatch.Raw.Vendors.Sony;
 
-/// <summary>Sony ARW 解碼（lightcraft <c>vendor::arw</c>）。鏡頭校正 opcode／lens metadata 依計畫不移植。</summary>
+/// <summary>Sony ARW 解碼（lightcraft <c>vendor::arw</c>；鏡頭校正見 <see cref="SonyLens"/>／<see cref="SonyRm6Lens"/>）。</summary>
 internal static class Arw
 {
     internal const ushort ToneCurve = 0x7010;
@@ -661,9 +660,35 @@ internal static class Arw
             var c = DefaultCrop(raw, mn, exifSize, w, h, packed12);
             crop = c == new PixelRect(0, 0, w, h) ? (Sr2() is { } s2 ? ReadSr2OldCrop(s2, w, h) ?? c : c) : c;
         }
+        // 鏡頭校正記錄。畸變表對中 DNG 式預設裁切（ILCE-7RM4A 上它 x = 32 起，Sony 裁切標籤（影像裁切，不變）
+        // x = 0 起；warp 以該中心驗證）。opcode 中心為 active-area 座標，故影像取景為何皆在光學中心上。
+        var reference = DngDefaultCrop(raw, w, h) ?? crop;
+        var geometry = new SonyLensGeometry
+        {
+            StorageWidth = w, StorageHeight = h,
+            SonyCrop = RecordedRect(raw, CropTopLeft, CropSize),
+            DefaultCrop = RecordedRect(raw, Tags.DefaultCropOrigin, Tags.DefaultCropSize),
+            ImageCrop = crop, Reference = reference,
+            Compression = info.Compression == TiffCompression.SonyArw ? (ushort)32767
+                : info.Compression == TiffCompression.SonyArw6 ? (ushort)32766
+                : info.Compression == TiffCompression.Jpeg ? (ushort)7 : (ushort)1,
+            LinearYcbcr = linearRgb,
+            Native32 = SonyLens.Is32(crop) && SonyLens.Is32(reference),
+        };
+        // 複本比對亦解密（不只缺欄位時）：數十 kB，只讀三個 SR2Private 條目。
+        var (sonyLens, warp) = SonyLens.Corrections(bytes, tiff.Order, raw, tiff.IsBigTiff, Sr2(), body, geometry);
+        // ILCE-7RM6 表格走他慣例（自家 JPEG 量測；見 SonyRm6Lens）；allowlist 與 arw_lens 不交，故至多一者產 opcode。
+        // 影像取景與表格幾何皆須在驗證過的 3:2 範圍內。
+        var rm6 = linearRgb || !SonyLens.Is32(crop)
+            ? new List<Opcodes.Opcode>()
+            : SonyRm6Lens.LensOpcodes(raw, body, new PixelRect(0, 0, w, h), reference);
+        if (rm6.Count != 0 && sonyLens is not null)
+            sonyLens.Distortion.Status = SonyLensStatus.Applied;
+        var allLens = warp is not null ? new List<Opcodes.Opcode> { warp } : new List<Opcodes.Opcode>();
         var metadata = MetadataReader.FromTiff(tiff);
         metadata.Width = (uint)crop.Width;
         metadata.Height = (uint)crop.Height;
+        allLens.AddRange(rm6);
         var img = new RawImage
         {
             Format = RawFormat.Arw,
@@ -682,7 +707,8 @@ internal static class Arw
             WbMultipliers = linearRgb ? [1f, 1f, 1f] : wb,
             Linearized = false,
             PixelAspect = 1f,
-            Opcodes = new Opcodes.OpcodeLists(),
+            Opcodes = new Opcodes.OpcodeLists { List3 = allLens },
+            LensMetadata = new LensMetadata { Sony = sonyLens },
             Metadata = metadata,
         };
         img.ValidateFor(mode);

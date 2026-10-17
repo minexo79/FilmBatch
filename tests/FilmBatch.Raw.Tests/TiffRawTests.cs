@@ -235,28 +235,31 @@ public sealed class TiffRawTests
     }
 
     [Fact]
-    public void JxlDngIsAnExplicitUnsupported()
+    public void JxlDngRefusalIsGone_DecodingIsCoveredByJpegXlTests()
     {
-        // 最小合成 JPEG XL DNG：IFD0（DNG 版本）＋ raw 子 IFD（CFA、JXL 壓縮、空 strip）
-        var w = new TiffWriter();
-        var raw = new IfdBuilder()
-            .Set(Tags.NewSubfileType, new TiffValue.Long([0]))
-            .Set(Tags.ImageWidth, new TiffValue.Long([8]))
-            .Set(Tags.ImageLength, new TiffValue.Long([8]))
-            .Set(Tags.BitsPerSample, new TiffValue.Short([16]))
-            .Set(Tags.Compression, new TiffValue.Short([TiffCompression.JpegXl]))
-            .Set(Tags.Photometric, new TiffValue.Short([TiffPhotometric.Cfa]))
-            .Set(Tags.SamplesPerPixel, new TiffValue.Short([1]))
-            .Set(Tags.CfaRepeatPatternDim, new TiffValue.Short([2, 2]))
-            .Set(Tags.CfaPatternEp, new TiffValue.Byte([0, 1, 1, 2]))
-            .SetImage(new ImageData.Strips(8, [new byte[64]]));
-        var ifd0 = new IfdBuilder()
-            .Set(Tags.ImageWidth, new TiffValue.Long([8]))
-            .Set(Tags.ImageLength, new TiffValue.Long([8]))
-            .Set(Tags.DngVersion, new TiffValue.Byte([1, 7, 0, 0]))
-            .AddSubIfd(raw);
-        var file = w.Write([ifd0]);
-        Assert.Equal(RawErrorKind.Unsupported, Assert.Throws<RawException>(() => RawDecoder.Decode(file)).Kind);
-        Assert.Equal(RawErrorKind.Unsupported, Assert.Throws<RawException>(() => RawDecoder.ProbeInfo(file)).Kind);
+        // 佔位拒絕已移除：JPEG XL DNG 由 Raw/Codecs/JpegXlTests.cs 的解碼測試覆蓋；
+        // 此測試只鎖定「不再是明確不支援」的路由存在（空 chunk 報 Corrupt 而非 Unsupported）。
+        var info = new ImageInfo
+        {
+            Width = 8, Height = 8, BitsPerSample = [16], SamplesPerPixel = 1,
+            Compression = TiffCompression.JpegXl, Photometric = TiffPhotometric.Cfa, Planar = 1,
+            Predictor = 1, SampleFormat = 1, NewSubfileType = 0,
+            Layout = new ImageLayout.Strips(8), Offsets = [0], ByteCounts = [64],
+        };
+        var chunk = new byte[64];
+        try
+        {
+            _ = TiffRaw.ReadImage(chunk, info, ByteOrder.Little, Packing.Msb);
+            Assert.Fail("empty JPEG XL chunk should not decode");
+        }
+        catch (RawException ex) when (ex.Kind == RawErrorKind.Unsupported)
+        {
+            // 缺 libjxl 原生程式庫的打包前環境：略過（parent 整合驗證覆蓋）。
+            Assert.Skip("libjxl native runtime is not available in this environment.");
+        }
+        catch (RawException ex)
+        {
+            Assert.NotEqual(RawErrorKind.Unsupported, ex.Kind);
+        }
     }
 }

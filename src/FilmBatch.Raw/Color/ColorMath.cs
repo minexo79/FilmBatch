@@ -24,6 +24,7 @@ public readonly struct Mat3 : IEquatable<Mat3>
 
     public static Mat3 Identity { get; } = new(1, 0, 0, 0, 1, 0, 0, 0, 1);
 
+
     public double this[int row, int col] => (row * 3 + col) switch
     {
         0 => _m00, 1 => _m01, 2 => _m02,

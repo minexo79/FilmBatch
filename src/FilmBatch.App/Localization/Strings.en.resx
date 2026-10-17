@@ -294,6 +294,9 @@ Clear overrides: use the new preset entirely.</value></data>
   <data name="Gallery.Thumb.Failed" xml:space="preserve"><value>Load failed</value></data>
   <data name="Gallery.Thumb.FailedReason" xml:space="preserve"><value>Cannot decode: file is corrupt</value></data>
   <data name="Gallery.Chromatic" xml:space="preserve"><value>Chromatic</value></data>
+  <data name="Module.raw" xml:space="preserve"><value>RAW Camera Processing</value></data>
+  <data name="Param.raw.embedded_lens" xml:space="preserve"><value>Embedded Lens Corrections</value></data>
+  <data name="Param.raw.camera_local_tone" xml:space="preserve"><value>Camera Local Tone Mapping</value></data>
   <data name="Module.basic" xml:space="preserve"><value>Basic Adjustments</value></data>
   <data name="Module.lens_distortion" xml:space="preserve"><value>Lens Distortion</value></data>
   <data name="Module.multi_lens" xml:space="preserve"><value>Multi-Lens</value></data>

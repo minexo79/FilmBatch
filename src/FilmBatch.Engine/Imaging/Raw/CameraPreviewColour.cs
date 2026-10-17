@@ -322,13 +322,17 @@ internal static partial class CameraPreview
         return NearWhite(fitted) > Math.Max(NearWhite(plain), preview) + ClipTolerance;
     }
 
-    /// <summary>DNG 自家色調擬合（camera_preview 的 <c>fit_dng_tone</c>；檔案色彩模型維持，僅色調）。</summary>
-    internal static CameraLook? FitDngTone(RawImage raw, ReadOnlyMemory<byte> bytes, CameraTransform transform)
+    /// <summary>DNG 自家色調擬合（camera_preview 的 <c>fit_dng_tone</c>；檔案色彩模型維持，僅色調）。
+    /// <paramref name="vignette"/> 為嵌入 vignette（上游 <c>embedded</c>；已轉向、已裁切框座標）：
+    /// 自家 JPEG 已含它，未乘即擬合的色調使渲染角落亮兩次。無時行為不變。</summary>
+    internal static CameraLook? FitDngTone(RawImage raw, ReadOnlyMemory<byte> bytes, CameraTransform transform, EmbeddedVignette? vignette = null)
     {
         if (Proxies(raw, bytes, transform, ProxySize, MinPreviewFraction) is not { } pr)
             return null;
         var sensor = pr.Sensor;
         var reference = pr.Reference;
+        if (vignette is not null)
+            CameraPreviewLens.CorrectVignette(sensor, vignette.Vignette, vignette.Radius, raw.Orientation);
         var xy = CameraColor.AsShotWhiteXy(raw);
         if (ProfileTables.Create(raw.Color.Profile, CameraColor.IlluminantWeight(raw.Color, xy)) is { } tables)
         {
@@ -424,42 +428,6 @@ internal static partial class CameraPreview
         var vb = pairs.Select(p => Math.Pow(p.Second - mb, 2)).Sum();
         var r = cov / Math.Max(Math.Sqrt(va * vb), 1e-12);
         return double.IsFinite(r) ? r : -1.0;
-    }
-
-    /// <summary>感光代理移入相機 JPEG 幾何（camera_preview 的 <c>into_lens_geometry</c>）。</summary>
-    internal static RgbImage? IntoLensGeometry(RgbImage img, RawImage raw, int k, LensGeometry lens)
-    {
-        var a = raw.ActiveArea;
-        var c = raw.Crop.Clipped(a.Width, a.Height);
-        if (c.Width < k || c.Height < k)
-            c = new PixelRect(0, 0, a.Width, a.Height);
-        var (w, h) = (img.Width, img.Height);
-        if (k == 0 || w != c.Width / k || h != c.Height / k || w == 0 || h == 0 || a.Width < 2 || a.Height < 2)
-            return null;
-        var (aw, ah) = ((double)a.Width - 1.0, (double)a.Height - 1.0);
-        var (cx, cy) = (lens.Center[0] * aw, lens.Center[1] * ah);
-        var m = new[] { (0.0, 0.0), (aw, 0.0), (0.0, ah), (aw, ah) }.Select(p => double.Hypot(p.Item1 - cx, p.Item2 - cy)).Max();
-        m = Math.Max(m, 1e-9);
-        var kf = (double)k;
-        var (x0, y0) = ((double)c.X, (double)c.Y);
-        var @out = new RgbImage(w, h);
-        for (var i = 0; i < w * h; i++)
-        {
-            var (ox, oy) = (x0 + ((i % w) + 0.5) * kf - 0.5, y0 + ((i / w) + 0.5) * kf - 0.5);
-            var (dx, dy) = ((ox - cx) / m, (oy - cy) / m);
-            var r2 = dx * dx + dy * dy;
-            var f = lens.K[0] + r2 * (lens.K[1] + r2 * (lens.K[2] + r2 * lens.K[3]));
-            var (sx, sy) = ((cx + m * dx * f + 0.5 - x0) / kf, (cy + m * dy * f + 0.5 - y0) / kf);
-            float[] px;
-            if (sx >= 0.5 && sy >= 0.5 && sx <= w - 0.5 && sy <= h - 0.5)
-                px = SampleBilinear(img, (float)sx, (float)sy);
-            else
-                px = [float.NaN, float.NaN, float.NaN];
-            @out.Data[i * 3] = px[0];
-            @out.Data[i * 3 + 1] = px[1];
-            @out.Data[i * 3 + 2] = px[2];
-        }
-        return @out;
     }
 
     private static float[] SampleBilinear(RgbImage img, float x, float y)

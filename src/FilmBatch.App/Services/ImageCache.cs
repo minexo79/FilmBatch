@@ -14,8 +14,8 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
     private const int MaxPreviews = 8;
 
     private readonly SemaphoreSlim _decodeGate = new(Math.Max(2, Environment.ProcessorCount / 2));
-    private readonly ConcurrentDictionary<string, Task<SourceImage>> _thumbs = new(StringComparer.Ordinal);
-    private readonly ConcurrentDictionary<string, (int Edge, Task<SourceImage> Task)> _previews = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, (RawLoadOptions Options, Task<SourceImage> Task)> _thumbs = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, (int Edge, RawLoadOptions Options, Task<SourceImage> Task)> _previews = new(StringComparer.Ordinal);
     private readonly LinkedList<string> _previewOrder = new();
     private readonly object _stateLock = new();
     private int _previewLongEdge = previewLongEdge;
@@ -33,21 +33,24 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
         get { lock (_stateLock) return _folderGeneration; }
     }
 
-    public Task<SourceImage> GetThumbnailSourceAsync(string path) =>
-        _thumbs.GetOrAdd(path, p => DecodeAsync(p, ThumbnailLongEdge));
+    public Task<SourceImage> GetThumbnailSourceAsync(string path, RawLoadOptions rawOptions = default) =>
+        _thumbs.AddOrUpdate(path,
+            p => (rawOptions, DecodeAsync(p, ThumbnailLongEdge, rawOptions)),
+            (p, current) => current.Options == rawOptions
+                ? current : (rawOptions, DecodeAsync(p, ThumbnailLongEdge, rawOptions))).Task;
 
-    public Task<SourceImage> GetPreviewAsync(string path)
+    public Task<SourceImage> GetPreviewAsync(string path, RawLoadOptions rawOptions = default)
     {
         lock (_stateLock)
         {
-            if (_previews.TryGetValue(path, out var cur) && cur.Edge == _previewLongEdge)
+            if (_previews.TryGetValue(path, out var cur) && cur.Edge == _previewLongEdge && cur.Options == rawOptions)
             {
                 _previewOrder.Remove(path);
                 _previewOrder.AddFirst(path);
                 return cur.Task;
             }
-            var task = DecodeAsync(path, _previewLongEdge);
-            _previews[path] = (_previewLongEdge, task);
+            var task = DecodeAsync(path, _previewLongEdge, rawOptions);
+            _previews[path] = (_previewLongEdge, rawOptions, task);
             _previewOrder.Remove(path);
             _previewOrder.AddFirst(path);
             while (_previewOrder.Count > MaxPreviews)
@@ -97,12 +100,12 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
         BeginFolder();
     }
 
-    private async Task<SourceImage> DecodeAsync(string path, int longEdge)
+    private async Task<SourceImage> DecodeAsync(string path, int longEdge, RawLoadOptions rawOptions)
     {
         await _decodeGate.WaitAsync().ConfigureAwait(false);
         try
         {
-            return await Task.Run(() => ImageLoader.Load(path, longEdge)).ConfigureAwait(false);
+            return await Task.Run(() => ImageLoader.Load(path, longEdge, rawOptions)).ConfigureAwait(false);
         }
         finally
         {

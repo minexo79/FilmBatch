@@ -84,6 +84,8 @@ dotnet run build/Build.cs -- --rid osx-arm64 --smoke --zip
 
 需 Xcode Command Line Tools（含 Metal SDK）、CMake、Python 3；在 Apple Silicon 建置 x64 還需 Rosetta。腳本產生 `artifacts/dawn/{osx-arm64,osx-x64}/webgpu_dawn.dylib` 與量測來源記錄 `PROVENANCE.txt`，核對架構、部署目標及 WebGPU 匯出符號。封裝器只整檔取代，不修改 Mach-O 載入命令；沒有重建檔時，仍使用最低版本 26.0 的 NuGet 版本。
 
+`--smoke`／GUI 啟動需要一個作用中的顯示器：螢幕休眠或無頭工作階段（`CGGetActiveDisplayList` 回 0）時 Avalonia 的 RenderTimer 會以原生錯誤 -6661 失敗。遠端操作時先 `caffeinate -u -t <秒>` 喚醒顯示器再執行。
+
 輸出：
 
 - `dist/osx-arm64/FilmBatch.app`：可在 Finder 開啟，也可複製到「應用程式」資料夾

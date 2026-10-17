@@ -126,6 +126,18 @@ internal static class PreviewJpegColour
             lut[i] = trc.ToLinear(i / 255f);
         return lut;
     }
+
+    /// <summary>
+    /// 16-bit 正規化值 → 線性光的 65536 項表（上游 <c>Trc::lut16</c> `space.rs:119-124`；
+    /// 線性 TRC 走恆等：`lut16[i] = trc.to_linear(i / 65535)`）。
+    /// </summary>
+    internal static float[] Lut16(PreviewTrc trc)
+    {
+        var lut = new float[65536];
+        for (var i = 0; i < 65536; i++)
+            lut[i] = trc.ToLinear(i / 65535f);
+        return lut;
+    }
 }
 
 /// <summary>

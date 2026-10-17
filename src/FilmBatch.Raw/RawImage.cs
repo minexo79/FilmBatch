@@ -81,11 +81,19 @@ public sealed class RawInfo
 
     public ColorData Color { get; init; } = new();
 
-    /// <summary>機身原廠的拍攝白平衡倍率 [R/G, 1, B/G]；未知時為 null（DNG 不使用）。</summary>
-    public float[]? WbMultipliers { get; init; }
-
     public OpcodeLists Opcodes { get; init; } = new();
 
+    /// <summary>機身 maker note 中的拍攝白平衡倍率（綠 = 1），已知時（非 DNG）。長度 3。</summary>
+    public float[]? WbMultipliers { get; init; }
+
+    /// <summary>每個樣本的白（截斷）階，在線性化之後。</summary>
+    public float[] White { get; init; } = [];
+
+    /// <summary>見 <see cref="RawImage.Black"/>。</summary>
+    public BlackLevel Black { get; init; } = new();
+
+    /// <summary>檔案記錄的鏡頭校正中繼資料（解碼但不一定套用；見 <see cref="LensMetadata"/>）。</summary>
+    public LensMetadata LensMetadata { get; init; } = new();
     public Metadata Metadata { get; init; } = new();
 
     /// <summary>見 <see cref="RawImage.PixelAspect"/>。</summary>
@@ -166,6 +174,8 @@ public sealed partial class RawImage
 
     public OpcodeLists Opcodes { get; set; } = new();
 
+    /// <summary>檔案記錄的鏡頭校正中繼資料（解碼但不一定套用；見 <see cref="LensMetadata"/>）。</summary>
+    public LensMetadata LensMetadata { get; set; } = new();
     public Metadata Metadata { get; set; } = new();
 
     /// <summary>不含樣本的描述（與同一檔案的 <c>RawDecoder.ProbeInfo</c> 相同）。</summary>
@@ -181,8 +191,11 @@ public sealed partial class RawImage
         Crop = Crop,
         Orientation = Orientation,
         Color = Color,
-        WbMultipliers = WbMultipliers,
         Opcodes = Opcodes,
+        WbMultipliers = WbMultipliers,
+        White = White,
+        Black = Black,
+        LensMetadata = LensMetadata,
         Metadata = Metadata,
         PixelAspect = PixelAspect,
     };

@@ -4,7 +4,7 @@ using static FilmBatch.Core.Params.ParamDef;
 namespace FilmBatch.Core.Params;
 
 /// <summary>
-/// 16 個效果模組的參數 schema（計畫書 5.3）。順序即處理順序，也是模組面板由上到下的順序。
+/// RAW 來源與效果模組的參數 schema。順序即處理順序，也是模組面板由上到下的順序。
 /// UI 面板、合併、選擇性貼上都由這份 schema 產生；M1 起引擎的 uniform 佈局也由此產生。
 /// </summary>
 public static class ModuleCatalog
@@ -13,6 +13,12 @@ public static class ModuleCatalog
 
     public static IReadOnlyList<ModuleSchema> Modules { get; } =
     [
+        new("raw", "RAW 原廠處理", ModuleGroup.Basic, PasteCategory.Color,
+        [
+            Bool(ModuleSchema.EnabledKey, "啟用"),
+            Bool("embedded_lens", "內嵌鏡頭校正", true),
+            Bool("camera_local_tone", "相機局部色調"),
+        ]),
         new("basic", "基本調整", ModuleGroup.Basic, PasteCategory.Color,
         [
             Bool(ModuleSchema.EnabledKey, "啟用", true),

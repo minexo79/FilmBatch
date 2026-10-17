@@ -1,3 +1,5 @@
+using FilmBatch.Raw;
+
 namespace FilmBatch.Engine.Imaging;
 
 /// <summary>
@@ -13,6 +15,15 @@ public sealed class SourceImage(int width, int height, ushort[] rgba16)
     public ushort[] Rgba16 { get; } = rgba16;
     /// <summary>來源檔案的完整路徑（ImageLoader 設定；Downscale 會保留）。用於解析相對路徑的外部素材與每張照片的確定性種子。</summary>
     public string? FilePath { get; init; }
+
+    /// <summary>取得解碼時使用的 RAW 選項，供來源快取判斷是否需要重新顯影。</summary>
+    public RawLoadOptions RawOptions { get; init; }
+
+    /// <summary>取得原始 RAW 的幾何與相機資訊；一般影像為 <see langword="null"/>。</summary>
+    public RawInfo? RawInfo { get; init; }
+
+    /// <summary>取得原始 RAW 座標的語意遮罩；依 RawInfo 的有效區域、裁切與方向對齊來源影像。</summary>
+    public IReadOnlyList<SemanticMask> SemanticMasks { get; init; } = [];
 
     /// <summary>縮小（box filter），用於縮圖或拖曳中的降解析度預覽。</summary>
     public SourceImage Downscale(int maxLongEdge)
@@ -48,6 +59,9 @@ public sealed class SourceImage(int width, int height, ushort[] rgba16)
                 dst[o + 3] = (ushort)(a / n);
             }
         }
-        return new SourceImage(w, h, dst) { FilePath = FilePath };
+        return new SourceImage(w, h, dst)
+        {
+            FilePath = FilePath, RawOptions = RawOptions, RawInfo = RawInfo, SemanticMasks = SemanticMasks,
+        };
     }
 }
