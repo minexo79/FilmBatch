@@ -645,6 +645,45 @@ public sealed class EffectPipelineTests
         Assert.True(Math.Abs(Pixel(outImg, 0, 20) - Pixel(outImg, 39, 20)) <= 2);
     }
 
+    [Theory]
+    [InlineData(0.0, 0, false)]
+    [InlineData(7.5, 0, false)]
+    [InlineData(0.0, 1, true)]
+    [InlineData(-12.0, 3, false)]
+    public void Gpu_MatchesCpu_Crop(double angle, int quarter, bool flip)
+    {
+        using var gpu = TryCreateGpu();
+        Assert.SkipWhen(gpu is null, "沒有可用的 GPU 介面卡");
+        var src = HGradient(96, 64);
+        var s = ModuleCatalog.Defaults.With("crop.enabled", true).With("crop.rect_w", 0.6).With("crop.rect_h", 0.6)
+            .With("crop.angle", angle).With("crop.quarter", (double)quarter).With("crop.flip_h", flip)
+            .With("vignette.enabled", true).With("vignette.amount", 50.0);   // 之後的效果也以裁切後尺寸計算
+        var ct = TestContext.Current.CancellationToken;
+        var cpu = CpuPipeline.Process(src, s, null, ct);
+        var gpuOut = gpu!.Render16(src, s, ct);
+        Assert.Equal((cpu.Width, cpu.Height), (gpuOut.Width, gpuOut.Height));
+        var max = MaxAbsDiff(cpu.Rgba16, gpuOut.Rgba16);
+        Assert.True(max <= 64, $"GPU 與 CPU 16-bit 差異 {max}/65535");   // 與其他幾何模組相同容差
+
+        var preview = gpu.Render(src, s);   // 預覽（BGRA8）也是裁切後尺寸
+        Assert.Equal((cpu.Width, cpu.Height), (preview.Width, preview.Height));
+        Assert.Equal(cpu.Width * cpu.Height * 4, preview.Bgra.Length);
+    }
+
+    [Fact]
+    public void Gpu_Crop_ThenUncropped_ReallocatesWorkspace()
+    {
+        using var gpu = TryCreateGpu();
+        Assert.SkipWhen(gpu is null, "沒有可用的 GPU 介面卡");
+        var src = HGradient(64, 48);
+        var ct = TestContext.Current.CancellationToken;
+        var cropped = ModuleCatalog.Defaults.With("crop.enabled", true).With("crop.rect_w", 0.5);
+        Assert.Equal(32, gpu!.Render16(src, cropped, ct).Width);
+        var full = gpu.Render16(src, ModuleCatalog.Defaults, ct);
+        Assert.Equal((64, 48), (full.Width, full.Height));
+        Assert.True(MaxAbsDiff(full.Rgba16, CpuPipeline.Process(src, ModuleCatalog.Defaults, null, ct).Rgba16) <= 64);
+    }
+
     [Fact]
     public void Crop_ModuleParams_ExposeOutputSize()
     {
