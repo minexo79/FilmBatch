@@ -50,20 +50,6 @@
   <data name="Inspector.HideDisabled" xml:space="preserve"><value>Hide disabled modules</value></data>
   <data name="Inspector.ResetModule" xml:space="preserve"><value>Reset Module</value></data>
   <data name="Inspector.CopyModule" xml:space="preserve"><value>Copy This Module Only</value></data>
-  <data name="Film.Recipe" xml:space="preserve"><value>Recipe</value></data>
-  <data name="Film.Edited" xml:space="preserve"><value>EDITED</value></data>
-  <data name="Film.ResetToRecipe" xml:space="preserve"><value>Reset to recipe</value></data>
-  <data name="Film.SaveAsCustom" xml:space="preserve"><value>Save as custom recipe</value></data>
-  <data name="Film.Import" xml:space="preserve"><value>Import recipe…</value></data>
-  <data name="Film.Export" xml:space="preserve"><value>Export recipe…</value></data>
-  <data name="Film.RecipeName" xml:space="preserve"><value>Recipe name</value></data>
-  <data name="Film.InvalidName" xml:space="preserve"><value>Name must be 1–24 chars (letters, digits, -.'()&amp;+ space)</value></data>
-  <data name="Film.NameTaken" xml:space="preserve"><value>“{0}” already exists</value></data>
-  <data name="Film.UnsupportedEffect" xml:space="preserve"><value>“{0}” is not implemented yet; rendered as off</value></data>
-  <data name="Film.UnknownRecipe" xml:space="preserve"><value>Unknown recipe “{0}”; rendering current field values</value></data>
-  <data name="Film.SkippedOne" xml:space="preserve"><value>Skipped {0}</value></data>
-  <data name="Film.FileError" xml:space="preserve"><value>{0}: {1}</value></data>
-  <data name="Film.SkippedMany" xml:space="preserve"><value>Skipped {0} files — first: {1}</value></data>
   <data name="Filmstrip.All" xml:space="preserve"><value>All</value></data>
   <data name="Filmstrip.OverridesOnly" xml:space="preserve"><value>With overrides</value></data>
   <data name="Filmstrip.Unassigned" xml:space="preserve"><value>Unassigned</value></data>
@@ -250,11 +236,6 @@ This cannot be undone.</value></data>
   <data name="Presets.BadExtension" xml:space="preserve"><value>Preset files must use the .yaml or .yml extension.</value></data>
   <data name="Presets.Exported" xml:space="preserve"><value>Exported preset: {0}</value></data>
   <data name="Toast.ExportFailed" xml:space="preserve"><value>Export failed: {0}</value></data>
-  <data name="Film.Selected" xml:space="preserve"><value>Applied recipe “{0}”</value></data>
-  <data name="Film.ResetDone" xml:space="preserve"><value>Reset to “{0}”</value></data>
-  <data name="Film.Imported" xml:space="preserve"><value>Imported “{0}”</value></data>
-  <data name="Film.Exported" xml:space="preserve"><value>Exported “{0}”</value></data>
-  <data name="Film.CustomGroup" xml:space="preserve"><value>Custom</value></data>
   <data name="Dialog.AssignMessage" xml:space="preserve"><value>{0} photo(s) already have per-photo overrides.
 Keep overrides: switch the preset only; manually adjusted fields stay as they are.
 Clear overrides: use the new preset entirely.</value></data>
@@ -409,47 +390,7 @@ Clear overrides: use the new preset entirely.</value></data>
   <data name="Param.light_leak.size" xml:space="preserve"><value>Extent</value></data>
   <data name="Param.light_leak.irregularity" xml:space="preserve"><value>Irregularity</value></data>
   <data name="Param.light_leak.count" xml:space="preserve"><value>Count</value></data>
-  <data name="Param.film.recipe" xml:space="preserve"><value>Recipe</value></data>
   <data name="Param.film.strength" xml:space="preserve"><value>Effect Mix</value></data>
-  <data name="Param.film.style" xml:space="preserve"><value>Creative Style</value></data>
-  <data name="Param.film.sharpness" xml:space="preserve"><value>Sharpness</value></data>
-  <data name="Param.film.white_balance" xml:space="preserve"><value>White Balance</value></data>
-  <data name="Choice.film.white_balance.auto" xml:space="preserve"><value>Auto</value></data>
-  <data name="Choice.film.white_balance.keep" xml:space="preserve"><value>Keep input</value></data>
-  <data name="Param.film.amber_blue" xml:space="preserve"><value>Amber–Blue</value></data>
-  <data name="Param.film.green_magenta" xml:space="preserve"><value>Green–Magenta</value></data>
-  <data name="Param.film.effect" xml:space="preserve"><value>Picture Effect</value></data>
-  <data name="Choice.film.effect.off" xml:space="preserve"><value>Off</value></data>
-  <data name="Choice.film.effect.toy-camera" xml:space="preserve"><value>Toy Camera</value></data>
-  <data name="Choice.film.effect.pop-color" xml:space="preserve"><value>Pop Color</value></data>
-  <data name="Choice.film.effect.posterization" xml:space="preserve"><value>Posterization</value></data>
-  <data name="Choice.film.effect.retro-photo" xml:space="preserve"><value>Retro Photo</value></data>
-  <data name="Choice.film.effect.soft-high-key" xml:space="preserve"><value>Soft High-key</value></data>
-  <data name="Choice.film.effect.part-color" xml:space="preserve"><value>Partial Color</value></data>
-  <data name="Choice.film.effect.rough-mono" xml:space="preserve"><value>High Contrast Mono</value></data>
-  <data name="Choice.film.effect.soft-focus" xml:space="preserve"><value>Soft Focus</value></data>
-  <data name="Choice.film.effect.hdr-art" xml:space="preserve"><value>HDR Painting</value></data>
-  <data name="Choice.film.effect.miniature" xml:space="preserve"><value>Miniature</value></data>
-  <data name="Choice.film.effect.illust" xml:space="preserve"><value>Illustration</value></data>
-  <data name="Choice.film.effect.watercolor" xml:space="preserve"><value>Watercolor</value></data>
-  <data name="Param.film.effect_option" xml:space="preserve"><value>Effect Option</value></data>
-  <data name="Choice.film.effect_option.default" xml:space="preserve"><value>(Effect default)</value></data>
-  <data name="Choice.film.effect_option.blue" xml:space="preserve"><value>Blue</value></data>
-  <data name="Choice.film.effect_option.pink" xml:space="preserve"><value>Pink</value></data>
-  <data name="Choice.film.effect_option.green" xml:space="preserve"><value>Green</value></data>
-  <data name="Choice.film.effect_option.normal" xml:space="preserve"><value>Normal</value></data>
-  <data name="Choice.film.effect_option.cool" xml:space="preserve"><value>Cool</value></data>
-  <data name="Choice.film.effect_option.warm" xml:space="preserve"><value>Warm</value></data>
-  <data name="Choice.film.effect_option.magenta" xml:space="preserve"><value>Magenta</value></data>
-  <data name="Choice.film.effect_option.red" xml:space="preserve"><value>Red</value></data>
-  <data name="Choice.film.effect_option.yellow" xml:space="preserve"><value>Yellow</value></data>
-  <data name="Choice.film.effect_option.posterization-color" xml:space="preserve"><value>Color</value></data>
-  <data name="Choice.film.effect_option.posterization-bw" xml:space="preserve"><value>B&amp;W</value></data>
-  <data name="Param.film.exposure" xml:space="preserve"><value>Exposure Comp.</value></data>
-  <data name="Param.film.dro" xml:space="preserve"><value>D-Range Optimizer</value></data>
-  <data name="Choice.film.dro.off" xml:space="preserve"><value>Off</value></data>
-  <data name="Choice.film.dro.auto" xml:space="preserve"><value>Auto</value></data>
-  <data name="Param.film.wb_reference" xml:space="preserve"><value>Reference Color Temp</value></data>
   <data name="Param.photo_plate.plate_type" xml:space="preserve"><value>Plate</value></data>
   <data name="Choice.photo_plate.plate_type.tintype" xml:space="preserve"><value>Tintype</value></data>
   <data name="Choice.photo_plate.plate_type.wetplate" xml:space="preserve"><value>Wet plate collodion</value></data>

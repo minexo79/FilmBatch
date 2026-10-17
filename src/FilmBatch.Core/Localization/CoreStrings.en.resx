@@ -4,12 +4,4 @@
   <resheader name="version"><value>2.0</value></resheader>
   <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
   <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
-  <data name="Recipe.Error.NotAllowed" xml:space="preserve"><value>{0}: {1} is not allowed</value></data>
-  <data name="Recipe.Error.NewerFormat" xml:space="preserve"><value>made by a newer Recipe Lab (format {0})</value></data>
-  <data name="Recipe.Error.NotKeyValue" xml:space="preserve"><value>line {0} is not a YAML key: value</value></data>
-  <data name="Recipe.Error.SetTwice" xml:space="preserve"><value>{0} is set twice</value></data>
-  <data name="Recipe.Skip.Reason" xml:space="preserve"><value>{0}: {1}</value></data>
-  <data name="Recipe.Skip.CannotRead" xml:space="preserve"><value>{0}: cannot be read: {1}</value></data>
-  <data name="Recipe.Skip.TooLarge" xml:space="preserve"><value>{0}: too large to be a recipe</value></data>
-  <data name="Recipe.Skip.AlreadyLoaded" xml:space="preserve"><value>{0}: {1} is already loaded</value></data>
 </root>

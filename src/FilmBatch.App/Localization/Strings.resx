@@ -50,20 +50,6 @@
   <data name="Inspector.HideDisabled" xml:space="preserve"><value>隱藏未啟用模組</value></data>
   <data name="Inspector.ResetModule" xml:space="preserve"><value>重設此模組</value></data>
   <data name="Inspector.CopyModule" xml:space="preserve"><value>只複製此模組</value></data>
-  <data name="Film.Recipe" xml:space="preserve"><value>配方</value></data>
-  <data name="Film.Edited" xml:space="preserve"><value>EDITED</value></data>
-  <data name="Film.ResetToRecipe" xml:space="preserve"><value>重設為配方值</value></data>
-  <data name="Film.SaveAsCustom" xml:space="preserve"><value>另存為自訂配方</value></data>
-  <data name="Film.Import" xml:space="preserve"><value>匯入配方…</value></data>
-  <data name="Film.Export" xml:space="preserve"><value>匯出配方…</value></data>
-  <data name="Film.RecipeName" xml:space="preserve"><value>配方名稱</value></data>
-  <data name="Film.InvalidName" xml:space="preserve"><value>名稱需為 1–24 個字元（英數字與 -.'()&amp;+ 空格）</value></data>
-  <data name="Film.NameTaken" xml:space="preserve"><value>「{0}」已存在</value></data>
-  <data name="Film.UnsupportedEffect" xml:space="preserve"><value>「{0}」效果尚未實作，以關閉算圖</value></data>
-  <data name="Film.UnknownRecipe" xml:space="preserve"><value>未知配方「{0}」，沿用目前欄位值算圖</value></data>
-  <data name="Film.SkippedOne" xml:space="preserve"><value>已略過 {0}</value></data>
-  <data name="Film.FileError" xml:space="preserve"><value>{0}：{1}</value></data>
-  <data name="Film.SkippedMany" xml:space="preserve"><value>已略過 {0} 個檔案——首先：{1}</value></data>
   <data name="Filmstrip.All" xml:space="preserve"><value>全部</value></data>
   <data name="Filmstrip.OverridesOnly" xml:space="preserve"><value>只顯示有覆寫</value></data>
   <data name="Filmstrip.Unassigned" xml:space="preserve"><value>未指定預設</value></data>
@@ -250,11 +236,6 @@
   <data name="Presets.BadExtension" xml:space="preserve"><value>預設檔副檔名必須是 .yaml 或 .yml。</value></data>
   <data name="Presets.Exported" xml:space="preserve"><value>已匯出預設：{0}</value></data>
   <data name="Toast.ExportFailed" xml:space="preserve"><value>匯出失敗：{0}</value></data>
-  <data name="Film.Selected" xml:space="preserve"><value>已選用配方「{0}」</value></data>
-  <data name="Film.ResetDone" xml:space="preserve"><value>已重設為「{0}」</value></data>
-  <data name="Film.Imported" xml:space="preserve"><value>已匯入「{0}」</value></data>
-  <data name="Film.Exported" xml:space="preserve"><value>已匯出「{0}」</value></data>
-  <data name="Film.CustomGroup" xml:space="preserve"><value>自訂</value></data>
   <data name="Dialog.AssignMessage" xml:space="preserve"><value>有 {0} 張照片已有單張覆寫。
 保留覆寫：只更換預設，手動調整的欄位維持不變。
 清除覆寫：完全改用新預設。</value></data>

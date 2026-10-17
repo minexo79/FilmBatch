@@ -62,7 +62,7 @@ public sealed class ProjectService
         return Apply($"調整 {label}", fileNames, e => PhotoOperations.SetValue(e, key, value, BaseFor(e.PresetId)), mergeKey);
     }
 
-    /// <summary>一筆可復原的多欄位操作，例如選擇底片配方。</summary>
+    /// <summary>一筆可復原的多欄位操作，例如套用一組色相修正預設。</summary>
     public bool SetValues(IReadOnlyCollection<string> fileNames, Settings values, string description) =>
         Apply(description, fileNames, entry => entry with
         {
