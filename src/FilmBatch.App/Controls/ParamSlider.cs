@@ -36,6 +36,9 @@ public class ParamSlider : Slider
     /// <summary>結束一次連續編輯。</summary>
     public event EventHandler? EditCompleted;
 
+    /// <summary>雙擊滑桿：要求重設回預設值（由宿主處理）。</summary>
+    public event EventHandler? ResetRequested;
+
     public bool IsEditing { get; private set; }
 
     public ParamSlider()
@@ -56,6 +59,14 @@ public class ParamSlider : Slider
         var point = e.GetCurrentPoint(this);
         if (!point.Properties.IsLeftButtonPressed) return;
         Focus();
+        // 按下事件已在通道階段處理，DoubleTapped 手勢不可靠；直接以 ClickCount 判斷雙擊
+        if (e.ClickCount >= 2)
+        {
+            EndDrag();
+            ResetRequested?.Invoke(this, EventArgs.Empty);
+            e.Handled = true;
+            return;
+        }
         _dragging = true;
         _wasFine = (e.KeyModifiers & KeyModifiers.Shift) != 0;
         _dragStartX = point.Position.X;

@@ -1,6 +1,9 @@
+using FilmBatch.Core.Curves;
+
 namespace FilmBatch.Core.Params;
 
-public enum ParamKind { Float, Int, Bool, Choice, Path, Seed }
+/// <summary>參數型別。<see cref="Curve"/> 的值是正規化的文字（見 <see cref="ToneCurve.Serialize"/>）。</summary>
+public enum ParamKind { Float, Int, Bool, Choice, Path, Seed, Curve, Text }
 
 /// <summary>位置類參數的座標軸，用於「貼上時鏡像位置」。</summary>
 public enum PositionAxis { None, X, Y }
@@ -24,6 +27,8 @@ public sealed record ParamDef
     /// <summary>位置以 0 為中心（例如位移 −0.5 ~ 0.5），鏡像時取負值；否則以 1 − x 鏡像。</summary>
     public bool IsCenteredOffset { get; init; }
     public IReadOnlyList<ChoiceOption> Choices { get; init; } = [];
+    /// <summary>路徑是資料夾（UI 顯示瀏覽按鈕）；<see cref="ParamKind.Text"/> 的自由文字永遠為 false。</summary>
+    public bool IsDirectory { get; init; }
 
     public static ParamDef Bool(string key, string label, bool def = false) =>
         new() { Key = key, Label = label, Kind = ParamKind.Bool, Default = def, Max = 1 };
@@ -40,24 +45,39 @@ public sealed record ParamDef
     public static ParamDef Offset(string key, string label, PositionAxis axis) =>
         new() { Key = key, Label = label, Kind = ParamKind.Float, Default = 0.0, Min = -0.5, Max = 0.5, Step = 0.01, Axis = axis, IsCenteredOffset = true };
 
+    /// <summary>以 0 為中心的角度（例如拉直）：水平鏡像時取負值。</summary>
+    public static ParamDef MirrorAngle(string key, string label, double def, double min, double max, double step = 0.1) =>
+        new() { Key = key, Label = label, Kind = ParamKind.Float, Default = def, Min = min, Max = max, Step = step,
+                Unit = "°", Axis = PositionAxis.X, IsCenteredOffset = true };
+
     public static ParamDef Choice(string key, string label, params ChoiceOption[] options) =>
         new() { Key = key, Label = label, Kind = ParamKind.Choice, Default = options[0].Key, Choices = options };
 
+    /// <summary>自由文字（例如語意遮罩名稱）：任意值原樣保留，不做選項或路徑正規化。</summary>
     public static ParamDef Text(string key, string label, string def = "") =>
-        new() { Key = key, Label = label, Kind = ParamKind.Path, Default = def };
+        new() { Key = key, Label = label, Kind = ParamKind.Text, Default = def };
 
     public static ParamDef Path(string key, string label) =>
         new() { Key = key, Label = label, Kind = ParamKind.Path, Default = "" };
 
+    /// <summary>資料夾路徑：相對路徑以專案資料夾解析，UI 提供瀏覽按鈕。</summary>
+    public static ParamDef Directory(string key, string label) =>
+        new() { Key = key, Label = label, Kind = ParamKind.Path, Default = "", IsDirectory = true };
+
     public static ParamDef Seed(string key = "seed", string label = "種子") =>
         new() { Key = key, Label = label, Kind = ParamKind.Seed, Default = 0.0, Min = 0, Max = 9999 };
+
+    /// <summary>色調曲線（文字值 "x,y;x,y"，預設恆等）。</summary>
+    public static ParamDef Curve(string key, string label) =>
+        new() { Key = key, Label = label, Kind = ParamKind.Curve, Default = ToneCurve.IdentityText };
 
     /// <summary>把值限制在合法範圍。</summary>
     public ParamValue Coerce(ParamValue v) => Kind switch
     {
         ParamKind.Bool => ParamValue.Of(v.AsBool),
         ParamKind.Choice => Choices.Any(c => c.Key == v.AsText) ? ParamValue.Of(v.AsText) : Default,
-        ParamKind.Path => ParamValue.Of(v.AsText),
+        ParamKind.Path or ParamKind.Text => ParamValue.Of(v.AsText),
+        ParamKind.Curve => ToneCurve.TryParse(v.AsText, out var curve) ? ParamValue.Of(curve.Serialize()) : Default,
         ParamKind.Int or ParamKind.Seed => ParamValue.Of(Math.Round(Math.Clamp(v.AsNumber, Min, Max))),
         _ => ParamValue.Of(Math.Clamp(v.AsNumber, Min, Max)),
     };

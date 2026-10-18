@@ -5,7 +5,7 @@ using FilmBatch.App.ViewModels;
 
 namespace FilmBatch.App.Controls;
 
-/// <summary>數值參數列。雙擊名稱重設；滑桿的連續拖曳在 ViewModel 中合併為一筆復原紀錄。</summary>
+/// <summary>數值參數列。雙擊名稱或滑桿重設；滑桿的連續拖曳在 ViewModel 中合併為一筆復原紀錄。</summary>
 public partial class ParamRow : UserControl
 {
     public static readonly IValueConverter ToDecimal =
@@ -21,5 +21,6 @@ public partial class ParamRow : UserControl
         };
         Slider.EditStarted += (_, _) => (DataContext as SliderParamViewModel)?.BeginEdit();
         Slider.EditCompleted += (_, _) => (DataContext as SliderParamViewModel)?.EndEdit();
+        Slider.ResetRequested += (_, _) => (DataContext as ParamViewModel)?.ResetCommand.Execute(null);
     }
 }

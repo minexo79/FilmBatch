@@ -34,21 +34,21 @@ public sealed class LivePreferencesTests
         var path = CopySample(out var fw, out var fh);
         var cache = new ImageCache(previewLongEdge: 1200);
 
-        var first = await cache.GetPreviewAsync(path);
+        var first = await cache.GetPreviewAsync(path, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(Math.Min(1200, LongEdge(fw, fh)), LongEdge(first.Width, first.Height));
         var firstRef = first;
 
         // 相同尺寸：命中快取（同一物件），不是 ctor 固定值每次重解
-        Assert.Same(firstRef, await cache.GetPreviewAsync(path));
+        Assert.Same(firstRef, await cache.GetPreviewAsync(path, cancellationToken: TestContext.Current.CancellationToken));
 
         cache.SetPreviewLongEdge(2048);
         Assert.Equal(2048, cache.PreviewLongEdge);
-        var second = await cache.GetPreviewAsync(path);
+        var second = await cache.GetPreviewAsync(path, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(Math.Min(2048, LongEdge(fw, fh)), LongEdge(second.Width, second.Height));
         if (LongEdge(fw, fh) > 1200)
             Assert.NotSame(firstRef, second);
 
-        var thumb = await cache.GetThumbnailSourceAsync(path);
+        var thumb = await cache.GetThumbnailSourceAsync(path, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(Math.Min(ImageCache.ThumbnailLongEdge, LongEdge(fw, fh)), LongEdge(thumb.Width, thumb.Height));
     }
 
@@ -57,14 +57,14 @@ public sealed class LivePreferencesTests
     {
         var path = CopySample(out _, out _);
         var cache = new ImageCache();
-        var before = await cache.GetPreviewAsync(path);
+        var before = await cache.GetPreviewAsync(path, cancellationToken: TestContext.Current.CancellationToken);
         var gen = cache.FolderGeneration;
 
         var next = cache.BeginFolder();
         Assert.True(cache.IsCurrent(next));
         Assert.False(cache.IsCurrent(gen));
 
-        var after = await cache.GetPreviewAsync(path);
+        var after = await cache.GetPreviewAsync(path, cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotSame(before, after);
     }
 
@@ -97,7 +97,7 @@ public sealed class LivePreferencesTests
         using var svc = new PreviewService(() => throw new InvalidOperationException("no adapter"), a => a(), cpuFallback: false);
         string? failedKey = null;
         string? failedMessage = null;
-        svc.Failed += (key, message) => { failedKey = key; failedMessage = message; };
+        svc.Failed += failure => { failedKey = failure.Key; failedMessage = failure.Error.Message; };
         svc.DeviceReady += (_, _) => Assert.Fail("不應觸發 DeviceReady");
         svc.Start();
         TestEnv.PumpUntil(() => failedKey is not null);

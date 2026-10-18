@@ -4,7 +4,7 @@ using System.Resources;
 namespace FilmBatch.Core;
 
 /// <summary>
-/// Core / Engine 會顯示給使用者的訊息（匯出驗證、配方解析錯誤等）的語言切換。
+/// Core / Engine 會顯示給使用者的訊息（匯出驗證、檔名範本錯誤等）的語言切換。
 /// 新訊息放在 <c>Localization/CoreStrings.resx</c>，以 <see cref="Get"/> / <see cref="Format"/> 取用。
 /// 預設繁體中文（CLI 與測試維持原樣）；App 切換介面語言時同步設定 <see cref="Culture"/>。
 /// </summary>

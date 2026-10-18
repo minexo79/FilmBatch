@@ -10,7 +10,14 @@ namespace FilmBatch.Core.Projects;
 /// </summary>
 public sealed class Project
 {
-    public static readonly string[] SupportedExtensions = [".tif", ".tiff", ".jpg", ".jpeg", ".png"];
+    /// <summary>可由 RAW 解碼器辨識的副檔名；各機身的壓縮變體仍由檔頭判斷。</summary>
+    public static readonly string[] RawExtensions =
+    [
+        ".arw", ".sr2", ".srf", ".dng", ".nef", ".nrw", ".cr2", ".cr3", ".raf",
+        ".rw2", ".rwl", ".raw", ".orf", ".pef", ".srw", ".erf", ".mef", ".3fr", ".fff",
+    ];
+
+    public static readonly string[] SupportedExtensions = [".tif", ".tiff", ".jpg", ".jpeg", ".png", .. RawExtensions];
 
     private readonly Dictionary<string, PhotoEntry> _photos = new(StringComparer.Ordinal);
     private readonly List<string> _order = [];
@@ -23,7 +30,7 @@ public sealed class Project
     public bool PreserveSnapshots { get; private set; }
 
     public string Folder { get; }
-    public int PipelineVersion { get; init; } = 1;
+    public int PipelineVersion { get; init; } = ProjectStorage.CurrentVersion;
     public Guid DefaultPresetId { get; set; }
 
     /// <summary>所用預設的快照（預設庫中被刪除或修改時，舊專案的結果不會在不知情時改變）。</summary>

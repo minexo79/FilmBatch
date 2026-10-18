@@ -8,7 +8,7 @@
              x:DataType="vm:InspectorViewModel">
   <!-- 照片資訊（固定在頂部）＋ 模組捲動區（計畫書 2.4.5） -->
   <DockPanel Background="{DynamicResource FB.PanelBrush}">
-    <Border DockPanel.Dock="Top" Classes="panel-header">
+    <Border DockPanel.Dock="Top" Classes="panel-header" IsVisible="{Binding ShowsPhotoInfo}">
       <Panel>
         <TextBlock Classes="secondary" Text="{l:Tr Inspector.NoPhoto}" IsVisible="{Binding !HasPhoto}" Margin="0,4" />
         <StackPanel Spacing="12" IsVisible="{Binding HasPhoto}">
@@ -75,21 +75,53 @@
                         </MenuFlyout>
                       </c:ModuleSection.HeaderFlyout>
                       <StackPanel>
-                      <!-- film 模組頂部的配方選擇由 ModuleSectionViewModel.Film 提供；其他模組為 null 不顯示 -->
-                      <ContentControl Content="{Binding Film}">
+                      <!-- film 模組的底片風格由 ModuleSectionViewModel.FilmLook 提供（其他模組為 null 不顯示）：
+                           底片縮圖格在一般參數（效果比例／暖色／褪色）之上，色相修正與自訂色相在其下 -->
+                      <ContentControl Content="{Binding FilmLook}" IsVisible="{Binding FilmLook, Converter={x:Static ObjectConverters.IsNotNull}}">
                         <ContentControl.DataTemplates>
-                          <DataTemplate x:DataType="vm:FilmRecipeViewModel">
-                            <c:FilmRecipeControl />
+                          <DataTemplate x:DataType="vm:FilmLookViewModel">
+                            <c:FilmLookControl Part="Look" />
                           </DataTemplate>
                         </ContentControl.DataTemplates>
                       </ContentControl>
                       <ItemsControl ItemsSource="{Binding Params}">
                         <ItemsControl.DataTemplates>
+                          <!-- RAW 白平衡／遮罩：與一般選項列相同的「名稱 ● ｜ 下拉」單行，補充說明放在下方一行 -->
+                          <DataTemplate DataType="vm:RawWbParamViewModel">
+                            <StackPanel IsVisible="{Binding IsVisible}">
+                              <Grid ColumnDefinitions="*,Auto" Classes="param-line">
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                  <TextBlock Classes="param-name" Classes.overridden="{Binding IsOverridden}" Text="{Binding Label}" />
+                                  <Ellipse Classes="override-dot" IsVisible="{Binding IsOverridden}" />
+                                </StackPanel>
+                                <ComboBox Grid.Column="1" Classes="flat" MinWidth="150" VerticalAlignment="Center"
+                                          ItemsSource="{Binding Options}" SelectedItem="{Binding Selected}"
+                                          DisplayMemberBinding="{Binding Label, x:DataType=vm:ChoiceItem}" />
+                              </Grid>
+                              <TextBlock Classes="secondary small" HorizontalAlignment="Right" Margin="0,-4,0,6"
+                                         Text="{Binding AsShotText}" IsVisible="{Binding HasAsShot}" />
+                            </StackPanel>
+                          </DataTemplate>
+                          <DataTemplate DataType="vm:RawMaskParamViewModel">
+                            <StackPanel IsVisible="{Binding IsVisible}">
+                              <Grid ColumnDefinitions="*,Auto" Classes="param-line">
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                  <TextBlock Classes="param-name" Classes.overridden="{Binding IsOverridden}" Text="{Binding Label}" />
+                                  <Ellipse Classes="override-dot" IsVisible="{Binding IsOverridden}" />
+                                </StackPanel>
+                                <ComboBox Grid.Column="1" Classes="flat" MinWidth="150" MaxWidth="190" VerticalAlignment="Center"
+                                          ItemsSource="{Binding Options}" SelectedItem="{Binding Selected}"
+                                          DisplayMemberBinding="{Binding Label, x:DataType=vm:SemanticMaskOption}" />
+                              </Grid>
+                              <TextBlock Classes="secondary small" TextWrapping="Wrap" Margin="0,-4,0,6"
+                                         Text="{Binding MaskStatusText}" IsVisible="{Binding HasMaskStatus}" />
+                            </StackPanel>
+                          </DataTemplate>
                           <DataTemplate DataType="vm:SliderParamViewModel">
-                            <c:ParamRow />
+                            <c:ParamRow IsVisible="{Binding IsVisible}" />
                           </DataTemplate>
                           <DataTemplate DataType="vm:ChoiceParamViewModel">
-                            <Grid ColumnDefinitions="*,Auto" Classes="param-line">
+                            <Grid ColumnDefinitions="*,Auto" Classes="param-line" IsVisible="{Binding IsVisible}">
                               <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                 <TextBlock Classes="param-name" Classes.overridden="{Binding IsOverridden}" Text="{Binding Label}" />
                                 <Ellipse Classes="override-dot" IsVisible="{Binding IsOverridden}" />
@@ -100,7 +132,7 @@
                             </Grid>
                           </DataTemplate>
                           <DataTemplate DataType="vm:ToggleParamViewModel">
-                            <Grid ColumnDefinitions="*,Auto" Classes="param-line">
+                            <Grid ColumnDefinitions="*,Auto" Classes="param-line" IsVisible="{Binding IsVisible}">
                               <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                 <TextBlock Classes="param-name" Classes.overridden="{Binding IsOverridden}" Text="{Binding Label}" />
                                 <Ellipse Classes="override-dot" IsVisible="{Binding IsOverridden}" />
@@ -108,17 +140,43 @@
                               <ToggleSwitch Grid.Column="1" Classes="compact" IsChecked="{Binding Value}" OnContent="" OffContent="" />
                             </Grid>
                           </DataTemplate>
+                          <!-- 文字／路徑：一般為單行「名稱 ｜ 輸入框」；資料夾參數改為兩行（同滑桿列），下行整寬輸入框＋瀏覽 -->
                           <DataTemplate DataType="vm:TextParamViewModel">
-                            <Grid ColumnDefinitions="*,Auto" Classes="param-line">
+                            <StackPanel IsVisible="{Binding IsVisible}">
+                              <Grid ColumnDefinitions="*,Auto" Classes="param-line">
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,0,6,0">
+                                  <TextBlock Classes="param-name" Classes.overridden="{Binding IsOverridden}" Text="{Binding Label}"
+                                             ToolTip.Tip="{Binding Label}" />
+                                  <Ellipse Classes="override-dot" IsVisible="{Binding IsOverridden}" />
+                                </StackPanel>
+                                <TextBox Grid.Column="1" Text="{Binding Value}" Width="150" VerticalAlignment="Center"
+                                         PlaceholderText="{l:Tr Inspector.RelativePath}" IsVisible="{Binding !CanBrowse}" />
+                              </Grid>
+                              <Grid ColumnDefinitions="*,Auto" Margin="0,-4,0,6" IsVisible="{Binding CanBrowse}">
+                                <TextBox Text="{Binding Value}" VerticalAlignment="Center" PlaceholderText="{l:Tr Inspector.RelativePath}" />
+                                <Button Grid.Column="1" Classes="outline" Margin="6,0,0,0" VerticalAlignment="Center"
+                                        Content="{l:Tr Raw.BrowseFolder}" Command="{Binding BrowseCommand}" />
+                              </Grid>
+                            </StackPanel>
+                          </DataTemplate>
+                          <DataTemplate DataType="vm:CurveParamViewModel">
+                            <StackPanel Spacing="4" Classes="param-line">
                               <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                 <TextBlock Classes="param-name" Classes.overridden="{Binding IsOverridden}" Text="{Binding Label}" />
                                 <Ellipse Classes="override-dot" IsVisible="{Binding IsOverridden}" />
                               </StackPanel>
-                              <TextBox Grid.Column="1" Text="{Binding Value}" Width="150" VerticalAlignment="Center" PlaceholderText="{l:Tr Inspector.RelativePath}" />
-                            </Grid>
+                              <c:CurveEditor Points="{Binding Points}" />
+                            </StackPanel>
                           </DataTemplate>
                         </ItemsControl.DataTemplates>
                       </ItemsControl>
+                      <ContentControl Content="{Binding FilmLook}" IsVisible="{Binding FilmLook, Converter={x:Static ObjectConverters.IsNotNull}}">
+                        <ContentControl.DataTemplates>
+                          <DataTemplate x:DataType="vm:FilmLookViewModel">
+                            <c:FilmLookControl Part="Hue" />
+                          </DataTemplate>
+                        </ContentControl.DataTemplates>
+                      </ContentControl>
                       </StackPanel>
                     </c:ModuleSection>
                   </DataTemplate>

@@ -235,6 +235,231 @@ public sealed class TiffMetadataTests
         finally { Directory.Delete(folder, recursive: true); }
     }
 
+    [Theory]
+    [InlineData(0x0055, false)]
+    [InlineData(0x4f52, false)]
+    [InlineData(0x4f52, true)]
+    [InlineData(0x5352, false)]
+    public void ReadRaw_ClassicRawTiffHeadersPreserveCameraMetadata(int magic, bool bigEndian)
+    {
+        var extension = magic == 0x0055 ? ".rw2" : ".orf";
+        var path = Path.Combine(Path.GetTempPath(), "filmbatch-raw-header-" + Guid.NewGuid().ToString("N") + extension);
+        try
+        {
+            // RW2／ORF 沿用 classic TIFF IFD 佈局，只更換標頭 magic；不能當成損毀的 EXIF 丟棄。
+            var bytes = TiffBlock(bigEndian, [(271, 2, 9, "RawBrand\0"u8.ToArray()), (272, 2, 9, "RawModel\0"u8.ToArray())]);
+            if (bigEndian) BinaryPrimitives.WriteUInt16BigEndian(bytes.AsSpan(2), (ushort)magic);
+            else BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(2), (ushort)magic);
+            File.WriteAllBytes(path, bytes);
+            var profile = TiffMetadata.ReadRaw(path, 2, 2);
+            Assert.Equal("RawBrand", profile.GetValue(ExifTag.Make)?.Value?.Trim());
+            Assert.Equal("RawModel", profile.GetValue(ExifTag.Model)?.Value?.Trim());
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(true, true, true)]
+    [InlineData(false, true, true)]
+    [InlineData(true, false, false)]
+    public void ReadRaw_Cr3MergesExifAndGpsAcrossByteOrders(bool rootBig, bool exifBig, bool gpsBig)
+    {
+        // CR3 容器夾具：ftyp（crx ）＋ moov → uuid（Canon）內的 CMT1／CMT2／CMT4；各自獨立位元組序。
+        var path = Path.Combine(Path.GetTempPath(), "filmbatch-cr3-" + Guid.NewGuid().ToString("N") + ".cr3");
+        try
+        {
+            File.WriteAllBytes(path, Cr3Fixture(rootBig, exifBig, gpsBig));
+            var profile = TiffMetadata.ReadRaw(path, 2, 2);
+            Assert.Equal("Canon", profile.GetValue(ExifTag.Make)?.Value?.Trim());
+            var iso = profile.GetValue(ExifTag.ISOSpeedRatings)?.Value;
+            Assert.NotNull(iso);
+            Assert.Contains((ushort)640, iso!);
+            Assert.Equal("N", profile.GetValue(ExifTag.GPSLatitudeRef)?.Value);
+            // CMT2 內的 MakerNote 位移以原區塊為原點：合併時不帶入。
+            Assert.Null(profile.GetValue(ExifTag.MakerNote)?.Value);
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
+    public async Task Export_DamagedRawExif_RecordsMetadataWarning()
+    {
+        // 可解碼的 2×2 16-bit CFA DNG（.dng），EXIF 值位移損毀：匯出成功、像素寫出、log 有 MetadataWarning 字串。
+        var folder = Path.Combine(Path.GetTempPath(), "filmbatch-raw-exif-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var source = DngFixture(damagedExif: true);
+            File.WriteAllBytes(Path.Combine(folder, "source.dng"), source);
+            using var library = new PresetLibrary(SamplePresets.Create());
+            var service = new ProjectService(Project.Open(folder, SamplePresets.Neutral), library, new CommandStack());
+            var summary = await BatchExporter.RunAsync(new ExportRequest
+            {
+                Service = service, Files = ["source.dng"],
+                Options = new ExportOptions { Destination = Path.Combine(folder, "out"), Format = ExportFormat.Png16 }
+            }, () => new CpuFakeRenderer(), cancellationToken: TestContext.Current.CancellationToken);
+            Assert.Equal(0, summary.Failed);
+            using var output = new MagickImage(Assert.Single(summary.OutputFiles));
+            Assert.Equal(new uint[] { 2, 2 }, new[] { output.Width, output.Height });
+            using var log = JsonDocument.Parse(File.ReadAllText(Path.Combine(folder, ".filmbatch", "export_log.json")));
+            var entry = log.RootElement.GetProperty("Entries")[0];
+            Assert.Equal("ok", entry.GetProperty("Status").GetString());
+            Assert.Equal(JsonValueKind.String, entry.GetProperty("MetadataWarning").ValueKind);
+        }
+        finally { Directory.Delete(folder, recursive: true); }
+    }
+
+    private static byte[] Cr3Fixture(bool rootBig, bool exifBig, bool gpsBig)
+    {
+        // CMT1（IFD0）：Make＝Canon；CMT2（Exif IFD）：ISOSpeedRatings＝640＋MakerNote；CMT4（GPS IFD）：GPSLatitudeRef＝N。
+        // SHORT 值位元組須與所屬區塊的位元組序一致（LE 640＝[0x80, 0x02]，BE＝[0x02, 0x80]）。
+        var iso = exifBig ? new byte[] { 0x02, 0x80 } : new byte[] { 0x80, 0x02 };
+        var cmt1 = TiffBlock(rootBig, [(271, 2, 6, "Canon\0"u8.ToArray())]);
+        var cmt2 = TiffBlock(exifBig, [(34855, 3, 1, iso), (37500, 7, 4, [1, 2, 3, 4])]);
+        var cmt4 = TiffBlock(gpsBig, [(1, 2, 2, "N\0"u8.ToArray())]);
+        var canon = Concat(Box("CMT1", cmt1), Box("CMT2", cmt2), Box("CMT4", cmt4));
+        var uuidBody = Concat(Cr3ContainerUuid(), canon);
+        var moov = Box("moov", Box("uuid", uuidBody));
+        return Concat(Box("ftyp", "crx \0\0\0\0crx "u8.ToArray()), moov);
+    }
+
+    private static byte[] Cr3ContainerUuid() =>
+        [0x85, 0xc0, 0xb6, 0x87, 0x82, 0x0f, 0x11, 0xe0, 0x81, 0x11, 0xf4, 0xce, 0x46, 0x2b, 0x6a, 0x48];
+
+    private static byte[] TiffBlock(bool bigEndian, (ushort Tag, ushort Type, uint Count, byte[] Payload)[] entries)
+    {
+        // 單 IFD 小 TIFF：檔頭（8）＋計數＋條目＋結束＋值區；值位移以區塊開頭為原點。
+        var output = new List<byte>();
+        output.AddRange(bigEndian ? "MM"u8.ToArray() : "II"u8.ToArray());
+        void Number(ulong value, int size)
+        {
+            Span<byte> bytes = stackalloc byte[8];
+            if (bigEndian) BinaryPrimitives.WriteUInt64BigEndian(bytes, value);
+            else BinaryPrimitives.WriteUInt64LittleEndian(bytes, value);
+            output.AddRange((bigEndian ? bytes[(8 - size)..] : bytes[..size]).ToArray());
+        }
+        Number(42, 2);
+        Number(8, 4);
+        Number((ulong)entries.Length, 2);
+        var values = new List<byte>();
+        foreach (var (tag, type, count, payload) in entries)
+        {
+            Number(tag, 2); Number(type, 2); Number(count, 4);
+            if (payload.Length <= 4)
+            {
+                output.AddRange(payload);
+                for (var i = payload.Length; i < 4; i++) output.Add(0);
+            }
+            else
+            {
+                var at = (uint)(8 + 2 + entries.Length * 12 + 4 + values.Count);
+                Number(at, 4);
+                values.AddRange(payload);
+                if ((values.Count & 1) != 0) values.Add(0);
+            }
+        }
+        Number(0, 4);
+        output.AddRange(values);
+        return [.. output];
+    }
+
+    private static byte[] Box(string kind, byte[] body)
+    {
+        var output = new byte[8 + body.Length];
+        BinaryPrimitives.WriteUInt32BigEndian(output.AsSpan(0, 4), (uint)output.Length);
+        Encoding.ASCII.GetBytes(kind).CopyTo(output.AsSpan(4));
+        body.CopyTo(output.AsSpan(8));
+        return output;
+    }
+
+    private static byte[] Concat(params byte[][] parts)
+    {
+        var output = new byte[parts.Sum(p => p.Length)];
+        var at = 0;
+        foreach (var part in parts) { part.CopyTo(output.AsSpan(at)); at += part.Length; }
+        return output;
+    }
+
+    private static byte[] DngFixture(bool damagedExif)
+    {
+        // 最小可解碼 DNG：IFD0（Make＋DngVersion＋EXIF 指標）→ EXIF（DateTimeOriginal，值位移損毀）→ raw CFA IFD（2×2 未壓縮 16-bit）。
+        // 主鏈：IFD0 next＝raw IFD；值區在所有 IFD 之後、像素在最後。
+        var pixels = new byte[2 * 2 * 2];
+        BinaryPrimitives.WriteUInt16LittleEndian(pixels.AsSpan(0, 2), 4000);
+        BinaryPrimitives.WriteUInt16LittleEndian(pixels.AsSpan(2, 2), 2000);
+        BinaryPrimitives.WriteUInt16LittleEndian(pixels.AsSpan(4, 2), 2000);
+        BinaryPrimitives.WriteUInt16LittleEndian(pixels.AsSpan(6, 2), 1000);
+        // IFD0：Make（值區）、DngVersion（內嵌）、EXIF 指標。
+        var ifd0Count = 3;
+        var exifCount = 1;
+        var rawCount = 15;
+        var ifd0At = 8u;
+        var exifAt = ifd0At + (uint)(2 + ifd0Count * 12 + 4);
+        var rawAt = exifAt + (uint)(2 + exifCount * 12 + 4);
+        var valuesAt = rawAt + (uint)(2 + rawCount * 12 + 4);
+        var output = new List<byte>();
+        output.AddRange("II"u8.ToArray());
+        output.AddRange([42, 0, 8, 0, 0, 0]);
+        void U16(ushort v) { output.Add((byte)v); output.Add((byte)(v >> 8)); }
+        void U32(uint v) { output.Add((byte)v); output.Add((byte)(v >> 8)); output.Add((byte)(v >> 16)); output.Add((byte)(v >> 24)); }
+        void Inline(byte[] payload) { output.AddRange(payload); for (var i = payload.Length; i < 4; i++) output.Add(0); }
+        var values = new List<byte>();
+        uint Place(byte[] payload)
+        {
+            var at = valuesAt + (uint)values.Count;
+            values.AddRange(payload);
+            if ((values.Count & 1) != 0) values.Add(0);
+            return at;
+        }
+        var makeAt = Place("Test\0"u8.ToArray());
+        var dateAt = damagedExif ? 0xFFFF_FFFFu : Place("2026:01:02 03:04:05\0"u8.ToArray());
+        var neutral = new byte[24];
+        for (var i = 0; i < 3; i++) { neutral[i * 8] = 1; neutral[i * 8 + 4] = 1; }
+        var neutralAt = Place(neutral);
+        var matrix = new byte[72];
+        for (var i = 0; i < 9; i++)
+        {
+            // 單位矩陣對角線（i＝0、4、8）：有理數 num＝1、den＝1，各 4 位元組小端序。
+            if (i % 4 == 0) matrix[i * 8] = 1;
+            matrix[i * 8 + 4] = 1;
+        }
+        var matrixAt = Place(matrix);
+        var pixelAt = valuesAt + (uint)values.Count;
+        // IFD0。
+        U16((ushort)ifd0Count);
+        U16(271); U16(2); U32(5); U32(makeAt);
+        U16(34665); U16(4); U32(1); U32(exifAt);
+        U16(50706); U16(1); U32(4); Inline([1, 4, 0, 0]);
+        U32(rawAt);
+        // EXIF：DateTimeOriginal（值位移損毀時指向檔尾之外）。
+        U16((ushort)exifCount);
+        U16(36867); U16(2); U32(20); U32(dateAt);
+        U32(0);
+        // raw CFA IFD。
+        U16((ushort)rawCount);
+        U16(254); U16(4); U32(1); Inline([0, 0, 0, 0]);
+        U16(256); U16(3); U32(1); Inline([2, 0, 0, 0]);
+        U16(257); U16(3); U32(1); Inline([2, 0, 0, 0]);
+        U16(258); U16(3); U32(1); Inline([16, 0, 0, 0]);
+        U16(259); U16(3); U32(1); Inline([1, 0, 0, 0]);
+        U16(262); U16(3); U32(1); Inline([0x23, 0x80, 0, 0]); // PhotometricInterpretation 32803 (CFA)
+        U16(273); U16(4); U32(1); U32(pixelAt);
+        U16(277); U16(3); U32(1); Inline([1, 0, 0, 0]);
+        U16(278); U16(3); U32(1); Inline([2, 0, 0, 0]);
+        U16(279); U16(4); U32(1); U32(8);
+        U16(33421); U16(3); U32(2); Inline([2, 0, 2, 0]);
+        U16(33422); U16(7); U32(4); Inline([0, 1, 1, 2]);
+        U16(50706); U16(1); U32(4); Inline([1, 4, 0, 0]);
+        U16(50721); U16(5); U32(9); U32(matrixAt);
+        U16(50728); U16(5); U32(3); U32(neutralAt);
+        U32(0);
+        output.AddRange(values);
+        output.AddRange(pixels);
+        return [.. output];
+    }
+
+
     private static int FindField(byte[] tiff, uint directory, ushort tag)
     {
         var count = BinaryPrimitives.ReadUInt16LittleEndian(tiff.AsSpan((int)directory, 2));

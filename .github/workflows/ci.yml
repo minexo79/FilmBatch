@@ -20,14 +20,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: windows-latest
+          - os: windows-2022
             rid: win-x64
           # WebGPUSharp 0.5.7 內附的 Dawn 原生函式庫宣告 minos 26.0；
           # 較低 macOS 由 dawn-build 產物（artifacts/dawn/）涵蓋，矩陣 runner 仍反映內附 ABI 的真實需求。
           - os: macos-26
             rid: osx-arm64
-          - os: macos-26-intel
-            rid: osx-x64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -46,6 +44,10 @@ jobs:
       - name: Test
         run: dotnet test FilmBatch.sln -c Release --no-build
 
+      # Native availability/ABI is required on BOTH runners; a missing bundle is a failure.
+      - name: Bundled JXL ABI and sample decode
+        run: dotnet test tests/FilmBatch.Raw.Tests/FilmBatch.Raw.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~PortableJxlTests|FullyQualifiedName~JpegXlTests"
+
       # 發佈 + 冒煙測試（無 GPU 時改用 CPU 算圖，仍會驗證原生函式庫與視窗）
       - name: Publish (${{ matrix.rid }}) + smoke
         run: dotnet run build/Build.cs -- --rid ${{ matrix.rid }} --smoke --zip
@@ -59,7 +61,7 @@ jobs:
             dist/smoke-${{ matrix.rid }}.png
 
   shaders:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -75,7 +77,7 @@ jobs:
   pre-merge:
     if: ${{ always() }}
     needs: [desktop, shaders]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: Require all checks
@@ -98,8 +100,8 @@ jobs:
           global-json-file: global.json
       - name: Restore (needs NuGet 內附 Dawn 作 ABI 比對)
         run: dotnet restore FilmBatch.sln
-      - name: Build Dawn for both macOS architectures
-        run: bash build/build-dawn.sh all
+      - name: Build Dawn for Apple Silicon
+        run: bash build/build-dawn.sh arm64
       - uses: actions/upload-artifact@v4
         with:
           name: dawn-macos-minos14

@@ -26,7 +26,6 @@ public static class AppPaths
     public static string SettingsFile => Path.Combine(Root, "settings.json");
     public static string LayoutFile => Path.Combine(Root, "layout.json");
     public static string Presets => Path.Combine(Root, "presets");
-    public static string Recipes => Path.Combine(Root, "recipes");
     public static string Logs => Path.Combine(Root, "logs");
     public static string Textures => Path.Combine(Root, "textures");
 

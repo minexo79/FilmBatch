@@ -121,9 +121,9 @@ public sealed class RenderSchedulerReconfigureTests
     {
         using var scheduler = new RenderScheduler(() => throw new InvalidOperationException("no GPU here"));
         var failed = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
-        scheduler.RenderFailed += (key, ex) =>
+        scheduler.RenderFailed += failure =>
         {
-            if (key == "$init") failed.TrySetResult(ex.Message);
+            if (failure.Key == "$init") failed.TrySetResult(failure.Error.Message);
         };
         scheduler.Start();
         var message = await failed.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);

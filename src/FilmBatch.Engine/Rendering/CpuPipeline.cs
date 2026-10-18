@@ -1,6 +1,8 @@
 using FilmBatch.Core.Params;
 using FilmBatch.Core.Random;
 using FilmBatch.Engine.Imaging;
+using FilmBatch.Engine.Imaging.Raw;
+using System.Runtime.Intrinsics;
 
 namespace FilmBatch.Engine.Rendering;
 
@@ -23,12 +25,23 @@ public static class CpuPipeline
 
     public static SourceImage Process(SourceImage source, ModuleParams p, ushort[]? outRgba16, CancellationToken ct)
     {
-        int w = source.Width, h = source.Height, n = w * h;
         var cur = DecodeLinear(source);
+        ct.ThrowIfCancellationRequested();
+
+        // 裁切（旋轉 90°、翻轉、拉直、裁切）：之後所有模組都以裁切後的畫框計算
+        if (p.Crop.On) cur = Crop(cur, source.Width, source.Height, p.CropT);
+        int w = p.OutWidth, h = p.OutHeight, n = w * h;
         ct.ThrowIfCancellationRequested();
 
         var a = new float[n * 4];
         var b = new float[n * 4];
+
+        if (source.Scene is not null)
+        {
+            if (p.RawWhiteBalanceMatrix is { } wb)
+                ApplyMatrix(cur, RawFinishParams.WorkingWhiteBalance(wb).ToF32());
+            RawSemanticAdjustments.Apply(cur, w, h, source, p, ct);
+        }
 
         // 線性部分：基本調整（曝光 / 色溫 / 色調）
         if (p.BasicOn && (p.Exposure != 0 || p.Temperature != 0 || p.Tint != 0))
@@ -61,19 +74,21 @@ public static class CpuPipeline
         }
         ct.ThrowIfCancellationRequested();
 
-        // ③ 底片（線性 → 顯示）：底片色彩 → 效果比例 → 古典版材
-        if (p.FilmOn) FilmProcessing.Apply(cur, a, b, w, h, p.Film);
+        // ③ 底片（線性）：底片風格 → 古典版材
+        if (p.FilmOn && p.FilmLut is not null && p.FilmStrength > 0) FilmLookProcessing.Apply(cur, n, p.FilmLook, p.FilmLut);
         ct.ThrowIfCancellationRequested();
         if (p.PlateOn && p.PlateStrength > 0) PhotoPlate(cur, w, h, p);
         ct.ThrowIfCancellationRequested();
 
         // ③→④ 顯示空間
-        Parallel.For(0, n, i =>
+        if (source.Scene is { } scene) RawDisplay.FinishLinear(cur, scene.Tone);
+        else Parallel.For(0, n, i =>
         {
             var s = i * 4;
-            cur[s] = LinearToSrgb(cur[s]);
-            cur[s + 1] = LinearToSrgb(cur[s + 1]);
-            cur[s + 2] = LinearToSrgb(cur[s + 2]);
+            // MathF.Pow 保留純量：M3 實測 Exp(Log) 向量組合反而較慢。
+            var px = Vector128.LoadUnsafe(ref cur[s]);
+            Vector128.Create(LinearToSrgb(px[0]), LinearToSrgb(px[1]), LinearToSrgb(px[2]), px[3])
+                .CopyTo(cur, s);
         });
         ct.ThrowIfCancellationRequested();
 
@@ -101,27 +116,85 @@ public static class CpuPipeline
         Parallel.For(0, n, i =>
         {
             var s = i * 4;
-            outArr[s] = Q16(cur[s]);
-            outArr[s + 1] = Q16(cur[s + 1]);
-            outArr[s + 2] = Q16(cur[s + 2]);
-            outArr[s + 3] = Q16(cur[s + 3]);
+            var px = Vector128.LoadUnsafe(ref cur[s]);
+            var q = Vector128.ConvertToInt32(
+                Vector128.Round(Vector128.Max(Vector128.Min(px, Vector128.Create(1f)), Vector128.Create(0f)) * 65535f));
+            var packed = Vector128.Narrow(q.AsUInt32(), q.AsUInt32());
+            packed.GetLower().StoreUnsafe(ref outArr[s]);
         });
-        return new SourceImage(w, h, outArr) { FilePath = source.FilePath };
+        return new SourceImage(w, h, outArr)
+        {
+            FilePath = source.FilePath, RawOptions = source.RawOptions,
+            RawInfo = source.RawInfo, SemanticMasks = source.SemanticMasks,
+        };
     }
 
     internal static float[] DecodeLinear(SourceImage source)
     {
-        var result = new float[source.Rgba16.Length];
+        var result = new float[checked(source.Width * source.Height * 4)];
+        if (source.Scene is { } scene)
+        {
+            var matrix = RawFinishParams.SceneToWorking(null).ToF32();
+            var data = scene.Image.Data;
+            Parallel.For(0, source.Width * source.Height, pixel =>
+            {
+                var i = pixel * 3;
+                var o = pixel * 4;
+                var r = data[i]; var g = data[i + 1]; var b = data[i + 2];
+                result[o] = matrix[0] * r + matrix[1] * g + matrix[2] * b;
+                result[o + 1] = matrix[3] * r + matrix[4] * g + matrix[5] * b;
+                result[o + 2] = matrix[6] * r + matrix[7] * g + matrix[8] * b;
+                result[o + 3] = 1;
+            });
+            return result;
+        }
         var input = source.Rgba16;
+        var scale = Vector128.Create(65535f);
         Parallel.For(0, source.Width * source.Height, pixel =>
         {
             var i = pixel * 4;
-            result[i] = SrgbToLinear(input[i] / 65535f);
-            result[i + 1] = SrgbToLinear(input[i + 1] / 65535f);
-            result[i + 2] = SrgbToLinear(input[i + 2] / 65535f);
-            result[i + 3] = input[i + 3] / 65535f;
+            // 每像素僅讀 4 個 ushort，最後一個像素也不會跨出陣列。
+            var q = Vector64.LoadUnsafe(ref input[i]).ToVector128();
+            var f = Vector128.ConvertToSingle(Vector128.WidenLower(q).AsInt32()) / scale;
+            Vector128.Create(SrgbToLinear(f[0]), SrgbToLinear(f[1]), SrgbToLinear(f[2]), f[3])
+                .CopyTo(result, i);
         });
         return result;
+    }
+
+    private static void ApplyMatrix(float[] rgba, float[] m)
+    {
+        Parallel.For(0, rgba.Length / 4, pixel =>
+        {
+            var i = pixel * 4;
+            var r = rgba[i]; var g = rgba[i + 1]; var b = rgba[i + 2];
+            rgba[i] = m[0] * r + m[1] * g + m[2] * b;
+            rgba[i + 1] = m[3] * r + m[4] * g + m[5] * b;
+            rgba[i + 2] = m[6] * r + m[7] * g + m[8] * b;
+        });
+    }
+
+    /// <summary>
+    /// 裁切取樣（與 geometry/crop.wgsl 同演算法）：輸出像素中心經 <see cref="CropTransform.OutToSource"/>
+    /// 映到來源，雙線性取樣，超出邊界以邊緣像素延伸。
+    /// </summary>
+    public static float[] Crop(float[] srcLinear, int srcW, int srcH, CropTransform t)
+    {
+        int w = t.OutWidth, h = t.OutHeight;
+        var dst = new float[w * h * 4];
+        var m = t.OutToSource;
+        Parallel.For(0, h, y =>
+        {
+            for (var x = 0; x < w; x++)
+            {
+                var (sx, sy) = m.Apply(x + 0.5, y + 0.5);
+                var fx = (float)(sx - 0.5);
+                var fy = (float)(sy - 0.5);
+                var o = (y * w + x) * 4;
+                for (var c = 0; c < 4; c++) dst[o + c] = SampleBilinear(srcLinear, srcW, srcH, fx, fy, c);
+            }
+        });
+        return dst;
     }
 
     private static void BasicLinear(float[] pixels, int count, ModuleParams p)
@@ -130,10 +203,11 @@ public static class CpuPipeline
         var red = gain * (1 + p.Temperature / 100f * .18f);
         var green = gain * (1 + p.Tint / 100f * .12f);
         var blue = gain * (1 - p.Temperature / 100f * .18f);
+        var mult = Vector128.Create(red, green, blue, 1f);
         Parallel.For(0, count, pixel =>
         {
             var i = pixel * 4;
-            pixels[i] *= red; pixels[i + 1] *= green; pixels[i + 2] *= blue;
+            Vector128.Multiply(Vector128.LoadUnsafe(ref pixels[i]), mult).CopyTo(pixels, i);
         });
     }
     // ───────────── 色彩工具（與 WGSL common/color.wgsl 同演算法）─────────────
@@ -149,7 +223,9 @@ public static class CpuPipeline
 
     public static float Luminance(float r, float g, float b) => 0.2126f * r + 0.7152f * g + 0.0722f * b;
 
-    private static ushort Q16(float v) => (ushort)MathF.Round(Math.Clamp(v, 0f, 1f) * 65535f);
+    /// <summary>RGB 向量亮度（alpha lane 忽略）。</summary>
+    internal static float Luminance(Vector128<float> v) =>
+        v[0] * 0.2126f + v[1] * 0.7152f + v[2] * 0.0722f;
 
     /// <summary>HSV → RGB（h 0–360）。與 WGSL 版相同。</summary>
     public static (float R, float G, float B) HsvToRgb(float h, float s, float v)
@@ -888,53 +964,46 @@ public static class CpuPipeline
             SeparableBlur(tt, structBlur, w, h, r, sigma, horizontal: false);
         }
 
+        var gm = brightness != 0 ? MathF.Pow(2f, -brightness) : 0f;
+        var cMul = contrast != 0 ? 1f + contrast : 0f;
+        var satK = 1f + saturation;
         Parallel.For(0, n, i =>
         {
             var s = i * 4;
-            var r = buf[s]; var g = buf[s + 1]; var b = buf[s + 2];
+            var v = Vector128.LoadUnsafe(ref buf[s]);
             // 亮度：中間調 gamma（0 恆等）
             if (brightness != 0)
             {
-                var gm = MathF.Pow(2f, -brightness);
-                r = MathF.Pow(Math.Clamp(r, 0f, 1f), gm);
-                g = MathF.Pow(Math.Clamp(g, 0f, 1f), gm);
-                b = MathF.Pow(Math.Clamp(b, 0f, 1f), gm);
+                v = Vector128.Create(
+                    MathF.Pow(Math.Clamp(v[0], 0f, 1f), gm),
+                    MathF.Pow(Math.Clamp(v[1], 0f, 1f), gm),
+                    MathF.Pow(Math.Clamp(v[2], 0f, 1f), gm), v[3]);
             }
             // 對比：圍繞中間調
             if (contrast != 0)
-            {
-                var c = 1f + contrast;
-                r = (r - 0.5f) * c + 0.5f;
-                g = (g - 0.5f) * c + 0.5f;
-                b = (b - 0.5f) * c + 0.5f;
-            }
+                v = (v - Vector128.Create(0.5f)) * Vector128.Create(cMul) + Vector128.Create(0.5f);
             // 亮部/暗部：分段加權
-            var lum = Luminance(r, g, b);
+            var lum = Luminance(v);
             var hi = SmoothStep(0.45f, 0.95f, lum);
             var lo = 1f - SmoothStep(0.05f, 0.45f, lum);
             var k = highlights * hi * 0.35f + shadows * lo * 0.35f;
-            r += k; g += k; b += k;
+            v += Vector128.Create(k);
             // 飽和度
             if (saturation != 0)
             {
-                var l = Luminance(r, g, b);
-                var kk = 1f + saturation;
-                r = MathF.Max(l + (r - l) * kk, 0f);
-                g = MathF.Max(l + (g - l) * kk, 0f);
-                b = MathF.Max(l + (b - l) * kk, 0f);
+                var l = Vector128.Create(Luminance(v));
+                v = Vector128.Max(l + (v - l) * Vector128.Create(satK), Vector128<float>.Zero);
             }
             // 細節提取：以中頻差異增強局部對比
             if (structBlur != null && p.Structure != 0)
             {
-                var l = Luminance(r, g, b);
-                var bl = Luminance(structBlur[s], structBlur[s + 1], structBlur[s + 2]);
+                var l = Luminance(v);
+                var bl = Luminance(Vector128.LoadUnsafe(ref structBlur[s]));
                 var diff = (l - bl) * p.Structure / 100f * 0.6f;
                 var scale = l > 1e-4f ? (l + diff) / l : 1f;
-                r = MathF.Max(r * scale, 0f);
-                g = MathF.Max(g * scale, 0f);
-                b = MathF.Max(b * scale, 0f);
+                v = Vector128.Max(v * Vector128.Create(scale), Vector128<float>.Zero);
             }
-            buf[s] = r; buf[s + 1] = g; buf[s + 2] = b;
+            buf[s] = v[0]; buf[s + 1] = v[1]; buf[s + 2] = v[2];
         });
     }
 
@@ -951,21 +1020,21 @@ public static class CpuPipeline
 
         var (sr, sg, sb) = HsvToRgb(sh, 0.6f, 1f);
         var (hr, hg, hb) = HsvToRgb(hh, 0.6f, 1f);
+        var shadow = Vector128.Create(sr, sg, sb, 0f);
+        var highlight = Vector128.Create(hr, hg, hb, 0f);
+        var one = Vector128.Create(1f);
 
         Parallel.For(0, n, i =>
         {
             var s = i * 4;
-            var r = buf[s]; var g = buf[s + 1]; var b = buf[s + 2];
-            var lum = Luminance(r, g, b);
-            var tS = 1f - SmoothStep(split - 0.15f, split + 0.15f, lum);
+            var v = Vector128.LoadUnsafe(ref buf[s]);
+            var lum = Luminance(v);
+            var lv = Vector128.Create(lum);
             var tH = SmoothStep(split - 0.15f, split + 0.15f, lum);
-            r = r * (1 - sa * tS * (1 - sr)) + lum * sr * sa * tS;
-            g = g * (1 - sa * tS * (1 - sg)) + lum * sg * sa * tS;
-            b = b * (1 - sa * tS * (1 - sb)) + lum * sb * sa * tS;
-            r = r * (1 - ha * tH * (1 - hr)) + lum * hr * ha * tH;
-            g = g * (1 - ha * tH * (1 - hg)) + lum * hg * ha * tH;
-            b = b * (1 - ha * tH * (1 - hb)) + lum * hb * ha * tH;
-            buf[s] = r; buf[s + 1] = g; buf[s + 2] = b;
+            var tS = 1f - tH;
+            var rgb = v * (one - sa * tS * (one - shadow)) + lv * shadow * sa * tS;
+            rgb = rgb * (one - ha * tH * (one - highlight)) + lv * highlight * ha * tH;
+            buf[s] = rgb[0]; buf[s + 1] = rgb[1]; buf[s + 2] = rgb[2];
         });
     }
 
@@ -985,13 +1054,13 @@ public static class CpuPipeline
             Parallel.For(0, n, i =>
             {
                 var s = i * 4;
-                var lum = Luminance(buf[s], buf[s + 1], buf[s + 2]);
-                var bl = Luminance(tmp2[s], tmp2[s + 1], tmp2[s + 2]);
+                var v = Vector128.LoadUnsafe(ref buf[s]);
+                var lum = Luminance(v);
+                var bl = Luminance(Vector128.LoadUnsafe(ref tmp2[s]));
                 var diff = (lum - bl) * ck * 0.5f;
                 var scale = lum > 1e-4f ? (lum + diff) / lum : 1f;
-                buf[s] = MathF.Max(buf[s] * scale, 0f);
-                buf[s + 1] = MathF.Max(buf[s + 1] * scale, 0f);
-                buf[s + 2] = MathF.Max(buf[s + 2] * scale, 0f);
+                Vector128.Max(v * Vector128.Create(scale), Vector128<float>.Zero)
+                    .WithElement(3, v[3]).CopyTo(buf, s);
             });
         }
         if (p.Sharpen != 0)
@@ -1004,13 +1073,13 @@ public static class CpuPipeline
             Parallel.For(0, n, i =>
             {
                 var s = i * 4;
-                var lum = Luminance(buf[s], buf[s + 1], buf[s + 2]);
-                var bl = Luminance(tmp2[s], tmp2[s + 1], tmp2[s + 2]);
+                var v = Vector128.LoadUnsafe(ref buf[s]);
+                var lum = Luminance(v);
+                var bl = Luminance(Vector128.LoadUnsafe(ref tmp2[s]));
                 var diff = (lum - bl) * sk * 0.7f;
                 var scale = lum > 1e-4f ? (lum + diff) / lum : 1f;
-                buf[s] = MathF.Max(buf[s] * scale, 0f);
-                buf[s + 1] = MathF.Max(buf[s + 1] * scale, 0f);
-                buf[s + 2] = MathF.Max(buf[s + 2] * scale, 0f);
+                Vector128.Max(v * Vector128.Create(scale), Vector128<float>.Zero)
+                    .WithElement(3, v[3]).CopyTo(buf, s);
             });
         }
     }
@@ -1163,18 +1232,16 @@ public static class CpuPipeline
         if (horizontal)
             Parallel.For(0, h, y =>
             {
+                var row = y * w;
                 for (var x = 0; x < w; x++)
                 {
-                    float r = 0, g = 0, b = 0, a = 0;
+                    var acc = Vector128<float>.Zero;
                     for (var d = -radius; d <= radius; d++)
                     {
                         var sx = Math.Clamp(x + d, 0, w - 1);
-                        var o = (y * w + sx) * 4;
-                        var wt = weights[d + radius];
-                        r += src[o] * wt; g += src[o + 1] * wt; b += src[o + 2] * wt; a += src[o + 3] * wt;
+                        acc += Vector128.LoadUnsafe(ref src[(row + sx) * 4]) * Vector128.Create(weights[d + radius]);
                     }
-                    var i = (y * w + x) * 4;
-                    dst[i] = r; dst[i + 1] = g; dst[i + 2] = b; dst[i + 3] = a;
+                    acc.CopyTo(dst, (row + x) * 4);
                 }
             });
         else
@@ -1182,16 +1249,13 @@ public static class CpuPipeline
             {
                 for (var y = 0; y < h; y++)
                 {
-                    float r = 0, g = 0, b = 0, a = 0;
+                    var acc = Vector128<float>.Zero;
                     for (var d = -radius; d <= radius; d++)
                     {
                         var sy = Math.Clamp(y + d, 0, h - 1);
-                        var o = (sy * w + x) * 4;
-                        var wt = weights[d + radius];
-                        r += src[o] * wt; g += src[o + 1] * wt; b += src[o + 2] * wt; a += src[o + 3] * wt;
+                        acc += Vector128.LoadUnsafe(ref src[(sy * w + x) * 4]) * Vector128.Create(weights[d + radius]);
                     }
-                    var i = (y * w + x) * 4;
-                    dst[i] = r; dst[i + 1] = g; dst[i + 2] = b; dst[i + 3] = a;
+                    acc.CopyTo(dst, (y * w + x) * 4);
                 }
             });
     }

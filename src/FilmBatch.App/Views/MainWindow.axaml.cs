@@ -18,6 +18,8 @@ public partial class MainWindow : Window
     private readonly DockFactory? _factory;
     private readonly LayoutService? _layout;
     private WindowState _stateBeforeFullScreen = WindowState.Normal;
+    private bool _panelsBeforeFullScreen;
+    private bool _syncingFullScreen;
 
     public MainWindow() => InitializeComponent();
 
@@ -39,6 +41,7 @@ public partial class MainWindow : Window
             if (Clipboard is { } cb) await cb.SetTextAsync(json);
         };
         vm.PropertyChanged += OnViewModelPropertyChanged;
+        Deactivated += (_, _) => vm.Preview.ShowOriginal = false;
         Loc.Instance.PropertyChanged += (_, _) =>
         {
             if (DockHost.Layout is { } l) _factory.UpdateTitles(l);
@@ -109,20 +112,47 @@ public partial class MainWindow : Window
         if (s.WindowMaximized) WindowState = WindowState.Maximized;
     }
 
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property != WindowStateProperty || _vm is null || _syncingFullScreen) return;
+        var fullScreen = WindowState == WindowState.FullScreen;
+        if (_vm.IsFullScreen == fullScreen) return;
+
+        _syncingFullScreen = true;
+        try
+        {
+            if (fullScreen)
+            {
+                _stateBeforeFullScreen = (WindowState)change.OldValue!;
+                _panelsBeforeFullScreen = _vm.PanelsHidden;
+            }
+            _vm.IsFullScreen = fullScreen;
+            _vm.PanelsHidden = fullScreen || _panelsBeforeFullScreen;
+        }
+        finally { _syncingFullScreen = false; }
+    }
+
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName != nameof(MainWindowViewModel.IsFullScreen) || _vm is null) return;
-        if (_vm.IsFullScreen)
+        if (e.PropertyName != nameof(MainWindowViewModel.IsFullScreen) || _vm is null || _syncingFullScreen) return;
+        _syncingFullScreen = true;
+        try
         {
-            _stateBeforeFullScreen = WindowState;
-            WindowState = WindowState.FullScreen;
-            _vm.PanelsHidden = true;
+            if (_vm.IsFullScreen)
+            {
+                _stateBeforeFullScreen = WindowState;
+                _panelsBeforeFullScreen = _vm.PanelsHidden;
+                WindowState = WindowState.FullScreen;
+                _vm.PanelsHidden = true;
+            }
+            else
+            {
+                WindowState = _stateBeforeFullScreen;
+                _vm.PanelsHidden = _panelsBeforeFullScreen;
+            }
         }
-        else
-        {
-            WindowState = _stateBeforeFullScreen;
-            _vm.PanelsHidden = false;
-        }
+        finally { _syncingFullScreen = false; }
     }
 
     /// <summary>焦點在文字輸入元件時，單鍵快捷鍵與 Ctrl+C/V/Z/A 交給該元件處理。</summary>
@@ -171,8 +201,16 @@ public partial class MainWindow : Window
 
         // ── 單鍵（輸入文字時不處理） ──
         if (typing || mods != KeyModifiers.None) return;
+        var crop = _vm.CropTool;
         switch (e.Key)
         {
+            // 裁切工具（cut-and-mask Task 1.7）：R 進入 / 套用並返回，其餘只在工具啟用時有效
+            case Key.R: Run(_vm.ToggleCropCommand); break;
+            case Key.Enter when crop.IsActive: Run(crop.ApplyCommand); break;
+            case Key.Escape when (crop.IsActive || crop.IsBeginPending) && !_vm.IsFullScreen: Run(crop.CancelCommand); break;
+            case Key.X when crop.IsActive: Run(crop.SwapOrientationCommand); break;
+            case Key.OemOpenBrackets when crop.IsActive: Run(crop.RotateLeftCommand); break;
+            case Key.OemCloseBrackets when crop.IsActive: Run(crop.RotateRightCommand); break;
             case Key.Space: _vm.Preview.ShowOriginal = true; break;
             case Key.Y: Run(_vm.ToggleSplitCommand); break;
             case Key.F: Run(_vm.ToggleFullScreenCommand); break;

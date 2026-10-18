@@ -241,16 +241,20 @@ public sealed class GpuDevice : IDisposable
     }
 
     /// <summary>
-    /// 在 OutOfMemory error scope 內配置資源；配置失敗時回傳錯誤訊息（null 表示成功）。
-    /// 大尺寸匯出用來偵測顯示記憶體不足，再由呼叫端決定改用 CPU。
+    /// 在 OutOfMemory error scope 內配置資源；只有 scope 單獨回報 OOM 時回傳訊息。
+    /// 操作本身的例外一律傳播，不能因同時收到 OOM 而掩蓋驗證／裝置錯誤或取消。
     /// </summary>
     public string? TryAllocate(Action allocate)
     {
         string? message = null;
+        Exception? failure = null;
         Device.PushErrorScope(ErrorFilter.OutOfMemory);
         try { allocate(); }
+        catch (Exception ex) { failure = ex; }
         finally { (_, message) = Device.PopErrorScopeSync(RequestTimeoutNs); }
-        return string.IsNullOrEmpty(message) ? null : message;
+        if (failure is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
+        if (!string.IsNullOrEmpty(message)) return message;
+        return null;
     }
 
     /// <summary>等待佇列中的工作全部完成。</summary>

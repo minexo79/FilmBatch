@@ -5,6 +5,7 @@ using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using CommunityToolkit.Mvvm.ComponentModel;
+using FilmBatch.App.Controls.Tools;
 using FilmBatch.App.Localization;
 using FilmBatch.App.Services;
 using FilmBatch.Core.Params;
@@ -78,6 +79,13 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
     [ObservableProperty]
     private double _zoom;
 
+    /// <summary>
+    /// 影像中心相對畫布中心的平移（DIP）。面板顯示 / 隱藏時的兩個預覽畫布共用，切換時畫面停在同一處；
+    /// 符合視窗時歸零，換照片時保留。
+    /// </summary>
+    [ObservableProperty]
+    private Vector _pan;
+
     [ObservableProperty]
     private bool _isBusy;
 
@@ -108,6 +116,9 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
 
     private string? _controlModule;
 
+    /// <summary>目前畫布控制點所屬的模組 key；沒有顯示控制點時為 null。</summary>
+    public string? ControlPointModule => _controlModule;
+
     public void SetBackground(PreviewBackground bg) => Background = new SolidColorBrush(bg switch
     {
         PreviewBackground.MidGray => Color.FromRgb(0x80, 0x80, 0x80),
@@ -122,10 +133,47 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
             _resultHistogram = _originalHistogram = null;
             NotifyHistogram();
             Source = source;
-            Original = ToBitmap(ImageCache.ToBgra8(source), source.Width, source.Height);
+            _originalShown = null;
+            UpdateOriginal();
             _ = LoadExifAsync(source);
         }
     }
+
+    // ───────────── 原圖對比的畫框 ─────────────
+
+    /// <summary>原圖對比使用的裁切（只比較調整，與 Lightroom 相同）；未啟用時為全幅。</summary>
+    private CropParams _compareCrop;
+    private (SourceImage Source, CropParams Crop)? _originalShown;
+
+    /// <summary>
+    /// 設定「原圖」要套用的裁切（與這次算圖請求相同的裁切 / 方向），讓左右對比與按住空白鍵時畫框一致。
+    /// 裁切相同時不重算。
+    /// </summary>
+    public void SetCompareCrop(CropParams crop)
+    {
+        _compareCrop = crop.On ? crop : default;
+        UpdateOriginal();
+    }
+
+    private void UpdateOriginal()
+    {
+        if (Source is not { } source) return;
+        if (_originalShown is { } shown && ReferenceEquals(shown.Source, source) && shown.Crop == _compareCrop) return;
+        _originalShown = (source, _compareCrop);
+        if (!_compareCrop.On)
+        {
+            Original = ToBitmap(ImageCache.ToBgra8(source), source.Width, source.Height);
+            return;
+        }
+        var t = CropGeometry.Compute(source.Width, source.Height, _compareCrop);
+        Original = ToBitmap(ImageCache.ToBgra8(source, t), t.OutWidth, t.OutHeight);
+    }
+
+    // ───────────── 畫布工具 ─────────────
+
+    /// <summary>目前的畫布工具（裁切工具啟用時為裁切框）；null 時畫布使用平移 / 控制點。</summary>
+    [ObservableProperty]
+    private ICanvasTool? _activeTool;
 
     /// <summary>EXIF 只讀檔頭，但仍在背景執行緒讀取；讀完時若已換照片則丟棄。</summary>
     private async Task LoadExifAsync(SourceImage source)
@@ -162,9 +210,12 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
 
     public void Clear()
     {
+        // 換照片：先結束進行中的控制點編輯，下一張照片的拖曳另成一筆復原紀錄
+        EndControlPointEdit();
         Source = null;
         Image = null;
         Original = null;
+        _originalShown = null;
         Exif = null;
         IsBusy = false;
         OverlayText = null;
@@ -184,6 +235,8 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
     partial void OnZoomChanged(double value)
     {
         _fitScale = null;
+        // 符合視窗：影像回到中央，之後放大也從中央開始（兩個畫布共用同一個平移）
+        if (value <= 0) Pan = default;
         UpdateZoomText();
     }
 
@@ -208,29 +261,42 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
 
     // ───────────── 控制點 ─────────────
 
-    /// <summary>顯示某個模組的控制點（只顯示目前展開模組的控制點）。</summary>
+    /// <summary>
+    /// 顯示某個模組的控制點（只顯示目前展開模組的控制點）。換模組或收起控制點時先結束進行中的拖曳編輯，
+    /// 之後的拖曳另成一筆復原紀錄；同一模組重新整理（拖曳中參數改變）則延續同一筆。
+    /// </summary>
     public void ShowControlPoint(string? moduleKey, Settings? settings)
     {
+        if (moduleKey != _controlModule) EndControlPointEdit();
         _controlModule = moduleKey;
         ControlPoint = moduleKey is not null && settings is not null
             ? new Point(settings.Number($"{moduleKey}.center_x"), settings.Number($"{moduleKey}.center_y"))
             : null;
     }
 
-    /// <summary>拖曳控制點：即時更新預覽，放開時記為一筆復原紀錄。</summary>
+    /// <summary>拖曳控制點：即時更新預覽，放開時記為一筆復原紀錄。控制點已收起時不再修改，放開只結束編輯。</summary>
     public void MoveControlPoint(Point normalized, bool completed)
     {
-        if (_controlModule is null || main.Service is null) return;
-        _editSession ??= $"cp:{_controlModule}:{Guid.NewGuid():N}";
-        var p = new Point(Math.Clamp(normalized.X, 0, 1), Math.Clamp(normalized.Y, 0, 1));
-        ControlPoint = p;
-        main.Service.SetValue(main.Selection, $"{_controlModule}.center_x", p.X, _editSession);
-        main.Service.SetValue(main.Selection, $"{_controlModule}.center_y", p.Y, _editSession);
-        if (completed)
+        if (_controlModule is not null && main.Service is not null)
         {
-            _editSession = null;
-            main.Stack.CloseMerge();
+            _editSession ??= $"cp:{_controlModule}:{Guid.NewGuid():N}";
+            var p = new Point(Math.Clamp(normalized.X, 0, 1), Math.Clamp(normalized.Y, 0, 1));
+            ControlPoint = p;
+            main.Service.SetValue(main.Selection, $"{_controlModule}.center_x", p.X, _editSession);
+            main.Service.SetValue(main.Selection, $"{_controlModule}.center_y", p.Y, _editSession);
         }
+        if (completed) EndControlPointEdit();
+    }
+
+    /// <summary>
+    /// 結束進行中的控制點編輯（放開、拖曳被中斷、換模組或照片）：不改變控制點位置，之後的拖曳另成一筆復原紀錄。
+    /// 沒有進行中的編輯時不做任何事。
+    /// </summary>
+    public void EndControlPointEdit()
+    {
+        if (_editSession is null) return;
+        _editSession = null;
+        main.Stack.CloseMerge();
     }
 
     private static WriteableBitmap CreateBitmap(int w, int h) =>

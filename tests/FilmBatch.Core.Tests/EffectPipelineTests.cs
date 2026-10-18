@@ -40,21 +40,19 @@ public sealed class EffectPipelineTests
         return max;
     }
 
-    /// <summary>底片單級設定：其餘全部沿用系統預設（即關閉）。DRO 用 auto 因其為中性 (0,0)。</summary>
-    private static Settings FilmOnly(double exposure, double strength = 100, string style = "standard") =>
-        ModuleCatalog.Defaults
+    /// <summary>底片單級設定：其餘全部沿用系統預設（即關閉）。</summary>
+    private static Settings FilmOnly(double strength = 100, string look = "kodak-ektar-100",
+        double warmth = 0, double fade = 0, params (string Key, double Value)[] hue)
+    {
+        var s = ModuleCatalog.Defaults
             .With("film.enabled", true)
-            .With("film.style", style)
+            .With("film.look", look)
             .With("film.strength", strength)
-            .With("film.exposure", exposure)
-            .With("film.saturation", 0.0)
-            .With("film.contrast", 0.0)
-            .With("film.sharpness", 0.0)
-            .With("film.white_balance", "keep")
-            .With("film.amber_blue", 0.0)
-            .With("film.green_magenta", 0.0)
-            .With("film.effect", "off")
-            .With("film.dro", "auto");
+            .With("film.warmth", warmth)
+            .With("film.fade", fade);
+        foreach (var (key, value) in hue) s = s.With("film." + key, value);
+        return s;
+    }
 
     private static GpuSpikeRenderer? TryCreateGpu(EffectRendererOptions? options = null)
     {
@@ -97,6 +95,63 @@ public sealed class EffectPipelineTests
         Assert.True(maxAlpha <= 1, $"alpha 應原樣保留，最大差 {maxAlpha}/65535");
     }
 
+    [Theory]
+    [InlineData(70.0, 0.0)]
+    [InlineData(0.0, 70.0)]
+    [InlineData(70.0, 70.0)]
+    [InlineData(-70.0, 0.0)]
+    public void Detail_ChangesRgbWithoutChangingOpacity(double clarity, double sharpen)
+    {
+        const int w = 5, h = 3;
+        var pixels = new ushort[w * h * 4];
+        for (var i = 0; i < w * h; i++)
+        {
+            var value = (ushort)(i == 7 ? 50000 : 8000);
+            pixels[i * 4] = pixels[i * 4 + 1] = pixels[i * 4 + 2] = value;
+            pixels[i * 4 + 3] = (ushort)((i % 4) switch { 0 => 0, 1 => 1, 2 => 32768, _ => 65535 });
+        }
+        var source = new SourceImage(w, h, pixels);
+        var settings = ModuleCatalog.Defaults.With("detail.enabled", true)
+            .With("detail.clarity", clarity).With("detail.sharpen", sharpen);
+        using var cpu = new CpuFakeRenderer();
+        var output = cpu.Render16(source, settings, TestContext.Current.CancellationToken).Rgba16;
+
+        if (clarity < 0)
+            Assert.True(output[7 * 4] < 50000, "負清晰度應降低亮點的局部對比");
+        else
+            Assert.True(output[7 * 4] > 50000, "清晰度／銳化應提高亮點的局部對比");
+        for (var i = 3; i < pixels.Length; i += 4)
+            Assert.Equal(pixels[i], output[i]);
+    }
+
+    [Theory]
+    [InlineData(1, 1)]
+    [InlineData(3, 5)]
+    [InlineData(256, 256)]
+    public void NeutralPipeline_RoundTrips16BitCodesIncludingTailPixels(int width, int height)
+    {
+        var pixels = new ushort[width * height * 4];
+        for (var p = 0; p < width * height; p++)
+        {
+            var code = width == 256 ? p : p * 4369;
+            pixels[p * 4] = (ushort)code;
+            pixels[p * 4 + 1] = (ushort)(65535 - code);
+            pixels[p * 4 + 2] = (ushort)((code + 2650) & 65535);
+            pixels[p * 4 + 3] = (ushort)code;
+        }
+        using var cpu = new CpuFakeRenderer();
+        var output = cpu.Render16(new SourceImage(width, height, pixels),
+            ModuleCatalog.Defaults, TestContext.Current.CancellationToken).Rgba16;
+
+        for (var i = 0; i < pixels.Length; i++)
+        {
+            if (i % 4 == 3)
+                Assert.Equal(pixels[i], output[i]);
+            else
+                Assert.InRange(Math.Abs(pixels[i] - output[i]), 0, 1);
+        }
+    }
+
 
     [Fact]
     public void Render16_IsTrue16Bit_NotExpandedBgra8()
@@ -113,32 +168,13 @@ public sealed class EffectPipelineTests
         }
         var src = new SourceImage(w, h, px) { FilePath = "/tmp/keep.tif" };
         using var cpu = new CpuFakeRenderer();
-        var rendered = cpu.Render16(src, FilmOnly(1.0), TestContext.Current.CancellationToken);
+        var rendered = cpu.Render16(src, FilmOnly(), TestContext.Current.CancellationToken);
         Assert.Equal(src.Width, rendered.Width);
         Assert.Equal(src.Height, rendered.Height);
         Assert.Equal(src.FilePath, rendered.FilePath);
         // 若只是 8-bit 上採樣，所有值都會是 257 的倍數；真 16-bit 管線低位元組應有變化。
         var nonStep = rendered.Rgba16.Count(v => v % 257 != 0);
         Assert.True(nonStep > rendered.Rgba16.Length / 4, $"疑似 8-bit 上採樣，非 257 倍數僅 {nonStep}/{rendered.Rgba16.Length}");
-    }
-
-    [Theory]
-    [InlineData(1.0)]
-    [InlineData(-1.0)]
-    [InlineData(2.0 / 3.0)]
-    public void FilmExposure_IsEvGain_WithOtherStagesDisabled(double ev)
-    {
-        // 計畫書 7.2：曝光為 EV（+1 即線性 ×2）；檔位顯示 .3/.7 為四捨五入，此處用未取整的三分之一級數。
-        var src = Flat(8, 8, 20000);
-        using var cpu = new CpuFakeRenderer();
-        var got = cpu.Render16(src, FilmOnly(ev), TestContext.Current.CancellationToken).Rgba16;
-        var gain = Math.Pow(2, ev);
-        var linIn = CpuPipeline.SrgbToLinear(20000 / 65535f);
-        double sum = 0;
-        for (var p = 0; p < 64; p++)
-            sum += CpuPipeline.SrgbToLinear(got[p * 4] / 65535f);
-        var ratio = sum / 64 / linIn;
-        Assert.InRange(ratio, gain * 0.98, gain * 1.02);
     }
 
     [Fact]
@@ -152,12 +188,12 @@ public sealed class EffectPipelineTests
         var src = new SourceImage(8, 8, px);
         using var cpu = new CpuFakeRenderer();
         var ct = TestContext.Current.CancellationToken;
-        var full = cpu.Render16(src, FilmOnly(0, style: "vivid"), ct).Rgba16;
-        var half = cpu.Render16(src, FilmOnly(0, strength: 50, style: "vivid"), ct).Rgba16;
-        var zero = cpu.Render16(src, FilmOnly(0, strength: 0, style: "vivid"), ct).Rgba16;
+        var full = cpu.Render16(src, FilmOnly(), ct).Rgba16;
+        var half = cpu.Render16(src, FilmOnly(strength: 50), ct).Rgba16;
+        var zero = cpu.Render16(src, FilmOnly(strength: 0), ct).Rgba16;
         Assert.True(MaxAbsDiff(zero, src.Rgba16) <= 2, "效果比例 0 應保留輸入");
-        Assert.True(MaxAbsDiff(full, src.Rgba16) > 256, "測試無效：vivid 全強度幾乎未改變像素");
-        // 線性域中半強度應為輸入與全強度的中點（FilmProcessing 的 orig*(1-m)+film*m 語義）。
+        Assert.True(MaxAbsDiff(full, src.Rgba16) > 256, "測試無效：底片全強度幾乎未改變像素");
+        // 線性域中半強度應為輸入與全強度的中點（FilmLookProcessing 的 Lerp(orig, look, m) 語義）。
         var worst = 0.0;
         for (var i = 0; i < px.Length; i += 4)
         for (var c = 0; c < 3; c++)
@@ -168,6 +204,45 @@ public sealed class EffectPipelineTests
             worst = Math.Max(worst, Math.Abs(linHalf - (linIn + linFull) / 2));
         }
         Assert.True(worst <= 0.002, $"效果比例 50 應為線性中點，最大偏 {worst}");
+    }
+
+    [Fact]
+    public void FilmLook_HueBand_ShiftsRedButNotBlueOrGray()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var cpu = new CpuFakeRenderer();
+        // 三個像素：飽和紅、飽和藍、中性灰（16-bit sRGB）
+        var src = new SourceImage(3, 1, [
+            52000, 8000, 8000, 65535,
+            8000, 12000, 52000, 65535,
+            30000, 30000, 30000, 65535]);
+        var plain = cpu.Render16(src, FilmOnly(), ct).Rgba16;
+        var shifted = cpu.Render16(src, FilmOnly(hue: [("hue_red_h", 100), ("hue_red_s", 50)]), ct).Rgba16;
+        Assert.NotEqual(plain[..3], shifted[..3]);
+        Assert.Equal(plain[4..7], shifted[4..7]);
+        Assert.Equal(plain[8..11], shifted[8..11]);
+    }
+
+    [Theory]
+    [InlineData(10f)] [InlineData(25f)] [InlineData(80f)] [InlineData(170f)] [InlineData(330f)] [InlineData(359f)]
+    public void HueBandWeights_ArePartitionOfUnity(float hue)
+    {
+        var sum = 0f;
+        for (var band = 0; band < 8; band++) sum += FilmLookProcessing.BandWeight(hue, band);
+        Assert.Equal(1f, sum, 5);
+    }
+
+    [Fact]
+    public void FilmLook_WarmthRaisesRedLowersBlue_FadeLiftsBlack()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var cpu = new CpuFakeRenderer();
+        var src = new SourceImage(2, 1, [30000, 30000, 30000, 65535, 0, 0, 0, 65535]);
+        var plain = cpu.Render16(src, FilmOnly(look: "kodak-tmax-100"), ct).Rgba16;
+        var warm = cpu.Render16(src, FilmOnly(look: "kodak-tmax-100", warmth: 100), ct).Rgba16;
+        Assert.True(warm[0] > plain[0] && warm[2] < plain[2]);
+        var faded = cpu.Render16(src, FilmOnly(look: "kodak-tmax-100", fade: 100), ct).Rgba16;
+        Assert.True(faded[4] > plain[4] + 3000);
     }
 
     [Fact]
@@ -467,9 +542,28 @@ public sealed class EffectPipelineTests
         using var gpu = TryCreateGpu();
         Assert.SkipWhen(gpu is null, "沒有可用的 GPU 介面卡");
         var src = Flat(32, 24, 20000, path: "/tmp/parity.tif");
-        var settings = FilmOnly(1.0)
+        var settings = FilmOnly()
             .With("grain.enabled", true)
             .With("grain.amount", 80.0);
+        var ct = TestContext.Current.CancellationToken;
+        var g = gpu!.Render16(src, settings, ct).Rgba16;
+        using var cpu = new CpuFakeRenderer();
+        var c = cpu.Render16(src, settings, ct).Rgba16;
+        var max = MaxAbsDiff(g, c);
+        Assert.True(max <= 64, $"GPU 與 CPU 16-bit 差異 {max}/65535");
+    }
+
+    [Theory]
+    [InlineData("kodak-portra-400", 0, 0)]
+    [InlineData("fuji-velvia-50", 40, 30)]
+    [InlineData("creative-teal-orange", -60, 0)]
+    public void Gpu_MatchesCpu_OnFilmLook(string look, double warmth, double fade)
+    {
+        using var gpu = TryCreateGpu();
+        Assert.SkipWhen(gpu is null, "沒有可用的 GPU 介面卡");
+        var src = Flat(32, 24, 20000, path: "/tmp/parity.tif");
+        var settings = FilmOnly(strength: 80, look: look, warmth: warmth, fade: fade,
+            hue: [("hue_orange_s", 30), ("hue_blue_h", -50), ("hue_green_l", 40)]);
         var ct = TestContext.Current.CancellationToken;
         var g = gpu!.Render16(src, settings, ct).Rgba16;
         using var cpu = new CpuFakeRenderer();
@@ -501,7 +595,7 @@ public sealed class EffectPipelineTests
         using var gpu = TryCreateGpu(new EffectRendererOptions { MemoryBudgetBytes = 1 });
         Assert.SkipWhen(gpu is null, "沒有可用的 GPU 介面卡");
         var src = Flat(32, 24, 20000, path: "/tmp/budget.tif");
-        var settings = FilmOnly(1.0).With("grain.enabled", true).With("grain.amount", 80.0);
+        var settings = FilmOnly().With("grain.enabled", true).With("grain.amount", 80.0);
         var ct = TestContext.Current.CancellationToken;
 
         gpu!.Render(src, settings);
@@ -522,10 +616,139 @@ public sealed class EffectPipelineTests
         Assert.SkipWhen(banded is null, "沒有可用的 GPU 介面卡");
         using var single = TryCreateGpu();
         var src = Gradient(32, 24, "/tmp/band.tif");
-        var settings = FilmOnly(0.5).With("grain.enabled", true).With("grain.amount", 50.0);
+        var settings = FilmOnly().With("grain.enabled", true).With("grain.amount", 50.0);
         var ct = TestContext.Current.CancellationToken;
 
         Assert.Equal(single!.Render16(src, settings, ct).Rgba16, banded!.Render16(src, settings, ct).Rgba16);
         Assert.Equal(single.Render(src, settings).Bgra, banded.Render(src, settings).Bgra);
+    }
+
+    // ───────────── 裁切（docs/cut-and-mask/plan.md Task 1.3、1.4）─────────────
+
+    /// <summary>左暗右亮的水平漸層：R = G = B 依 x 線性 0 → 65535。</summary>
+    private static SourceImage HGradient(int w, int h)
+    {
+        var px = new ushort[w * h * 4];
+        for (var y = 0; y < h; y++)
+        for (var x = 0; x < w; x++)
+        {
+            var i = (y * w + x) * 4;
+            px[i] = px[i + 1] = px[i + 2] = (ushort)Math.Round(x * 65535.0 / (w - 1));
+            px[i + 3] = ushort.MaxValue;
+        }
+        return new SourceImage(w, h, px);
+    }
+
+    /// <summary>某一欄的 R 值（由上到下）。</summary>
+    private static ushort[] Column(SourceImage img, int x) =>
+        [.. Enumerable.Range(0, img.Height).Select(y => img.Rgba16[(y * img.Width + x) * 4])];
+
+    /// <summary>某一點的 R 值。</summary>
+    private static int Pixel(SourceImage img, int x, int y) => img.Rgba16[(y * img.Width + x) * 4];
+
+    [Fact]
+    public void Crop_Disabled_IsBitIdentical()
+    {
+        var src = HGradient(64, 48);
+        var ct = TestContext.Current.CancellationToken;
+        var plain = CpuPipeline.Process(src, ModuleCatalog.Defaults, null, ct);
+        // 裁切關閉時，其餘裁切參數不影響結果，也不多做任何取樣
+        var off = ModuleCatalog.Defaults.With("crop.rect_w", 0.5).With("crop.angle", 10.0).With("crop.quarter", 1.0);
+        var outImg = CpuPipeline.Process(src, off, null, ct);
+        Assert.Equal((64, 48), (outImg.Width, outImg.Height));
+        Assert.Equal(plain.Rgba16, outImg.Rgba16);
+    }
+
+    [Fact]
+    public void Crop_FullFrameEnabled_MatchesDisabled()
+    {
+        var src = HGradient(64, 48);
+        var ct = TestContext.Current.CancellationToken;
+        var plain = CpuPipeline.Process(src, ModuleCatalog.Defaults, null, ct);
+        var full = CpuPipeline.Process(src, ModuleCatalog.Defaults.With("crop.enabled", true), null, ct);
+        Assert.Equal(plain.Rgba16, full.Rgba16);   // 像素中心對齊，雙線性權重為 0 → 原值
+    }
+
+    [Fact]
+    public void Crop_HalfWidth_OutputsCroppedRegion()
+    {
+        var src = HGradient(64, 48);
+        var s = ModuleCatalog.Defaults.With("crop.enabled", true).With("crop.rect_w", 0.5).With("crop.rect_cx", 0.75);
+        var outImg = CpuPipeline.Process(src, s, null, TestContext.Current.CancellationToken);
+        Assert.Equal((32, 48), (outImg.Width, outImg.Height));
+        Assert.True(MaxAbsDiff(Column(outImg, 0), Column(src, 32)) <= 2);   // 只有雙線性四捨五入誤差
+    }
+
+    [Fact]
+    public void Crop_Quarter1_RotatesClockwise()
+    {
+        var src = HGradient(64, 48);   // 左暗右亮 → 順時針 90° 後上暗下亮
+        var s = ModuleCatalog.Defaults.With("crop.enabled", true).With("crop.quarter", 1.0);
+        var outImg = CpuPipeline.Process(src, s, null, TestContext.Current.CancellationToken);
+        Assert.Equal((48, 64), (outImg.Width, outImg.Height));
+        Assert.True(Pixel(outImg, 10, 0) < 1000 && Pixel(outImg, 10, 63) > 64000);
+    }
+
+    [Fact]
+    public void Crop_VignetteUsesCroppedFrame()
+    {
+        var src = Flat(80, 40, 40000);
+        var s = ModuleCatalog.Defaults.With("crop.enabled", true).With("crop.rect_w", 0.5).With("crop.rect_cx", 0.25)
+            .With("vignette.enabled", true).With("vignette.amount", 80.0);   // 正值 = 壓暗邊緣
+        var outImg = CpuPipeline.Process(src, s, null, TestContext.Current.CancellationToken);
+        Assert.Equal((40, 40), (outImg.Width, outImg.Height));
+        // 暗角中心在裁切後畫框中心（40×40 的中心），不是原圖中心
+        Assert.True(Pixel(outImg, 20, 20) > Pixel(outImg, 0, 0));
+        Assert.True(Math.Abs(Pixel(outImg, 0, 20) - Pixel(outImg, 39, 20)) <= 2);
+    }
+
+    [Theory]
+    [InlineData(0.0, 0, false)]
+    [InlineData(7.5, 0, false)]
+    [InlineData(0.0, 1, true)]
+    [InlineData(-12.0, 3, false)]
+    public void Gpu_MatchesCpu_Crop(double angle, int quarter, bool flip)
+    {
+        using var gpu = TryCreateGpu();
+        Assert.SkipWhen(gpu is null, "沒有可用的 GPU 介面卡");
+        var src = HGradient(96, 64);
+        var s = ModuleCatalog.Defaults.With("crop.enabled", true).With("crop.rect_w", 0.6).With("crop.rect_h", 0.6)
+            .With("crop.angle", angle).With("crop.quarter", (double)quarter).With("crop.flip_h", flip)
+            .With("vignette.enabled", true).With("vignette.amount", 50.0);   // 之後的效果也以裁切後尺寸計算
+        var ct = TestContext.Current.CancellationToken;
+        var cpu = CpuPipeline.Process(src, s, null, ct);
+        var gpuOut = gpu!.Render16(src, s, ct);
+        Assert.Equal((cpu.Width, cpu.Height), (gpuOut.Width, gpuOut.Height));
+        var max = MaxAbsDiff(cpu.Rgba16, gpuOut.Rgba16);
+        Assert.True(max <= 64, $"GPU 與 CPU 16-bit 差異 {max}/65535");   // 與其他幾何模組相同容差
+
+        var preview = gpu.Render(src, s);   // 預覽（BGRA8）也是裁切後尺寸
+        Assert.Equal((cpu.Width, cpu.Height), (preview.Width, preview.Height));
+        Assert.Equal(cpu.Width * cpu.Height * 4, preview.Bgra.Length);
+    }
+
+    [Fact]
+    public void Gpu_Crop_ThenUncropped_ReallocatesWorkspace()
+    {
+        using var gpu = TryCreateGpu();
+        Assert.SkipWhen(gpu is null, "沒有可用的 GPU 介面卡");
+        var src = HGradient(64, 48);
+        var ct = TestContext.Current.CancellationToken;
+        var cropped = ModuleCatalog.Defaults.With("crop.enabled", true).With("crop.rect_w", 0.5);
+        Assert.Equal(32, gpu!.Render16(src, cropped, ct).Width);
+        var full = gpu.Render16(src, ModuleCatalog.Defaults, ct);
+        Assert.Equal((64, 48), (full.Width, full.Height));
+        Assert.True(MaxAbsDiff(full.Rgba16, CpuPipeline.Process(src, ModuleCatalog.Defaults, null, ct).Rgba16) <= 64);
+    }
+
+    [Fact]
+    public void Crop_ModuleParams_ExposeOutputSize()
+    {
+        var src = Flat(80, 40, 40000);
+        var p = ModuleParams.From(src, ModuleCatalog.Defaults.With("crop.enabled", true).With("crop.rect_w", 0.5));
+        Assert.True(p.Crop.On);
+        Assert.Equal((40, 40), (p.OutWidth, p.OutHeight));
+        var off = ModuleParams.From(src, ModuleCatalog.Defaults);
+        Assert.Equal((80, 40), (off.OutWidth, off.OutHeight));
     }
 }
