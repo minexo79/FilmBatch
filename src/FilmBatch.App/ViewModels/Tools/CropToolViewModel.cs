@@ -350,6 +350,24 @@ public sealed partial class CropToolViewModel : ObservableObject
         var full = Resize(start, handle, delta.X, delta.Y, fromCenter);
         CropParams result;
         if (Fits(full) || !Fits(start)) result = full;
+        else if (double.IsNaN(Ratio()))
+        {
+            // 自由比例：兩軸分開夾。一起按比例縮的話，角把手頂到一邊後，往外推越多、另一軸跟得越少，框會來回跳
+            double MaxFraction(Func<double, bool> ok)
+            {
+                if (ok(1)) return 1;
+                double lo = 0, hi = 1;
+                for (var i = 0; i < 32; i++)
+                {
+                    var mid = (lo + hi) / 2;
+                    if (ok(mid)) lo = mid; else hi = mid;
+                }
+                return lo;
+            }
+            var fx = MaxFraction(t => Fits(Resize(start, handle, delta.X * t, 0, fromCenter)));
+            var fy = MaxFraction(t => Fits(Resize(start, handle, delta.X * fx, delta.Y * t, fromCenter)));
+            result = Resize(start, handle, delta.X * fx, delta.Y * fy, fromCenter);
+        }
         else
         {
             // 二分搜尋：位移的最大比例（剛好碰到影像邊界）

@@ -82,6 +82,23 @@ public sealed class CropToolTests
     }
 
     [Fact]
+    public void CornerDrag_PastOneEdge_KeepsFollowingOnTheOtherAxis()
+    {
+        var (vm, _) = Create();
+        vm.BeginCommand.Execute(null);
+        vm.DragHandle(CropHandle.Right, new Point(-0.5, 0), false);
+        vm.DragHandle(CropHandle.Bottom, new Point(0, -0.5), false);     // 左上角 0.5×0.5
+        var start = vm.Working;
+        foreach (var dx in new[] { 0.5, 0.6, 0.7, 0.55 })                // 右邊早已頂到，往右多推多少都一樣
+        {
+            vm.Restore(start);
+            vm.DragHandle(CropHandle.BottomRight, new Point(dx, 0.1), false);
+            Assert.Equal(1.0, vm.Working.W, 6);
+            Assert.Equal(0.6, vm.Working.H, 6);                          // 下邊不可隨 x 推多遠而來回跳
+        }
+    }
+
+    [Fact]
     public void Straighten_PointerBackToPress_ReturnsToStartAngle()
     {
         var vm = CornerBox();

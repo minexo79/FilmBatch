@@ -260,6 +260,9 @@ public class PreviewCanvas : Control
 
         _dragStart = pos;
         _panStart = _pan;
+        // 拖曳中（裁切框、平移、分割線）改用低品質取樣：Skia 高 / 中品質縮放在約 0.65–0.75 倍（常見的符合視窗倍率）
+        // 軟體算圖實測每幀上千毫秒；放開後再以高品質重畫
+        RenderOptions.SetBitmapInterpolationMode(this, BitmapInterpolationMode.LowQuality);
         e.Pointer.Capture(this);
         e.Handled = true;
         InvalidateVisual();
@@ -304,6 +307,7 @@ public class PreviewCanvas : Control
         if (_drag == DragMode.ControlPoint && Displayed is { } img)
             ControlPointDragged?.Invoke(ToNormalized(img.Size, e.GetPosition(this)), true);
         _drag = DragMode.None;
+        RenderOptions.SetBitmapInterpolationMode(this, BitmapInterpolationMode.HighQuality);
         e.Pointer.Capture(null);
         InvalidateVisual();
     }

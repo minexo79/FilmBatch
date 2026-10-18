@@ -88,11 +88,18 @@ public static class CropGeometry
     /// <summary>裁切框四個角是否都落在來源影像內。</summary>
     public static bool FitsInside(int srcW, int srcH, CropParams c)
     {
-        var t = Compute(srcW, srcH, c);
+        if (!c.On) return true;
+        // 用連續的框大小（不取整數像素）：取整會讓「放不放得下」隨大小跳動，拖曳把手二分搜尋時框會來回抖
+        var q = ((c.Quarter % 4) + 4) % 4;
+        var (ow, oh) = q % 2 == 1 ? (srcH, srcW) : (srcW, srcH);
+        var a = c.AngleDeg * Math.PI / 180;
+        var (cos, sin) = (Math.Cos(a), Math.Sin(a));
+        var (hw, hh) = (c.W * ow / 2, c.H * oh / 2);
+        var toSource = OrientedToSource(srcW, srcH, ow, oh, q, c.FlipH, c.FlipV);
         const double eps = 1e-6;
-        foreach (var (x, y) in new[] { (0.0, 0.0), (t.OutWidth, 0.0), (0.0, t.OutHeight), (t.OutWidth, (double)t.OutHeight) })
+        foreach (var (u, v) in new[] { (-hw, -hh), (hw, -hh), (-hw, hh), (hw, hh) })
         {
-            var (sx, sy) = t.OutToSource.Apply(x, y);
+            var (sx, sy) = toSource.Apply(c.Cx * ow + cos * u - sin * v, c.Cy * oh + sin * u + cos * v);
             if (sx < -eps || sy < -eps || sx > srcW + eps || sy > srcH + eps) return false;
         }
         return true;
