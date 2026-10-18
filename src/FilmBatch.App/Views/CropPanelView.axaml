@@ -45,7 +45,7 @@
             <TextBlock Classes="field-label" Text="{l:Tr Tool.Crop.Straighten}" />
             <TextBlock Grid.Column="1" Classes="numeric secondary" Text="{Binding Angle, StringFormat={}{0:F1}°}" />
           </Grid>
-          <Slider Minimum="-45" Maximum="45" SmallChange="0.1" LargeChange="1" Value="{Binding Angle}" />
+          <Slider Name="AngleSlider" Minimum="-45" Maximum="45" SmallChange="0.1" LargeChange="1" Value="{Binding Angle}" />
         </StackPanel>
 
         <StackPanel Classes="field">
