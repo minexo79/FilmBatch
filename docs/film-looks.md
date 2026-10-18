@@ -202,7 +202,7 @@
 
 ## 6. RAW 與輸入色彩範圍
 
-- FilmBatch 目前開啟 TIFF、JPEG、PNG（`Project.SupportedExtensions`），輸入經 Magick.NET 轉成 sRGB 再解碼為線性光。RAW 請先在 RAW 編輯器轉成 sRGB 的 16-bit TIFF；所有輸入都走同一條 sRGB 管線，套用同一組 LUT。
+- FilmBatch 可直接開啟支援的 RAW，場景線性 Rec.2020 在效果管線中轉為未夾取的線性 sRGB 工作值；一般 TIFF／JPEG／PNG 仍由 Magick.NET 轉成 sRGB。兩條路徑共用藝術 LUT，但 RAW 曝光與相機白平衡發生在最終顯示收尾之前，不從已量化 SDR 還原。
 - LUT 的輸入是 **sRGB 顯示編碼（0–1）**，因此線性光中大於 1 的亮部（例如基本調整提高曝光後）會在進入 LUT 前截斷；寬色域的負值同樣被截到 0。
 - 效果比例混合時使用**未截斷的原值**，所以 `strength < 100` 時仍保留部分超出範圍的亮部資訊；`strength = 100` 時亮部以 LUT 的白點為上限。
 

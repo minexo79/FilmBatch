@@ -266,6 +266,8 @@ flowchart LR
 
 **處理順序**（`CpuPipeline.Process` 與 `GpuEffectPipeline.Process` 相同）
 
+RAW 來源保持未夾取的浮點線性 Rec.2020，`Rgba16` 只在原圖比較／直方圖等顯示用途首次取用時編碼。兩套算圖管線先轉到未夾取的線性 sRGB 工作域，在裁切後套用相機白平衡與語意遮罩，再執行既有效果；顯示段前轉回 Rec.2020，依原順序完成相機色調、高光去飽和與壓縮，再轉顯示 sRGB。高光壓縮的通道最大值不能與色域轉換交換順序。一般影像維持原有 sRGB 路徑；藝術 LUT 仍有自身的有界輸入限制。
+
 | 階段 | 色彩空間 | 模組 |
 |---|---|---|
 | ① 幾何 | 線性光 | 基本調整（曝光、色溫、色調）→ 鏡頭變形 → 多格分鏡 |
@@ -305,8 +307,8 @@ App 端由 `App/Services/PreviewService.cs` 包裝：負責 `generation` 比對�
 | 型別 | 說明 |
 |---|---|
 | `Imaging/ImageLoader` | 以 Magick.NET 解碼，來源 ICC 轉成 sRGB、套用方向，產生 16-bit RGBA 的 `SourceImage`；可指定長邊產生預覽代理圖。RAW（與含感光資料的 TIFF）先交給 `RawSourceLoader` |
-| `Imaging/Raw/RawSourceLoader` | RAW 來源：`FilmBatch.Raw` 解碼 → 以相機內嵌 JPEG 擬合起始外觀（`CameraPreview`）→ 分箱或去馬賽克顯影、高光重建、色彩 → 相機色調與 sRGB 編碼；GPU 批次匯出的最後一步沿用算圖器的 Dawn 裝置，直接載入與預覽仍使用 CPU `RawDisplay`。不支援或損毀的 RAW 一律報錯，不以內嵌 JPEG 代替 |
-| `Imaging/SourceImage` | 記憶體中的影像：寬、高、`Rgba16` 像素、`FilePath`（種子由檔名計算） |
+| `Imaging/Raw/RawSourceLoader` | RAW 解碼、起始外觀、分箱／去馬賽克、高光重建與色彩處理，產生浮點 Rec.2020 場景來源；有 gain table 的 DNG 不額外擬合全域 JPEG tone。CPU／GPU 共用晚期 RAW 收尾，來源載入不提前量化成 SDR |
+| `Imaging/SourceImage` | 一般影像保存 `Rgba16`；RAW 保存場景像素、相機色調／白平衡、共用幾何與語意遮罩。`Downscale` 在場景域縮放；算圖不改寫來源 |
 | `Imaging/ImageHistogram` | 直方圖與裁切比例 |
 | `Imaging/SampleImages` | 產生「開啟範例照片」用的測試圖 |
 | `Exporting/BatchExporter` | 匯出主流程：`BuildJobs` 為每張照片建立不可變快照 → `RunAsync` 在背景依序讀檔、`Render16`、縮放、編碼、寫入 EXIF / ICC → 寫 `export_log.json` |
@@ -409,6 +411,9 @@ flowchart TB
 - 預設管理的 Esc 透過 `IsCancel` 關閉視窗，包含焦點位於文字欄位時；關閉後沿用原本的套用流程。偏好設定仍維持關閉時套用，不改成取消修改。
 - RAW 原廠處理只在焦點來源已解碼為 RAW（`SourceImage.RawInfo` 存在）時顯示，仍遵守「隱藏未啟用模組」；一般影像即使帶有已保存的 RAW 設定也不顯示此面板、不刪除設定。來源解碼完成或失敗時重新整理面板；照片基本參數預設依 `basic` key 展開基本調整，不依賴模組目錄的位置。
 - 底片風格與色相修正縮圖在送出前核對來源的 `RawOptions` 與焦點照片設定；RAW 尚在重新顯影時沿用等待來源的排程，不以舊來源產生新設定的縮圖。匹配來源就緒後自動重算，包含在底片分頁復原／重做 RAW 選項的情況。
+- RAW 的 `wb_mode=as-shot|custom`、自訂 1000–50000 K／色偏與 `mask_*` 只重算畫面，不重新解碼。遮罩精確保存 `Name`＋`InstanceId`；缺失或同名不明確時顯示不可用，不改成全圖作用。全尺寸算圖保留單像素遮罩細節，不先降成固定大小。
+- `embedded_lens`、`camera_local_tone`、`lens_database` 與模組啟用狀態屬於來源快取鍵。外部 Lensfun-format XML 只在缺少已驗證內嵌校正時匹配，拒絕 DTD／外部實體且限制檔案大小；不隨程式散布資料庫。warp、gain table 與語意遮罩共用輸出→有效 RAW 的逆映射。
+- 解碼失敗／取消的快取項目不重用；外部檔案或資料夾修復後可用相同選項重新要求來源。過期解碼失敗必須同時核對來源選項，不能清除 undo 已還原的畫面。
 
 #### 服務與控制項
 

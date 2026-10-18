@@ -39,10 +39,10 @@ Headless 不會執行 AppKit 的 Spaces 動畫。Mac 桌面驗證須觀察實際
 
 ```bash
 dotnet test tests/FilmBatch.App.Tests/FilmBatch.App.Tests.csproj -c Release \
-  --filter "FullyQualifiedName~RawInspectorTests|FullyQualifiedName~Thumbnails_WaitForCurrentRawSource"
+  --filter "FullyQualifiedName~RawInspectorTests|FullyQualifiedName~Thumbnails_WaitForCurrentRawSource|FullyQualifiedName~RawControlsTests|FullyQualifiedName~RawSourceLifecycleTests"
 ```
 
-涵蓋 RAW／一般影像切換、隱藏未啟用模組、保留已保存的 RAW 設定、預設展開基本調整，以及底片縮圖等待符合目前 RAW 選項的來源後自動更新。永久測試使用隔離的 DNG／一般影像與實際 CPU 縮圖管線，不依賴外部相機語料。
+涵蓋 RAW／一般影像切換、隱藏未啟用模組、保留已保存的 RAW 設定、預設展開基本調整、來源選項切換後縮圖自動更新，以及 Kelvin／遮罩設定的復原、儲存、重開、過期解碼失敗與修復後快取重新解碼。永久測試使用隔離的 DNG／一般影像與實際 CPU 管線，不依賴外部相機語料。
 
 Mac 桌面另以含 gain-table 的 ProRAW 及含畸變／暗角資料的 RAF 驗證：在底片分頁復原／重做 RAW 選項，即使重解碼時間超過縮圖防抖間隔，底片與色相縮圖仍自動跟上新來源，結果須等於同來源重新要求算圖的結果；切到 PNG 不顯示 RAW 控制項，再切回 RAW 恢復顯示且設定不變。驗證前後核對原始 RAW 的 SHA-256。
 
@@ -50,9 +50,22 @@ Mac 桌面另以含 gain-table 的 ProRAW 及含畸變／暗角資料的 RAF 驗
 
 RAW 解碼與顯影另有對照 LightCraft 參考輸出的語料測試（逐位元的感光資料、色彩標籤與顯影階段，以及起始外觀擬合後的線性／顯示 RGB）。樣本與參考輸出不進版本庫；沒有設定 `FILMBATCH_RAW_SAMPLES`／`FILMBATCH_RAW_ORACLE` 時（例如 CI）這些測試會略過。取得方式、比較門檻與已知偏差見 [tools/raw-oracle/README.md](../tools/raw-oracle/README.md)。
 
+場景線性、白平衡、語意遮罩、鏡頭與 DNG 色彩寫出另有不需外部語料的測試：
+
+```bash
+dotnet test tests/FilmBatch.Core.Tests/FilmBatch.Core.Tests.csproj -c Release \
+  --filter "FullyQualifiedName~Raw|FullyQualifiedName~LensProfile"
+dotnet test tests/FilmBatch.Raw.Tests/FilmBatch.Raw.Tests.csproj -c Release \
+  --filter "FullyQualifiedName~PortableJxl|FullyQualifiedName~JpegXl"
+```
+
+支援平台的 JPEG XL 測試要求實際隨附解碼器；庫缺失屬於部署失敗，不當作條件略過。Windows 的原生載入／GUI 行為仍須在 Windows CI 或實機驗證，Mac 上的 PE／相依符號檢查不能代替執行。
+
+八項整合需求、獨立對照實驗與 review 準則見 [RAW pipeline parity 計畫](superpowers/plans/2026-10-18-raw-pipeline-parity.md)。交付驗收另保留 `dist/raw-pipeline-parity-acceptance.json`、`dist/raw-parity-native-osx-arm64.txt` 與封裝 smoke 記錄；數值實驗不取代實際解壓後的 CLI／原生函式庫驗證，條件略過的語料不計為通過。
+
 ### Shader 驗證
 
-所有 WGSL 經 `ShaderLibrary` 展開 include 後，以固定版本的 naga 驗證：
+所有 WGSL 編譯單元經 `ShaderLibrary` 展開 include 後，以固定版本的 naga 驗證；`common/` 共用片段隨使用它的 shader 一起檢查，不單獨編譯：
 
 ```bash
 cargo install --locked --version 30.0.1 naga-cli
@@ -95,6 +108,8 @@ open dist/osx-arm64/FilmBatch.app
 ```
 
 macOS 僅支援 Apple Silicon（`osx-arm64`），不再提供 Intel Mac（`osx-x64`）建置。省略 `--rid` 時，Mac 預設為 `osx-arm64`。
+
+App 與 CLI 各自隨附固定 ABI 的 libjxl 0.11.2 原生閉包與授權，不使用 Homebrew／PATH 搜尋作為缺庫退路。`src/FilmBatch.Raw/Native/Jxl/provenance.json` 記錄封包來源、雜湊與相依關係；`build/repack-jxl.py` 依該紀錄重建封裝，Mac install names 在簽章前改成 `@loader_path`。不得只複製 `libjxl` 而遺漏其相依庫。
 
 NuGet 內附的 Dawn 要求 macOS 26.0。若要使用較低部署目標，先重建相同 commit 的原生函式庫：
 
@@ -140,6 +155,8 @@ dotnet run build/Build.cs -- --rid osx-arm64 \
 filmbatch-cli export "/path/to/photos" --out "/path/to/output" --format png
 filmbatch-cli export "/path/to/photos" --format jpg --quality 95 --long-edge 3000
 filmbatch-cli gpu-info
+filmbatch-cli raw convert "/path/input.CR2" "/path/output.dng" --compression lj92
+filmbatch-cli raw masks "/path/input.dng"
 ```
 
 開發時可直接 `dotnet run --project src/FilmBatch.Cli -- <指令>`。
@@ -147,8 +164,10 @@ filmbatch-cli gpu-info
 - 匯出使用已保存的專案設定，CLI 不會自動更新預設快照。
 - `--software` 要求軟體 GPU 介面卡；若不可用則以 CPU 算圖並顯示原因。
 - `--presets-folder` 指定獨立預設庫。
-- GPU 算圖器匯出 RAW 時，顯示收尾沿用同一 Dawn 裝置，分帶處理並保留 CPU 降級原因；解碼與 demosaic 仍由 CPU 執行，直接預覽載入不變。
-- 每筆 `export_log.json` 的 `Renderer` 會附上 `RAW GPU` 或 `RAW CPU（原因）`；整批使用 CPU 算圖器時維持原有 CPU 標示。精度、量測與 Halide AOT 取捨見 [ADR 0003](adr/0003-gpu-stack-decision.md)。
+- RAW 的預覽與匯出均從浮點場景來源執行白平衡、局部遮罩與既有效果，再完成顯示收尾；解碼與 demosaic 由 CPU 執行，Metal 路徑不把 CPU 算好的圖冒充 GPU。超過裝置尺寸／記憶體限制時明確改用 CPU。
+- 每筆 RAW `export_log.json` 的 `Renderer` 會附上 `RAW GPU` 或 `RAW CPU`，降級時保留原因；一般影像維持原有裝置標示。精度、量測與 Halide AOT 取捨見 [ADR 0003](adr/0003-gpu-stack-decision.md)。
+- RAW 面板提供 As Shot／自訂 Kelvin＋色偏與實際內嵌語意遮罩；沒有對應遮罩的照片保留設定但不全圖套用。外部 Lensfun-format 目錄可從面板瀏覽指定，儲存為專案相對路徑；也可使用 `FILMBATCH_LENSFUN_DIR`。不會下載資料庫。
+- `raw convert` 補上可用的相機色彩矩陣、hue/saturation table 與 tone，保留感光樣本、幾何及標準拍攝中繼資料；沒有可用色彩描述或目的檔已存在時拒絕寫入。標準 DNG profile 無法完整表示檔案內 JPEG 擬合外觀的逐像素亮度還原／chroma 曲線，不能宣稱轉前與轉後逐像素相同；相同色彩模型的對照與此限制分開記錄。
 
 ## 資料位置
 
