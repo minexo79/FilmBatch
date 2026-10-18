@@ -474,6 +474,7 @@ Clear overrides: use the new preset entirely.</value></data>
   <data name="Choice.dirt_scratches.polarity.mixed" xml:space="preserve"><value>Mixed</value></data>
   <data name="Param.grain.roughness" xml:space="preserve"><value>Roughness</value></data>
   <data name="Param.grain.color" xml:space="preserve"><value>Color Grain</value></data>
+  <data name="Param.grain.softness" xml:space="preserve"><value>Softness</value></data>
   <!-- Film look (FilmLookControl) -->
   <data name="Film.Look" xml:space="preserve"><value>Film</value></data>
   <data name="Film.HueCorrection" xml:space="preserve"><value>Hue Correction</value></data>

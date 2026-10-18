@@ -84,7 +84,7 @@ public sealed class ModuleParams
     public float DirtDust, DirtScratches, DirtHairs, DirtStrength, DirtScale;
     // grain
     public bool GrainOn;
-    public float GrainAmount, GrainSize, GrainRoughness, GrainColor;
+    public float GrainAmount, GrainSize, GrainRoughness, GrainColor, GrainSoftness;
     // seeds
     public uint SeedMultiLens, SeedLightLeak, SeedPhotoPlate, SeedDirt, SeedGrain;
 
@@ -268,6 +268,7 @@ public sealed class ModuleParams
             GrainSize = N(s, "grain.size", 30),
             GrainRoughness = N(s, "grain.roughness", 50),
             GrainColor = N(s, "grain.color", 30),
+            GrainSoftness = N(s, "grain.softness", 30),
             // seeds（照片種子 ⊕ 模組種子參數；Downscale 後檔名不變）
             SeedMultiLens = SeedHash.Combine(photoSeed, (uint)N(s, "multi_lens.seed", 0)),
             SeedLightLeak = SeedHash.Combine(photoSeed, (uint)N(s, "light_leak.seed", 0)),

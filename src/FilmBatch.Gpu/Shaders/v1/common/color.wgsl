@@ -78,10 +78,3 @@ fn value_noise1(x: f32, seed: u32) -> f32 {
     let b = pcg_unit(seed + u32(i + 1) * 197u);
     return a + (b - a) * (f * f * (3.0 - 2.0 * f));
 }
-
-// 顆粒格雜湊（量化到 cell 格，預覽與匯出分布一致）
-fn grain_cell(x: i32, y: i32, cell: f32, seed: u32) -> f32 {
-    let cx = i32(floor(f32(x) / cell));
-    let cy = i32(floor(f32(y) / cell));
-    return pcg_unit(seed + u32(cx) * 4001u + u32(cy) * 7919u);
-}
