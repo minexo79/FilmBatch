@@ -9,7 +9,7 @@
     <c:PreviewCanvas Name="Canvas"
                      Image="{Binding Image}" Original="{Binding Original}"
                      ShowOriginal="{Binding ShowOriginal}" IsSplit="{Binding IsSplit}"
-                     SplitPosition="{Binding SplitPosition}" Zoom="{Binding Zoom}"
+                     SplitPosition="{Binding SplitPosition}" Zoom="{Binding Zoom}" Pan="{Binding Pan}"
                      IsBusy="{Binding IsBusy}" OverlayText="{Binding OverlayText}"
                      ControlPoint="{Binding ControlPoint}" CanvasBackground="{Binding Background}"
                      ActiveTool="{Binding ActiveTool}" />

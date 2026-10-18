@@ -13,10 +13,12 @@ namespace FilmBatch.App.Controls;
 /// <summary>
 /// 預覽畫布（計畫書 2.4.3）：覆寫 <see cref="Render"/> 直接繪製影像，不使用巢狀的 Image / Canvas 版面。
 /// <list type="bullet">
-/// <item>縮放：符合視窗 / 100%（1 影像像素 = 1 裝置像素）/ 滾輪縮放；放大時拖曳平移。</item>
+/// <item>縮放：符合視窗 / 100%（1 影像像素 = 1 裝置像素）/ 滾輪縮放；放大時拖曳平移。縮放與平移（<see cref="Pan"/>）都由繫結共用，
+/// 面板顯示 / 隱藏而換成另一個畫布時，畫面停在同一處。</item>
 /// <item>原圖對比：<see cref="ShowOriginal"/>（按住空白鍵）、<see cref="IsSplit"/> 左右分割（分割線可拖曳）。</item>
 /// <item>控制點：與影像一起繪製，命中測試自行計算；拖曳時即時回報（<see cref="ControlPointDragged"/>）。</item>
-/// <item>畫布工具：<see cref="ActiveTool"/>（裁切框等）畫在影像之上，指標事件優先交給工具。</item>
+/// <item>畫布工具：<see cref="ActiveTool"/>（裁切框等）畫在影像之上，指標事件優先交給工具；畫面上的對比分割線例外，仍可拖曳。</item>
+/// <item>拖曳在放開、失去指標擷取、視窗失去焦點、畫布離開畫面、工具被換掉或控制點消失時結束，並恢復高品質取樣。</item>
 /// <item>算圖中於右上角顯示細小的旋轉指示，不遮擋畫面、不鎖住操作。</item>
 /// </list>
 /// </summary>
@@ -34,13 +36,16 @@ public class PreviewCanvas : Control
         AvaloniaProperty.Register<PreviewCanvas, double>(nameof(SplitPosition), 0.5, defaultBindingMode: BindingMode.TwoWay);
     public static readonly StyledProperty<double> ZoomProperty =
         AvaloniaProperty.Register<PreviewCanvas, double>(nameof(Zoom), 0, defaultBindingMode: BindingMode.TwoWay);
+    /// <summary>影像中心相對畫布中心的平移（DIP）；拖曳平移、滾輪縮放會寫回，符合視窗時歸零。</summary>
+    public static readonly StyledProperty<Vector> PanProperty =
+        AvaloniaProperty.Register<PreviewCanvas, Vector>(nameof(Pan), defaultBindingMode: BindingMode.TwoWay);
     public static readonly StyledProperty<bool> IsBusyProperty =
         AvaloniaProperty.Register<PreviewCanvas, bool>(nameof(IsBusy));
     public static readonly StyledProperty<string?> OverlayTextProperty =
         AvaloniaProperty.Register<PreviewCanvas, string?>(nameof(OverlayText));
     public static readonly StyledProperty<Point?> ControlPointProperty =
         AvaloniaProperty.Register<PreviewCanvas, Point?>(nameof(ControlPoint));
-    /// <summary>目前的畫布工具（裁切、遮罩）；非 null 時指標事件先交給工具。</summary>
+    /// <summary>目前的畫布工具（裁切、遮罩）；非 null 時指標事件先交給工具（畫面上的對比分割線除外）。</summary>
     public static readonly StyledProperty<ICanvasTool?> ActiveToolProperty =
         AvaloniaProperty.Register<PreviewCanvas, ICanvasTool?>(nameof(ActiveTool));
     public static readonly StyledProperty<IBrush?> CanvasBackgroundProperty =
@@ -48,6 +53,8 @@ public class PreviewCanvas : Control
 
     private const double PointRadius = 6;
     private const double HitRadius = 12;
+    /// <summary>分割線左右可拖曳的範圍（DIP）。</summary>
+    private const double SplitHit = 6;
 
     /// <summary>
     /// 算圖指示的位置：右上角留給預覽浮動工具列（右邊距 14 + 寬 44，見 Controls.axaml 的 Border.preview-toolbar），
@@ -67,8 +74,13 @@ public class PreviewCanvas : Control
 
     private DragMode _drag;
     private Point _dragStart;
+    /// <summary>這次拖曳最後處理的位置：沒有放開就結束時，工具以此收尾，不產生新的位移。</summary>
+    private Point _dragLast;
     private Vector _panStart;
-    private Vector _pan;
+    /// <summary>接手這次拖曳的工具：拖曳中換掉工具時仍由它收尾。</summary>
+    private ICanvasTool? _dragTool;
+    private IPointer? _dragPointer;
+    private WindowBase? _window;
     private readonly DispatcherTimer _spinTimer;
     private double _spinAngle;
     private double _lastFit;
@@ -80,6 +92,7 @@ public class PreviewCanvas : Control
     public double SplitPosition { get => GetValue(SplitPositionProperty); set => SetValue(SplitPositionProperty, value); }
     /// <summary>0 = 符合視窗；1 = 100%（1 影像像素 = 1 裝置像素）。</summary>
     public double Zoom { get => GetValue(ZoomProperty); set => SetValue(ZoomProperty, value); }
+    public Vector Pan { get => GetValue(PanProperty); set => SetValue(PanProperty, value); }
     public bool IsBusy { get => GetValue(IsBusyProperty); set => SetValue(IsBusyProperty, value); }
     public string? OverlayText { get => GetValue(OverlayTextProperty); set => SetValue(OverlayTextProperty, value); }
     public Point? ControlPoint { get => GetValue(ControlPointProperty); set => SetValue(ControlPointProperty, value); }
@@ -89,24 +102,33 @@ public class PreviewCanvas : Control
     /// <summary>拖曳控制點：參數為正規化座標與是否已放開。</summary>
     public event Action<Point, bool>? ControlPointDragged;
 
+    /// <summary>控制點拖曳沒有放開就結束（失去指標擷取、視窗失去焦點、控制點消失等）：不帶新位置，只結束這次編輯。</summary>
+    public event Action? ControlPointDragInterrupted;
+
     /// <summary>符合視窗時的實際倍率（相對 100%）。</summary>
     public event Action<double>? FitScaleChanged;
 
     static PreviewCanvas()
     {
         AffectsRender<PreviewCanvas>(ImageProperty, OriginalProperty, ShowOriginalProperty, IsSplitProperty,
-            SplitPositionProperty, ZoomProperty, OverlayTextProperty, ControlPointProperty, CanvasBackgroundProperty, IsBusyProperty);
+            SplitPositionProperty, ZoomProperty, PanProperty, OverlayTextProperty, ControlPointProperty, CanvasBackgroundProperty, IsBusyProperty);
         ZoomProperty.Changed.AddClassHandler<PreviewCanvas>((c, e) =>
         {
-            if (e.NewValue is <= 0.0) c._pan = default;
+            if (e.NewValue is <= 0.0) c.Pan = default;
         });
         IsBusyProperty.Changed.AddClassHandler<PreviewCanvas>((c, _) => c.UpdateSpinner());
         ActiveToolProperty.Changed.AddClassHandler<PreviewCanvas>((c, e) =>
         {
             if (e.OldValue is ICanvasTool old) old.Invalidated -= c.InvalidateVisual;
             if (e.NewValue is ICanvasTool tool) tool.Invalidated += c.InvalidateVisual;
-            if (c._drag == DragMode.Tool) c._drag = DragMode.None;
+            // 拖曳中換掉工具（裁切套用 / 取消）：由開始這次拖曳的工具收尾
+            if (c._drag == DragMode.Tool) c.EndDrag();
             c.InvalidateVisual();
+        });
+        // 控制點消失（換分頁、收起模組、換照片）：拖曳中的控制點已不存在，這次拖曳到此結束
+        ControlPointProperty.Changed.AddClassHandler<PreviewCanvas>((c, e) =>
+        {
+            if (e.NewValue is null && c._drag == DragMode.ControlPoint) c.EndDrag();
         });
         FocusableProperty.OverrideDefaultValue<PreviewCanvas>(true);
         ClipToBoundsProperty.OverrideDefaultValue<PreviewCanvas>(true);
@@ -145,7 +167,7 @@ public class PreviewCanvas : Control
         var s = Scale(img);
         var w = img.Width * s;
         var h = img.Height * s;
-        var origin = new Point((Bounds.Width - w) / 2, (Bounds.Height - h) / 2) + _pan;
+        var origin = new Point((Bounds.Width - w) / 2, (Bounds.Height - h) / 2) + Pan;
         return new Rect(origin, new Size(w, h));
     }
 
@@ -163,9 +185,9 @@ public class PreviewCanvas : Control
             DrawingContext.PushedState? rotated = map.RotationDeg != 0 ? ctx.PushTransform(map.Transform) : null;
             ctx.DrawImage(img, new Rect(size), dest);
 
-            if (IsSplit && !ShowOriginal && Original is { } orig && Image is not null)
+            if (IsSplitShown && Original is { } orig)
             {
-                var x = dest.X + dest.Width * Math.Clamp(SplitPosition, 0, 1);
+                var x = SplitX(dest);
                 using (ctx.PushClip(new Rect(dest.X, dest.Y, Math.Max(0, x - dest.X), dest.Height)))
                     ctx.DrawImage(orig, new Rect(orig.Size), dest);
                 var top = Math.Max(0, dest.Y);
@@ -236,11 +258,23 @@ public class PreviewCanvas : Control
         return new Point(dest.X + p.X * dest.Width, dest.Y + p.Y * dest.Height);
     }
 
-    private double? SplitScreenX()
+    private bool HitsControlPoint(Point pos) => ControlPointScreen() is { } cp && Distance(cp, pos) <= HitRadius;
+
+    /// <summary>對比分割線畫在畫面上：按住空白鍵看原圖、或原圖 / 效果圖還沒備妥時不畫，也不能拖曳。</summary>
+    private bool IsSplitShown => IsSplit && !ShowOriginal && Original is not null && Image is not null;
+
+    private double SplitX(Rect dest) => dest.X + dest.Width * Math.Clamp(SplitPosition, 0, 1);
+
+    /// <summary>指標是否落在畫出來的分割線上（左右各 <see cref="SplitHit"/>，上下只到線的兩端）。</summary>
+    private bool HitsSplit(Point pos)
     {
-        if (!IsSplit || Displayed is not { } img) return null;
-        var dest = ImageRect(img.Size);
-        return dest.X + dest.Width * SplitPosition;
+        if (!IsSplitShown || Displayed is null) return false;
+        var map = Mapping();
+        var dest = map.ImageRect;
+        var relative = map.ToImage(pos);
+        var y = dest.Y + relative.Y * dest.Height;
+        return Math.Abs((Math.Clamp(SplitPosition, 0, 1) - relative.X) * dest.Width) <= SplitHit
+            && y >= Math.Max(0, dest.Y) && y <= Math.Min(Bounds.Height, dest.Bottom);
     }
 
     protected override void OnPointerPressed(PointerPressedEventArgs e)
@@ -248,24 +282,35 @@ public class PreviewCanvas : Control
         base.OnPointerPressed(e);
         var pt = e.GetCurrentPoint(this);
         if (!pt.Properties.IsLeftButtonPressed || Displayed is null) return;
+        // 上一次拖曳沒有收到放開：先收尾，不與這次併在一起
+        EndDrag();
         Focus();
         var pos = pt.Position;
+        // 畫面上的對比分割線優先於畫布工具：裁切框（框內移動、框外拉直）佔滿整個畫面，否則分割線拖不到；其餘順序不變
+        var onSplit = HitsSplit(pos);
 
-        if (ActiveTool is { } tool && tool.OnPressed(pos, Mapping(), e.KeyModifiers))
+        if (!onSplit && ActiveTool is { } tool && tool.OnPressed(pos, Mapping(), e.KeyModifiers))
+        {
+            e.Handled = true;
+            // 工具在按下時就結束了自己（裁切框內點兩下＝套用）：這次按下已處理，不開始拖曳
+            if (!ReferenceEquals(ActiveTool, tool)) return;
             _drag = DragMode.Tool;
-        else if (ControlPointScreen() is { } cp && Distance(cp, pos) <= HitRadius)
+            _dragTool = tool;
+        }
+        else if (HitsControlPoint(pos))
             _drag = DragMode.ControlPoint;
-        else if (SplitScreenX() is { } sx && Math.Abs(sx - pos.X) <= 6)
+        else if (onSplit)
             _drag = DragMode.Split;
         else if (Zoom > 0 || IsLargerThanView())
             _drag = DragMode.Pan;
         else
             return;
 
-        _dragStart = pos;
-        _panStart = _pan;
+        _dragStart = _dragLast = pos;
+        _panStart = Pan;
+        _dragPointer = e.Pointer;
         // 拖曳中（裁切框、平移、分割線）改用低品質取樣：Skia 高 / 中品質縮放在約 0.65–0.75 倍（常見的符合視窗倍率）
-        // 軟體算圖實測每幀上千毫秒；放開後再以高品質重畫
+        // 軟體算圖實測每幀上千毫秒；拖曳結束後再以高品質重畫
         RenderOptions.SetBitmapInterpolationMode(this, BitmapInterpolationMode.LowQuality);
         e.Pointer.Capture(this);
         e.Handled = true;
@@ -281,38 +326,69 @@ public class PreviewCanvas : Control
         switch (_drag)
         {
             case DragMode.Tool:
-                ActiveTool?.OnMoved(pos, Mapping(), e.KeyModifiers);
+                _dragTool?.OnMoved(pos, Mapping(), e.KeyModifiers);
                 break;
             case DragMode.ControlPoint:
                 ControlPointDragged?.Invoke(ToNormalized(img.Size, pos), false);
                 break;
             case DragMode.Split:
-                var dest = ImageRect(img.Size);
-                SplitPosition = Math.Clamp((pos.X - dest.X) / Math.Max(1, dest.Width), 0, 1);
+                SplitPosition = Math.Clamp(Mapping().ToImage(pos).X, 0, 1);
                 break;
             case DragMode.Pan:
-                _pan = _panStart + (pos - _dragStart);
-                InvalidateVisual();
+                Pan = _panStart + (pos - _dragStart);
                 break;
             default:
-                Cursor = ActiveTool?.CursorAt(pos, Mapping()) is { } toolCursor ? toolCursor
-                    : ControlPointScreen() is { } cp && Distance(cp, pos) <= HitRadius ? new Cursor(StandardCursorType.Hand)
-                    : SplitScreenX() is { } sx && Math.Abs(sx - pos.X) <= 6 ? new Cursor(StandardCursorType.SizeWestEast)
+                // 游標與按下時的優先順序一致
+                var onSplit = HitsSplit(pos);
+                Cursor = !onSplit && ActiveTool?.CursorAt(pos, Mapping()) is { } toolCursor ? toolCursor
+                    : HitsControlPoint(pos) ? new Cursor(StandardCursorType.Hand)
+                    : onSplit ? new Cursor(StandardCursorType.SizeWestEast)
                     : Cursor.Default;
-                break;
+                return;
         }
+        _dragLast = pos;
     }
 
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
         base.OnPointerReleased(e);
-        if (_drag == DragMode.None) return;
-        if (_drag == DragMode.Tool) ActiveTool?.OnReleased(e.GetPosition(this), Mapping());
-        if (_drag == DragMode.ControlPoint && Displayed is { } img)
-            ControlPointDragged?.Invoke(ToNormalized(img.Size, e.GetPosition(this)), true);
+        EndDrag(e.GetPosition(this));
+    }
+
+    /// <summary>指標被別的元件或平台拿走（沒有放開事件）：拖曳停在目前狀態，之後的移動不再修改。</summary>
+    protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
+    {
+        base.OnPointerCaptureLost(e);
+        EndDrag();
+    }
+
+    /// <summary>
+    /// 結束目前的拖曳；沒有拖曳時不做任何事，可重複呼叫。<paramref name="releasedAt"/> 只在真的放開時提供：
+    /// 工具與控制點以放開的位置收尾。其他結束方式（失去指標擷取、視窗失去焦點、畫布離開畫面、工具被換掉、
+    /// 控制點消失、上次拖曳沒收到放開就又按下）停在最後處理的狀態，不再產生新的修改。
+    /// </summary>
+    private void EndDrag(Point? releasedAt = null)
+    {
+        var drag = _drag;
+        if (drag == DragMode.None) return;
+        var tool = _dragTool;
+        var pointer = _dragPointer;
         _drag = DragMode.None;
+        _dragTool = null;
+        _dragPointer = null;
         RenderOptions.SetBitmapInterpolationMode(this, BitmapInterpolationMode.HighQuality);
-        e.Pointer.Capture(null);
+
+        if (drag == DragMode.Tool)
+            tool?.OnReleased(releasedAt ?? _dragLast, Mapping());
+        else if (drag == DragMode.ControlPoint)
+        {
+            if (releasedAt is { } at && Displayed is { } img)
+                ControlPointDragged?.Invoke(ToNormalized(img.Size, at), true);
+            else
+                ControlPointDragInterrupted?.Invoke();
+        }
+
+        if (pointer is not null && ReferenceEquals(pointer.Captured, this)) pointer.Capture(null);
         InvalidateVisual();
     }
 
@@ -331,8 +407,7 @@ public class PreviewCanvas : Control
         Zoom = newZoom;
         var newRect = ImageRect(size);
         var target = new Point(newRect.X + rel.X * newRect.Width, newRect.Y + rel.Y * newRect.Height);
-        _pan += pos - target;
-        InvalidateVisual();
+        Pan += pos - target;
         e.Handled = true;
     }
 
@@ -351,9 +426,22 @@ public class PreviewCanvas : Control
 
     private static double Distance(Point a, Point b) => Math.Sqrt((a.X - b.X) * (a.X - b.X) + (a.Y - b.Y) * (a.Y - b.Y));
 
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        _window = TopLevel.GetTopLevel(this) as WindowBase;
+        if (_window is not null) _window.Deactivated += OnWindowDeactivated;
+    }
+
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnDetachedFromVisualTree(e);
+        if (_window is not null) _window.Deactivated -= OnWindowDeactivated;
+        _window = null;
+        EndDrag();
         _spinTimer.Stop();
     }
+
+    /// <summary>視窗失去焦點（切到其他程式、跳出對話框）：放開事件可能送不到這裡，拖曳到此結束。</summary>
+    private void OnWindowDeactivated(object? sender, EventArgs e) => EndDrag();
 }

@@ -6,7 +6,7 @@ namespace FilmBatch.App.Controls.Tools;
 
 /// <summary>
 /// 預覽畫布上的互動工具（裁切、之後的遮罩工具）。<see cref="PreviewCanvas.ActiveTool"/> 非 null 時，
-/// 指標事件先交給工具；工具不接手（<see cref="OnPressed"/> 回傳 false）才走畫布原本的平移 / 控制點邏輯。
+/// 指標事件先交給工具（畫面上的對比分割線除外，由畫布拖曳）；工具不接手（<see cref="OnPressed"/> 回傳 false）才走畫布原本的平移 / 控制點邏輯。
 /// </summary>
 public interface ICanvasTool
 {
@@ -18,6 +18,10 @@ public interface ICanvasTool
 
     void OnMoved(Point canvas, CanvasMapping map, KeyModifiers mods);
 
+    /// <summary>
+    /// 這次拖曳結束：放開時帶放開的位置；畫布失去指標擷取、視窗失去焦點、畫布離開畫面或工具被換掉時，
+    /// 帶最後一次 <see cref="OnMoved"/>（或按下）的位置。工具應就此清除拖曳狀態，不再產生新的修改。
+    /// </summary>
     void OnReleased(Point canvas, CanvasMapping map);
 
     /// <summary>沒有拖曳時，游標停在 <paramref name="canvas"/> 應顯示的游標；null 表示交給畫布決定。</summary>
