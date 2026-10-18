@@ -52,7 +52,7 @@ Every implementation worker skips build/lint/tests/formatters mid-flight. Parent
 
 | Item | State | Evidence |
 | --- | --- | --- |
-| Survey/CI repair commits | done | `9db099e`, `4abd094`; no push |
+| Survey/CI repair commits | committed and pushed | Survey `341d662`, diagnostic preservation `310983f`, native callbacks `2f750e7` and production sRGB repair `c7f6072` pushed to `dev-circleci-fix`; published verification record `0d5e74a` |
 | Requested branch merge | done | `git merge --no-edit origin/dev-filmlike-fix` succeeded with ort; grain pipeline auto-merged |
 | Incoming grain runtime | verified | 9 grain/clarity checks passed against merge; real Metal RAW+Portra+crop/uncrop/export smoke now max1/65535 |
 | G1/G2/G3 | verified on available host | Source-relative three-model CPU/WGSL implementation, bounded Poisson/Wendland correlated field and optical coverage; Metal render/crop/band/proxy smoke and native model/seed/quality controls exercised |
@@ -60,9 +60,9 @@ Every implementation worker skips build/lint/tests/formatters mid-flight. Parent
 | W1/W2/W3 | verified on available host | Bounded forward fit, three distinct spatial cast candidates, en/zh-TW candidate cards, relative cross-photo references, transient preview/accept/undo; repeated skin-reference acceptance regression failed before/passed after |
 | W4 | verified on available host | Real local CPU/WGSL adjustment and native region/slider/acceptance, independent of global WB |
 | Z1/Z2 | verified on available host | Native III/V/VIII placements, shadow/highlight span, one undo and stable repeated curve fit |
-| U1/V1 | verified reachable paths; OS focus blocked | Release build 0 warnings/errors; solution 1307 passed, 319 skipped, 0 failed; 30 expanded WGSL units passed. Native window/automation/pointer-routing: 147 passed, 0 failed, source SHA-256 unchanged. Real OS activation/deactivation blocked by locked console; no unlock attempted |
+| U1/V1 | verified on available hosts | Release build 0 warnings/errors; local solution 1307 passed, 320 skipped, 0 failed; 30 expanded WGSL units passed. Unlocked native Apple M3/Metal workflow: 149 passed, 0 failed, 0 blocked, source SHA-256 unchanged; real OS activation/deactivation and reactivation exercised |
 | Older RAW+Portra+crop Metal divergence | resolved on merged path | Same preserved 64×48 fixture/program now passes all crop/uncrop transitions and full export at max1/65535; no Windows inference |
-| Three Windows CI failures | external verification blocked | No local Windows/VM/SSH/authenticated CI; native removal reason still needed; do not claim closure from Metal |
+| Three Windows CI failures | verified on actual D3D12/WARP | CircleCI Windowsjob43 at `c7f6072`: all 3 reported spike variants and RAW/crop/export consumers passed; complete solution 1312 passed, 315 skipped, 0 failed; no GPU-unavailable skips or native lost-device records |
 
 ### Baseline and consumer map
 
@@ -72,22 +72,22 @@ Every implementation worker skips build/lint/tests/formatters mid-flight. Parent
 | Consumer | State | Required final observation |
 | --- | --- | --- |
 | CPU rendering | verified | Three models, source-coordinate crop/rotation and proxy attenuation; local region/chromaticity/alpha and scene-linear anchors |
-| GPU rendering | verified on Metal | Actual Apple M3 Metal, all grain models, skin/Zone, RAW+Portra crop/uncrop and forced banded readback; existing tolerances retained |
+| GPU rendering | verified on Metal and D3D12/WARP | Actual Apple M3 Metal grain/local/RAW/band/proxy smoke plus complete Windowsjob43 and published GUI smoke; existing tolerances retained; discrete Windows GPU and Vulkan not claimed exercised |
 | Image loading / proxy geometry | verified | Oriented TIFF/JPEG/DNG reference dimensions survive decode/downscale and actual TIFF export |
-| App / native input | partial | Real native window and visible controls exercised via automation peers and PreviewCanvas pointer/key routing; OS focus/deactivation unavailable while console locked |
+| App / native input | verified native workflows | Real unlocked macOS window, visible automation controls and routed PreviewCanvas pointer/key events; native activation/deactivation/return cancels stale proposals without writes; not a physical-mouse/OS-keyboard test |
 | Undo / save / reopen | verified | WB/local skin/Zone accept is one undo record; accepted multi-field and grain settings survive reopen |
 | UI localization | verified | zh-TW/en photo tools, candidate confidence/residual and grain schema controls exercised; screenshots inspected |
-| Existing fixtures / CI | verified available host | Final solution 1307 passed / 319 skipped / 0 failed; RAW 618 passed / 293 external-corpus skips, Core 506 passed / 26 platform/corpus skips, App 183 passed. Expanded WGSL 30 passed; CI configuration unchanged for survey |
-| Stock calibration / Windows driver | blocked | Licensed calibrated scans and actual Windows runtime/CI remain unavailable |
+| Existing fixtures / CI | verified on available hosts | Local solution 1307 passed / 320 skipped / 0 failed; expanded WGSL 30 passed. Windowsjob43: App183/Core511/Raw618 passed, Core22/Raw293 skipped, 0 failed; Macjob42 and shaderjob41 succeeded; Windows/Mac published executable smokes passed |
+| Stock calibration | blocked | Licensed calibrated scans remain unavailable; no fabricated calibration or stock/ISO reconstruction claim |
 
 
 ### Current runtime observations
 
-- Native survey driver used the production Avalonia macOS platform, actual Apple M3 Metal rendering, automation peers, and routed PreviewCanvas pointer/key events; it was not a headless UI suite or physical-mouse/OS-keyboard test. Of the reachable checks, 147 passed with no failed checks. Candidate-card, grain and 45° source-region surfaces were inspected from native-window render captures.
-- `CGSessionCopyCurrentDictionary` reported `CGSSessionScreenIsLocked=1`, and the frontmost application was `loginwindow`. Real OS activation/deactivation could not be exercised. The driver reports this as blocked and its overall native result as partial, rather than fabricating a pass or changing product behavior.
+- Native survey driver used the production Avalonia macOS platform, actual Apple M3 Metal rendering, automation peers, and routed PreviewCanvas pointer/key events; it was not a headless UI suite or physical-mouse/OS-keyboard test. The unlocked run passed all 149 checks with 0 failures and 0 blocked checks, delivering 120 preview frames. Candidate-card, grain and 45° source-region surfaces were inspected from native-window render captures.
+- The earlier run accurately reported OS focus blocked while the console was locked. After a fresh session query showed an unlocked desktop, the actual native run activated the main window, transferred focus to a second native window, observed proposal cancellation without setting writes or undo entries, closed it and reactivated the main window. No unlock or permission change was attempted.
 - The repeated skin-reference scenario visibly reproduced a reversed correction before the fix; its permanent App regression failed with chromaticity error about 0.180, then passed after sampling without the replaced `skin` adjustment. The native repeated-acceptance scenario also passed after the fix.
 - Final review reproduced a rounded-proxy grain coordinate error of 12247/65535 under quarter rotation; per-axis affine scaling was corrected and the new consumer pixel regression passed. A separate 45° drag omitted selected source corners; four-corner bounds and projected-region drawing now pass the regression and native surface check.
 - Bounded analysis previously dropped a masked extreme-WB pixel whose actual CPU linear-stage luminance was positive. The regression failed before/passed after matching the existing renderer's scalar normalization. The masked forward-fit target now comes from actual CPU WB/semantic/local stages plus independently derived Basic gains, not from the sampler's own mirror.
 - Actual Metal render/export differences were at most 1/65535, banded output was identical, and source pixels/files were unchanged. Isolated skin-only and Zone-only GPU passes, plus rounded-proxy GPU mapping, each matched CPU within 1/65535; this exercises the uniform's consumer rather than pinning field copies.
-- Retained, ignored evidence lives under `dist/survey-evidence/`; executable throwaway drivers are not part of the product or a required future entry point.
+- Retained, ignored evidence lives under `dist/survey-evidence/` and `dist/paste12-ci-evidence/`; the unlocked native result/screenshots are in `dist/paste12-ci-evidence/native-focus-unlocked/`, and final Windows TRX/smoke in `dist/paste12-ci-evidence/windows-43/`. Executable throwaway drivers are not part of the product or a required future entry point.
 
