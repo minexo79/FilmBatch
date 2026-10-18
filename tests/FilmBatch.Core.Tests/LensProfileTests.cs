@@ -186,11 +186,14 @@ public sealed class LensProfileTests
         File.Copy(Path.Combine(f.DirectoryPath, "fixture.xml"), Path.Combine(f.DirectoryPath, "duplicate.xml"));
         var raw = Raw(); LensProfiles.ApplyFallback(raw, f.DirectoryPath); Assert.Empty(raw.Opcodes.List3);
     }
-    [Fact]
-    public void LensfunWarpUsesPixelEdgeRadius()
+    [Theory]
+    [InlineData(0, 0, 101, 101)]
+    [InlineData(11, 23, 75, 61)]
+    public void LensfunWarpUsesPixelEdgeRadius(int cropX, int cropY, int cropWidth, int cropHeight)
     {
         using var f = new Fixture("<distortion model=\"poly3\" focal=\"30\" k1=\"-0.02\"/>");
         var raw = Raw();
+        raw.Crop = new(cropX, cropY, cropWidth, cropHeight);
         LensProfiles.ApplyFallback(raw, f.DirectoryPath);
         var image = new FilmBatch.Raw.Raster.RgbImage(101, 101);
         for (var y = 0; y < image.Height; y++)
@@ -200,32 +203,41 @@ public sealed class LensProfileTests
             image.Data[i] = image.Data[i + 1] = image.Data[i + 2] = x / 100f;
         }
         var corrected = RawSourceGeometry.ApplyList3(raw.Opcodes.List3, image);
-        // Lensfun normalizes optical distance by the pixel-edge half diagonal.
-        // DNG's executable opcode uses the first/last pixel-centre span instead.
-        const int px = 10, py = 50;
-        var radius = Math.Sqrt(101.0 * 101 + 101.0 * 101) / 2;
-        var r = (px - 50.0) / radius * Math.Sqrt(3.25);
-        var factor = 1.02 - .02 * r * r;
-        var expected = (50 + (px - 50) * factor) / 100;
+        // Lensfun's optical centre and physical radius belong to the default crop,
+        // even though the executable List3 chain operates on the full active image.
+        var px = cropX + cropWidth / 4; var py = cropY + cropHeight / 2;
+        var cx = cropX + cropWidth / 2d; var cy = cropY + cropHeight / 2d;
+        var radius = double.Hypot(cropWidth, cropHeight) / 2;
+        var dx = px + .5 - cx; var dy = py + .5 - cy;
+        var r2 = (dx * dx + dy * dy) / (radius * radius);
+        var factor = 1.02 - .02 * 3.25 * r2;
+        var expected = (cx - .5 + dx * factor) / 100;
         Assert.InRange(Math.Abs(corrected.Data[(py * 101 + px) * 3] - expected), 0, 1e-6);
     }
-    [Fact]
-    public void ExternalVignetteUsesWarpedSensorPosition()
+    [Theory]
+    [InlineData(0, 0, 101, 101)]
+    [InlineData(11, 23, 75, 61)]
+    public void ExternalVignetteUsesWarpedSensorPosition(int cropX, int cropY, int cropWidth, int cropHeight)
     {
         using var f = new Fixture("""
             <distortion model="poly3" focal="30" k1="-0.02"/>
             <vignetting model="pa" focal="30" aperture="4" distance="1000" k1="-0.2"/>
             """);
         var raw = Raw();
+        raw.Crop = new(cropX, cropY, cropWidth, cropHeight);
         LensProfiles.ApplyFallback(raw, f.DirectoryPath);
         var image = new FilmBatch.Raw.Raster.RgbImage(101, 101);
         Array.Fill(image.Data, .25f);
         var corrected = RawSourceGeometry.ApplyList3(raw.Opcodes.List3, image);
-        var r2 = 100.0 * 100 / (101.0 * 101);
+        var px = cropX + cropWidth / 4; var py = cropY + cropHeight / 3;
+        var cx = cropX + cropWidth / 2d; var cy = cropY + cropHeight / 2d;
+        var radius = double.Hypot(cropWidth, cropHeight) / 2;
+        var dx = px + .5 - cx; var dy = py + .5 - cy;
+        var r2 = (dx * dx + dy * dy) / (radius * radius);
         var warp = 1.02 - .02 * 3.25 * r2;
         var sourceRadius2 = r2 * warp * warp;
         var expected = .25 / (1 - .2 * sourceRadius2);
-        Assert.InRange(Math.Abs(corrected.Data[0] - expected), 0, 1e-5);
+        Assert.InRange(Math.Abs(corrected.Data[(py * 101 + px) * 3] - expected), 0, 1e-5);
     }
 
 

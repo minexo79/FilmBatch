@@ -31,7 +31,8 @@ internal static partial class LensProfiles
         candidates = candidates.Where(p => Math.Abs(Math.Abs(Math.Log(p.Crop / crop)) - distance) < 1e-10).ToArray();
         if (candidates.Length != 1) return; // Ambiguity must never select a different lens by file order.
         if (raw.ActiveArea.Width < 2 || raw.ActiveArea.Height < 2) return;
-        var correction = Correction(candidates[0], focal, m.FNumber, crop, raw.ActiveArea.Width, raw.ActiveArea.Height);
+        var correction = Correction(candidates[0], focal, m.FNumber, crop, raw.ActiveArea.Width, raw.ActiveArea.Height,
+            raw.DevelopCrop(raw.ActiveArea.Width, raw.ActiveArea.Height));
         raw.Opcodes.List3.AddRange(correction);
     }
 
@@ -59,14 +60,19 @@ internal static partial class LensProfiles
         bool Rectilinear, Point[] Distortion, Point[] Tca, Point[] Vignette);
     private sealed record Database(List<Camera> Cameras, List<Profile> Profiles);
 
-    private static List<Opcode> Correction(Profile p, double focal, double? aperture, double crop, int width, int height)
+    private static List<Opcode> Correction(Profile p, double focal, double? aperture, double crop, int width, int height,
+        PixelRect frame)
     {
         var result = new List<Opcode>();
         var toVignette = p.Crop / crop;
         var toDistortion = toVignette * Math.Sqrt(1 + p.Aspect * p.Aspect);
-        // Lensfun's fitted radius spans pixel edges; executable RAW opcodes span
-        // the first/last pixel centres. Convert polynomial units, not image coordinates.
-        var radiusScale = double.Hypot(width - 1d, height - 1d) / double.Hypot(width, height);
+        // Lensfun is calibrated in the default-cropped frame. List3 still executes
+        // on the full active area: express that centre and polynomial in each opcode's units.
+        var cx = frame.X + frame.Width / 2d; var cy = frame.Y + frame.Height / 2d;
+        var calibrationRadius = double.Hypot(frame.Width, frame.Height) / 2;
+        var warpRadius = double.Hypot(Math.Max(Math.Abs(cx - .5), Math.Abs(width - .5 - cx)),
+            Math.Max(Math.Abs(cy - .5), Math.Abs(height - .5 - cy)));
+        var radiusScale = warpRadius / calibrationRadius;
         var radiusScale2 = radiusScale * radiusScale;
         if ((p.Rectilinear && p.Distortion.Length > 0) || p.Tca.Length > 0)
         {
@@ -86,7 +92,8 @@ internal static partial class LensProfiles
                 for (var i = 1; i < fit.Length; i++, scale *= radiusScale2) fit[i] *= scale;
                 planes[ch] = [fit[0], fit[1], fit[2], fit[3], 0, 0];
             }
-            if (planes.Length > 0) result.Add(new WarpRectilinear(planes, [.5, .5]));
+            if (planes.Length > 0)
+                result.Add(new WarpRectilinear(planes, [(cx - .5) / (width - 1), (cy - .5) / (height - 1)]));
         }
         if (p.Vignette.Length > 0 && aperture is { } a && Positive(a))
         {
@@ -108,7 +115,14 @@ internal static partial class LensProfiles
             }
             // Lensfun attenuation belongs to the sensor: apply it before the warp,
             // so the fused inverse sampler evaluates gain at the warped source position.
-            if (Fit(Gain, true) is { } k) result.Insert(0, new FixVignetteRadial(k, [.5, .5]));
+            if (Fit(Gain, true) is { } k)
+            {
+                var radius = double.Hypot(Math.Max(cx, width - cx), Math.Max(cy, height - cy));
+                var scale2 = radius * radius / (calibrationRadius * calibrationRadius);
+                var scale = scale2;
+                for (var i = 0; i < k.Length; i++, scale *= scale2) k[i] *= scale;
+                result.Insert(0, new FixVignetteRadial(k, [cx / width, cy / height]));
+            }
         }
         return result;
     }
