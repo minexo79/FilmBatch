@@ -158,6 +158,9 @@ public class PreviewCanvas : Control
         {
             var size = img.Size;
             var dest = ImageRect(size);
+            var map = Mapping();
+            // 工具要求旋轉顯示（裁切拉直）時，影像與對比分割一起轉；工具本身照 map 換算畫在轉後的位置
+            DrawingContext.PushedState? rotated = map.RotationDeg != 0 ? ctx.PushTransform(map.Transform) : null;
             ctx.DrawImage(img, new Rect(size), dest);
 
             if (IsSplit && !ShowOriginal && Original is { } orig && Image is not null)
@@ -174,7 +177,8 @@ public class PreviewCanvas : Control
             }
 
             // 畫布工具畫在影像（含對比分割）之上；按住空白鍵看原圖時也保留，方便對照裁切範圍
-            ActiveTool?.Render(ctx, new CanvasMapping(dest));
+            rotated?.Dispose();
+            ActiveTool?.Render(ctx, map);
 
             if (ControlPoint is { } p && !ShowOriginal)
             {
@@ -333,7 +337,8 @@ public class PreviewCanvas : Control
     }
 
     /// <summary>目前顯示影像的畫布矩形 ↔ 正規化座標。</summary>
-    private CanvasMapping Mapping() => new(Displayed is { } img ? ImageRect(img.Size) : new Rect(Bounds.Size));
+    private CanvasMapping Mapping() =>
+        new(Displayed is { } img ? ImageRect(img.Size) : new Rect(Bounds.Size), ActiveTool?.ViewRotationDeg ?? 0);
 
     private bool IsLargerThanView() =>
         Displayed is { } img && ImageRect(img.Size) is var r && (r.Width > Bounds.Width + 1 || r.Height > Bounds.Height + 1);

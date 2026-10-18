@@ -23,6 +23,9 @@ public interface ICanvasTool
     /// <summary>沒有拖曳時，游標停在 <paramref name="canvas"/> 應顯示的游標；null 表示交給畫布決定。</summary>
     Cursor? CursorAt(Point canvas, CanvasMapping map) => null;
 
+    /// <summary>畫布顯示影像時的旋轉角度（度，順時針為正）；裁切拉直時讓影像轉、框保持水平。</summary>
+    double ViewRotationDeg => 0;
+
     /// <summary>工具狀態改變需重繪。</summary>
     event Action? Invalidated;
 }

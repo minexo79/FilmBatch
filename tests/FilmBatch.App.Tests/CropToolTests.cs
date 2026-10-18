@@ -224,6 +224,23 @@ public sealed class CropToolTests
         Assert.Equal(new Point(0.5, 0.5), map.ToImage(map.ToCanvas(new Point(0.5, 0.5))));
     }
 
+    [Fact]
+    public void Straightened_ImageRotates_FrameStaysLevel()
+    {
+        var vm = CornerBox();
+        vm.Angle = 10;
+        var tool = vm.CanvasTool;
+        Assert.Equal(-10, tool.ViewRotationDeg, 6);
+        var map = new Controls.Tools.CanvasMapping(new Rect(10, 20, 400, 300), tool.ViewRotationDeg);
+        var c = vm.Corners().Select(map.ToCanvas).ToArray();
+        Assert.Equal(c[0].Y, c[1].Y, 6);                                  // 上邊水平
+        Assert.Equal(c[0].X, c[3].X, 6);                                  // 左邊垂直
+        var p = new Point(0.3, 0.7);
+        var back = map.ToImage(map.ToCanvas(p));
+        Assert.Equal(p.X, back.X, 9);
+        Assert.Equal(p.Y, back.Y, 9);
+    }
+
     [AvaloniaFact]
     public async Task LeavingCropTab_AppliesPendingCrop()
     {

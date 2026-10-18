@@ -9,8 +9,8 @@ using FilmBatch.Engine.Rendering;
 namespace FilmBatch.App.Controls.Tools;
 
 /// <summary>
-/// 裁切框（畫布工具）：在全幅（定向後）影像上繪製裁切框，框外以半透明遮住；8 個把手、拖曳時顯示三分線，
-/// 拉直時改顯示細格線。框內拖曳 = 移動、把手 = 改大小（Alt 以中心縮放）、框外拖曳 = 旋轉（拉直）、
+/// 裁切框（畫布工具）：在全幅（定向後）影像上繪製裁切框，框外以半透明遮住；8 個把手、框內常駐三分線（九宮格），
+/// 拉直時改顯示細格線；拉直時轉的是影像、框保持水平。框內拖曳 = 移動、把手 = 改大小（Alt 以中心縮放）、框外拖曳 = 旋轉（拉直）、
 /// 框內點兩下 = 套用。狀態都在 <see cref="CropToolViewModel"/>，這裡只負責繪製與指標換算。
 /// </summary>
 public sealed class CropTool : ICanvasTool
@@ -25,6 +25,7 @@ public sealed class CropTool : ICanvasTool
     private CropParams _dragStart;
     private Point _pressImage;
     private double _lastAngle;
+    private Point _rotatePivot;
     private double _sweep;
     private long _lastMovePress;
     private Point _lastMovePoint;
@@ -36,6 +37,9 @@ public sealed class CropTool : ICanvasTool
     }
 
     public event Action? Invalidated;
+
+    /// <summary>影像反向轉拉直角度，裁切框在畫面上就保持水平。</summary>
+    public double ViewRotationDeg => _vm.IsActive ? -_vm.Working.AngleDeg : 0;
 
     private void OnViewModelChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -54,14 +58,14 @@ public sealed class CropTool : ICanvasTool
         if (!_vm.IsActive) return;
         var corners = _vm.Corners().Select(map.ToCanvas).ToArray();
 
-        // 框外遮罩：影像矩形減去裁切框（偶奇規則）
+        // 框外遮罩：（旋轉後的）影像減去裁切框（偶奇規則）
         var shade = new StreamGeometry();
         using (var g = shade.Open())
         {
             g.SetFillRule(FillRule.EvenOdd);
-            var r = map.ImageRect;
-            g.BeginFigure(r.TopLeft, true);
-            g.LineTo(r.TopRight); g.LineTo(r.BottomRight); g.LineTo(r.BottomLeft);
+            var r = new[] { new Point(0, 0), new Point(1, 0), new Point(1, 1), new Point(0, 1) }.Select(map.ToCanvas).ToArray();
+            g.BeginFigure(r[0], true);
+            g.LineTo(r[1]); g.LineTo(r[2]); g.LineTo(r[3]);
             g.EndFigure(true);
             g.BeginFigure(corners[0], true);
             for (var i = 1; i < 4; i++) g.LineTo(corners[i]);
@@ -71,7 +75,7 @@ public sealed class CropTool : ICanvasTool
 
         var guide = new Pen(Brush("FB.CropGuideBrush", Color.FromArgb(0x90, 0xFF, 0xFF, 0xFF)), 1);
         if (_vm.IsStraightening) DrawGrid(ctx, map, guide, 8);
-        else if (_vm.IsDragging) DrawGrid(ctx, map, guide, 3);
+        else DrawGrid(ctx, map, guide, 3);
 
         var frameBrush = Brush("FB.SelectionRingBrush", Color.FromRgb(0xF2, 0xF2, 0xF2));
         var frame = new Pen(frameBrush, 1);
@@ -161,6 +165,7 @@ public sealed class CropTool : ICanvasTool
         }
         _dragStart = _vm.BeginDrag(straighten: _drag == CropHandle.Rotate);
         _pressImage = map.ToImage(canvas);
+        _rotatePivot = map.ToCanvas(new Point(_dragStart.Cx, _dragStart.Cy));
         _lastAngle = AngleAround(canvas, map);
         _sweep = 0;
         return true;
@@ -184,7 +189,7 @@ public sealed class CropTool : ICanvasTool
                 if (d < -180) d += 360;
                 _lastAngle = angle;
                 _sweep += d;   // 用總轉角換算目標角度：夾在 ±45° 時增量不會被吃掉，指標回到原處角度就回到原值
-                _vm.DragRotate(_dragStart.AngleDeg + _sweep - _vm.Working.AngleDeg);
+                _vm.DragRotate(_dragStart.AngleDeg - _sweep - _vm.Working.AngleDeg);   // 影像跟著指標轉 = 框相對影像反向轉
                 break;
             default:
                 _vm.Restore(_dragStart);
@@ -201,11 +206,11 @@ public sealed class CropTool : ICanvasTool
 
     /// <summary>
     /// 指標相對「按下時」裁切框中心的角度（度，畫布座標 y 向下 → 順時針為正）。
-    /// 用固定的中心：拉直時框會被推回影像內而移動，若跟著現在的中心算，角度會自我回饋而抽搐。
+    /// 用按下時算好的畫布位置：拉直時框會被推回影像內、影像也在轉，若每次重算中心，角度會自我回饋而抽搐。
     /// </summary>
     private double AngleAround(Point canvas, CanvasMapping map)
     {
-        var c = map.ToCanvas(new Point(_dragStart.Cx, _dragStart.Cy));
+        var c = _rotatePivot;
         return Math.Atan2(canvas.Y - c.Y, canvas.X - c.X) * 180 / Math.PI;
     }
 
