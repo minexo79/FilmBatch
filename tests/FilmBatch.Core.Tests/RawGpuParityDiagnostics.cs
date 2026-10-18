@@ -83,7 +83,7 @@ internal static class RawGpuParityDiagnostics
         var y = c0 * luma[0] + c1 * luma[1] + c2 * luma[2];
         Store(values, 1, c0, c1, c2, y);
         var ratio = y / ToneMap.Grey;
-        var ev = MathF.Log2(ratio);
+        var ev = ToneMap.LogExposure(ratio);
         var position = Math.Clamp((ev - ToneMap.LutMinEv) / (ToneMap.LutMaxEv - ToneMap.LutMinEv), 0f, 1f) * (ToneMap.LutCount - 1);
         var index = Math.Min((int)position, ToneMap.LutCount - 2);
         Store(values, 2, ev, position, index, position - index);

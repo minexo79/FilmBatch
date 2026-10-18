@@ -57,15 +57,19 @@ dotnet test tests/FilmBatch.Core.Tests/FilmBatch.Core.Tests.csproj -c Release \
 
 涵蓋預覽／16-bit 匯出的共用 GPU 管線、分帶讀回、裁切後工作區重建及 RAW 飽和高光。兩個 `GpuDevice.ReadBuffer` 多載都使用 10 秒的奈秒預算；WebGPUSharp `0.5.7` 的 `MapSync` 雖將參數命名為 `timeoutMilliseconds`，卻[直接轉交](https://github.com/EmilSV/WebGPUSharp/blob/30d51f3a460c9419a2ae6cc8dee54ed75a3c0008/src/Buffer.cs#L75-L104)給 [以奈秒計的 `WaitAny`](https://github.com/EmilSV/WebGPUSharp/blob/30d51f3a460c9419a2ae6cc8dee54ed75a3c0008/src/Instance.cs#L155-L175)，不能傳入看似代表 10 秒的 `10_000`。真正的裝置錯誤仍會傳播，不因延長等待而改成成功。
 
+Windows 的 `Auto` 明確要求 D3D12，不再把 `BackendType.Undefined` 交給 Dawn 決定。實際失敗 log 曾顯示 `Microsoft Basic Render Driver`／D3D11／`Backend Unknown`，因此不會套用 D3D12 專用生命週期策略。`GpuSpikeTests.WindowsAuto_CreatesDx12Device` 驗證自動建立的裝置確為 D3D12；明確選擇 Vulkan 等後端及非 Windows 自動選擇保持不變。
+
 Windows／D3D12 的裝置生命週期另有回歸檢查：`GpuSpikeTests.WindowsDx12_DisposeReleasesDeviceOwner`。WebGPUSharp `0.5.7` 會[以強 `GCHandle` 保留 callback](https://github.com/EmilSV/WebGPUSharp/blob/30d51f3a460c9419a2ae6cc8dee54ed75a3c0008/src/Adapter.cs#L105-L128)，直接捕捉 `GpuDevice` 會讓原生裝置無法回收。因此僅在 D3D12 使用弱參考 callback，並於 `Dispose()` 等待佇列後明確銷毀原生裝置；不變更渲染數學或 GPU 錯誤傳播。Metal／Vulkan 保留原生命週期，包含同樣的強 callback 保留風險；這是本次僅限 Windows 修正的已知未修範圍。
 
 上述永久測試僅在 Windows 且可列出 D3D12 介面卡時執行，其他環境會明確略過；列出介面卡之後的裝置建立、處置或回收錯誤不會改成略過。本機另以真實 Metal 裝置注入 D3D12 生命週期策略，確認處置後原生操作回報裝置遺失、callback 不再保留裝置；這只能證明策略的原生機制，不能代替 Windows／D3D12 驅動程式驗證。
 
-RAW 收尾的 sRGB 冪次改採固定多項式，降低對後端 `pow` 精度的依賴；CPU 演算法及既有 2／65535 色碼容差不變。本機 Metal 的通過結果不等於 Windows／D3D12 的裝置遺失或原先 5 色碼差異已獲實機確認，仍須在對應 runner 重跑上述案例。
+RAW 收尾的 sRGB 冪次先前已改採固定多項式，降低對後端 `pow` 精度的依賴。本次 Windows 診斷顯示，亮度比 `y/Grey` 同為 `0x409E7365`，第一次偏離卻發生於 CPU `MathF.Log2`：EV 為 `0x4013B47C`，GPU 為 `0x4013B47B`。對精確輸入 `4.951586246490478515625` 的高精度對數驗算確認下鄰才是正確捨入；只替換 EV 的獨立 float32 重播，也將紅色色碼從 1324 還原為 1319。
+
+因此僅在 Windows 對已完成 float32 除法的比值使用 `(float)Math.Log2(ratio)`；其他平台保留 `MathF.Log2`。正式色調映射與診斷共用 `ToneMap.LogExposure`，既有 `2/65535` 容差及 shader 不變。`RawToneTests.RawDisplay_HighlightNearGamutBoundaryPreservesRedDetail` 從 CPU 顯示收尾驗證紅色細節，不要求 GPU。來源連結的強制 Windows 分支冒煙測試得到 `[1319,65535,64083,65535]`；真實 Metal 的四個邊界案例亦與 CPU 完全相同。強制分支不等於 Windows CRT／D3D12 實機執行，六個裝置遺失與完整 Windows 回歸仍須由對應 runner 確認；若 D3D12 專用測試略過，不算該路徑已驗證。
 
 Windows 的 `Gpu_SaturatedHighlightNearGamutBoundary_MatchesCpu` 若超出既有 `2/65535` 容差，原本的 assertion 訊息會附上 `[RAW-PARITY] BEGIN` 到 `[RAW-PARITY] END` 的診斷區塊。現行 CI 的 `dotnet test` 即可顯示，不需環境變數或調整 logger。內容包含原始 CPU／GPU RGBA16、輸入像素、裝置／驅動程式／.NET 版本、shader SHA-256，以及工作域轉換、tone／LUT 座標與相鄰節點、高光、gamut 投影和 sRGB 各階段的 float32 數值與十六進位位元。
 
-診斷只處理該測試的單像素邊界案例：CPU 中間值由測試內的診斷鏡像計算；GPU 中間值由同一裝置執行記憶體內插入讀回點的內嵌 production RAW shader，最後使用 production RGBA16 encoder。原始渲染結果不會被替換。`cpuTraceMatchesOriginal`／`probeMatchesOriginal` 分別確認診斷碼值是否重現原始 CPU／GPU 碼值；若為 `False`，不能直接將中間值視為原失敗路徑的證據。額外診斷若失敗會記錄 `probeError`，原始 assertion 仍維持失敗；通過及非 Windows 案例不啟動 probe。下一輪 CI 請保留並提供完整區塊，包含上述重現標記；新增診斷不代表原先 `5/65535` 差異已修正。
+診斷只處理該測試的單像素邊界案例：CPU 中間值由測試內的診斷鏡像計算（EV 重用正式方法）；GPU 中間值由同一裝置執行記憶體內插入讀回點的內嵌 production RAW shader，最後使用 production RGBA16 encoder。原始渲染結果不會被替換。`cpuTraceMatchesOriginal`／`probeMatchesOriginal` 分別確認診斷碼值是否重現原始 CPU／GPU 碼值；若為 `False`，不能直接將中間值視為原失敗路徑的證據。額外診斷若失敗會記錄 `probeError`，原始 assertion 仍維持失敗；通過及非 Windows 案例不啟動 probe。下一輪 Windows CI 請確認實際建立的後端；若仍有差異，保留完整區塊及上述重現標記。
 
 ### 大量照片載入與即時預覽回歸
 
@@ -126,6 +130,20 @@ dotnet run build/CheckShaders.cs
 兩邊的 `dawn-build` 會先用 runner 的 Python 3 建立 `$HOME/.filmbatch-dawn-tools` venv，安裝固定的 `cmake==3.31.6`，並將其 `bin` 加入後續步驟的 PATH；不假設 Xcode 映像已附 CMake，也不透過 Homebrew 安裝或更新工具。這只補足 Dawn 的建置前置需求，仍需 Metal SDK、Python 3 及下載原始碼所需的網路與磁碟空間。
 
 映像對照於 2026-10-18 依 [CircleCI 支援表](https://circleci.com/docs/using-macos/)及官方 manifest（[26.4.1](https://circle-macos-docs.s3.amazonaws.com/image-manifest/v17723/manifest.txt)、[16.4.0](https://circle-macos-docs.s3.amazonaws.com/image-manifest/v15338/manifest.txt)）核對；Windows 依[官方執行環境說明](https://circleci.com/docs/using-windows/)。Xcode 版本不等於宿主 macOS 版本，例如 Xcode 26.0.1 的宿主是 macOS 15.6，不能滿足隨附 Dawn 的 macOS 26.0 最低需求。這些設定統一 OS 基線，不保證兩家託管映像的修補版本或所有預裝工具完全相同。
+
+#### Windows 硬體 GPU 與軟體渲染
+
+截至 2026-10-18，依 [resource class 參考](https://circleci.com/docs/reference/configuration-reference/#resourceclass)與 [GPU 執行環境指南](https://circleci.com/docs/guides/execute/using-gpu/)：
+
+| 資源類別 | vCPU／RAM | NVIDIA GPU |
+| --- | --- | --- |
+| 目前的 `windows.medium` | 4／16 GB | 非專用 GPU 類別 |
+| `windows.gpu.nvidia.medium` | 16／60 GB | Tesla T4、16 GiB GPU 記憶體 |
+
+GPU 指南列為 Scale 方案，且需搭配 Windows GPU 映像；存取資格與映像應在切換前向 CircleCI 確認。不能只把現有一般 Windows 映像的 `resource_class` 改名，也不能將目前 runner 的通過結果當作 NVIDIA 硬體驗證。本次不變更資源方案、CI YAML 或遠端設定。
+
+Microsoft 的 [WARP 說明](https://learn.microsoft.com/en-us/windows/win32/direct3darticles/directx-warp)指出 Basic Render Adapter 提供軟體渲染，Windows 10 起也支援 D3D12。診斷 log 的 `IsSoftware=False` 是綁定回傳的分類，不能據此認定為實體 GPU。可用軟體介面卡仍執行真正 WebGPU 算圖；裝置遺失或像素錯誤照常失敗，不以 CPU 算圖冒充成功。供應商變更方案、資源類別或映像時，須重新核對本節。
+
 
 #### 合併必要檢查
 

@@ -179,6 +179,18 @@ public sealed class RawToneTests
     }
 
     [Fact]
+    public void RawDisplay_HighlightNearGamutBoundaryPreservesRedDetail()
+    {
+        // 此工作域像素的 y/Grey 為 0x409E7365；log2 正確捨入為 0x4013B47B。
+        // 高精度對數與獨立 float32 重播得到紅色 1319，錯誤上鄰則得到 1324。
+        float[] working = [-0.55918497f, 1.2914479f, 1.1993917f, 1f];
+        RawDisplay.FinishLinear(working, null);
+        int[] expected = [1319, 65535, 64083, 65535];
+        for (var c = 0; c < expected.Length; c++)
+            Assert.InRange((int)MathF.Round(working[c] * 65535f), expected[c] - 2, expected[c] + 2);
+    }
+
+    [Fact]
     public void RawDisplay_NeutralGreyRendersNeutral()
     {
         var img = new RgbImage(4, 4);

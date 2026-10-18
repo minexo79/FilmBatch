@@ -142,7 +142,9 @@ public sealed class GpuDevice : IDisposable
                 GpuBackend.Vulkan => BackendType.Vulkan,
                 GpuBackend.Metal => BackendType.Metal,
                 GpuBackend.Gl => BackendType.OpenGL,
-                // Dawn 的預設：Windows → D3D12、macOS → Metal、Linux → Vulkan
+                // Windows 自動依文件契約（ADR 0001）明確要求 D3D12；Undefined 在部分 runner 會回到不支援的 D3D11。
+                GpuBackend.Auto when OperatingSystem.IsWindows() => BackendType.D3D12,
+                // 其餘 Auto（macOS → Metal、Linux → Vulkan）沿用 Dawn 預設。
                 _ => BackendType.Undefined,
             },
         };

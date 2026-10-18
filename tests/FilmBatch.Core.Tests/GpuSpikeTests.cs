@@ -74,6 +74,15 @@ public class GpuSpikeTests
         Assert.False(reference.IsAlive, "已處置的 D3D12 裝置仍被原生 callback 保留");
     }
 
+    [Fact]
+    public void WindowsAuto_CreatesDx12Device()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "僅適用於 Windows 自動後端");
+        Assert.SkipWhen(GpuDevice.EnumerateAdapters(GpuBackend.Dx12).Count == 0, "沒有可用的 D3D12 介面卡");
+        using var device = GpuDevice.Create(new GpuDeviceOptions { Backend = GpuBackend.Auto });
+        Assert.Equal(GpuBackend.Dx12, device.AdapterInfo.Backend);
+    }
+
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
     private static WeakReference CreateDisposedDx12Device()
     {
