@@ -21,6 +21,7 @@
             </DataTemplate>
           </ComboBox.ItemTemplate>
         </ComboBox>
+        <ComboBox Classes="flat" ItemsSource="{Binding FileKindOptions}" SelectedItem="{Binding SelectedFileKindOption}" DisplayMemberBinding="{Binding Label, x:DataType=d:OptionBase}" MinWidth="110" />
         <TextBlock Classes="secondary small numeric" Text="{Binding CountText}" VerticalAlignment="Center" Margin="4,0" />
       </StackPanel>
     </Border>
