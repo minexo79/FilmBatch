@@ -2,6 +2,8 @@
   <!-- 引擎：不依賴 UI -->
   <PropertyGroup>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- 將 App／CLI 的 RID 傳到帶原生 JXL 內容的 Raw 參考。 -->
+    <IsRidAgnostic>false</IsRidAgnostic>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\FilmBatch.Core\FilmBatch.Core.csproj" />

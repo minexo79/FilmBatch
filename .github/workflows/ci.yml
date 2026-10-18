@@ -44,6 +44,10 @@ jobs:
       - name: Test
         run: dotnet test FilmBatch.sln -c Release --no-build
 
+      # Native availability/ABI is required on BOTH runners; a missing bundle is a failure.
+      - name: Bundled JXL ABI and sample decode
+        run: dotnet test tests/FilmBatch.Raw.Tests/FilmBatch.Raw.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~PortableJxlTests|FullyQualifiedName~JpegXlTests"
+
       # 發佈 + 冒煙測試（無 GPU 時改用 CPU 算圖，仍會驗證原生函式庫與視窗）
       - name: Publish (${{ matrix.rid }}) + smoke
         run: dotnet run build/Build.cs -- --rid ${{ matrix.rid }} --smoke --zip

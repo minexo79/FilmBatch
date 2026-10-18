@@ -20,6 +20,8 @@ using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.IO.Compression;
+using System.Security.Cryptography;
+using System.Text.Json;
 
 var rid = Arg("--rid") ?? (OperatingSystem.IsMacOS() ? "osx-arm64" : "win-x64");
 var smoke = args.Contains("--smoke");
@@ -72,6 +74,8 @@ Step("清除輸出", () => { if (Directory.Exists(dist)) Directory.Delete(dist, 
 Run("dotnet", ["publish", Path.Combine(root, "src", "FilmBatch.App"), "-c", "Release", "-r", rid, "-o", gui]);
 Run("dotnet", ["publish", Path.Combine(root, "src", "FilmBatch.Cli"), "-c", "Release", "-r", rid,
     "--self-contained", "-p:PublishReadyToRun=true", "-o", cli]);
+
+RequireBundledJxl(); // Validate both native closures before any final signing.
 
 Step("授權聲明", () =>
 {
@@ -167,6 +171,42 @@ if (zip)
 
 Console.WriteLine($"完成：{dist}");
 return 0;
+
+// Manifest hashes describe pre-release-signing native payloads. Final signing legitimately changes them.
+void RequireBundledJxl()
+{
+    var manifestPath = Path.Combine(root, "src", "FilmBatch.Raw", "Native", "Jxl", "provenance.json");
+    using var manifest = JsonDocument.Parse(File.ReadAllText(manifestPath));
+    var files = manifest.RootElement.GetProperty("files").GetProperty(rid);
+    foreach (var output in new[] { gui, cli })
+    {
+        foreach (var entry in files.EnumerateObject())
+        {
+            var path = Path.Combine(output, entry.Name);
+            if (!File.Exists(path)) throw new Exception($"Missing bundled JXL dependency: {path}");
+            var hash = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)));
+            if (!hash.Equals(entry.Value.GetString(), StringComparison.OrdinalIgnoreCase))
+                throw new Exception($"Bundled JXL hash mismatch: {path}");
+            if (!isMac) continue;
+            var dependencies = Capture("otool", ["-L", path]).Split('\n').Skip(1);
+            foreach (var line in dependencies.Where(line => !string.IsNullOrWhiteSpace(line)))
+            {
+                var dependency = line.Trim().Split(" (", StringSplitOptions.None)[0];
+                if (dependency.StartsWith("/usr/lib/", StringComparison.Ordinal) ||
+                    dependency.StartsWith("/System/Library/", StringComparison.Ordinal)) continue;
+                const string loader = "@loader_path/";
+                if (!dependency.StartsWith(loader, StringComparison.Ordinal) ||
+                    !files.TryGetProperty(dependency[loader.Length..], out _))
+                    throw new Exception($"Nonportable JXL dependency in {path}: {dependency}");
+            }
+            if (Capture("otool", ["-l", path]).Contains("LC_RPATH", StringComparison.Ordinal))
+                throw new Exception($"JXL asset must have only loader-relative dependencies and no LC_RPATH: {path}");
+        }
+        if (!File.Exists(Path.Combine(output, "native-jxl", "provenance.json")) ||
+            !Directory.Exists(Path.Combine(output, "native-jxl", "licenses")))
+            throw new Exception($"Missing JXL provenance/licenses in {output}");
+    }
+}
 
 // ───────────────────────── macOS：Dawn 替換、簽章、公證 ─────────────────────────
 
@@ -359,5 +399,6 @@ string Capture(string file, string[] arguments)
     using var p = Process.Start(start)!;
     var output = p.StandardOutput.ReadToEnd() + p.StandardError.ReadToEnd();
     p.WaitForExit();
+    if (p.ExitCode != 0) throw new Exception($"{file} inspection failed ({p.ExitCode}): {output}");
     return output;
 }

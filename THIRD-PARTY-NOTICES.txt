@@ -256,3 +256,35 @@ Apache License 2.0 (rawtoaces-data)
       of your accepting any such warranty or additional liability.
 
    END OF TERMS AND CONDITIONS
+
+
+Bundled JPEG XL native runtime (libjxl 0.11.2, decoder ABI 11002)
+--------------------------------------------------------------
+App and CLI include the pinned native payload for osx-arm64 and win-x64.
+Full copyright/license texts accompany each output in native-jxl/licenses/;
+archive/source SHA-256, source revisions and per-file hashes are in
+native-jxl/provenance.json (repository: src/FilmBatch.Raw/Native/Jxl/).
+
+libjxl: JPEG XL Project Authors, BSD-3-Clause.
+https://github.com/libjxl/libjxl/releases/tag/v0.11.2
+Brotli: Google Inc., MIT.
+Highway: Google LLC, Apache-2.0 / BSD-3-Clause (see accompanying licenses).
+Little CMS 2: Marti Maria / Little CMS contributors, MIT.
+The runtime does not use developer-installed Homebrew or system libjxl.
+
+Windows uses official MSYS2 MinGW packages: libjxl 0.11.2-4, Brotli 1.2.0-1,
+Highway 1.4.0-3, Little CMS 2 2.19.1-1, GCC libraries 16.1.0-3 and
+libwinpthread 14.0.0.r37.g2bfe61fba-1. Exact package origins, hashes,
+PKGBUILD hashes, package/build metadata and extracted members accompany the bundle.
+Highway's Windows package supplies Apache-2.0 terms.
+GCC libgcc_s_seh-1.dll and libstdc++-6.dll: Free Software Foundation;
+GPL-3.0-or-later with GCC Runtime Library Exception 3.1. The supplied
+COPYING3, COPYING.RUNTIME, COPYING.LIB (LGPL-2.1) and README are preserved.
+libwinpthread-1.dll: MinGW-w64 contributors; MIT AND BSD-3-Clause-Clear;
+see the complete supplied COPYING, including its additional notices.
+Little CMS's package declares MIT AND GPL-3.0-or-later; both its LICENSE and
+LICENSE-fast_float texts are retained, although only liblcms2-2.dll is bundled.
+Package-level license declarations do not assign every package license to every DLL.
+See msys2-*-PKGINFO.txt and msys2-*-BUILDINFO.txt for unabridged metadata.
+The only external PE imports are Windows OS KERNEL32.dll and msvcrt.dll.
+No Microsoft Visual C++ redistributable DLLs are included.

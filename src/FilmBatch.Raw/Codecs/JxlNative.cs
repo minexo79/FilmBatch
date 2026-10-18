@@ -1,4 +1,4 @@
-// JPEG XL 原生邊界：系統 libjxl 0.11 的受管 P/Invoke 宣告（decode-only）。
+// JPEG XL 原生邊界：隨附 libjxl 0.11.2 的受管 P/Invoke 宣告（decode-only）。
 // Copyright (c) 2026 ArtCraft Team and the LightCraft contributors，MIT OR Apache-2.0；為 FilmBatch 改寫為 C#。
 using System.Runtime.InteropServices;
 
@@ -8,62 +8,82 @@ namespace FilmBatch.Raw.Codecs;
 /// libjxl C 解碼 API（<c>jxl/decode.h</c> 0.11）的最小受管邊界：只做單幀全解析度解碼。
 /// 色彩策略對應上游 <c>jxl.rs</c>：非 XYB 不設輸出描述檔（按原樣渲染）；
 /// XYB 有損在 <c>COLOR_ENCODING</c> 事件後要求線性 sRGB 輸出（不經外部 CMS 做色域映射），
-/// 再由 <see cref="JpegXl"/> 以 3×3 矩陣還原宣告主色。原生程式庫缺席時
-/// <see cref="IsAvailable"/> 為 false，解碼報 <see cref="RawErrorKind.Unsupported"/>。
-/// 打包需求見交接（parent 處理）：macOS 隨附 <c>libjxl.0.11.dylib</c>（BSD-3-Clause，
-/// JPEG XL Project；相依 highway／brotli 一併隨附或以系統版取代並驗證）。
+/// 再由 <see cref="JpegXl"/> 以 3×3 矩陣還原宣告主色。
+/// 僅載入隨附 0.11.2 與其相依程式庫；缺失或 ABI 不符時明確報錯。
 /// </summary>
 internal static partial class JxlNative
 {
     private const string Library = "libjxl";
+    internal const uint RequiredVersion = 11002;
+    private static readonly Lazy<nint> Bundled = new(() => LoadBundled(
+        AppContext.BaseDirectory,
+        OperatingSystem.IsMacOS() && RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "osx-arm64" :
+        OperatingSystem.IsWindows() && RuntimeInformation.ProcessArchitecture == Architecture.X64 ? "win-x64" : "unsupported"));
 
-    /// <summary>是否載入了可用的 libjxl（呼叫時探測；解析器已在靜態建構子註冊）。</summary>
-    internal static bool IsAvailable => Probe();
+    // Availability is a deployment contract: preserve the loader/version error for the caller.
+    internal static bool IsAvailable { get { _ = Bundled.Value; return true; } }
+    internal static uint DecoderVersion { get { _ = Bundled.Value; return Version(); } }
 
-    private static bool Probe()
+    static JxlNative() => NativeLibrary.SetDllImportResolver(typeof(JxlNative).Assembly, ResolveLibrary);
+
+    private static nint ResolveLibrary(string libraryName, System.Reflection.Assembly assembly, DllImportSearchPath? searchPath) =>
+        libraryName == Library ? Bundled.Value : nint.Zero;
+
+    internal static void RequireVersion(uint version)
     {
-        try { return Version() > 0; }
-        catch (DllNotFoundException) { return false; }
-        catch (EntryPointNotFoundException) { return false; }
-        catch (Exception) { return false; }
+        if (version != RequiredVersion)
+            throw RawException.Unsupported($"JPEG XL bundled ABI mismatch: expected {RequiredVersion} (0.11.2), got {version}");
     }
 
-    static JxlNative()
-    {
-        // 原生解析：先找隨附（輸出目錄／runtimes／<rid>／native），再找 Homebrew／系統路徑；
-        // 找不到時回零、沿用預設解析，最終缺席由 IsAvailable 反映為 Unsupported。
-        NativeLibrary.SetDllImportResolver(typeof(JxlNative).Assembly, ResolveLibrary);
-    }
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate uint VersionFunction();
 
-    private static nint ResolveLibrary(string libraryName, System.Reflection.Assembly assembly, DllImportSearchPath? searchPath)
+    internal static nint LoadBundled(string directory, string rid)
     {
-        if (!string.Equals(libraryName, Library, StringComparison.Ordinal))
-            return nint.Zero;
-        var tried = new List<string>();
+        string[] names = rid switch
+        {
+            "osx-arm64" => ["libbrotlicommon.1.dylib", "libbrotlidec.1.dylib", "libbrotlienc.1.dylib",
+                "liblcms2.2.dylib", "libhwy.1.dylib", "libjxl_cms.0.11.dylib", "libjxl.0.11.dylib"],
+            "win-x64" => ["libwinpthread-1.dll", "libgcc_s_seh-1.dll", "libstdc++-6.dll",
+                "libbrotlicommon.dll", "libbrotlidec.dll", "libbrotlienc.dll", "liblcms2-2.dll",
+                "libhwy.dll", "libjxl_cms.dll", "libjxl.dll"],
+            _ => throw RawException.Unsupported($"JPEG XL bundled runtime does not support {rid}")
+        };
+        var handles = new List<nint>();
+        bool loaded = false;
         try
         {
-            var baseDir = AppContext.BaseDirectory;
-            tried.Add(Path.Combine(baseDir, "libjxl.0.11.dylib"));
-            tried.Add(Path.Combine(baseDir, "libjxl.dylib"));
-            try
+            foreach (var name in names)
             {
-                var rid = System.Runtime.InteropServices.RuntimeInformation.RuntimeIdentifier;
-                tried.Add(Path.Combine(baseDir, "runtimes", rid, "native", "libjxl.0.11.dylib"));
-                tried.Add(Path.Combine(baseDir, "runtimes", rid, "native", "libjxl.dylib"));
+                var path = Path.GetFullPath(Path.Combine(directory, name));
+                if (!File.Exists(path))
+                    throw RawException.Unsupported($"JPEG XL bundled dependency missing: {path}");
+                // Never allow PATH, working-directory, Homebrew or default resolver fallback.
+                handles.Add(NativeLibrary.Load(path, typeof(JxlNative).Assembly,
+                    DllImportSearchPath.UseDllDirectoryForDependencies | DllImportSearchPath.System32));
             }
-            catch (Exception) { }
-            tried.Add("/opt/homebrew/lib/libjxl.0.11.dylib");
-            tried.Add("/opt/homebrew/lib/libjxl.dylib");
-            tried.Add("/usr/local/lib/libjxl.0.11.dylib");
-            tried.Add("/usr/local/lib/libjxl.dylib");
-            foreach (var path in tried)
-            {
-                if (NativeLibrary.TryLoad(path, out nint handle))
-                    return handle;
-            }
+            var decoder = handles[^1];
+            var version = Marshal.GetDelegateForFunctionPointer<VersionFunction>(NativeLibrary.GetExport(decoder, "JxlDecoderVersion"))();
+            RequireVersion(version);
+            foreach (var symbol in new[] { "JxlDecoderCreate", "JxlDecoderDestroy", "JxlDecoderSubscribeEvents",
+                "JxlDecoderSetInput", "JxlDecoderCloseInput", "JxlDecoderProcessInput", "JxlDecoderGetBasicInfo",
+                "JxlDecoderGetColorAsEncodedProfile", "JxlDecoderSetOutputColorProfile", "JxlDecoderImageOutBufferSize",
+                "JxlDecoderSetImageOutBuffer", "JxlDecoderSetKeepOrientation", "JxlDecoderSetUnpremultiplyAlpha",
+                "JxlDecoderSetRenderSpotcolors", "JxlDecoderSetCoalescing" })
+                _ = NativeLibrary.GetExport(decoder, symbol);
+            // Process lifetime handles: P/Invoke entry points and decoder objects retain this closure.
+            loaded = true;
+            return decoder;
         }
-        catch (Exception) { }
-        return nint.Zero;
+        catch (Exception error) when (error is DllNotFoundException or BadImageFormatException or EntryPointNotFoundException)
+        {
+            throw RawException.Unsupported($"JPEG XL bundled runtime could not load ({rid}): {error.Message}");
+        }
+        finally
+        {
+            if (!loaded)
+                for (var i = handles.Count - 1; i >= 0; i--) NativeLibrary.Free(handles[i]);
+        }
     }
 
     /// <summary>驗證用的檔頭快照（<c>JxlBasicInfo</c>＋<c>JxlColorEncoding</c> 的驗證子集）。</summary>
@@ -232,7 +252,7 @@ internal static partial class JxlNative
     private static partial uint JxlDecoderSetInput(nint dec, nint data, nuint len);
 
     [LibraryImport(Library)]
-    private static partial uint JxlDecoderCloseInput(nint dec);
+    private static partial void JxlDecoderCloseInput(nint dec);
 
     [LibraryImport(Library)]
     private static partial uint JxlDecoderProcessInput(nint dec);

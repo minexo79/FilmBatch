@@ -2,6 +2,8 @@
 // 上游 tiffraw.rs（jxl feature）＋ jxl.rs 的行為：bare／container、邊緣磚塊、平面、
 // 程式碼位元深度與 IFD 位元深度、XYB 線性 D65 限制、主色還原、檔頭驗證、損毀輸入。
 // Copyright (c) 2026 ArtCraft Team and the LightCraft contributors，MIT OR Apache-2.0；為 FilmBatch 改寫為 C#。
+using System.Buffers.Binary;
+using System.Security.Cryptography;
 using FilmBatch.Raw;
 using FilmBatch.Raw.Codecs;
 using FilmBatch.Raw.Tests.Support;
@@ -9,12 +11,30 @@ using FilmBatch.Raw.Tiff;
 
 namespace FilmBatch.Raw.Tests.Codecs;
 
-public sealed class JpegXlTests
+public sealed class JpegXlTests(ITestOutputHelper output)
 {
+    // EXP06 logs canonical extracted sample hashes for comparison with an independent decoder.
+    // u16/f32 little-endian, interleaved, no metadata or display conversion in the digest.
+    private void Fingerprint(string fixture, ushort[] samples)
+    {
+        var bytes = new byte[samples.Length * 2];
+        for (var i = 0; i < samples.Length; i++)
+            BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(i * 2), samples[i]);
+        output.WriteLine($"EXP06 {fixture} u16le samples={samples.Length} sha256={Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant()}");
+    }
+
+    private void Fingerprint(string fixture, float[] samples)
+    {
+        var bytes = new byte[samples.Length * 4];
+        for (var i = 0; i < samples.Length; i++)
+            BinaryPrimitives.WriteSingleLittleEndian(bytes.AsSpan(i * 4), samples[i]);
+        output.WriteLine($"EXP06 {fixture} f32le samples={samples.Length} sha256={Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant()}");
+    }
+
     private static string Fixture(string name)
     {
         var path = Path.Combine(AppContext.BaseDirectory, "Codecs", "Fixtures", name);
-        Assert.SkipUnless(File.Exists(path), $"JPEG XL fixture {name} is missing from test output (build copies Codecs/Fixtures/*.jxl).");
+        Assert.True(File.Exists(path), $"JPEG XL fixture {name} is missing from test output (build copies Codecs/Fixtures/*.jxl).");
         return path;
     }
 
@@ -22,8 +42,8 @@ public sealed class JpegXlTests
 
     private static void RequireNative()
     {
-        // 缺 libjxl 原生程式庫的打包前環境：略過（parent 整合驗證覆蓋，而非失敗）。
-        Assert.SkipUnless(JxlNative.IsAvailable, "libjxl native runtime is not available in this environment.");
+        // Supported desktop builds must carry the native closure; absence is a deployment failure.
+        Assert.True(JxlNative.IsAvailable);
     }
 
     [Fact]
@@ -40,6 +60,7 @@ public sealed class JpegXlTests
             Layout = new ImageLayout.Strips(16), Offsets = [0], ByteCounts = [(ulong)bytes.Length],
         };
         var data = Assert.IsType<RawData.U16>(TiffRaw.ReadImage(bytes, info, ByteOrder.Little, Packing.Msb));
+        Fingerprint("jxl-gray16-lossless.jxl", data.Samples);
         Assert.Equal(16 * 16, data.Samples.Length);
         for (var i = 0; i < data.Samples.Length; i++)
             Assert.Equal((ushort)((30000 + i * 257) % 65536), data.Samples[i]);
@@ -98,6 +119,7 @@ public sealed class JpegXlTests
             Layout = new ImageLayout.Strips(6), Offsets = [0], ByteCounts = [(ulong)bytes.Length],
         };
         var data = Assert.IsType<RawData.U16>(TiffRaw.ReadImage(bytes, info, ByteOrder.Little, Packing.Msb));
+        Fingerprint("jxl-rgb16-lossless.jxl", data.Samples);
         Assert.Equal(10 * 6 * 3, data.Samples.Length);
         Assert.Equal((ushort)((60000 - 0 * 500 - 0 * 300) % 65536), data.Samples[0]);
         Assert.Equal((ushort)0, data.Samples[1]);
@@ -168,6 +190,7 @@ public sealed class JpegXlTests
             Layout = new ImageLayout.Strips(4), Offsets = [0], ByteCounts = [(ulong)bytes.Length],
         };
         var data = Assert.IsType<RawData.F32>(TiffRaw.ReadImage(bytes, info, ByteOrder.Little, Packing.Msb));
+        Fingerprint("jxl-f16-lossless.jxl", data.Samples);
         Assert.Equal(8 * 4 * 3, data.Samples.Length);
         Assert.Equal(0.60009766f, data.Samples[0], precision: 5);
         Assert.Equal(1.7998047f, data.Samples[1], precision: 4);
@@ -188,6 +211,7 @@ public sealed class JpegXlTests
             Layout = new ImageLayout.Strips(4), Offsets = [0], ByteCounts = [(ulong)bytes.Length],
         };
         var data = Assert.IsType<RawData.F32>(TiffRaw.ReadImage(bytes, info, ByteOrder.Little, Packing.Msb));
+        Fingerprint("jxl-f32-lossless.jxl", data.Samples);
         Assert.Equal(1.6f, data.Samples[0], precision: 5);
         Assert.Equal(0.1f, data.Samples[1], precision: 5);
         Assert.Equal(-0.15f, data.Samples[2], precision: 5);

@@ -4,9 +4,22 @@
     <IsTrimmable>true</IsTrimmable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <NoWarn>CA2014</NoWarn>
+    <!-- 原生內容必須沿用最上層 publish 的 RID，不可讓 ProjectReference 移除後改用建置主機。 -->
+    <IsRidAgnostic>false</IsRidAgnostic>
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="FilmBatch.Raw.Tests" />
     <InternalsVisibleTo Include="FilmBatch.Engine" />
+  </ItemGroup>
+  <!-- Native content flows through ProjectReference to App, CLI and test output. -->
+  <PropertyGroup>
+    <JxlRuntimeIdentifier Condition="'$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</JxlRuntimeIdentifier>
+    <JxlRuntimeIdentifier Condition="'$(JxlRuntimeIdentifier)' == ''">$(NETCoreSdkRuntimeIdentifier)</JxlRuntimeIdentifier>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Remove="Native/Jxl/**" />
+    <None Include="Native/Jxl/$(JxlRuntimeIdentifier)/*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="%(Filename)%(Extension)" />
+    <None Include="Native/Jxl/licenses/*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="native-jxl/licenses/%(Filename)%(Extension)" />
+    <None Include="Native/Jxl/provenance.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="native-jxl/provenance.json" />
   </ItemGroup>
 </Project>
