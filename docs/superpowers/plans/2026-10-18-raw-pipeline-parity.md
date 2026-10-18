@@ -79,7 +79,7 @@
 - [x] P3 Parent 已完成 ModuleParams／匯出與六個續接 slice 整合；獨立 binary TIFF fixtures、固定 Rust oracle 與 C# acceptance runner 已建立並執行。
 - [x] P4 完成 targeted tests 與真 CPU／Metal／桌面實驗。修正 DNG EXIF／DefaultScale、Lensfun 半徑／gain 順序／f32 取樣、單像素遮罩與非同步生命週期；彩色高光新增 red=38→green≤1 RGB16 的收尾色域迴歸。
 - [x] P5 完成獨立數學／色彩／UI 狀態與原生部署 review。有效問題已修正；最終色彩與 JXL reviewer 無阻擋 finding。OOM 操作例外優先傳播，Windows 跨 RID 發佈缺庫已 red→green；實際 Windows／強制物理 OOM 不宣稱驗證。
-- [x] P6 更新既有 architecture/building/RAW docs；完整solution、30個WGSL與重建Mac `--smoke --zip`通過；已檢視最終畫面、驗證解壓後CLI／簽章／JXL。彙整14組情境與原檔SHA後移除3個一次性實驗／解壓工作區，23個本地文件連結有效。
+- [x] P6 更新既有 architecture/building/RAW docs；補修後完整 solution、29 個 WGSL 與重建 Mac `--smoke --zip` 通過；已檢視最終畫面、驗證解壓後 CLI／簽章／JXL。原 14 組對照另存為補修前證據，本次重跑全幅／偏心裁切及兩種 JXL 封裝情境，不混用舊 ZIP 驗證結果。
 
 ## 實驗設計（EXP）
 
@@ -148,13 +148,13 @@ Go：使用者已授權實作，變更限本地原始碼、隔離fixtures與可�
 | REQ-RAW-05 Kelvin / tint | verified | 四組 WB matrix 對 Rust max4.44e-16；CPU/Metal/Rust RGB16 max1；原生 bound 3200 K、不重新解碼、undo/redo/save/reopen 通過 |
 | REQ-RAW-06 portable JXL | verified on extracted Mac; Windows static/cross-publish only | 乾淨環境的解壓 CLI 成功轉換／匯出16-bit與float JXL DNG；sample bytes逐位元等於獨立jxl-oxide 0.12.6；隨附0.11.2／ABI11002。Windows GUI/CLI各10 DLL、20份SHA皆等於manifest；實際 Windows runtime 未執行 |
 | REQ-RAW-07 semantic local edits | verified | 四組 invert／strength 對 Rust RGB16 max1；8192 寬單像素 mask max0；全尺寸 alpha 不降採樣；實際 bound Name/Instance、局部曝光、undo/redo/save/reopen 通過 |
-| REQ-RAW-08 external Lensfun | verified | 對 pinned Rust 全圖線性 max0、CPU/Metal/Rust RGB16 max1；真 UI 相對目錄／來源重載／預覽變化／undo/redo／save/reopen 通過；有界 XML／匹配／內嵌優先迴歸 |
-| EXP-01 through EXP-09 execution | verified within recorded boundaries | `dist/raw-parity-native-osx-arm64.txt` 26項實際桌面檢查；`dist/raw-pipeline-parity-acceptance.json` 保存14組通過的數值／部署情境、原檔SHA與負向覆寫保護。解壓CLI的9組PNG16對照CPU/Metal最大差1，保存的Kelvin／mask／Lensfun設定實際生效 |
-| Verification harness corrections | recorded | Apple TIFF按II/MM；灰階fixture用F32 Deflate避免half量化；Lensfun oracle保留自己的geometry plan；native driver保持Avalonia binding並等待控制項更新。共用WGSL include透過實際shader展開驗證；CLI記錄取自專案`.filmbatch/export_log.json`，在下一次匯出前保存，不假設位於輸出資料夾 |
+| REQ-RAW-08 external Lensfun | verified for full and off-centre default crops | 延遲 review 的兩個新案例先失敗（warp .00110384、gain .00538858），修正為 DefaultCrop 光學中心／半徑後，53 個鏡頭／幾何檢查通過。實際載入全幅與偏心裁切的線性公式誤差分別為 3.60e-7／3.30e-7；封裝 CLI 的 CPU／Metal 匯出最大差均為 1 個 RGB16 碼值 |
+| EXP-01 through EXP-09 execution | verified within recorded boundaries | 原 14 組數值／部署情境與 26 項 RAW 桌面檢查保留於補修前證據；本次封裝另有 25 項 GUI smoke、4 個來源的 CPU／Metal 匯出、兩種 JXL 無失真轉換及來源 SHA 核對。`dist/raw-pipeline-parity-acceptance.json` 明確分開兩輪證據，未宣稱重跑全部舊實驗 |
+| Verification harness corrections | recorded | Apple TIFF 按 II/MM；灰階 fixture 用 F32 Deflate 避免 half 量化；Lensfun oracle 保留自己的 geometry plan；native driver 保持 Avalonia binding 並等待控制項更新。WGSL include 隨實際 shader 展開驗證；CLI log 逐次自專案 `.filmbatch/export_log.json` 保存。此次 JXL float32 codestream 的合成 TIFF 封裝改用既有 DNG 慣例的名目 16-bit 宣告；原錯誤與更正另存，不更改產品支援範圍 |
 | Independent code / methodology review | completed; scoped approvals | 兩輪獨立source review＋最終色彩／JXL審查；已修正實際可重現缺陷，不把靜態review當runtime。DNG對照遵守同色彩模型；完整語料／第三方DNG viewer／Windows實機／強制OOM不在已執行證據中 |
-| Final solution / shaders / packaged Mac smoke | verified | 最終source：1172 passed／315外部語料條件略過／0 failed（Core413/22、Raw618/293、App141/0）；30個展開後WGSL編譯單元通過naga30.0.1；重建Mac原生GUI smoke 25項通過，實際畫面已檢視，Lensfun長標籤不再溢位 |
-| Mac archive / extracted signatures / native JXL | verified; ad-hoc only | 最終ZIP SHA256 `458389ff39871919e2cf4845d82afa875731a0bb16762bf4f7fa292710e316f8`；`unzip -tq`與解壓後`codesign --verify --deep --strict`通過；`env -i` CLI實際JXL／Canon轉換與CPU/Metal匯出通過。沒有Developer ID公證 |
-| Final double check / grouped commits | verified; grouped commits complete | 無未解阻擋finding。原先7個staged檔案原樣提交`cc23364`；DNG色彩`088a5d2`、線性管線／幾何`8c3c0b4`、RAW控制項`7504087`、JXL自攜部署`c9cd74d`。驗收與使用文件獨立提交；不push |
+| Final solution / shaders / packaged Mac smoke | verified after follow-up | 完整 solution：1174 passed／315 外部語料條件略過／0 failed（Core415／22、Raw618／293、App141／0）；29 個展開後 WGSL 通過。15 個 GPU 迴歸走真正 Render16；25 項封裝 GUI smoke 與實際畫面已檢視 |
+| Mac archive / extracted signatures / native JXL | verified after follow-up; ad-hoc only | 新 ZIP 為 138126331 bytes，SHA256 `f0fcc10d437a3817298503d2d660e90c530667dffcc87df639ae1fdf383e3796`；兩平台 ZIP 完整性、解壓 Mac 簽章與乾淨 PATH 的 CLI 通過。全幅／偏心裁切、整數／float JXL 共 4 組 CPU／Metal PNG16 最大差 1；兩種 JXL sample bytes 與獨立參考相同。Windows GUI／CLI 各 10 個 DLL、20 份 SHA 符合 manifest，仍未執行 Windows runtime |
+| Final double check / grouped commits | verified; original commits retained and follow-up source commits complete | 原 7 個 staged 檔案原樣提交 `cc23364`；DNG `088a5d2`、線性管線 `8c3c0b4`、RAW 控制項 `7504087`、JXL `c9cd74d`、文件 `5be5745`。本次 Lensfun 補修為 `07eff8b`，獨立 GPU finish 移除為 `cfe4cf9`；驗收紀錄隨文件提交，不 amend 既有內容、不 push |
 
 ### Review rulings / retained boundaries
 
@@ -164,5 +164,9 @@ Go：使用者已授權實作，變更限本地原始碼、隔離fixtures與可�
 - >managed陣列上限的完整RAW解碼不支援；`ProbeInfoFile` 的稀疏規劃仍需要受限陣列，不是任意大檔的串流解析器。未為單一大型`.tif`特殊分支新增另一套不完整的檔頭解析器。
 - GPU scope-only OOM回報真實降級原因；任何操作例外（含取消／驗證錯誤）一律傳播，不被同時的OOM訊息吞掉。強制物理OOM未執行，尺寸／預算fallback與實際Metal輸出另有證據。
 - JXL reviewer 的兩項既有靜態觀察不作新功能缺陷或執行證據：lossy integer tile 在精確半碼處的rounding與Rust可能差1碼；內嵌JXL預覽尚不供JPEG外觀擬合。此次保留原行為，lossless感光樣本另經獨立解碼器逐位元驗證；完整JXL預覽相容性未宣稱驗證。
-- TWINS: searched `RawDisplayFinisher|ForWorking\(|MaxAlphaLongEdge` - found 0 other sites: none。無第二條早期finish入口或4096遮罩降採樣路徑；隨附libjxl名稱在resolver／manifest中的合法引用不屬於系統搜尋退路。
+- 初次TWINS的搜尋未包含另一個名稱`FinishRaw`；延遲review擴大範圍後確認只剩舊測試呼叫，已移除該入口、獨立buffer讀回、kernel／band參數與shader，保留完整Render16的部分尾帶、取消、色域及色調行為測試。`src/tests`不再有舊入口引用。
+- 遮罩精度明確保留16-bit來源值；對Rust的已執行fixture使用可由8-bit精確表示的alpha。上游`developed()`量化為u8，因此不宣稱任意16-bit軟邊逐碼相同，不為了對齊低精度參考而丟棄來源資訊或放寬CPU/Metal容差。
+- 延遲missing-directory建議不採納為新fallback：已指定但不存在／不可讀的外部資料庫屬於可修正設定錯誤，沿用明確回報政策；未設定／無匹配仍不加校正。既有`ExplicitRequestAfterRepair_DecodesInsteadOfReplayingFault`覆蓋修復後重解碼，不掩蓋失敗。
+- 其他延遲finding已核對為過期或前提不適用：原index已先獨立commit；CLI log已逐次自專案目錄保存；架構／oracle文件已更新；快取fault/cancel已不重用；RAW未知choice受既有驗證攔截；原生driver已保留binding；DNG同模型對照已嚴格通過且保留不同模型差異。未重做已正確的程式碼。
+- 本次偏心裁切補修未新增 fallback、資料庫或第二套算圖器；已移除的獨立 RAW finish 入口沒有相容別名。TWINS：`RawDisplayFinisher|ForWorking\(|MaxAlphaLongEdge|FinishRaw|raw_display_finish\.wgsl` 在 `src/tests/build` 為 0 處；保留的歷史文字不作現行 API。
 
