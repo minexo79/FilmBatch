@@ -1,3 +1,4 @@
+using FilmBatch.Engine.Imaging;
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -54,8 +55,18 @@ public sealed partial class ModuleSectionViewModel : ObservableObject
             .Select(p => ParamViewModel.Create(schema.Key, p, host))];
         FilmLook = schema.Key == "film" ? filmLook : null;
         // film 模組：底片（look）由縮圖格選、24 個色相參數由色相帶編輯器顯示，一般參數列只留其餘欄位。
-        Params = new(FilmLook is null ? _allParams : _allParams.Where(p => p.Def.Key != "look" && !IsHueParam(p)));
+        Params = new((FilmLook is null ? _allParams : _allParams.Where(p => p.Def.Key != "look" && !IsHueParam(p)))
+            .Where(p => p.FlatKey != "raw.mask_instance"));
         FilmLook?.Attach([.. _allParams.Where(IsHueParam)]);
+    }
+
+    /// <summary>原生 smoke 與面板共用的來源中繼資料入口；null 清除上一張照片資料。</summary>
+    public void SetRawSource(SourceImage? source)
+    {
+        if (Key != "raw") return;
+        var wb = source?.WhiteBalance;
+        _allParams.OfType<RawWbParamViewModel>().Single().SetAsShot(wb?.AsShotTemperature, wb?.AsShotTint);
+        _allParams.OfType<RawMaskParamViewModel>().Single().SetMasks(source?.RawInfo is null ? null : source.SemanticMasks);
     }
 
     /// <summary>所有參數（含 film 模組由底片風格區塊顯示、不在 <see cref="Params"/> 中的參數）；載入與語言切換都以此為準。</summary>
@@ -99,6 +110,18 @@ public sealed partial class ModuleSectionViewModel : ObservableObject
             IsModuleEnabled = resolved.Bool(Schema.EnabledFlatKey);
             foreach (var p in _allParams)
                 p.Load(resolved.TryGetValue(p.FlatKey, out var v) ? v : p.Def.Default, overrides.ContainsKey(p.FlatKey));
+            if (Key == "raw")
+            {
+                foreach (var p in _allParams)
+                    p.IsVisible = p.Def.Key switch
+                    {
+                        "temperature" or "tint" => resolved.Text("raw.wb_mode") == "custom",
+                        "mask_enabled" => true,
+                        _ when p.Def.Key.StartsWith("mask_", StringComparison.Ordinal) => resolved.Bool("raw.mask_enabled"),
+                        _ => true,
+                    };
+                _allParams.OfType<RawMaskParamViewModel>().Single().ApplyInstance(resolved.Text("raw.mask_instance"));
+            }
             OverrideCount = Schema.FlatKeys.Count(overrides.ContainsKey);
             IsVisible = !hideDisabled || IsModuleEnabled;
         }

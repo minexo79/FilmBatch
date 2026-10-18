@@ -359,8 +359,8 @@ Clear overrides: use the new preset entirely.</value></data>
   <data name="Param.exposure" xml:space="preserve"><value>Exposure</value></data>
   <data name="Param.saturation" xml:space="preserve"><value>Saturation</value></data>
   <data name="Param.contrast" xml:space="preserve"><value>Contrast</value></data>
-  <data name="Param.basic.temperature" xml:space="preserve"><value>Temperature</value></data>
-  <data name="Param.basic.tint" xml:space="preserve"><value>Tint</value></data>
+  <data name="Param.basic.temperature" xml:space="preserve"><value>Warmth (Relative)</value></data>
+  <data name="Param.basic.tint" xml:space="preserve"><value>Tint (Relative)</value></data>
   <data name="Param.basic.brightness" xml:space="preserve"><value>Brightness</value></data>
   <data name="Param.basic.highlights" xml:space="preserve"><value>Highlights</value></data>
   <data name="Param.basic.shadows" xml:space="preserve"><value>Shadows</value></data>
@@ -518,4 +518,27 @@ Clear overrides: use the new preset entirely.</value></data>
   <data name="Param.film.hue_magenta_h" xml:space="preserve"><value>Magenta Hue</value></data>
   <data name="Param.film.hue_magenta_s" xml:space="preserve"><value>Magenta Saturation</value></data>
   <data name="Param.film.hue_magenta_l" xml:space="preserve"><value>Magenta Luminance</value></data>
+  <data name="Param.raw.lens_database" xml:space="preserve"><value>External Lensfun Folder</value></data>
+  <data name="Param.raw.wb_mode" xml:space="preserve"><value>White Balance</value></data>
+  <data name="Param.raw.temperature" xml:space="preserve"><value>Temperature</value></data>
+  <data name="Param.raw.tint" xml:space="preserve"><value>Tint</value></data>
+  <data name="Param.raw.mask_enabled" xml:space="preserve"><value>Semantic Mask Adjustments</value></data>
+  <data name="Param.raw.mask_name" xml:space="preserve"><value>Mask</value></data>
+  <data name="Param.raw.mask_instance" xml:space="preserve"><value>Mask Instance</value></data>
+  <data name="Param.raw.mask_invert" xml:space="preserve"><value>Invert Mask</value></data>
+  <data name="Param.raw.mask_amount" xml:space="preserve"><value>Mask Amount</value></data>
+  <data name="Param.raw.mask_exposure" xml:space="preserve"><value>Local Exposure</value></data>
+  <data name="Param.raw.mask_temperature" xml:space="preserve"><value>Local Warmth (Relative)</value></data>
+  <data name="Param.raw.mask_tint" xml:space="preserve"><value>Local Tint (Relative)</value></data>
+  <data name="Param.raw.mask_contrast" xml:space="preserve"><value>Local Contrast</value></data>
+  <data name="Param.raw.mask_saturation" xml:space="preserve"><value>Local Saturation</value></data>
+  <data name="Choice.raw.wb_mode.as-shot" xml:space="preserve"><value>As Shot</value></data>
+  <data name="Choice.raw.wb_mode.custom" xml:space="preserve"><value>Custom</value></data>
+  <data name="Raw.AsShot" xml:space="preserve"><value>As Shot: {0} K</value></data>
+  <data name="Raw.AsShotTint" xml:space="preserve"><value>As Shot: {0} K · Tint {1:+0;-0;0}</value></data>
+  <data name="Raw.MaskNone" xml:space="preserve"><value>None</value></data>
+  <data name="Raw.MaskUnavailable" xml:space="preserve"><value>Selected mask unavailable in this photo: {0}</value></data>
+  <data name="Raw.NoMasks" xml:space="preserve"><value>This photo has no embedded semantic masks</value></data>
+  <data name="Raw.MaskEdit" xml:space="preserve"><value>Adjust semantic mask</value></data>
+  <data name="Raw.BrowseFolder" xml:space="preserve"><value>Browse Folder…</value></data>
 </root>

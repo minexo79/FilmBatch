@@ -273,9 +273,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             return;
         }
         Preview.UpdateOverlay(Selection.Count);
+        var rawOptions = RawLoadOptions.FromSettings(service.SettingsFor(file));
         try
         {
-            var rawOptions = RawLoadOptions.FromSettings(service.SettingsFor(file));
             var source = await Images.GetPreviewAsync(service.Project.PathOf(file), rawOptions);
             if (_disposed || Service != service || file != FocusFile || generation != _previewLoadGeneration) return;
             if (source.RawOptions != RawLoadOptions.FromSettings(service.SettingsFor(file)))
@@ -290,7 +290,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
-            if (_disposed || Service != service || file != FocusFile || generation != _previewLoadGeneration) return;
+            if (_disposed || Service != service || file != FocusFile || generation != _previewLoadGeneration
+                || rawOptions != RawLoadOptions.FromSettings(service.SettingsFor(file))) return;
             AppLog.Error($"讀取失敗：{file}", ex);
             Filmstrip.SetError(file, ex.Message);
             Preview.Clear();
@@ -303,7 +304,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     {
         if (Service is null || FocusFile is null || Preview.Source is null) return;
         var settings = Service.SettingsFor(FocusFile);
-        if (Preview.Source.RawOptions != RawLoadOptions.FromSettings(settings))
+        if (Preview.Source.FilePath != Service.Project.PathOf(FocusFile)
+            || Preview.Source.RawOptions != RawLoadOptions.FromSettings(settings))
         {
             _ = LoadPreviewAsync();
             return;

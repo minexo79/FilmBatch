@@ -326,4 +326,27 @@
   <data name="Film.Hue.golden" xml:space="preserve"><value>金黃秋色</value></data>
   <data name="Film.Hue.teal-orange" xml:space="preserve"><value>冷暖對比</value></data>
   <data name="Film.Hue.muted" xml:space="preserve"><value>低彩度</value></data>
+  <data name="Param.raw.lens_database" xml:space="preserve"><value>外部 Lensfun 資料夾</value></data>
+  <data name="Param.raw.wb_mode" xml:space="preserve"><value>白平衡</value></data>
+  <data name="Param.raw.temperature" xml:space="preserve"><value>色溫</value></data>
+  <data name="Param.raw.tint" xml:space="preserve"><value>色偏</value></data>
+  <data name="Param.raw.mask_enabled" xml:space="preserve"><value>語意遮罩調整</value></data>
+  <data name="Param.raw.mask_name" xml:space="preserve"><value>遮罩</value></data>
+  <data name="Param.raw.mask_instance" xml:space="preserve"><value>遮罩實例</value></data>
+  <data name="Param.raw.mask_invert" xml:space="preserve"><value>反轉遮罩</value></data>
+  <data name="Param.raw.mask_amount" xml:space="preserve"><value>遮罩強度</value></data>
+  <data name="Param.raw.mask_exposure" xml:space="preserve"><value>局部曝光</value></data>
+  <data name="Param.raw.mask_temperature" xml:space="preserve"><value>局部暖色（相對）</value></data>
+  <data name="Param.raw.mask_tint" xml:space="preserve"><value>局部色偏（相對）</value></data>
+  <data name="Param.raw.mask_contrast" xml:space="preserve"><value>局部對比</value></data>
+  <data name="Param.raw.mask_saturation" xml:space="preserve"><value>局部飽和度</value></data>
+  <data name="Choice.raw.wb_mode.as-shot" xml:space="preserve"><value>拍攝值</value></data>
+  <data name="Choice.raw.wb_mode.custom" xml:space="preserve"><value>自訂</value></data>
+  <data name="Raw.AsShot" xml:space="preserve"><value>拍攝值：{0} K</value></data>
+  <data name="Raw.AsShotTint" xml:space="preserve"><value>拍攝值：{0} K・色偏 {1:+0;-0;0}</value></data>
+  <data name="Raw.MaskNone" xml:space="preserve"><value>不使用</value></data>
+  <data name="Raw.MaskUnavailable" xml:space="preserve"><value>此照片無法使用已選遮罩：{0}</value></data>
+  <data name="Raw.NoMasks" xml:space="preserve"><value>此照片沒有內嵌語意遮罩</value></data>
+  <data name="Raw.MaskEdit" xml:space="preserve"><value>調整語意遮罩</value></data>
+  <data name="Raw.BrowseFolder" xml:space="preserve"><value>瀏覽資料夾…</value></data>
 </root>

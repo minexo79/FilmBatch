@@ -119,7 +119,7 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
             Dimensions = "";
             OverrideText = "";
             HasOverrides = false;
-            if (Modules.FirstOrDefault(m => m.Key == "raw") is { } raw) raw.IsVisible = false;
+            if (Modules.FirstOrDefault(m => m.Key == "raw") is { } raw) { raw.IsVisible = false; raw.SetRawSource(null); }
             if (IsActive) _main.Preview.ShowControlPoint(null, null);
             FilmLook?.OnSettingsChanged();
             return;
@@ -139,7 +139,13 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
         foreach (var m in Modules)
         {
             m.Load(resolved, entry.Overrides, HideDisabledModules);
-            if (m.Key == "raw" && _main.Preview.Source?.RawInfo is null) m.IsVisible = false;
+            if (m.Key == "raw")
+            {
+                var source = _main.Preview.Source;
+                if (source?.FilePath != svc.Project.PathOf(file)) source = null;
+                m.SetRawSource(source);
+                if (source?.RawInfo is null) m.IsVisible = false;
+            }
         }
         FilmLook?.OnSettingsChanged();
         UpdateControlPoint(resolved);
@@ -163,6 +169,24 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
     {
         if (_main.Service is null || _main.Selection.Count == 0) return;
         _main.Service.SetValue(_main.Selection, flatKey, value, mergeKey);
+    }
+
+    public void SetValues(IReadOnlyDictionary<string, ParamValue> values, string? mergeKey)
+    {
+        if (_main.Service is null || _main.Selection.Count == 0) return;
+        _main.Service.SetValues(_main.Selection, new Settings(values), Loc.Get("Raw.MaskEdit"));
+    }
+
+    public async Task<string?> PickFolderAsync(string? current)
+    {
+        var service = _main.Service;
+        if (service is null) return null;
+        var selection = _main.Selection.ToArray();
+        var start = string.IsNullOrWhiteSpace(current) ? service.Project.Folder
+            : Path.GetFullPath(current, service.Project.Folder);
+        var picked = await _main.Dialogs.PickFolderAsync(Directory.Exists(start) ? start : service.Project.Folder);
+        // A modal picker may outlive a project/photo change; never apply its result elsewhere.
+        return _main.Service == service && selection.SequenceEqual(_main.Selection) ? picked : null;
     }
 
     public void ResetParam(string flatKey)

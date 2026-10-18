@@ -37,14 +37,15 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
     public Task<SourceImage> GetThumbnailSourceAsync(string path, RawLoadOptions rawOptions = default) =>
         _thumbs.AddOrUpdate(path,
             p => (rawOptions, DecodeAsync(p, ThumbnailLongEdge, rawOptions)),
-            (p, current) => current.Options == rawOptions
+            (p, current) => current.Options == rawOptions && !current.Task.IsFaulted && !current.Task.IsCanceled
                 ? current : (rawOptions, DecodeAsync(p, ThumbnailLongEdge, rawOptions))).Task;
 
     public Task<SourceImage> GetPreviewAsync(string path, RawLoadOptions rawOptions = default)
     {
         lock (_stateLock)
         {
-            if (_previews.TryGetValue(path, out var cur) && cur.Edge == _previewLongEdge && cur.Options == rawOptions)
+            if (_previews.TryGetValue(path, out var cur) && cur.Edge == _previewLongEdge && cur.Options == rawOptions
+                && !cur.Task.IsFaulted && !cur.Task.IsCanceled)
             {
                 _previewOrder.Remove(path);
                 _previewOrder.AddFirst(path);
