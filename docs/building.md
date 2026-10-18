@@ -91,13 +91,47 @@ dotnet run build/CheckShaders.cs
 
 ### 合併前 CI
 
-`.github/workflows/ci.yml` 在 pull request、merge queue（`merge_group`）、推送至 `master` 及手動觸發時執行：
+`.github/workflows/ci.yml` 與 `.circleci/config.yml` 共用還原相依套件、Release 建置、完整測試、隨附 JPEG XL ABI／樣本解碼、封裝及 GUI 冒煙測試命令；WGSL 均以固定的 naga-cli `30.0.1` 驗證產品的 `ShaderLibrary` 輸出。
 
-- Windows x64、macOS Apple Silicon：還原相依套件、Release 建置、測試、封裝與 GUI 冒煙測試。
-- WGSL：使用固定版本的 naga-cli 與產品共用的 `ShaderLibrary`，驗證編譯後嵌入的所有 shader。
-- `pre-merge`：只有上述工作全部成功才通過；失敗、取消或略過均不放行。
+#### 平台與 SDK
 
-請在 `master` 的分支保護或 ruleset 中，將 **`pre-merge`** 設為必要狀態檢查，才能阻擋未通過的合併；工作流程本身不會修改儲存庫規則。`merge_group` 觸發方式依 [GitHub 官方說明](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#merge_group) 設定。
+| 用途 | GitHub Actions | CircleCI |
+| --- | --- | --- |
+| Windows x64 桌面 | `windows-2022` | `windows-server-2022-gui:current` |
+| macOS Apple Silicon 桌面 | `macos-26` | Xcode `26.4.1`／macOS `26.3`、`m4pro.medium` |
+| WGSL 驗證 | `ubuntu-24.04` | `ubuntu-2404:current` |
+| 手動 Dawn 重建 | `macos-15` | Xcode `16.4.0`／macOS `15.3.2`、`m4pro.medium` |
+
+兩邊安裝 `global.json` 的 `sdk.version`；`rollForward` 僅控制執行時從已安裝 SDK 中選擇版本，不代表安裝最新 `10.0` 通道。CircleCI 的 Windows 工作使用 Git Bash 並明確啟用 `errexit`／`pipefail`。
+
+映像對照於 2026-10-18 依 [CircleCI 支援表](https://circleci.com/docs/using-macos/)及官方 manifest（[26.4.1](https://circle-macos-docs.s3.amazonaws.com/image-manifest/v17723/manifest.txt)、[16.4.0](https://circle-macos-docs.s3.amazonaws.com/image-manifest/v15338/manifest.txt)）核對；Windows 依[官方執行環境說明](https://circleci.com/docs/using-windows/)。Xcode 版本不等於宿主 macOS 版本，例如 Xcode 26.0.1 的宿主是 macOS 15.6，不能滿足隨附 Dawn 的 macOS 26.0 最低需求。這些設定統一 OS 基線，不保證兩家託管映像的修補版本或所有預裝工具完全相同。
+
+#### 合併必要檢查
+
+- **GitHub Actions**：在 pull request、merge queue（`merge_group`）、推送至 `master` 及手動觸發時執行。`pre-merge` 使用 `always()` 檢查 `desktop`、`shaders` 的結果，只有全部成功才通過；失敗、取消或略過均不放行。在 `master` 的分支保護／ruleset 中將 **`pre-merge`** 設為必要檢查。
+- **CircleCI**：不設只有 `echo` 的 `pre-merge` 聚合工作。若以 CircleCI 作為合併閘門，須啟用 **Project Settings → Advanced Settings → VCS Status Updates**，並將以下三項 **job 狀態**全部設為必要檢查：
+  - `ci/circleci: desktop-win-x64`
+  - `ci/circleci: desktop-osx-arm64`
+  - `ci/circleci: shaders`
+
+CircleCI 的 workflow-level GitHub Checks 與上述 job 狀態不同，不能在停用 VCS Status Updates 後仍要求不存在的 job 狀態；名稱及回報方式見[官方說明](https://circleci.com/docs/guides/integration/status-updates/)。原本的 `ci/circleci: pre-merge` 必要檢查應移除。三個工作彼此不因另一個失敗而中止，也不會因失敗的上游 `requires` 留下未啟動的假聚合工作。
+
+#### CircleCI 觸發設定
+
+GitHub App 專案在 **Project Settings → Project Setup**，為同一個 pipeline definition 設定兩個 trigger：
+
+1. **PR opened or pushed to, default branch and tag pushes**；此儲存庫的預設分支須為 `master`。YAML 會排除自動 tag 及 PR 關閉／標籤等非建置事件。
+2. **Pushes to merge queues**，接收 `gh-readonly-queue/*` 分支推送。
+
+不要以 **All pushes** 代替第一項：開啟 PR 的分支推送及一般分支推送都可能回報 `push`，不能只靠 YAML 的事件名稱分辨。分支與 PR 成員資格由 trigger 篩選，workflow 再篩選事件／tag。UI **Trigger Pipeline** 或 API 手動觸發會同時執行 `ci` 與 `dawn-build`，不再傳入 `run-dawn-build`；手動指定 tag 亦可執行。重跑既有 pipeline 保留原來的觸發事件，不等同建立新的手動 pipeline。
+
+GitHub App **不會觸發 fork PR**；如果需要接受外部 fork，應保留 GitHub Actions 的 `pre-merge` 作為必要閘門，不要把無法回報的 CircleCI job 狀態設為所有 PR 的必要條件。這是供應商整合限制，不表示 fork PR 已在 CircleCI 驗證。trigger 選項及限制見 [CircleCI 官方說明](https://circleci.com/docs/github-trigger-event-options/)，GitHub merge queue 依[官方事件說明](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#merge_group)設定。
+
+#### 逾時與遠端設定界線
+
+GitHub Actions 的 `timeout-minutes` 是整個 job 上限。依本次選擇，CircleCI **不新增 API token**：`timed-run` 共用剩餘命令預算（桌面 30 分鐘、WGSL 15 分鐘、Dawn 360 分鐘），逾時回傳 124，必要時在 30 秒終止寬限後強制結束；初始化、checkout、產物上傳與 runner 等待不受此包裝器控制，CircleCI 方案的整個 job 上限亦可能較短。不能將兩者宣稱為相同的硬性 job deadline。命令透過環境變數傳入子 Bash，保留單引號、換行、`pipefail` 及原始失敗碼。Mac 初始化若需安裝 coreutils，會禁止 Homebrew 自動升級既有相依使用者及清理舊版。
+
+CircleCI 官方的[自訂整個 job 時限方案](https://support.circleci.com/hc/en-us/articles/14114124583195-How-to-set-a-custom-maximum-job-duration)需要個人 API token 呼叫取消 API，本設定刻意不採用。YAML 不會修改 trigger、VCS 狀態回報、分支保護或 ruleset；這些遠端設定仍須管理員套用，並以實際 PR／merge queue 的回報確認，不能把本機設定驗證當成已啟用的雲端合併保護。
 
 ## 發佈
 
