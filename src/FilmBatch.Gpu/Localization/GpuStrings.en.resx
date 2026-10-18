@@ -26,4 +26,7 @@
   <data name="Gpu.PipelineFailed" xml:space="preserve"><value>Failed to create compute pipeline ({0}): {1} {2}</value></data>
   <data name="Gpu.ShaderNotFound" xml:space="preserve"><value>Embedded shader not found: {0}</value></data>
   <data name="Gpu.DeviceLost" xml:space="preserve"><value>GPU device lost: {0}</value></data>
+  <data name="Gpu.ReadbackFailed" xml:space="preserve"><value>GPU readback failed ({0}): {1}; device-lost callback: {2}; last native error: {3}</value></data>
+  <data name="Gpu.CallbackPending" xml:space="preserve"><value>not received yet (device loss is not ruled out)</value></data>
+  <data name="Gpu.NoNativeError" xml:space="preserve"><value>not reported yet</value></data>
 </root>

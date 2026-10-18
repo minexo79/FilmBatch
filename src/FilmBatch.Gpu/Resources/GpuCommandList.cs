@@ -38,13 +38,28 @@ public sealed class GpuCommandList : IDisposable
         }
         var desc = new BindGroupDescriptor { Layout = kernel.BindGroupLayout, Entries = entries };
         var group = _gpu.Device.CreateBindGroup(in desc) ?? throw new GpuException(GpuText.Format("Gpu.BindGroupFailed", kernel.Label));
-        _gpu.ThrowIfError(GpuText.Format("Gpu.Context.CreateBindGroup", kernel.Label));
+        try
+        {
+            _gpu.ThrowIfError(GpuText.Format("Gpu.Context.CreateBindGroup", kernel.Label));
 
-        var pass = _encoder.BeginComputePass();
-        pass.SetPipeline(kernel.Pipeline);
-        pass.SetBindGroup(0, group);
-        pass.DispatchWorkgroups(groupsX, groupsY, groupsZ);
-        pass.End();
+            var pass = _encoder.BeginComputePass();
+            try
+            {
+                pass.SetPipeline(kernel.Pipeline);
+                pass.SetBindGroup(0, group);
+                pass.DispatchWorkgroups(groupsX, groupsY, groupsZ);
+            }
+            finally
+            {
+                // End 會讓綁定的 pooled pass handle 歸還並 Release。
+                pass.End();
+            }
+        }
+        finally
+        {
+            // Encoder 會自行持有指令所需的原生參照，不需將 managed group 留到 GC。
+            if (_gpu.AdapterInfo.Backend == GpuBackend.Dx12) NativeLifetime.Release(group);
+        }
     }
 
     /// <summary>以 16×16 workgroup 覆蓋整張影像。</summary>

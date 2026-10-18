@@ -64,7 +64,7 @@ Mac 桌面另以含 gain-table 的 ProRAW 及含畸變／暗角資料的 RAF 驗
 
 ```bash
 dotnet test tests/FilmBatch.Core.Tests/FilmBatch.Core.Tests.csproj -c Release \
-  --filter "FullyQualifiedName~RawGpuDisplayTests|FullyQualifiedName~RawSceneIntegrationTests|FullyQualifiedName~RawToneTests|FullyQualifiedName~RawCameraLookTests|FullyQualifiedName~GpuSpikeTests|FullyQualifiedName~GpuErrorScopeTests|FullyQualifiedName~EffectPipelineTests"
+  --filter "FullyQualifiedName~RawGpuDisplayTests|FullyQualifiedName~RawSceneIntegrationTests|FullyQualifiedName~RawToneTests|FullyQualifiedName~RawCameraLookTests|FullyQualifiedName~GpuSpikeTests|FullyQualifiedName~GpuErrorScopeTests|FullyQualifiedName~GpuResourceLifetimeTests|FullyQualifiedName~EffectPipelineTests"
 ```
 
 涵蓋預覽／16-bit 匯出的共用 GPU 管線、分帶讀回、裁切後工作區重建及 RAW 飽和高光。兩個 `GpuDevice.ReadBuffer` 多載都使用 10 秒的奈秒預算；WebGPUSharp `0.5.7` 的 `MapSync` 雖將參數命名為 `timeoutMilliseconds`，卻[直接轉交](https://github.com/EmilSV/WebGPUSharp/blob/30d51f3a460c9419a2ae6cc8dee54ed75a3c0008/src/Buffer.cs#L75-L104)給 [以奈秒計的 `WaitAny`](https://github.com/EmilSV/WebGPUSharp/blob/30d51f3a460c9419a2ae6cc8dee54ed75a3c0008/src/Instance.cs#L155-L175)，不能傳入看似代表 10 秒的 `10_000`。真正的裝置錯誤仍會傳播，不因延長等待而改成成功。
@@ -75,13 +75,17 @@ Windows／D3D12 的裝置生命週期另有回歸檢查：`GpuSpikeTests.Windows
 
 上述永久測試僅在 Windows 且可列出 D3D12 介面卡時執行，其他環境會明確略過；列出介面卡之後的裝置建立、處置或回收錯誤不會改成略過。本機另以真實 Metal 裝置注入 D3D12 生命週期策略，確認處置後原生操作回報裝置遺失、callback 不再保留裝置；這只能證明策略的原生機制，不能代替 Windows／D3D12 驅動程式驗證。
 
+`Destroy()` 不等於釋放 wrapper 持有的原生參照。WebGPUSharp `0.5.7` 的 [managed wrapper](https://github.com/EmilSV/WebGPUSharp/blob/30d51f3a460c9419a2ae6cc8dee54ed75a3c0008/src/internal/WebGPUManagedHandleBase.cs) 只有私有 `_safeHandle`，未公開 `Dispose()`；原本即使銷毀 buffer／texture，view、bind group、shader 與 pipeline 仍須等 GC。D3D12 路徑現在透過 `NativeLifetime` 取得原有 [safe handle](https://github.com/EmilSV/WebGPUSharp/blob/30d51f3a460c9419a2ae6cc8dee54ed75a3c0008/src/WebGpuSafeHandle.cs) 並呼叫其冪等 `Dispose()`，同時取消該 handle 的 finalizer，避免手動原生 `Release` 後再次釋放。正常與建立失敗路徑都回收擁有的參照；已錄製的指令由 Dawn 自行持有所需參照。裝置及 D3D12 介面卡查詢的 wrapper 參照也會配對釋放。此 bridge 綁定私有欄位，升級 WebGPUSharp 時必須重驗，不能直接搬用到其他版本。
+
+`GpuResourceLifetimeTests` 在 Windows／D3D12 驗證連續 12 次 compute／讀回後的原生參照數、重複處置，以及遺失 callback 尚未設定時的讀回錯誤。資源驗收期間不強制 GC；僅在量測基準前清除其他測試留下的不可達 wrapper。兩個新回歸另在真實 Metal 上注入 D3D12 生命週期策略，舊碼皆失敗、修正後皆通過；正常 Metal 與注入策略的 RAW 裁切／還原／16-bit TIFF 匯出均保持 GPU 處理，與 CPU 最大差異為 `1/65535`。這些是原生機制證據，不是 Windows 驅動程式通過證明。
+
 RAW 收尾的 sRGB 冪次先前已改採固定多項式，降低對後端 `pow` 精度的依賴。本次 Windows 診斷顯示，亮度比 `y/Grey` 同為 `0x409E7365`，第一次偏離卻發生於 CPU `MathF.Log2`：EV 為 `0x4013B47C`，GPU 為 `0x4013B47B`。對精確輸入 `4.951586246490478515625` 的高精度對數驗算確認下鄰才是正確捨入；只替換 EV 的獨立 float32 重播，也將紅色色碼從 1324 還原為 1319。
 
 因此僅在 Windows 對已完成 float32 除法的比值使用 `(float)Math.Log2(ratio)`；其他平台保留 `MathF.Log2`。正式色調映射與診斷共用 `ToneMap.LogExposure`，既有 `2/65535` 容差及 shader 不變。`RawToneTests.RawDisplay_HighlightNearGamutBoundaryPreservesRedDetail` 從 CPU 顯示收尾驗證紅色細節，不要求 GPU。來源連結的強制 Windows 分支冒煙測試得到 `[1319,65535,64083,65535]`；真實 Metal 的四個邊界案例亦與 CPU 完全相同。強制分支不等於 Windows CRT／D3D12 實機執行，六個裝置遺失與完整 Windows 回歸仍須由對應 runner 確認；若 D3D12 專用測試略過，不算該路徑已驗證。
 
-最新 Windows 紀錄剩下三個失敗：全解析度 RAW 匯出的失敗摘要、裁切案例的第一次 32×48 讀回，以及 32×24 單帶讀回。這些尺寸不支持「大圖超過緩衝區上限」的結論；後續介面卡不可用也不能單憑次數判定 TDR、OOM 或行程黑名單。
+最新 Windows 紀錄仍有三個失敗：全解析度 RAW 匯出已顯示 `scene.dng = [Device] is lost.`；另外兩個改為 `GpuSpikeTests.Gpu_MatchesCpuReference` 的零參數與負參數案例，在 `MapForRead` 失敗，後續介面卡不可用。先前同類錯誤發生於第一次 32×48 裁切讀回及 32×24 單帶讀回；這些尺寸與順序差異不支持「大圖超過緩衝區上限」或固定測試必死的結論，也不能單憑三次失敗判定 TDR、OOM 或行程黑名單。原生參照保留已獨立重現並修正，但是否就是 Windows 裝置遺失的原因仍須該 runner 確認。
 
-讀回現在保留 Dawn callback 回報的原生遺失原因；若同步讀回同時拋出綁定例外，會保留它作為 inner exception。RAW 匯出測試先檢查 `summary.Errors`，CI 可直接顯示檔名與真正錯誤，不再只有 `Failed` 計數。這是診斷修正，不代表三個 Windows 失敗的根因已排除。
+WebGPUSharp 會將 [遺失與 uncaptured-error callback 排入 ThreadPool](https://github.com/EmilSV/WebGPUSharp/blob/30d51f3a460c9419a2ae6cc8dee54ed75a3c0008/src/Adapter.cs#L388-L468)，所以 `MapSync` 失敗時不保證 callback 已送達。D3D12 讀回現在即使 `IsLost` 尚未設定，也會保留原始綁定例外、介面卡與已收到的最近原生錯誤；未知原因明確標為尚未回報，不假造移除原因。晚到的遺失 callback 另寫入既有 logger，未設定 logger 時寫入標準錯誤。RAW 匯出測試先檢查 `summary.Errors`，CI 可直接顯示檔名與真正錯誤，不再只有 `Failed` 計數。若仍失敗，請同時保留讀回例外與稍後的 callback 訊息；本機驗證不能替代 Windows／D3D12 結果。
 
 另修正命令中止時的 error-scope 生命週期：未提交的命令清單也會 pop 自己的 validation scope，避免後續呼叫拿錯外層錯誤；kernel 建立途中失敗亦以 `finally` 配對。`GpuErrorScopeTests` 使用真正的 Dawn 驗證錯誤檢查歸屬，未以模擬 callback 當成驅動程式驗證。本機 Metal 的失敗前／修正後回歸與正常 RAW 匯出已執行；Windows／D3D12 移除原因及三項失敗是否排除，仍須對應 runner 的新結果。
 
