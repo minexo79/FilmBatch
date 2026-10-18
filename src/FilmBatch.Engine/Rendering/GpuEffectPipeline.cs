@@ -183,7 +183,7 @@ internal sealed class GpuEffectPipeline : IDisposable
         var leak = p.LeakAsset is null ? null : Acquire(p.LeakAsset.Image);
         var dirt = p.DirtAsset is null ? null : Acquire(p.DirtAsset.Image);
         _uniformIndex = 0;
-        var commands = _gpu.BeginCommands();
+        using var commands = _gpu.BeginCommands();
         var current = Process(commands, input, second, leak, dirt, mask, source, p, token);
         Finish(commands, current, destination, token);
         TrimSources();
@@ -194,7 +194,7 @@ internal sealed class GpuEffectPipeline : IDisposable
         EnsureWorkspace((uint)source.Width, (uint)source.Height);
         var input = Acquire(source);
         _uniformIndex = 0;
-        var commands = _gpu.BeginCommands();
+        using var commands = _gpu.BeginCommands();
         var current = Next(input);
         Dispatch(commands, _spike, [input, current, Uniform(new Vector4(p.Exposure, p.Brightness, p.Saturation, 0))]);
         var radius = p.BlurRadiusPixels(source.ShortSide);
@@ -404,7 +404,7 @@ internal sealed class GpuEffectPipeline : IDisposable
         {
             token.ThrowIfCancellationRequested();
             var rows = Math.Min(_bandRows, _height - row);
-            var list = pending ?? _gpu.BeginCommands();
+            using var list = pending ?? _gpu.BeginCommands();
             pending = null;
             _gpu.WriteBuffer(_band, new BandUniforms(row, rows, 0, 0));
             list.Dispatch2D(encode, [current, _output!, _band], _width, rows);
@@ -466,7 +466,7 @@ internal sealed class GpuEffectPipeline : IDisposable
                 GpuTextureUsage.CopyDst | GpuTextureUsage.Sampled, "source upload"))
             {
                 _gpu.WriteTexture<ushort>(upload, source.Rgba16);
-                var commands = _gpu.BeginCommands();
+                using var commands = _gpu.BeginCommands();
                 commands.Dispatch2D(_decode, [upload, uploaded.Linear], (uint)source.Width, (uint)source.Height);
                 commands.Submit();
             }

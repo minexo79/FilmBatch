@@ -280,6 +280,7 @@ public sealed class RawGpuDisplayTests
             var summary = await BatchExporter.RunAsync(request,
                 () => GpuSpikeRenderer.Create(),
                 progress: null, TestContext.Current.CancellationToken);
+            Assert.Empty(summary.Errors);
             Assert.Equal(0, summary.Failed);
             var output = Assert.Single(summary.OutputFiles);
             var actual = ImageLoader.LoadFull(output);
@@ -328,6 +329,7 @@ public sealed class RawGpuDisplayTests
             };
             var ct = TestContext.Current.CancellationToken;
             var summary = await BatchExporter.RunAsync(request, () => GpuSpikeRenderer.Create(), null, ct);
+            Assert.Empty(summary.Errors);
             Assert.Equal(0, summary.Failed);
             var output = Assert.Single(summary.OutputFiles);
             var actual = ImageLoader.LoadFull(output);

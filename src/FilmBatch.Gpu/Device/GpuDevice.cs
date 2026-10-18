@@ -24,13 +24,14 @@ public sealed class GpuDevice : IDisposable
 
     private string? _pendingError;
     private bool _disposed;
+    private string? _lastDeviceLost;
 
     public GpuAdapterInfo AdapterInfo { get; }
 
     /// <summary>裝置遺失（驅動程式重置等）。參數為原因說明。可能在任意執行緒觸發。</summary>
     public event Action<string>? DeviceLost;
 
-    public bool IsLost { get; private set; }
+    public bool IsLost => Volatile.Read(ref _lastDeviceLost) is not null;
 
     /// <summary>GPU 驗證錯誤等訊息的記錄輸出（例如寫入 log 檔）。</summary>
     public static Action<string>? Log { get; set; }
@@ -79,8 +80,34 @@ public sealed class GpuDevice : IDisposable
     private void OnDeviceLost(DeviceLostReason reason, ReadOnlySpan<byte> message)
     {
         if (reason is DeviceLostReason.Destroyed or DeviceLostReason.CallbackCancelled) return;
-        IsLost = true;
-        DeviceLost?.Invoke($"{reason}: {Encoding.UTF8.GetString(message)}");
+        var text = $"{reason}: {Encoding.UTF8.GetString(message)}";
+        Interlocked.CompareExchange(ref _lastDeviceLost, text, null);
+        DeviceLost?.Invoke(text);
+    }
+
+    /// <summary>裝置已遺失時丟出含原生遺失原因的例外；尚未遺失則無動作。</summary>
+    private void ThrowIfLost()
+    {
+        if (IsLost)
+            throw new GpuException(GpuText.Format("Gpu.DeviceLost", Volatile.Read(ref _lastDeviceLost)));
+    }
+
+    /// <summary>
+    /// 佇列完成 + MapRead。Dawn 在裝置遺失時只回不含原因的 "[Device] is lost."；
+    /// 同步呼叫失敗且 callback 已記錄遺失原因時，換成含原生原因的例外。
+    /// </summary>
+    private void MapForRead(GpuBuffer buffer)
+    {
+        ThrowIfLost();
+        try
+        {
+            WaitIdle();
+            buffer.Handle.MapSync(MapMode.Read, 0, (nuint)buffer.Size, RequestTimeoutNs);
+        }
+        catch (WebGPUException error) when (IsLost)
+        {
+            throw new GpuException(GpuText.Format("Gpu.DeviceLost", Volatile.Read(ref _lastDeviceLost)), error);
+        }
     }
 
     /// <summary>綁定與原生函式庫版本（顯示於 log 與 gpu-info）。</summary>
@@ -232,8 +259,7 @@ public sealed class GpuDevice : IDisposable
     /// <summary>同步讀回（MapRead 緩衝區）到 <paramref name="destination"/>。呼叫端應在 GPU 執行緒上呼叫。</summary>
     public void ReadBuffer<T>(GpuBuffer buffer, T[] destination) where T : unmanaged
     {
-        WaitIdle();
-        buffer.Handle.MapSync(MapMode.Read, 0, (nuint)buffer.Size, RequestTimeoutNs);
+        MapForRead(buffer);
         try
         {
             buffer.Handle.GetConstMappedRange<T>(span => span[..destination.Length].CopyTo(destination));
@@ -251,8 +277,7 @@ public sealed class GpuDevice : IDisposable
     /// </summary>
     public void ReadBuffer<T>(GpuBuffer buffer, T[] destination, int offset, int count) where T : unmanaged
     {
-        WaitIdle();
-        buffer.Handle.MapSync(MapMode.Read, 0, (nuint)buffer.Size, RequestTimeoutNs);
+        MapForRead(buffer);
         try
         {
             buffer.Handle.GetConstMappedRange<T>(span => span[..count].CopyTo(destination.AsSpan(offset, count)));
