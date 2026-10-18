@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -18,6 +19,29 @@ public partial class FilmstripView : UserControl
         List.AddHandler(ContextRequestedEvent, OnContextRequested, RoutingStrategies.Tunnel);
         // 縮圖列只能橫向捲動；把一般滑鼠滾輪的直向位移轉成橫向捲動
         List.AddHandler(PointerWheelChangedEvent, OnPointerWheelChanged, RoutingStrategies.Tunnel);
+    }
+
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        List.LayoutUpdated += OnListLayoutUpdated;
+        ReportVisibleRange();
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        List.LayoutUpdated -= OnListLayoutUpdated;
+        base.OnDetachedFromVisualTree(e);
+    }
+
+    private void OnListLayoutUpdated(object? sender, EventArgs e) => ReportVisibleRange();
+
+    /// <summary>把目前實化的縮圖範圍回報給 ViewModel；範圍不變時 ViewModel 內部去重。</summary>
+    private void ReportVisibleRange()
+    {
+        if (DataContext is not FilmstripViewModel vm) return;
+        if (List.ItemsPanelRoot is VirtualizingStackPanel panel)
+            vm.SetVisibleRange(panel.FirstRealizedIndex, panel.LastRealizedIndex);
     }
 
     private MainWindowViewModel? Main => this.FindAncestorOfType<Window>()?.DataContext as MainWindowViewModel;

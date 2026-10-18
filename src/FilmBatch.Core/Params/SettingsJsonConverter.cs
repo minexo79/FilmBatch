@@ -25,14 +25,13 @@ public sealed class SettingsJsonConverter : JsonConverter<Settings>
                 _ => throw new JsonException($"Invalid scalar parameter: {key}"),
             };
             if (RetiredParams.IsRetired(key)) continue;
-            if (!values.TryAdd(key, value)) throw new JsonException($"Duplicate parameter: {key}");
-            Validate(key, value);
+            if (!values.TryAdd(key, ValidateAndNormalize(key, value))) throw new JsonException($"Duplicate parameter: {key}");
         }
         if (reader.TokenType != JsonTokenType.EndObject) throw new JsonException("Incomplete settings.");
         return new Settings(values);
     }
 
-    internal static void Validate(string key, ParamValue value)
+    internal static ParamValue ValidateAndNormalize(string key, ParamValue value)
     {
         var definition = ModuleCatalog.Param(key);
         if (definition is null) throw new InvalidDataException($"Unknown parameter: {key}");
@@ -43,6 +42,9 @@ public sealed class SettingsJsonConverter : JsonConverter<Settings>
             _ => ValueKind.Number,
         };
         if (value.Kind != expected) throw new InvalidDataException($"Invalid value type: {key}");
+        // Older projects and presets allowed 1000–50000 K. Only custom WB settings
+        // are bounded here; the source's as-shot temperature is not a setting.
+        if (key == "raw.temperature" && double.IsFinite(value.Number)) value = definition.Coerce(value);
         if (value.Kind == ValueKind.Number && (!double.IsFinite(value.Number)
             || value.Number < definition.Min || value.Number > definition.Max
             || (definition.Kind is ParamKind.Int or ParamKind.Seed && value.Number != Math.Truncate(value.Number))))
@@ -53,6 +55,7 @@ public sealed class SettingsJsonConverter : JsonConverter<Settings>
         if (definition.Kind == ParamKind.Choice && key is not "light_leak.texture"
             && !definition.Choices.Any(choice => choice.Key == value.AsText))
             throw new InvalidDataException($"Unknown option for {key}: {value.AsText}");
+        return value;
     }
 
     public override void Write(Utf8JsonWriter writer, Settings value, JsonSerializerOptions options)
@@ -60,12 +63,12 @@ public sealed class SettingsJsonConverter : JsonConverter<Settings>
         writer.WriteStartObject();
         foreach (var (key, parameter) in value.OrderBy(pair => pair.Key, StringComparer.Ordinal))
         {
-            Validate(key, parameter);
-            switch (parameter.Kind)
+            var normalized = ValidateAndNormalize(key, parameter);
+            switch (normalized.Kind)
             {
-                case ValueKind.Bool: writer.WriteBoolean(key, parameter.AsBool); break;
-                case ValueKind.Text: writer.WriteString(key, parameter.AsText); break;
-                default: writer.WriteNumber(key, parameter.Number); break;
+                case ValueKind.Bool: writer.WriteBoolean(key, normalized.AsBool); break;
+                case ValueKind.Text: writer.WriteString(key, normalized.AsText); break;
+                default: writer.WriteNumber(key, normalized.Number); break;
             }
         }
         writer.WriteEndObject();

@@ -87,6 +87,12 @@
   <data name="Status.Background" xml:space="preserve"><value>Background: {0}</value></data>
   <data name="Status.Idle" xml:space="preserve"><value>Ready</value></data>
   <data name="Status.SoftwareGpu" xml:space="preserve"><value>(software adapter, slower)</value></data>
+  <data name="Status.ScanningPhotos" xml:space="preserve"><value>Scanning photo folder… · {0}</value></data>
+  <data name="Status.LoadingPhotos" xml:space="preserve"><value>Loading thumbnails {0}/{1} · {2} failed · {3}</value></data>
+  <data name="Status.LoadComplete" xml:space="preserve"><value>Thumbnails complete {0}/{1} · {2} failed · {3}</value></data>
+  <data name="Status.LoadCancelled" xml:space="preserve"><value>Loading stopped {0}/{1} · {2} failed · {3}</value></data>
+  <data name="Status.LoadFailed" xml:space="preserve"><value>Could not open folder: {0}</value></data>
+  <data name="Status.CancelLoading" xml:space="preserve"><value>Stop background loading</value></data>
   <data name="Preview.MultiOverlay" xml:space="preserve"><value>{0} selected — changes apply to all</value></data>
   <data name="Preview.Empty" xml:space="preserve"><value>Open a photo folder to begin ({0})</value></data>
   <data name="Toast.Undo" xml:space="preserve"><value>Undo</value></data>
@@ -141,10 +147,12 @@
   <data name="Pref.ForceSoftware.Desc" xml:space="preserve"><value>Bypass the hardware GPU (slower); for troubleshooting</value></data>
   <data name="Pref.GpuMemory" xml:space="preserve"><value>GPU Memory Limit</value></data>
   <data name="Pref.GpuMemory.Desc" xml:space="preserve"><value>Video memory available to textures and caches</value></data>
+  <data name="Pref.BackgroundCpu" xml:space="preserve"><value>Background loading CPU target</value></data>
+  <data name="Pref.BackgroundCpu.Desc" xml:space="preserve"><value>Adjust thumbnail background work immediately; default 70%, 100% adds no throttling. Uses process CPU across all logical cores and yields between jobs. This is not a hard cap: a single RAW/native decode may briefly exceed it. Interactive previews and exports are not limited by this target.</value></data>
   <data name="Pref.Textures" xml:space="preserve"><value>Texture Library Folder</value></data>
   <data name="Pref.Textures.Desc" xml:space="preserve"><value>Textures for light leaks, dust &amp; scratches and photo plates; procedural effects are used when empty</value></data>
   <data name="Pref.Browse" xml:space="preserve"><value>Browse…</value></data>
-  <data name="Pref.ApplyNote" xml:space="preserve"><value>Settings apply when this window closes; GPU settings rebuild the renderer in the background.</value></data>
+  <data name="Pref.ApplyNote" xml:space="preserve"><value>The background CPU target applies immediately; other processing settings apply on close. Changed GPU settings rebuild the renderer in the background.</value></data>
   <data name="Filmstrip.OpenHint" xml:space="preserve"><value>Double-click here to choose a photo folder</value></data>
   <data name="Pref.Background.DarkGray" xml:space="preserve"><value>Dark gray #161616 (default)</value></data>
   <data name="Pref.Background.MidGray" xml:space="preserve"><value>Mid gray #808080 (for judging brightness)</value></data>

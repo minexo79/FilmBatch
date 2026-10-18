@@ -23,7 +23,7 @@ public static class ModuleCatalog
             Bool("camera_local_tone", "相機局部色調"),
             Directory("lens_database", "外部鏡頭資料庫"),
             Choice("wb_mode", "白平衡", O("as-shot", "拍攝值"), O("custom", "自訂")),
-            Float("temperature", "色溫（K）", 6500, 1000, 50000, 50, "K"),
+            Float("temperature", "色溫（K）", 6500, 2500, 9900, 50, "K"),
             Float("tint", "色調（WB）", 0, -150, 150),
             Bool("mask_enabled", "語意遮罩調整"),
             Text("mask_name", "遮罩"),

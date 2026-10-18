@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using Avalonia.Threading;
 using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -27,6 +29,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private bool _disposed;
     private long _openGeneration;
     private long _previewLoadGeneration;
+    private CancellationTokenSource? _previewWait;
+    private readonly Stopwatch _folderLoadWatch = new();
+    private readonly DispatcherTimer _loadingTimer;
+    private bool _loadingCancelled;
+    private bool _hasLoadProgress;
+    private string? _loadingError;
 
     public AppSettings Settings { get; }
     public IDialogService Dialogs { get; }
@@ -82,6 +90,16 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private string _backgroundText = Loc.Get("Status.Idle");
 
     [ObservableProperty]
+    private bool _isScanningFolder;
+
+    [ObservableProperty]
+    private int _backgroundCpuPercent;
+
+    public bool IsLoadingPhotos => IsScanningFolder || Filmstrip.IsLoadingThumbnails;
+    public double LoadingProgress => Filmstrip.TotalThumbnails == 0 ? 0
+        : 100.0 * Filmstrip.CompletedThumbnails / Filmstrip.TotalThumbnails;
+
+    [ObservableProperty]
     private string _lastRenderText = "";
 
     [ObservableProperty]
@@ -105,12 +123,18 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         Library = PresetLibrary.Load();
         RendererFactory = rendererFactory;
         Images = new ImageCache(settings.PreviewLongEdge);
+        _backgroundCpuPercent = settings.BackgroundCpuPercent;
+        Images.SetBackgroundCpuPercent(_backgroundCpuPercent);
         Renderer = new PreviewService(rendererFactory, post, fallback: () => PreviewService.CreateCpuRenderer(settings));
 
         Toast = new ToastViewModel(Stack);
         Preview = new PreviewViewModel(this);
         Presets = new PresetLibraryViewModel(this);
         Filmstrip = new FilmstripViewModel(this);
+        Filmstrip.LoadingProgressChanged += () => _post(UpdateBackgroundText);
+        _loadingTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(250), DispatcherPriority.Background,
+            (_, _) => UpdateBackgroundText());
+        _loadingTimer.Stop();
         Inspector = new InspectorViewModel(this, new HashSet<ModuleGroup> { ModuleGroup.Basic, ModuleGroup.Optical });
         FilmEffects = new InspectorViewModel(this, new HashSet<ModuleGroup> { ModuleGroup.Geometry, ModuleGroup.Film, ModuleGroup.Surface }, showsPhotoInfo: false);
         CropTool = new CropToolViewModel(CommitCrop,
@@ -163,13 +187,19 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             UpdateBackgroundText();
         };
         Renderer.ThumbnailReady += Presets.Hover.OnThumbnailReady;
-        Renderer.Failed += Presets.Hover.OnThumbnailFailed;
         Renderer.ThumbnailReady += FilmLook.Thumbnails.OnThumbnailReady;
-        Renderer.Failed += FilmLook.Thumbnails.OnThumbnailFailed;
-        Renderer.Failed += (file, message) =>
+        Renderer.Failed += failure =>
         {
-            Filmstrip.SetError(file, message);
-            if (file == FocusFile || file == "$init") Preview.IsBusy = false;
+            var file = failure.Key;
+            var message = failure.Error.Message;
+            if (failure.PreviewGeneration is null && file != "$init")
+            {
+                Filmstrip.SetError(file, message);
+                Presets.Hover.OnThumbnailFailed(file, message);
+                FilmLook.Thumbnails.OnThumbnailFailed(file, message);
+            }
+            if (file == "$init" || (failure.PreviewGeneration is not null && file == FocusFile && !Renderer.IsBusy))
+                Preview.IsBusy = false;
             Toast.Show(Loc.Format("Toast.RenderFailed", message));
         };
         Renderer.Start();
@@ -197,43 +227,59 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     public async Task OpenFolderAsync(string folder)
     {
         var generation = ++_openGeneration;
-        // Load first: a corrupt/unreadable target must leave the current project and preview intact.
-        var project = await Task.Run(() => Project.Open(folder, SamplePresets.Neutral));
-        if (_disposed || generation != _openGeneration) return;
-        // 先讓舊專案的裁切收尾：此時 Service／FocusFile／預覽來源／復原堆疊仍屬於舊專案；
-        // 若留給切換後的選取變更才套用，未提交的裁切會寫進新專案的同名照片，
-        // 舊檔名不存在時更會在 RequestPreview 以新 Service 查舊名而擲出 KeyNotFound。
-        if (CropTool.IsActive)
+        _loadingCancelled = false;
+        _loadingError = null;
+        _hasLoadProgress = true;
+        IsScanningFolder = true;
+        _folderLoadWatch.Restart();
+        UpdateBackgroundText();
+        try
         {
-            var changed = CropTool.HasChanges;
-            CropTool.Apply();
-            // 目標可能就是目前資料夾（含別名）；提交後同步重讀，避免採用舊設定與舊磁碟版本。
-            // 不在提交與切換之間 await，避免使用者又開始編輯舊專案。
-            if (changed) project = Project.Open(folder, SamplePresets.Neutral);
+            // Validate the target before replacing the current project or committing its crop.
+            var project = await Task.Run(() => Project.Open(folder, SamplePresets.Neutral));
+            if (_disposed || generation != _openGeneration) return;
+            // Crop still belongs to the old Service, focus and undo stack at this point.
+            if (CropTool.IsActive)
+            {
+                var changed = CropTool.HasChanges;
+                CropTool.Apply();
+                // A same-folder/alias target must include the crop just committed to disk.
+                if (changed) project = Project.Open(folder, SamplePresets.Neutral);
+            }
+            Renderer.CancelThumbnails();
+            Presets.Hover.InvalidateCache();
+            FilmLook.InvalidateThumbnails();
+            Images.Clear();
+            if (Service is not null) Service.Project.EntriesChanged -= OnEntriesChanged;
+
+            Stack.Clear();
+            Service = new ProjectService(project, Library, Stack);
+            project.EntriesChanged += OnEntriesChanged;
+            Folder = project.Folder;
+            Settings.LastFolder = project.Folder;
+            OnPropertyChanged(nameof(HasProject));
+            OnPropertyChanged(nameof(WindowTitle));
+            AppLog.Info($"開啟資料夾：{folder}（{project.FileNames.Count} 張）");
+
+            Filmstrip.Load(project);
+            IsScanningFolder = false;
+            UpdateBackgroundText();
+            if (project.FileNames.Count == 0)
+            {
+                Toast.Show(Loc.Get("Toast.NoSupportedPhotos"));
+                OnSelectionChanged([], null);
+            }
+            NotifyCommands();
+            await ResolvePresetUpdatesAsync();
         }
-        Renderer.CancelThumbnails();
-        Presets.Hover.InvalidateCache();
-        FilmLook.InvalidateThumbnails();
-        Images.Clear();
-        if (Service is not null) Service.Project.EntriesChanged -= OnEntriesChanged;
-
-        Stack.Clear();
-        Service = new ProjectService(project, Library, Stack);
-        project.EntriesChanged += OnEntriesChanged;
-        Folder = project.Folder;
-        Settings.LastFolder = project.Folder;
-        OnPropertyChanged(nameof(HasProject));
-        OnPropertyChanged(nameof(WindowTitle));
-        AppLog.Info($"開啟資料夾：{folder}（{project.FileNames.Count} 張）");
-
-        Filmstrip.Load(project);
-        if (project.FileNames.Count == 0)
+        catch (Exception ex)
         {
-            Toast.Show(Loc.Get("Toast.NoSupportedPhotos"));
-            OnSelectionChanged([], null);
+            if (_disposed || generation != _openGeneration) return;
+            IsScanningFolder = false;
+            _loadingError = ex.Message;
+            UpdateBackgroundText();
+            throw;
         }
-        NotifyCommands();
-        await ResolvePresetUpdatesAsync();
     }
 
     // ───────────── 選取 ─────────────
@@ -264,6 +310,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private async Task LoadPreviewAsync()
     {
         var generation = ++_previewLoadGeneration;
+        _previewWait?.Cancel();
+        _previewWait?.Dispose();
+        _previewWait = new CancellationTokenSource();
+        var cancellationToken = _previewWait.Token;
         Renderer.CancelPreview();
         var file = FocusFile;
         var service = Service;
@@ -273,10 +323,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             return;
         }
         Preview.UpdateOverlay(Selection.Count);
+        Preview.IsBusy = true;
         var rawOptions = RawLoadOptions.FromSettings(service.SettingsFor(file));
         try
         {
-            var source = await Images.GetPreviewAsync(service.Project.PathOf(file), rawOptions);
+            var source = await Images.GetPreviewAsync(service.Project.PathOf(file), rawOptions, cancellationToken);
             if (_disposed || Service != service || file != FocusFile || generation != _previewLoadGeneration) return;
             if (source.RawOptions != RawLoadOptions.FromSettings(service.SettingsFor(file)))
             {
@@ -288,6 +339,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             if (Sidebar.IsCrop) CropTool.ResumeBegin();
             RequestPreview();
         }
+        catch (OperationCanceledException) { }
         catch (Exception ex)
         {
             if (_disposed || Service != service || file != FocusFile || generation != _previewLoadGeneration
@@ -435,8 +487,54 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     private void UpdateBackgroundText()
     {
-        var pending = Renderer.PendingThumbnails;
-        BackgroundText = pending > 0 ? Loc.Format("Status.Background", Loc.Format("Status.Thumbnails", pending)) : Loc.Get("Status.Idle");
+        if (_disposed) return;
+        var loading = IsLoadingPhotos;
+        if (loading)
+            _loadingTimer.Start();
+        else
+        {
+            _loadingTimer.Stop();
+            _folderLoadWatch.Stop();
+        }
+        var elapsed = _folderLoadWatch.Elapsed.ToString(@"hh\:mm\:ss");
+        var done = Filmstrip.CompletedThumbnails;
+        var total = Filmstrip.TotalThumbnails;
+        var failed = Filmstrip.FailedThumbnails;
+        BackgroundText = IsScanningFolder ? Loc.Format("Status.ScanningPhotos", elapsed)
+            : _loadingError is not null ? Loc.Format("Status.LoadFailed", _loadingError)
+            : loading ? Loc.Format("Status.LoadingPhotos", done, total, failed, elapsed)
+            : _loadingCancelled ? Loc.Format("Status.LoadCancelled", done, total, failed, elapsed)
+            : Renderer.PendingThumbnails > 0 ? Loc.Format("Status.Background", Loc.Format("Status.Thumbnails", Renderer.PendingThumbnails))
+            : _hasLoadProgress ? Loc.Format("Status.LoadComplete", done, total, failed, elapsed)
+            : Loc.Get("Status.Idle");
+        OnPropertyChanged(nameof(IsLoadingPhotos));
+        OnPropertyChanged(nameof(LoadingProgress));
+        CancelPhotoLoadingCommand.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>停止掃描結果的採用及背景縮圖；保留目前照片、專案與所有編輯。</summary>
+    [RelayCommand(CanExecute = nameof(IsLoadingPhotos))]
+    private void CancelPhotoLoading()
+    {
+        ++_openGeneration;
+        IsScanningFolder = false;
+        _loadingCancelled = true;
+        Filmstrip.CancelLoading();
+        Images.CancelBackground();
+        UpdateBackgroundText();
+    }
+
+    partial void OnBackgroundCpuPercentChanged(int value)
+    {
+        var bounded = Math.Clamp(value, 10, 100);
+        if (value != bounded)
+        {
+            BackgroundCpuPercent = bounded;
+            return;
+        }
+        Settings.BackgroundCpuPercent = bounded;
+        Images.SetBackgroundCpuPercent(bounded);
+        Settings.Save();
     }
 
     // ───────────── 編輯 ─────────────
@@ -666,6 +764,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         RendererFactory = PreviewService.GpuFactory(Settings);
         Renderer.Reconfigure(RendererFactory,
             Settings.ForceSoftwareGpu ? null : () => PreviewService.CreateCpuRenderer(Settings));
+        Filmstrip.RefreshThumbnails();
         Images.SetPreviewLongEdge(Settings.PreviewLongEdge);
         Presets.Hover.InvalidateCache();
         FilmLook.InvalidateThumbnails();
@@ -708,8 +807,14 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        if (_disposed) return;
         _disposed = true;
         ++_openGeneration;
+        _loadingTimer.Stop();
+        _previewWait?.Cancel();
+        _previewWait?.Dispose();
+        Filmstrip.CancelLoading();
+        Images.Dispose();
         if (Service is not null) Service.Project.EntriesChanged -= OnEntriesChanged;
         Sidebar.Export.Dispose();
         Presets.DisposeHover();

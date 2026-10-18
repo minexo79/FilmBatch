@@ -86,14 +86,33 @@
 
       <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" Margin="14,0" HorizontalAlignment="Right" VerticalAlignment="Center">
         <TextBlock Text="{Binding SelectionText}" />
-        <Button Classes="icon" Padding="6,2" Background="Transparent">
-          <TextBlock Text="{Binding BackgroundText}" />
+        <Button Name="BackgroundTasksButton" Classes="icon" Padding="6,2" Background="Transparent"
+                ToolTip.Tip="{Binding BackgroundText}">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <ProgressBar Name="PhotoLoadProgress" Width="80" Height="3" MinHeight="3" Minimum="0" Maximum="100"
+                         Value="{Binding LoadingProgress}" IsIndeterminate="{Binding IsScanningFolder}"
+                         IsVisible="{Binding IsLoadingPhotos}" VerticalAlignment="Center" />
+            <TextBlock Text="{Binding BackgroundText}" MaxWidth="460" TextTrimming="CharacterEllipsis" />
+          </StackPanel>
           <Button.Flyout>
             <Flyout>
-              <StackPanel Width="260" Spacing="4">
+              <StackPanel Width="360" Spacing="10">
                 <TextBlock FontWeight="SemiBold" Text="{l:Tr Status.BackgroundTasks}" />
-                <TextBlock Classes="small" Text="{Binding BackgroundText}" />
-                <TextBlock Classes="small" Text="{Binding Sidebar.Export.StatusText}" />
+                <TextBlock Classes="small" Text="{Binding BackgroundText}" TextWrapping="Wrap" />
+                <Button Name="CancelPhotoLoadingButton" Content="{l:Tr Status.CancelLoading}"
+                        Command="{Binding CancelPhotoLoadingCommand}" IsVisible="{Binding IsLoadingPhotos}" HorizontalAlignment="Left" />
+                <Separator />
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                  <TextBlock Text="{l:Tr Pref.BackgroundCpu}" VerticalAlignment="Center" />
+                  <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                    <NumericUpDown Name="BackgroundCpuBudget" Value="{Binding BackgroundCpuPercent}" Minimum="10" Maximum="100"
+                                   Increment="10" FormatString="0" Width="120" ShowButtonSpinner="True" />
+                    <TextBlock Text="%" VerticalAlignment="Center" />
+                  </StackPanel>
+                </Grid>
+                <TextBlock Classes="secondary small" Text="{l:Tr Pref.BackgroundCpu.Desc}" TextWrapping="Wrap" />
+                <Separator />
+                <TextBlock Classes="small" Text="{Binding Sidebar.Export.StatusText}" TextWrapping="Wrap" />
               </StackPanel>
             </Flyout>
           </Button.Flyout>

@@ -72,6 +72,19 @@
         <StackPanel Name="GpuSection" Spacing="12" IsVisible="False">
           <TextBlock Classes="panel-title" Text="{l:Tr Pref.Section.Gpu}" />
           <Border Classes="settings-card">
+            <Grid Classes="settings-row" ColumnDefinitions="*,Auto">
+              <StackPanel Classes="settings-label">
+                <TextBlock Text="{l:Tr Pref.BackgroundCpu}" />
+                <TextBlock Classes="settings-desc" Text="{l:Tr Pref.BackgroundCpu.Desc}" TextWrapping="Wrap" />
+              </StackPanel>
+              <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                <NumericUpDown Name="BackgroundCpuBudget" Value="{Binding BackgroundCpuPercent}" Minimum="10" Maximum="100"
+                               Increment="10" FormatString="0" Width="120" ShowButtonSpinner="True" />
+                <TextBlock Text="%" VerticalAlignment="Center" />
+              </StackPanel>
+            </Grid>
+          </Border>
+          <Border Classes="settings-card">
             <StackPanel>
               <Grid Classes="settings-row" ColumnDefinitions="*,Auto">
                 <StackPanel Classes="settings-label">

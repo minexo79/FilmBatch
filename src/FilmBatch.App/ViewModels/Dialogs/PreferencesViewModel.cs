@@ -40,9 +40,9 @@ public sealed class Option<T> : OptionBase
 }
 
 /// <summary>
-/// 偏好設定（計畫書 2.8）。所有設定在關閉對話框時寫回並立即生效：
-/// 後端、軟體介面卡、材質資料夾與記憶體預算會在 GPU 執行緒上重建算圖器，
-/// 代理圖尺寸會重建預覽快取並重新載入目前照片。介面卡清單僅供顯示（唯讀），不提供選擇。
+/// 偏好設定（計畫書 2.8）。背景載入 CPU 目標即時生效；其餘運算設定於關閉時套用。
+/// 後端、軟體介面卡、材質資料夾與記憶體預算變更會在 GPU 執行緒上重建算圖器，
+/// 代理圖尺寸變更會重新載入目前照片。介面卡清單僅供顯示（唯讀），不提供選擇。
 /// </summary>
 public sealed partial class PreferencesViewModel : ObservableObject
 {
@@ -84,6 +84,9 @@ public sealed partial class PreferencesViewModel : ObservableObject
     private int _gpuMemoryLimitMb;
 
     [ObservableProperty]
+    private int _backgroundCpuPercent;
+
+    [ObservableProperty]
     private string _texturesFolder;
 
     [ObservableProperty]
@@ -106,6 +109,7 @@ public sealed partial class PreferencesViewModel : ObservableObject
         _backend = Backends.FirstOrDefault(b => b.Value == s.GpuBackend) ?? Backends[0];
         _forceSoftware = s.ForceSoftwareGpu;
         _gpuMemoryLimitMb = s.GpuMemoryLimitMb;
+        _backgroundCpuPercent = s.BackgroundCpuPercent;
         _texturesFolder = s.TexturesFolder ?? Core.AppPaths.Textures;
         _language = Languages.First(l => l.Value == s.EffectiveLanguage);
         _ = LoadAdaptersAsync();
@@ -133,6 +137,8 @@ public sealed partial class PreferencesViewModel : ObservableObject
 
     partial void OnBackgroundChanged(Option<PreviewBackground> value) => _main.ApplyPreviewBackground(value.Value);
 
+    partial void OnBackgroundCpuPercentChanged(int value) => _main.BackgroundCpuPercent = value;
+
     partial void OnApplyErrorChanged(string? value) => OnPropertyChanged(nameof(HasApplyError));
 
     partial void OnLanguageChanged(Option<string> value)
@@ -148,6 +154,10 @@ public sealed partial class PreferencesViewModel : ObservableObject
     public bool Apply()
     {
         var s = _main.Settings;
+        var renderChanged = s.PreviewLongEdge != ProxySize || s.GpuBackend != Backend.Value
+            || s.ForceSoftwareGpu != ForceSoftware || s.GpuMemoryLimitMb != GpuMemoryLimitMb
+            || (s.TexturesFolder ?? Core.AppPaths.Textures) != TexturesFolder
+            || _main.Renderer.InitError is not null;
         s.PreviewLongEdge = ProxySize;
         s.GpuBackend = Backend.Value;
         s.ForceSoftwareGpu = ForceSoftware;
@@ -156,7 +166,8 @@ public sealed partial class PreferencesViewModel : ObservableObject
         ApplyError = null;
         try
         {
-            _main.ApplyRenderPreferences();
+            if (renderChanged) _main.ApplyRenderPreferences();
+            else s.Save();
             return true;
         }
         catch (Exception ex)

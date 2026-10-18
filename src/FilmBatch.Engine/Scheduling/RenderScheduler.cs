@@ -7,6 +7,12 @@ namespace FilmBatch.Engine.Scheduling;
 
 public sealed record PreviewRendered(string Key, long Generation, RenderResult Result);
 
+/// <summary>Identifies a failed render and its preview generation, or a thumbnail/initialization failure when that generation is null.</summary>
+/// <param name="Key">The photo/tile key, or <c>$init</c> for renderer initialization.</param>
+/// <param name="Error">The original render or initialization exception.</param>
+/// <param name="PreviewGeneration">The failed preview generation; null for thumbnails and initialization.</param>
+public readonly record struct RenderFailure(string Key, Exception Error, long? PreviewGeneration);
+
 /// <summary>
 /// 單一 GPU 執行緒：所有算圖都在這裡序列化執行（計畫書 9.2、11.3）。
 /// 預覽只保留最新的請求（舊的直接丟棄），且優先於縮圖。
@@ -37,7 +43,7 @@ public sealed class RenderScheduler : IDisposable
     public event Action<string, RenderResult>? ThumbnailRendered;
     /// <summary>需要告知使用者的訊息（例如 GPU 重新初始化）。</summary>
     public event Action<string>? Notice;
-    public event Action<string, Exception>? RenderFailed;
+    public event Action<RenderFailure>? RenderFailed;
 
     /// <summary>排隊中的縮圖數（狀態列的背景工作進度）。</summary>
     public int PendingThumbnails
@@ -173,7 +179,7 @@ public sealed class RenderScheduler : IDisposable
                 if (preview is { } p)
                 {
                     if (p.Epoch != epoch) continue; // 重建後的舊請求：丟棄
-                    if (TryRender(p.Key, p.Source, p.Settings, p.Epoch) is { } r)
+                    if (TryRender(p.Key, p.Source, p.Settings, p.Epoch, p.Generation) is { } r)
                     {
                         lock (_lock)
                             if (p.Epoch == _epoch)
@@ -196,13 +202,18 @@ public sealed class RenderScheduler : IDisposable
         _renderer?.Dispose();
     }
 
-    private RenderResult? TryRender(string key, SourceImage source, Settings settings, long epoch)
+    private RenderResult? TryRender(string key, SourceImage source, Settings settings, long epoch, long? previewGeneration = null)
     {
         if (_renderer is null)
         {
             // 算圖器尚未成功建立（前次 InitRenderer 兩者皆失敗）：重試建立，而非 NullReference 墜機
             InitRenderer();
-            if (_renderer is null) return null;
+            if (_renderer is null)
+            {
+                lock (_lock)
+                    if (epoch == _epoch) RenderFailed?.Invoke(new(key, _initError!, previewGeneration));
+                return null;
+            }
         }
         for (var attempt = 0; attempt < 2; attempt++)
         {
@@ -215,12 +226,17 @@ public sealed class RenderScheduler : IDisposable
                 // 裝置遺失或驅動程式重置：重建裝置並重新上傳後重試一次
                 Notice?.Invoke(CoreText.T($"GPU 已重新初始化（{ex.Message}）", $"GPU reinitialized ({ex.Message})"));
                 InitRenderer();
-                if (_renderer is null) return null;
+                if (_renderer is null)
+                {
+                    lock (_lock)
+                        if (epoch == _epoch) RenderFailed?.Invoke(new(key, _initError!, previewGeneration));
+                    return null;
+                }
             }
             catch (Exception ex)
             {
                 lock (_lock)
-                    if (epoch == _epoch) RenderFailed?.Invoke(key, ex);
+                    if (epoch == _epoch) RenderFailed?.Invoke(new(key, ex, previewGeneration));
             }
         }
         return null;
@@ -261,7 +277,7 @@ public sealed class RenderScheduler : IDisposable
             lock (_lock)
             {
                 _initError = primaryError ?? new InvalidOperationException("Renderer factory returned no renderer.");
-                if (_pendingReset is null) RenderFailed?.Invoke("$init", _initError);
+                if (_pendingReset is null) RenderFailed?.Invoke(new("$init", _initError, null));
             }
             return;
         }

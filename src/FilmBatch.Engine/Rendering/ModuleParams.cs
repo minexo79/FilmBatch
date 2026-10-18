@@ -111,6 +111,7 @@ public sealed class ModuleParams
             throw new InvalidDataException($"Unknown choice for {key}: {value}");
         }
 
+        var rawTemperature = ModuleCatalog.Param("raw.temperature")!;
         var m = new ModuleParams
         {
             // crop
@@ -134,7 +135,7 @@ public sealed class ModuleParams
             // RAW 來源專用；模組停用不會把來源改回已量化的 SDR。
             RawProcessingOn = source.Scene is not null && B(s, "raw.enabled", false),
             RawCustomWhiteBalance = T(s, "raw.wb_mode", "as-shot") == "custom",
-            RawTemperature = N(s, "raw.temperature", 6500),
+            RawTemperature = Math.Clamp(N(s, "raw.temperature", 6500), (float)rawTemperature.Min, (float)rawTemperature.Max),
             RawTint = N(s, "raw.tint", 0),
             RawMaskOn = source.Scene is not null && B(s, "raw.enabled", false) && B(s, "raw.mask_enabled", false),
             RawMaskName = T(s, "raw.mask_name", ""),

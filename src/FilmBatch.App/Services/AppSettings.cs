@@ -35,6 +35,15 @@ public sealed class AppSettings
 
     public PreviewBackground PreviewBackground { get; set; } = PreviewBackground.DarkGray;
     public int PreviewLongEdge { get; set; } = 1600;
+
+    private int _backgroundCpuPercent = 70;
+
+    /// <summary>背景載入的 CPU 軟性目標（全部邏輯核心的 10–100%；100% 不主動節流）。</summary>
+    public int BackgroundCpuPercent
+    {
+        get => _backgroundCpuPercent;
+        set => _backgroundCpuPercent = Math.Clamp(value, 10, 100);
+    }
     public string GpuBackend { get; set; } = "Auto";
     public string? GpuAdapterName { get; set; }
     public bool ForceSoftwareGpu { get; set; }

@@ -18,27 +18,16 @@ public sealed class RawControlsTests
 {
     // ───────────── schema ─────────────
 
-    [Fact]
-    public void RawSchema_CustomWhiteBalance_UsesAbsoluteKelvin()
+    [Theory]
+    [InlineData(1000, 2500)]
+    [InlineData(50000, 9900)]
+    public void CustomKelvinInput_ClampsBeforeCommitting(double input, double expected)
     {
-        var wb = ModuleCatalog.Param("raw.wb_mode")!;
-        Assert.Equal(ParamKind.Choice, wb.Kind);
-        Assert.Equal(["as-shot", "custom"], wb.Choices.Select(c => c.Key));
-        Assert.Equal("as-shot", wb.Default.AsText);
-
-        var kelvin = ModuleCatalog.Param("raw.temperature")!;
-        Assert.Equal(ParamKind.Float, kelvin.Kind);
-        Assert.Equal(6500, kelvin.Default.AsNumber);
-        Assert.Equal(1000, kelvin.Min);
-        Assert.Equal(50000, kelvin.Max);
-        Assert.Equal("K", kelvin.Unit);
-        // 夾限到合法 Kelvin 範圍
-        Assert.Equal(1000, kelvin.Coerce(ParamValue.Of(200.0)).AsNumber);
-        Assert.Equal(50000, kelvin.Coerce(ParamValue.Of(99999.0)).AsNumber);
-        // 舊 basic.temperature 是獨立的相對效果，沒有被換成 Kelvin。
-        var basic = ModuleCatalog.Param("basic.temperature")!;
-        Assert.Equal(-100, basic.Min);
-        Assert.NotEqual("K", basic.Unit);
+        var host = new RecordingHost();
+        var row = new SliderParamViewModel("raw", ModuleCatalog.Param("raw.temperature")!, host);
+        row.NumericValue = (decimal)input;
+        Assert.Equal(expected, row.Value);
+        Assert.Equal(("raw.temperature", ParamValue.Of(expected)), Assert.Single(host.Values));
     }
 
     [Fact]

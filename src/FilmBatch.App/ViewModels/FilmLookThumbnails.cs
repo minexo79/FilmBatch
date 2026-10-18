@@ -10,7 +10,7 @@ namespace FilmBatch.App.ViewModels;
 /// 底片／色相修正縮圖：以焦點照片的縮小代理圖、目前最終參數加上各選項的覆寫值算圖。
 /// 共用 PreviewService 的低優先縮圖佇列；鍵 <c>film-look/{kind}/{key}/{焦點}/{世代}.{序號}</c> 與縮圖列、懸停預覽的鍵不相交。
 /// 只保留「目前焦點 × 目前設定」一組縮圖：<see cref="Invalidate"/> 之後舊結果一律丟棄。
-/// 父層接線：<c>Renderer.ThumbnailReady += OnThumbnailReady; Renderer.Failed += OnThumbnailFailed;</c>
+/// 父層將 ThumbnailReady 與帶有縮圖來源的 Failed 事件分派至此；不接收預覽或初始化失敗。
 /// </summary>
 public sealed class FilmLookThumbnails(MainWindowViewModel main)
 {

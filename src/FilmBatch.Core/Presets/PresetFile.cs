@@ -47,7 +47,7 @@ public static class PresetFile
                             CultureInfo.InvariantCulture, out var number) => ParamValue.Of(number),
                         _ => throw new InvalidDataException($"Invalid value: {flatKey}"),
                     };
-                    SettingsJsonConverter.Validate(flatKey, value);
+                    value = SettingsJsonConverter.ValidateAndNormalize(flatKey, value);
                     values.Add(flatKey, value);
                 }
             }
@@ -75,9 +75,9 @@ public static class PresetFile
             var parameters = new YamlMappingNode();
             foreach (var (key, value) in group)
             {
-                SettingsJsonConverter.Validate(key, value);
-                parameters.Add(key[(key.IndexOf('.') + 1)..], new YamlScalarNode(value.ToString())
-                { Style = value.Kind == ValueKind.Text ? ScalarStyle.DoubleQuoted : ScalarStyle.Plain });
+                var normalized = SettingsJsonConverter.ValidateAndNormalize(key, value);
+                parameters.Add(key[(key.IndexOf('.') + 1)..], new YamlScalarNode(normalized.ToString())
+                { Style = normalized.Kind == ValueKind.Text ? ScalarStyle.DoubleQuoted : ScalarStyle.Plain });
             }
             modules.Add(group.Key, parameters);
         }

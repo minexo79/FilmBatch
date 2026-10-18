@@ -207,7 +207,7 @@ public sealed partial class PresetLibraryViewModel : ObservableObject
 /// 父層 MainWindowViewModel 需接線（Renderer ctor 之後、Start 之前）：
 /// <code>
 /// Renderer.ThumbnailReady += Presets.Hover.OnThumbnailReady;
-/// Renderer.Failed += Presets.Hover.OnThumbnailFailed;
+/// // MainWindowViewModel dispatches thumbnail-origin failures to Presets.Hover.OnThumbnailFailed.
 /// </code>
 /// 並在焦點／設定變更的對應位置呼叫 <see cref="InvalidateForPhoto"/>、
 /// <see cref="InvalidateForPreset"/>、<see cref="InvalidateCache"/>。

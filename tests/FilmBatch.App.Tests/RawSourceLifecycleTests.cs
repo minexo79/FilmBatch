@@ -30,11 +30,11 @@ public sealed class RawSourceLifecycleTests
         var gate = (SemaphoreSlim)typeof(ImageCache).GetField("_decodeGate", BindingFlags.Instance | BindingFlags.NonPublic)!
             .GetValue(main.Images)!;
         var permits = 0;
-        while (gate.Wait(0)) permits++;
+        while (gate.Wait(0, TestContext.Current.CancellationToken)) permits++;
         try
         {
             main.Inspector.SetValue("raw.lens_database", FilmBatch.Core.Params.ParamValue.Of("missing-db"), null);
-            var pending = main.Images.GetPreviewAsync(path, RawLoadOptions.FromSettings(main.FocusedResolved));
+            var pending = main.Images.GetPreviewAsync(path, RawLoadOptions.FromSettings(main.FocusedResolved), TestContext.Current.CancellationToken);
             Assert.False(pending.IsCompleted);
             main.UndoCommand.Execute(null);
             TestEnv.PumpUntil(() => !main.Preview.IsBusy && !main.Renderer.IsBusy);
@@ -69,7 +69,9 @@ public sealed class RawSourceLifecycleTests
             var directory = Path.Combine(folder, "lensdb");
             var options = new RawLoadOptions(true, false, false, directory);
             var cache = new ImageCache();
-            Task<SourceImage> Request() => thumbnail ? cache.GetThumbnailSourceAsync(path, options) : cache.GetPreviewAsync(path, options);
+            Task<SourceImage> Request() => thumbnail
+                ? cache.GetThumbnailSourceAsync(path, options, TestContext.Current.CancellationToken)
+                : cache.GetPreviewAsync(path, options, TestContext.Current.CancellationToken);
             await Assert.ThrowsAnyAsync<IOException>(async () => { await Request(); });
             Directory.CreateDirectory(directory);
             var source = await Request();

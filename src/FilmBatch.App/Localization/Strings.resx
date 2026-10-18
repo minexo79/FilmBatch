@@ -87,6 +87,12 @@
   <data name="Status.Background" xml:space="preserve"><value>背景工作：{0}</value></data>
   <data name="Status.Idle" xml:space="preserve"><value>就緒</value></data>
   <data name="Status.SoftwareGpu" xml:space="preserve"><value>（軟體介面卡，效能受影響）</value></data>
+  <data name="Status.ScanningPhotos" xml:space="preserve"><value>掃描照片資料夾…・{0}</value></data>
+  <data name="Status.LoadingPhotos" xml:space="preserve"><value>載入縮圖 {0}/{1}・失敗 {2}・{3}</value></data>
+  <data name="Status.LoadComplete" xml:space="preserve"><value>縮圖完成 {0}/{1}・失敗 {2}・{3}</value></data>
+  <data name="Status.LoadCancelled" xml:space="preserve"><value>已停止載入 {0}/{1}・失敗 {2}・{3}</value></data>
+  <data name="Status.LoadFailed" xml:space="preserve"><value>開啟失敗：{0}</value></data>
+  <data name="Status.CancelLoading" xml:space="preserve"><value>停止背景載入</value></data>
   <data name="Preview.MultiOverlay" xml:space="preserve"><value>已選取 {0} 張，調整將套用到全部</value></data>
   <data name="Preview.Empty" xml:space="preserve"><value>開啟照片資料夾以開始（{0}）</value></data>
   <data name="Toast.Undo" xml:space="preserve"><value>復原</value></data>
@@ -141,10 +147,12 @@
   <data name="Pref.ForceSoftware.Desc" xml:space="preserve"><value>不使用硬體 GPU，速度較慢，用於排除問題</value></data>
   <data name="Pref.GpuMemory" xml:space="preserve"><value>GPU 記憶體上限</value></data>
   <data name="Pref.GpuMemory.Desc" xml:space="preserve"><value>紋理與快取可使用的顯示記憶體</value></data>
+  <data name="Pref.BackgroundCpu" xml:space="preserve"><value>背景載入 CPU 目標</value></data>
+  <data name="Pref.BackgroundCpu.Desc" xml:space="preserve"><value>即時調整縮圖背景工作的速度，預設 70%；100% 不主動節流。以全部邏輯核心的程序 CPU 用量為基準，在工作之間讓出時間；不是硬性上限，單張 RAW／原生解碼可能短暫超出。互動預覽與匯出不受此目標限制。</value></data>
   <data name="Pref.Textures" xml:space="preserve"><value>材質庫資料夾</value></data>
   <data name="Pref.Textures.Desc" xml:space="preserve"><value>漏光、灰塵與刮痕、古典版材使用的材質；沒有材質時改用程序化效果</value></data>
   <data name="Pref.Browse" xml:space="preserve"><value>瀏覽…</value></data>
-  <data name="Pref.ApplyNote" xml:space="preserve"><value>設定於關閉此視窗時套用；GPU 相關設定會在背景重建算圖器。</value></data>
+  <data name="Pref.ApplyNote" xml:space="preserve"><value>背景載入 CPU 目標即時生效；其餘運算設定於關閉時套用，變更 GPU 設定會在背景重建算圖器。</value></data>
   <data name="Filmstrip.OpenHint" xml:space="preserve"><value>在這裡按兩下以選擇照片資料夾</value></data>
   <data name="Pref.Background.DarkGray" xml:space="preserve"><value>深灰 #161616（預設）</value></data>
   <data name="Pref.Background.MidGray" xml:space="preserve"><value>中灰 #808080（判斷亮度用）</value></data>

@@ -65,7 +65,7 @@ public class RetiredParamsTests
         foreach (var preset in SamplePresets.Create())
             foreach (var (key, value) in preset.Settings)
             {
-                SettingsJsonConverter.Validate(key, value);
+                SettingsJsonConverter.ValidateAndNormalize(key, value);
                 Assert.False(RetiredParams.IsRetired(key), key);
             }
     }
