@@ -620,13 +620,8 @@ public sealed class EffectPipelineTests
     }
 
     [Fact]
-    public void GrainSoftness_IsSubPixelOnSmallImages_ButBlursLargeOnes()
+    public void GrainSoftness_BlursLargeImageEdgesWithoutChangingFlatRegions()
     {
-        Assert.Null(CpuPipeline.GrainSoftBlur(1000, .3f));   // 預設柔焦在縮圖預覽尺寸下不模糊
-        var large = CpuPipeline.GrainSoftBlur(6000, 1);
-        Assert.NotNull(large);
-        Assert.InRange(large.Value.Sigma, 2f, 6f);
-
         // 大圖：高對比邊緣被柔化（顆粒關閉，只看柔焦）
         var w = 2400; var h = 3000;
         var px = new ushort[w * h * 4];
@@ -656,7 +651,6 @@ public sealed class EffectPipelineTests
         Assert.SkipWhen(gpu is null, "沒有可用的 GPU 介面卡");
         var src = Gradient(1600, 1200, "/tmp/parity-grain.tif");
         var settings = GrainOnly(softness).With("grain.color", color);
-        Assert.NotNull(CpuPipeline.GrainSoftBlur(1200, .8f));
         var ct = TestContext.Current.CancellationToken;
         var g = gpu!.Render16(src, settings, ct).Rgba16;
         using var cpu = new CpuFakeRenderer();

@@ -46,6 +46,7 @@ public static class CpuPipeline
         // 線性部分：基本調整（曝光 / 色溫 / 色調）
         if (p.BasicOn && (p.Exposure != 0 || p.Temperature != 0 || p.Tint != 0))
             BasicLinear(cur, n, p);
+        if (p.SkinOn || p.ZoneOn) PhotoAdjustments.Apply(cur, w, h, p, ct);
         ct.ThrowIfCancellationRequested();
 
         // ① 幾何（線性）：鏡頭變形 → 多格分鏡
@@ -1172,26 +1173,39 @@ public static class CpuPipeline
     }
 
     /// <summary>
-    /// 顆粒（5.3.16）：柔邊團塊模型＋柔焦，與 surface/grain.wgsl 逐步相同。
-    /// 亮部（≥ 0.9）沒有顆粒；暗部團塊較大且最明顯；柔焦半徑隨短邊縮放，縮圖下看起來清晰、放大後才柔。
+    /// 顆粒（5.3.16）：三種可選模型，全部以「已現像來源像素」為座標與尺度的參考，
+    /// 與 surface/grain.wgsl 逐步相同；裁切、旋轉、翻轉、縮小預覽或分帶匯出都不改變底層紋理。
+    /// <list type="bullet">
+    /// <item>clumps：柔邊團塊（既有預設），格密度由低頻值雜訊調變。</item>
+    /// <item>correlated：多尺度 Poisson 脈衝經等向徑向 Wendland 核重建的連續相關場；粗糙度控制高頻倍頻的衰減。</item>
+    /// <item>optical：2D Poisson／布林圓盤的光學統計近似（獨立實作，非顯影化學模擬）；
+    /// 以有界高斯光圈 Monte Carlo 估算每個輸出像素覆蓋的來源參考面積，粒徑服從以 r0 為中心的均勻分布。</item>
+    /// </list>
+    /// 輸出像素的來源參考足跡大於顆粒結構時做足跡濾波（次像素倍頻／圓盤淡出），
+    /// 不是把顆粒座標直接縮小。暗部／中間調／高光響應為獨立的顯示亮度帶權重。
     /// </summary>
     /// <param name="scratch">柔焦模糊結果的暫存緩衝。</param>
     /// <param name="scratch2">可分離模糊的中間緩衝。</param>
     public static void Grain(float[] buf, float[] scratch, float[] scratch2, int w, int h, ModuleParams p)
     {
         var amount = p.GrainAmount / 100f;
-        var rough = p.GrainRoughness / 100f;
         var color = p.GrainColor / 100f;
         var seed = p.SeedGrain;
-        var shortSide = MathF.Min(w, h);
-        var r0 = MathF.Max(0.5f, (0.5f + p.GrainSize / 100f * 2.5f) * shortSide / 3000f);
-        var soft = GrainSoftBlur(shortSide, p.GrainSoftness / 100f);
+        var d = DeriveGrain(p, w, h);
+        var geom = d.Geom;
+        var soft = GrainSoftBlur(geom.RefShort, p.GrainSoftness / 100f, geom.PixelScale);
         var mix = soft is null ? 0f : p.GrainSoftness / 100f;
         if (soft is { } blur)
         {
             SeparableBlur(buf, scratch2, w, h, blur.Radius, blur.Sigma, horizontal: true);
             SeparableBlur(scratch2, scratch, w, h, blur.Radius, blur.Sigma, horizontal: false);
         }
+
+        var shadows = p.GrainShadows / 100f;
+        var midtones = p.GrainMidtones / 100f;
+        var highlights = p.GrainHighlights / 100f;
+        var spread = Math.Clamp(p.GrainRadiusSpread, 0f, 1f);
+        var fp = geom.PixelScale;
 
         Parallel.For(0, h, y =>
         {
@@ -1206,38 +1220,155 @@ public static class CpuPipeline
                     b += (scratch[i + 2] - b) * mix;
                 }
                 var lum = Luminance(r, g, b);
-                var k = amount * 0.16f * (1f - SmoothStep(0.4f, 0.9f, lum));
-                if (k > 0)
+                var s = SmoothStep(0.05f, 0.5f, lum);
+                var t2 = SmoothStep(0.4f, 0.9f, lum);
+                var band = shadows * (1f - s) + midtones * (s * (1f - t2)) + highlights * t2;
+                var k = amount * band;
+                if (k <= 0)
                 {
-                    var shadow = 1f - SmoothStep(0.05f, 0.5f, lum);
-                    var (luma, cr, cg, cb) = GrainClumps(x + 0.5f, y + 0.5f, r0, shadow, rough, seed);
-                    // 深暗部的負向顆粒會被 0 截掉，只剩彩色分量 → 黑底冒出彩色斑點；彩色顆粒在暗部淡出
-                    var ck = color * 0.6f * SmoothStep(0.03f, 0.3f, lum);
-                    r = Math.Clamp(r + (luma + cr * ck) * k, 0f, 1f);
-                    g = Math.Clamp(g + (luma + cg * ck) * k, 0f, 1f);
-                    b = Math.Clamp(b + (luma + cb * ck) * k, 0f, 1f);
+                    buf[i] = r; buf[i + 1] = g; buf[i + 2] = b;
+                    continue;
                 }
+                var shadow = 1f - s;
+                var px = x + 0.5f;
+                var py = y + 0.5f;
+                var gx = geom.A00 * px + geom.A01 * py + geom.B0;
+                var gy = geom.A10 * px + geom.A11 * py + geom.B1;
+                float luma, cr, cg, cb;
+                switch (p.GrainModel)
+                {
+                    case 2:
+                        var (ol, ocr, ocg, ocb) = GrainOptical(gx, gy, d.R0, shadow, d.RoughQ, spread,
+                            p.GrainSamples, d.CellOpt, d.SigmaOpt, seed);
+                        (luma, cr, cg, cb) = (ol * 0.35f, ocr * 0.35f, ocg * 0.35f, ocb * 0.35f);
+                        break;
+                    case 1:
+                        var (nl, ncr, ncg, ncb) = GrainCorrelated(gx, gy, d.R0, d.RoughQ, fp, d.CorrScale, d.CorrGain, seed);
+                        (luma, cr, cg, cb) = (nl * 0.16f, ncr * 0.16f, ncg * 0.16f, ncb * 0.16f);
+                        break;
+                    default:
+                        var (cl, ccr, ccg, ccb) = GrainClumps(gx, gy, d.R0, shadow, d.RoughQ, fp, seed);
+                        (luma, cr, cg, cb) = (cl * 0.16f, ccr * 0.16f, ccg * 0.16f, ccb * 0.16f);
+                        break;
+                }
+                // 深暗部的負向顆粒會被 0 截掉，只剩彩色分量 → 黑底冒出彩色斑點；彩色顆粒在暗部淡出
+                var ck = color * 0.6f * SmoothStep(0.03f, 0.3f, lum);
+                r = Math.Clamp(r + (luma + cr * ck) * k, 0f, 1f);
+                g = Math.Clamp(g + (luma + cg * ck) * k, 0f, 1f);
+                b = Math.Clamp(b + (luma + cb * ck) * k, 0f, 1f);
                 buf[i] = r; buf[i + 1] = g; buf[i + 2] = b;
             }
         });
     }
 
-    /// <summary>柔焦模糊參數；sigma 量化到 0.05 px 讓 GPU 權重快取有界。太小（看不出差異）時為 null。</summary>
-    internal static (int Radius, float Sigma)? GrainSoftBlur(float shortSide, float softness)
+    /// <summary>
+    /// 輸出像素 → 來源參考座標的幾何：OutToSource 把輸出像素中心映到「已現像來源」像素，
+    /// 再乘 <c>ReferenceWidth/SourceWidth</c> 得到未縮小來源的參考像素座標（A、B 為合成後的仿射）。
+    /// PixelScale 為輸出像素在參考平面上覆蓋的邊長（仿射兩軸長度平均），供次像素結構的振幅衰減；
+    /// 裁切或拉直產生各向異性時取兩軸平均，顆粒仍各向同性（保守近似）。
+    /// </summary>
+    internal readonly record struct GrainMapping(
+        float RefShort, float PixelScale, float A00, float A01, float B0,
+        float A10, float A11, float B1);
+
+    internal static GrainMapping GrainGeometry(ModuleParams p, int w, int h)
+    {
+        var m = p.CropT.OutToSource;
+        var sx = p.SourceWidth > 0 ? p.ReferenceWidth / (float)p.SourceWidth : 1f;
+        var sy = p.SourceHeight > 0 ? p.ReferenceHeight / (float)p.SourceHeight : 1f;
+        var a = MathF.Abs((float)m.M00) * sx;
+        var b = MathF.Abs((float)m.M01) * sx;
+        var c = MathF.Abs((float)m.M10) * sy;
+        var d = MathF.Abs((float)m.M11) * sy;
+        var pixelScale = MathF.Max(1e-6f, (MathF.Sqrt(a * a + c * c) + MathF.Sqrt(b * b + d * d)) * 0.5f);
+        var refShort = MathF.Min(p.ReferenceWidth, p.ReferenceHeight);
+        return new(refShort > 0 ? refShort : MathF.Min(w, h), pixelScale,
+            (float)m.M00 * sx, (float)m.M01 * sx, (float)m.M02 * sx,
+            (float)m.M10 * sy, (float)m.M11 * sy, (float)m.M12 * sy);
+    }
+
+    /// <summary>
+    /// 柔焦模糊參數：sigma 以「來源參考像素」為單位（<paramref name="refShort"/> 為來源參考短邊），
+    /// 再除以 <paramref name="pixelScale"/>（輸出像素的參考足跡）換算成輸出像素；
+    /// sigma 量化到 0.05 px 讓 GPU 權重快取有界。太小（看不出差異）時為 null。
+    /// </summary>
+    internal static (int Radius, float Sigma)? GrainSoftBlur(float refShort, float softness, float pixelScale = 1f)
     {
         if (softness <= 0) return null;
-        var sigma = MathF.Round((0.5f + 1.5f * softness) * shortSide / 2400f * 20f) / 20f;
+        var sigmaRef = MathF.Round((0.5f + 1.5f * softness) * refShort / 2400f * 20f) / 20f;
+        var sigma = MathF.Round(sigmaRef / MathF.Max(pixelScale, 1e-6f) * 20f) / 20f;
         if (sigma < 0.5f) return null;
         return ((int)MathF.Ceiling(sigma * 3f), sigma);
+    }
+    /// <summary>由設定推導、與像素位置無關的顆粒常數；CPU 與 GPU dispatch 共用同一份計算，保證兩端常數逐位元相同。</summary>
+    internal readonly record struct GrainDerivation(
+        GrainMapping Geom, float R0, int RoughQ, float CorrGain,
+        float CorrScale, float CellOpt, float SigmaOpt);
+
+    internal static GrainDerivation DeriveGrain(ModuleParams p, int w, int h)
+    {
+        var geom = GrainGeometry(p, w, h);
+        var r0 = MathF.Max(0.5f, (0.5f + p.GrainSize / 100f * 2.5f) * geom.RefShort / 3000f);
+        var roughQ = (int)MathF.Round(p.GrainRoughness / 100f * 256f);
+        var roughN = roughQ / 256f;
+        var cellOpt = r0 * 2.4f;
+        return new(geom, r0, roughQ,
+            GrainCorrelatedGain(roughN), GrainShotNorm(), cellOpt,
+            GrainOpticalSigma(p.GrainAperture, r0, geom.PixelScale));
+    }
+
+
+    /// <summary>只正規化未濾波倍頻的方差；足跡低通造成的能量衰減不得被增益抵消。</summary>
+    private static float GrainCorrelatedGain(float rough)
+    {
+        var persistence = 0.28f + 0.52f * rough;
+        float amp = 1f, norm2 = 0;
+        for (var octave = 0; octave < 5; octave++)
+        {
+            norm2 += amp * amp;
+            amp *= persistence;
+        }
+        return 0.45f * MathF.Sqrt(3f / norm2);
+    }
+
+    /// <summary>optical 模型的高斯光圈 σ（參考像素）：觀測柔化參數與輸出像素足跡的正交合成。</summary>
+    private static float GrainOpticalSigma(float aperture, float r0, float footprint)
+    {
+        var ap = MathF.Max(0.05f, aperture) * r0;
+        return MathF.Sqrt(ap * ap + footprint * footprint * 0.25f);
+    }
+
+    /// <summary>
+    /// 光學模型的每格圓盤數：真正的 Poisson(λ) 計數（λ = density/640，density 0..1024 量化值），
+    /// 以反函數累積機率質量取得；N 截斷於 8（λ ≤ 1.6 時 P(N≥9) &lt; 0.0046%）。
+    /// CPU 與 WGSL 使用同一個累積順序，實際數值一致性另由 GPU 像素比對驗證。
+    /// </summary>
+    private static int PoissonCellCount(uint h, int density)
+    {
+        var lambda = density * (1f / 640f);
+        var u = SeedHash.ToUnitFloat(h);
+        var p = MathF.Exp(-lambda);
+        var cum = p;
+        if (u < cum) return 0;
+        for (var n = 1; n <= 8; n++)
+        {
+            p = p * lambda / n;
+            cum += p;
+            if (u < cum) return n;
+        }
+        return 8;
     }
 
     /// <summary>
     /// 柔邊團塊：每格兩顆隨機半徑、隨機正負的柔邊圓點；格密度由低頻值雜訊調變（粗糙度越高越聚集）。
     /// 彩色分量取自同一批圓點（與亮度顆粒連動），並扣掉灰階平均。
+    /// 足跡大於圓點半徑時整體淡出（次像素結構被像素濾波平均掉）。
     /// </summary>
-    private static (float Luma, float R, float G, float B) GrainClumps(float x, float y, float r0, float shadow, float rough, uint seed)
+    private static (float Luma, float R, float G, float B) GrainClumps(
+        float x, float y, float r0, float shadow, int roughQ, float footprint, uint seed)
     {
-        var roughQ = (int)MathF.Round(rough * 256f);
+        var fade = 1f - SmoothStep(1f, 2.6f, footprint / MathF.Max(r0, 1e-3f));
+        if (fade <= 0) return (0, 0, 0, 0);
         var cell = r0 * 2.6f;
         var ccx = (int)MathF.Floor(x / cell);
         var ccy = (int)MathF.Floor(y / cell);
@@ -1255,7 +1386,7 @@ public static class CpuPipeline
                 if (hash >> 22 >= density) continue;
                 hash = SeedHash.Pcg(hash); var px = (cx + SeedHash.ToUnitFloat(hash)) * cell;
                 hash = SeedHash.Pcg(hash); var py = (cy + SeedHash.ToUnitFloat(hash)) * cell;
-                hash = SeedHash.Pcg(hash); var rr = r0 * (1f + 0.6f * shadow) * (1f + rough * (SeedHash.ToUnitFloat(hash) - 0.5f));
+                hash = SeedHash.Pcg(hash); var rr = r0 * (1f + 0.6f * shadow) * (1f + roughQ * (1f / 256f) * (SeedHash.ToUnitFloat(hash) - 0.5f));
                 var ddx = x - px;
                 var ddy = y - py;
                 var soft = 1f - SmoothStep(rr * 0.35f, rr, MathF.Sqrt(ddx * ddx + ddy * ddy));
@@ -1267,8 +1398,171 @@ public static class CpuPipeline
             }
         }
         var mean = (sr + sg + sb) / 3f;
-        return (Math.Clamp(luma, -1f, 1f), Math.Clamp(sr - mean, -1f, 1f), Math.Clamp(sg - mean, -1f, 1f), Math.Clamp(sb - mean, -1f, 1f));
+        return (Math.Clamp(luma * fade, -1f, 1f), Math.Clamp((sr - mean) * fade, -1f, 1f),
+            Math.Clamp((sg - mean) * fade, -1f, 1f), Math.Clamp((sb - mean) * fade, -1f, 1f));
     }
+
+    /// <summary>
+    /// 等向的連續多尺度相關場：每個倍頻以固定 λ 的齊次 Poisson 脈衝（有界計數尾端見
+    /// <see cref="PoissonCellCount"/>）經緊支撐徑向核 Wendland w(t)=(1−t)⁴(1+4t) 重建有號 shot noise。
+    /// 不用軸向插值或格狀密度調變；方向性只剩有界點過程近似的誤差。
+    /// 每格脈衝搜尋 ±2 格有界：格寬 R/2、核支撐半徑 R，跨 2 格外的脈衝接觸不到取樣點。
+    /// 粗糙度控制高頻倍頻的衰減；足跡超過核半徑四分之一時該倍頻淡出（足跡濾波）。
+    /// 每倍頻場做解析歸一化：Var = λ̄_area·E[v²]·2πR²·J，J = ∫₀¹t·(1−t)⁸(1+4t)²dt ≈ 0.035354，
+    /// λ̄_area·R² = (700/640)·(R/cell)² = 4.375 與 R 無關 → 各倍頻同方差，<paramref name="norm"/> 由
+    /// DeriveGrain 傳入；<paramref name="gain"/> 按未濾波的 Σamp² 正規化，保留足跡濾波的能量衰減。
+    /// </summary>
+    private static (float Luma, float R, float G, float B) GrainCorrelated(
+        float x, float y, float r0, int roughQ, float footprint, float norm, float gain, uint seed)
+    {
+        var persistence = 0.28f + 0.52f * (roughQ * (1f / 256f));
+        float luma = 0, sr = 0, sg = 0, sb = 0;
+        var amp = 1f;
+        var rad = r0 * 8.8f;
+        for (var octave = 0; octave < 5; octave++)
+        {
+            var cell = rad * 0.5f;
+            var invR = 1f / rad;
+            var fade = 1f - SmoothStep(0.7f, 1.8f, footprint / (rad * 0.25f));
+            if (fade > 0)
+            {
+                var os = seed + (uint)octave * 911u;
+                var ccx = (int)MathF.Floor(x / cell);
+                var ccy = (int)MathF.Floor(y / cell);
+                float sum = 0, ar = 0, ag = 0, ab = 0;
+                for (var dy = -2; dy <= 2; dy++)
+                for (var dx = -2; dx <= 2; dx++)
+                {
+                    var cx = ccx + dx;
+                    var cy = ccy + dy;
+                    const int density = 700;
+                    var cellBase = unchecked(os + (uint)cx * 4001u + (uint)cy * 7919u);
+                    var count = PoissonCellCount(SeedHash.Pcg(cellBase), density);
+                    for (var j = 0; j < count; j++)
+                    {
+                        var hash = SeedHash.Pcg(unchecked(cellBase + (uint)j * 2654435769u + 0x9E3779B9u));
+                        var px = (cx + SeedHash.ToUnitFloat(hash)) * cell;
+                        hash = SeedHash.Pcg(hash); var py = (cy + SeedHash.ToUnitFloat(hash)) * cell;
+                        var ddx = x - px;
+                        var ddy = y - py;
+                        var t = MathF.Sqrt(ddx * ddx + ddy * ddy) * invR;
+                        if (t >= 1f) continue;
+                        var u = 1f - t;
+                        var w = u * u * u * u * (1f + 4f * t);
+                        hash = SeedHash.Pcg(hash); sum += w * (SeedHash.ToUnitFloat(hash) * 2f - 1f);
+                        hash = SeedHash.Pcg(hash); ar += w * (SeedHash.ToUnitFloat(hash) * 2f - 1f);
+                        hash = SeedHash.Pcg(hash); ag += w * (SeedHash.ToUnitFloat(hash) * 2f - 1f);
+                        hash = SeedHash.Pcg(hash); ab += w * (SeedHash.ToUnitFloat(hash) * 2f - 1f);
+                    }
+                }
+                var a = amp * fade;
+                luma += a * sum * norm;
+                sr += a * ar * norm;
+                sg += a * ag * norm;
+                sb += a * ab * norm;
+            }
+            amp *= persistence;
+            rad *= 0.5f;
+        }
+        var mean = (sr + sg + sb) / 3f;
+        return (Math.Clamp(luma * gain, -1.5f, 1.5f), Math.Clamp((sr - mean) * gain, -1.5f, 1.5f),
+            Math.Clamp((sg - mean) * gain, -1.5f, 1.5f), Math.Clamp((sb - mean) * gain, -1.5f, 1.5f));
+    }
+
+    /// <summary>shot noise 場的歸一化常數：1/√(λ̄_area·E[v²]·2πJ) = 1/√(4.375·π·0.0707071/3) ≈ 1.757。</summary>
+    private static float GrainShotNorm() => 1f / MathF.Sqrt(4.375f * MathF.PI * 0.0707071f / 3f);
+
+    /// <summary>
+    /// 2D Poisson／布林圓盤的光學統計近似（獨立實作；不是顯影化學，也未採用 IPOL 參考碼）：
+    /// 參考平面上每格圓盤數為 Poisson(λ)，λ 由低頻團聚雜訊調變（粗糙度越高覆蓋越不均）；
+    /// 圓盤位置、粒徑與色度各自獨立雜湊，粒徑為以 r0 為中心的均勻分布（radius_spread 控制相對散布，
+    /// 暗部圓盤略大）。覆蓋率 = 布林聯集的空隙率補數 1 − ∏(1 − w_i)，逐像素以當前 shadow 的
+    /// 布林期望空隙率置中（不再用全域平均）；觀測值 = 高斯光圈內的覆蓋率，
+    /// 以有界 Monte Carlo（等面積極座標分層＋每像素種子抖動）估算，光圈 σ 已含像素足跡。
+    /// </summary>
+    private static (float Luma, float R, float G, float B) GrainOptical(
+        float x, float y, float r0, float shadow, int roughQ, float spread,
+        int samples, float cell, float sigma, uint seed)
+    {
+        var pix = SeedHash.Pcg(unchecked(seed + (uint)(int)MathF.Floor(x) * 668265263u
+            + (uint)(int)MathF.Floor(y) * 2246822519u));
+        // 布林模型期望空隙率：E[cover] = 1 − e^(−λ̄·π·E[A])，λ̄ = 平均密度 700/640 每格；
+        // E[A] = π·(E[rr²] + E[edge²])，edge = max(rr/4, 0.35) 分段近似。逐像素隨 shadow 置中。
+        var g = 1f + 0.6f * shadow;
+        var meanR2 = r0 * r0 * g * g * (1f + 0.64f * spread * spread / 3f);
+        var meanA = MathF.PI * (meanR2 + MathF.Max(meanR2 * 0.0625f, 0.1225f));
+        var pExp = 1f - MathF.Exp(-(700f / 640f) * meanA / (cell * cell));
+        float luma = 0, sr = 0, sg = 0, sb = 0;
+        for (var sIndex = 0; sIndex < samples; sIndex++)
+        {
+            var h = SeedHash.Pcg(unchecked(pix + (uint)sIndex * 747796405u));
+            var u1 = SeedHash.ToUnitFloat(h);
+            h = SeedHash.Pcg(h);
+            var u2 = SeedHash.ToUnitFloat(h);
+            // 等面積高斯光圈取樣：角度按取樣序分層＋抖動，半徑 r = σ·√(−2·ln(1−u))
+            var ang = (sIndex + u2) / samples * (2f * MathF.PI);
+            var radius = sigma * MathF.Sqrt(-2f * MathF.Log(1f - u1 * 0.9999f));
+            var qx = x + radius * MathF.Cos(ang);
+            var qy = y + radius * MathF.Sin(ang);
+            var (cover, cvr, cvg, cvb) = OpticalCoverage(qx, qy, r0, shadow, roughQ, spread, cell, seed);
+            var dev = cover - pExp;
+            luma += dev;
+            sr += cvr * dev;
+            sg += cvg * dev;
+            sb += cvb * dev;
+        }
+        var inv = 1f / samples;
+        return (luma * inv, sr * inv, sg * inv, sb * inv);
+    }
+
+    /// <summary>
+    /// 單一光圈取樣點的布林覆蓋：每格圓盤數為有界 Poisson(λ)（<see cref="PoissonCellCount"/>），
+    /// 圓盤位置／粒徑／色度獨立雜湊；覆蓋率為聯集空隙率的補數 1 − ∏(1 − w_i)，
+    /// w_i 為柔邊圓盤權重（邊緣以 max(rr/4, 0.35) 平滑，無硬門檻，CPU/GPU 浮點差異安全）；
+    /// 色度按逐層吸收量 w_i·∏_j&lt;i(1 − w_j) 加權（固定列舉序，前層先吸收）。
+    /// 候選搜尋 ±2 格有界：格寬 2.4·r0，最大圓盤觸及範圍 rr + edge ≤ 2.88·r0 + 0.72·r0 = 3.6·r0 &lt; 2 格寬。
+    /// </summary>
+    private static (float Cover, float R, float G, float B) OpticalCoverage(
+        float qx, float qy, float r0, float shadow, int roughQ, float spread, float cell, uint seed)
+    {
+        var ccx = (int)MathF.Floor(qx / cell);
+        var ccy = (int)MathF.Floor(qy / cell);
+        float transmit = 1f, sr = 0, sg = 0, sb = 0;
+        for (var dy = -2; dy <= 2; dy++)
+        for (var dx = -2; dx <= 2; dx++)
+        {
+            var cx = ccx + dx;
+            var cy = ccy + dy;
+            // 每格圓盤密度的低頻調變（0..1024）：基準 700，粗糙度越高覆蓋越不均
+            var density = Math.Clamp(700 + ClumpDensity(cx, cy, roughQ, seed + 1409u) - 614, 0, 1024);
+            var cellBase = unchecked(seed + (uint)cx * 4001u + (uint)cy * 7919u + 1409u);
+            var count = PoissonCellCount(SeedHash.Pcg(cellBase), density);
+            for (var j = 0; j < count; j++)
+            {
+                var hash = SeedHash.Pcg(unchecked(cellBase + (uint)j * 2654435769u + 0x9E3779B9u));
+                var px = (cx + SeedHash.ToUnitFloat(hash)) * cell;
+                hash = SeedHash.Pcg(hash); var py = (cy + SeedHash.ToUnitFloat(hash)) * cell;
+                hash = SeedHash.Pcg(hash);
+                var rr = r0 * (1f + 0.6f * shadow) * (1f + spread * (SeedHash.ToUnitFloat(hash) * 2f - 1f) * 0.8f);
+                var ddx = qx - px;
+                var ddy = qy - py;
+                var edge = MathF.Max(rr * 0.25f, 0.35f);
+                var w = 1f - SmoothStep(rr - edge, rr + edge, MathF.Sqrt(ddx * ddx + ddy * ddy));
+                if (w <= 0) continue;
+                var absorbed = w * transmit;
+                transmit *= 1f - w;
+                hash = SeedHash.Pcg(hash); sr += absorbed * (SeedHash.ToUnitFloat(hash) * 2f - 1f);
+                hash = SeedHash.Pcg(hash); sg += absorbed * (SeedHash.ToUnitFloat(hash) * 2f - 1f);
+                hash = SeedHash.Pcg(hash); sb += absorbed * (SeedHash.ToUnitFloat(hash) * 2f - 1f);
+            }
+        }
+        var cover = 1f - transmit;
+        if (cover <= 0) return (0, 0, 0, 0);
+        var inv = 1f / cover;
+        return (cover, Math.Clamp(sr * inv, -1f, 1f),
+            Math.Clamp(sg * inv, -1f, 1f), Math.Clamp(sb * inv, -1f, 1f));
+    }
+
 
     private static readonly int[] Smooth4 = [0, 5, 16, 27];
 

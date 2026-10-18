@@ -61,6 +61,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// <summary>「裁切」分頁的裁切工具（只作用於焦點照片）。</summary>
     public CropToolViewModel CropTool { get; }
 
+    /// <summary>「照片基本參數」分頁的照片工具面板（WB／膚色／Zone 取樣與提案）。</summary>
+    public PhotoToolsViewModel PhotoTools { get; internal set; }
+
     /// <summary>焦點照片的最終參數（三層合併）；沒有照片時為系統預設。</summary>
     public Settings FocusedResolved =>
         Service is not null && FocusFile is not null ? Service.SettingsFor(FocusFile) : ModuleCatalog.Defaults;
@@ -141,6 +144,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             () => Preview.Source is { } s ? (s.Width, s.Height) : (0, 0),
             () => Service is not null && FocusFile is not null && Preview.Source is not null ? Service.SettingsFor(FocusFile) : null);
         CropTool.PropertyChanged += OnCropToolChanged;
+        PhotoTools = new PhotoToolsViewModel(this);
         Sidebar = new SidebarViewModel(Presets, Inspector, FilmEffects, new ExportViewModel(this), Preview, CropTool);
         Sidebar.Export.PropertyChanged += (_, e) =>
         {
@@ -178,6 +182,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         Renderer.PreviewReady += (r, histogram, originalHistogram) =>
         {
             Preview.SetResult(r, histogram, originalHistogram);
+            PhotoTools.OnPreviewRendered();
             LastRenderText = $"{r.Elapsed.TotalMilliseconds:F1} ms";
             UpdateBackgroundText();
         };
@@ -290,7 +295,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         if (FocusFile != newFocus)
         {
             // 換照片前把未套用的裁切寫回原本的焦點照片；若還在「裁切」分頁，
-            // 記住要對新照片進入裁切——新來源可能尚未解碼，Begin 會延後到載入完成
+            // 記住要對新照片進入裁切——新來源可能尚未解碼，Begin 會延後到載入完成。
+            // 照片工具：作廢提案與進行中的取樣（同專案的參考色保留），關閉取樣視圖。
+            PhotoTools.InvalidateForPhotoChange();
             if (CropTool.IsActive) CropTool.Apply();
             Preview.Clear();
             if (Sidebar.IsCrop) CropTool.Begin();
@@ -336,6 +343,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             }
             Preview.SetOriginal(source);
             Inspector.Refresh();
+            PhotoTools.UpdateContext(service, file, source, service.SettingsFor(file));
             if (Sidebar.IsCrop) CropTool.ResumeBegin();
             RequestPreview();
         }
@@ -354,7 +362,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// <summary>以目前參數重算預覽（拖曳中每次修改都會呼叫；排程器只保留最新請求）。</summary>
     public void RequestPreview()
     {
-        if (Service is null || FocusFile is null || Preview.Source is null) return;
+        if (_disposed || Service is null || FocusFile is null || Preview.Source is null) return;
         var settings = Service.SettingsFor(FocusFile);
         if (Preview.Source.FilePath != Service.Project.PathOf(FocusFile)
             || Preview.Source.RawOptions != RawLoadOptions.FromSettings(settings))
@@ -362,6 +370,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             _ = LoadPreviewAsync();
             return;
         }
+        // 照片工具取樣視圖：在一般裁切暫停之外再暫停創意幾何／效果，疊上目前的 transient 提案。
+        if (PhotoTools.PreviewOverlay is { } overlay) settings = settings.Overlay(overlay);
         // 裁切工具啟用時暫停裁切，顯示全幅（保留 90° 旋轉與翻轉，裁切框畫在定向後的影像上）；不寫入照片設定
         if (CropTool.IsActive) settings = settings.Overlay(FullFrame(CropTool.Working));
         _previewOrientation = CropTool.IsActive ? (CropTool.Working.Quarter, CropTool.Working.FlipH, CropTool.Working.FlipV) : null;
@@ -387,6 +397,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         {
             case nameof(CropToolViewModel.IsActive):
                 Preview.ActiveTool = CropTool.IsActive ? CropTool.CanvasTool : null;
+                PhotoTools.OnToolReplaced();
                 RequestPreview();
                 break;
             // 拖曳裁切框只重畫畫布；只有方向改變（轉 90°、翻轉）才需要重算全幅預覽
@@ -436,6 +447,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         {
             // 外部裁切變更（復原、貼上等）才重載工具；RAW／其他效果變更保留未套用的裁切。
             if (CropTool.IsActive && !_committingCrop && Service is not null) CropTool.Reload(Service.SettingsFor(FocusFile));
+            // 提案與非同步取樣綁服務＋檔案＋來源＋設定；外部設定改變（undo／貼上）使提案作廢
+            if (Service is { } service) PhotoTools.InvalidateForSettingsChange(service.SettingsFor(FocusFile));
             Presets.Hover.InvalidateForPhoto(FocusFile);
             RefreshModulePanels();
             RequestPreview();
@@ -809,6 +822,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        PhotoTools.InvalidateForPhotoChange();
         ++_openGeneration;
         _loadingTimer.Stop();
         _previewWait?.Cancel();

@@ -26,13 +26,18 @@ public static class ImageLoader
             settings.SetDefine(MagickFormat.Jpeg, "size", $"{maxLongEdge * 2}x{maxLongEdge * 2}");
 
         using var image = new MagickImage(path, settings);
+        // Base dimensions retain the file raster even when JPEG's decoder-size hint was used.
+        var swap = image.Orientation is OrientationType.RightTop or OrientationType.RightBottom
+            or OrientationType.LeftTop or OrientationType.LeftBottom;
+        var reference = swap ? ((int)image.BaseHeight, (int)image.BaseWidth)
+            : ((int)image.BaseWidth, (int)image.BaseHeight);
         image.AutoOrient();
         if (Math.Max(image.Width, image.Height) > maxLongEdge)
         {
             var geometry = new MagickGeometry((uint)maxLongEdge, (uint)maxLongEdge) { Greater = true };
             image.Resize(geometry);
         }
-        return ToSource(image, path, rawOptions);
+        return ToSource(image, path, rawOptions, reference);
     }
 
     /// <summary>全解析度解碼（匯出用）：EXIF 轉正、不縮放，保留 16-bit 資料。</summary>
@@ -59,7 +64,8 @@ public static class ImageLoader
         return swap ? ((int)image.Height, (int)image.Width) : ((int)image.Width, (int)image.Height);
     }
 
-    private static SourceImage ToSource(MagickImage image, string path, RawLoadOptions rawOptions)
+    private static SourceImage ToSource(MagickImage image, string path, RawLoadOptions rawOptions,
+        (int Width, int Height)? reference = null)
     {
         image.TransformColorSpace(ColorProfiles.SRGB);
         image.ColorSpace = ColorSpace.sRGB;
@@ -72,6 +78,8 @@ public static class ImageLoader
         {
             FilePath = Path.GetFullPath(path),
             RawOptions = rawOptions,
+            ReferenceWidth = reference?.Width ?? (int)image.Width,
+            ReferenceHeight = reference?.Height ?? (int)image.Height,
         };
     }
 

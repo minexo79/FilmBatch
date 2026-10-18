@@ -360,4 +360,79 @@
   <data name="Raw.NoMasks" xml:space="preserve"><value>此照片沒有內嵌語意遮罩</value></data>
   <data name="Raw.MaskEdit" xml:space="preserve"><value>調整語意遮罩</value></data>
   <data name="Raw.BrowseFolder" xml:space="preserve"><value>瀏覽資料夾…</value></data>
+  <data name="Module.skin" xml:space="preserve"><value>局部膚色輔助</value></data>
+  <data name="Module.zone" xml:space="preserve"><value>Zone 測光與階調</value></data>
+  <data name="Param.skin.region_cx" xml:space="preserve"><value>區域中心 X</value></data>
+  <data name="Param.skin.region_cy" xml:space="preserve"><value>區域中心 Y</value></data>
+  <data name="Param.skin.radius_x" xml:space="preserve"><value>區域半寬</value></data>
+  <data name="Param.skin.radius_y" xml:space="preserve"><value>區域半高</value></data>
+  <data name="Param.skin.feather" xml:space="preserve"><value>羽化</value></data>
+  <data name="Param.skin.amount" xml:space="preserve"><value>強度</value></data>
+  <data name="Param.skin.temperature" xml:space="preserve"><value>局部暖冷</value></data>
+  <data name="Param.skin.tint" xml:space="preserve"><value>局部綠洋紅</value></data>
+  <data name="Param.skin.ref_red" xml:space="preserve"><value>參考紅色增益</value></data>
+  <data name="Param.skin.ref_green" xml:space="preserve"><value>參考綠色增益</value></data>
+  <data name="Param.skin.ref_blue" xml:space="preserve"><value>參考藍色增益</value></data>
+  <data name="Param.zone.slope" xml:space="preserve"><value>曝光跨度</value></data>
+  <data name="Param.zone.offset" xml:space="preserve"><value>曝光位移</value></data>
+  <data name="Param.grain.model" xml:space="preserve"><value>模型</value></data>
+  <data name="Param.grain.shadows" xml:space="preserve"><value>暗部響應</value></data>
+  <data name="Param.grain.midtones" xml:space="preserve"><value>中間調響應</value></data>
+  <data name="Param.grain.highlights" xml:space="preserve"><value>高光響應</value></data>
+  <data name="Param.grain.aperture" xml:space="preserve"><value>觀測柔化</value></data>
+  <data name="Param.grain.radius_spread" xml:space="preserve"><value>粒徑分布</value></data>
+  <data name="Param.grain.samples" xml:space="preserve"><value>光學取樣數</value></data>
+  <data name="Choice.grain.model.clumps" xml:space="preserve"><value>柔邊團塊</value></data>
+  <data name="Choice.grain.model.correlated" xml:space="preserve"><value>連續相關顆粒</value></data>
+  <data name="Choice.grain.model.optical" xml:space="preserve"><value>光學圓盤</value></data>
+  <data name="PhotoTools.Title" xml:space="preserve"><value>照片工具</value></data>
+  <data name="PhotoTools.WbTitle" xml:space="preserve"><value>中性白平衡</value></data>
+  <data name="PhotoTools.SkinTitle" xml:space="preserve"><value>膚色調整</value></data>
+  <data name="PhotoTools.ZoneTitle" xml:space="preserve"><value>Zone 分區</value></data>
+  <data name="PhotoTools.PickWb" xml:space="preserve"><value>取樣中性區</value></data>
+  <data name="PhotoTools.PickSkin" xml:space="preserve"><value>取樣膚色區</value></data>
+  <data name="PhotoTools.PickZoneShadow" xml:space="preserve"><value>取樣暗部</value></data>
+  <data name="PhotoTools.PickZoneHighlight" xml:space="preserve"><value>取樣高光</value></data>
+  <data name="PhotoTools.AutoWb" xml:space="preserve"><value>自動白平衡</value></data>
+  <data name="PhotoTools.CaptureWbRef" xml:space="preserve"><value>擷取參考色</value></data>
+  <data name="PhotoTools.CaptureSkinRef" xml:space="preserve"><value>擷取膚色參考</value></data>
+  <data name="PhotoTools.ClearRef" xml:space="preserve"><value>清除參考</value></data>
+  <data name="PhotoTools.UseWbReference" xml:space="preserve"><value>使用參考色</value></data>
+  <data name="PhotoTools.UseSkinRef" xml:space="preserve"><value>以參考色為目標</value></data>
+  <data name="PhotoTools.Preview" xml:space="preserve"><value>預覽提案</value></data>
+  <data name="PhotoTools.ApplyWb" xml:space="preserve"><value>套用白平衡</value></data>
+  <data name="PhotoTools.ApplySkin" xml:space="preserve"><value>套用膚色</value></data>
+  <data name="PhotoTools.Cancel" xml:space="preserve"><value>取消</value></data>
+  <data name="PhotoTools.FitZone" xml:space="preserve"><value>擬合 Zone 曲線</value></data>
+  <data name="PhotoTools.SkinTemperature" xml:space="preserve"><value>溫暖度</value></data>
+  <data name="PhotoTools.SkinTint" xml:space="preserve"><value>色偏</value></data>
+  <data name="PhotoTools.SkinStrength" xml:space="preserve"><value>強度</value></data>
+  <data name="PhotoTools.SkinFeather" xml:space="preserve"><value>羽化</value></data>
+  <data name="PhotoTools.RefValue" xml:space="preserve"><value>參考 RGB {0:0.###} {1:0.###} {2:0.###}</value></data>
+  <data name="PhotoTools.SkinRegionSet" xml:space="preserve"><value>已選膚色區域 {0:0.##}×{1:0.##}</value></data>
+  <data name="PhotoTools.WbUnavailable" xml:space="preserve"><value>此照片無法推算白平衡</value></data>
+  <data name="PhotoTools.WbProposal" xml:space="preserve"><value>提案 {0}K・色偏 {1}｜信心 {2:0.##}｜殘差 {3:0.###}｜樣本 {4}（剔除 {5}）｜散度 {6:0.###}</value></data>
+  <data name="PhotoTools.ClipWarning" xml:space="preserve"><value>輸出已裁切：降低曝光後重新取樣</value></data>
+  <data name="PhotoTools.WbBoundary" xml:space="preserve"><value>提案抵達色溫或色偏範圍邊界</value></data>
+  <data name="PhotoTools.WbResidual" xml:space="preserve"><value>殘差偏高，可能不是中性區</value></data>
+  <data name="PhotoTools.WbLowConfidence" xml:space="preserve"><value>信心偏低</value></data>
+  <data name="PhotoTools.AutoNone" xml:space="preserve"><value>找不到候選白平衡</value></data>
+  <data name="PhotoTools.AutoCandidates" xml:space="preserve"><value>{0} 個候選白平衡</value></data>
+  <data name="PhotoTools.CandidateChosen" xml:space="preserve"><value>已選 {0}K・色偏 {1}｜信心 {2:0.##}｜殘差 {3:0.###}</value></data>
+  <data name="PhotoTools.RefUnavailable" xml:space="preserve"><value>無法擷取參考色</value></data>
+  <data name="PhotoTools.RefCaptured" xml:space="preserve"><value>已擷取參考 RGB {0:0.###} {1:0.###} {2:0.###}</value></data>
+  <data name="PhotoTools.SkinRefCaptured" xml:space="preserve"><value>已擷取膚色參考 RGB {0:0.###} {1:0.###} {2:0.###}</value></data>
+  <data name="PhotoTools.ZoneUnavailable" xml:space="preserve"><value>無法判定 Zone</value></data>
+  <data name="PhotoTools.ZoneSample" xml:space="preserve"><value>Zone {0}｜亮度 {1:0.###}｜樣本 {2}｜散度 {3:0.###}</value></data>
+  <data name="PhotoTools.ZonePlaced" xml:space="preserve"><value>已放到 Zone {0}</value></data>
+  <data name="PhotoTools.ZoneUnreachable" xml:space="preserve"><value>無法到達 Zone {0}：所需曝光 {1:0.##} 超出 {2:0.##}…{3:0.##} 範圍，未寫入</value></data>
+  <data name="PhotoTools.ZoneFitInvalid" xml:space="preserve"><value>錨點樣本無效，無法擬合</value></data>
+  <data name="PhotoTools.ZoneFitReversed" xml:space="preserve"><value>高光錨點必須比暗部亮</value></data>
+  <data name="PhotoTools.ZoneFitted" xml:space="preserve"><value>已擬合 zone 斜率 {0:0.###}、位移 {1:0.###}</value></data>
+  <data name="PhotoTools.WbNeedsRaw" xml:space="preserve"><value>此照片沒有 RAW 白平衡模型</value></data>
+  <data name="PhotoTools.WbEnableRaw" xml:space="preserve"><value>先在「RAW 原廠處理」啟用 RAW 處理</value></data>
+  <data name="PhotoTools.ZoneNeedsRaw" xml:space="preserve"><value>Zone 分區需要 RAW 場景線性來源</value></data>
+  <data name="PhotoTools.ZoneFitUnreachable" xml:space="preserve"><value>擬合結果斜率 {0:0.###}／位移 {1:0.###} 超出範圍（斜率 {2:0.##}…{3:0.##}、位移 {4:0.##}…{5:0.##}），未寫入</value></data>
+  <data name="PhotoTools.Confidence" xml:space="preserve"><value>信心</value></data>
+  <data name="PhotoTools.Residual" xml:space="preserve"><value>殘差</value></data>
 </root>

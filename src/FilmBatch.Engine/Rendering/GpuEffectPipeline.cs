@@ -54,7 +54,7 @@ internal sealed class GpuEffectPipeline : IDisposable
         return texture;
     }
     private readonly ComputeKernel _decode, _encode8, _encode16, _display, _spike, _blur, _box,
-        _crop, _basicLinear, _lens, _multi, _double, _bokeh, _zoom, _motion, _vignette,
+        _crop, _basicLinear, _photoAdjust, _lens, _multi, _double, _bokeh, _zoom, _motion, _vignette,
         _halExtract, _halAdd, _leak, _look, _plate,
         _basicDisplay, _tone, _detail, _dirt, _grain, _texture;
 
@@ -85,6 +85,7 @@ internal sealed class GpuEffectPipeline : IDisposable
         _box = K("geometry/box_blur", tex, storage);
         _crop = K("geometry/crop", tex, storage, uniform);
         _basicLinear = K("linear/basic_linear", tex, storage, uniform);
+        _photoAdjust = K("linear/photo_adjustments", tex, storage, uniform);
         _lens = K("geometry/lens_distortion", tex, tex, storage, uniform);
         _multi = K("geometry/multi_lens", tex, storage, uniform);
         _double = K("optical/double_exposure", tex, tex, storage, uniform);
@@ -243,6 +244,7 @@ internal sealed class GpuEffectPipeline : IDisposable
         }
         if (p.BasicOn && (p.Exposure != 0 || p.Temperature != 0 || p.Tint != 0))
             current = Apply(_basicLinear, new Vector4(p.Exposure, p.Temperature / 100, p.Tint / 100, 0));
+        if (p.SkinOn || p.ZoneOn) current = Apply(_photoAdjust, PhotoAdjustments.Uniforms(p));
         if (p.LensOn)
         {
             var soft = current;
@@ -324,11 +326,16 @@ internal sealed class GpuEffectPipeline : IDisposable
                 : Apply(_texture, OverlayUniforms(p, dirt, false), dirt);
         if (p.GrainOn && (p.GrainAmount > 0 || p.GrainSoftness > 0))
         {
-            var soft = CpuPipeline.GrainSoftBlur(shortSide, p.GrainSoftness / 100);
+            var d = CpuPipeline.DeriveGrain(p, (int)_width, (int)_height);
+            var soft = CpuPipeline.GrainSoftBlur(d.Geom.RefShort, p.GrainSoftness / 100, d.Geom.PixelScale);
             var blurred = soft is { } b ? Blur(commands, current, b.Radius, sigma: b.Sigma) : current;
-            current = Apply(_grain, new GrainUniforms(p.GrainAmount / 100, p.GrainSize / 100,
-                p.GrainRoughness / 100, p.GrainColor / 100, soft is null ? 0 : p.GrainSoftness / 100,
-                p.SeedGrain, shortSide, 0), blurred);
+            current = Apply(_grain, new GrainUniforms(
+                new Vector4(p.GrainAmount / 100, p.GrainColor / 100, soft is null ? 0 : p.GrainSoftness / 100, d.CorrGain),
+                new Vector4(d.SigmaOpt, d.CellOpt, Math.Clamp(p.GrainRadiusSpread, 0, 1), d.CorrScale),
+                new Vector4(d.Geom.A00, d.Geom.A01, d.Geom.B0, 0),
+                new Vector4(d.Geom.A10, d.Geom.A11, d.Geom.B1, d.R0),
+                p.SeedGrain, (uint)p.GrainModel, (uint)p.GrainSamples, (uint)d.RoughQ,
+                new Vector4(p.GrainShadows / 100, p.GrainMidtones / 100, p.GrainHighlights / 100, d.Geom.PixelScale)), blurred);
         }
         return current;
     }
@@ -558,7 +565,9 @@ internal sealed class GpuEffectPipeline : IDisposable
     [StructLayout(LayoutKind.Sequential)] private readonly record struct BasicUniforms(float Brightness, float Contrast, float Highlights, float Shadows, float Saturation, float Structure, float ShortSide, float Pad);
     [StructLayout(LayoutKind.Sequential)] private readonly record struct ToneUniforms(float ShadowHue, float ShadowAmount, float HighlightHue, float HighlightAmount, float Balance, float Pad0, float Pad1, float Pad2);
     [StructLayout(LayoutKind.Sequential)] private readonly record struct DirtUniforms(int Mode, float Dust, float Scratches, float Hairs, int Polarity, float Strength, float Scale, uint Seed, float ShortSide, uint Pad0, uint Pad1, uint Pad2);
-    [StructLayout(LayoutKind.Sequential)] private readonly record struct GrainUniforms(float Amount, float Size, float Roughness, float Color, float Softness, uint Seed, float ShortSide, uint Pad0);
+
+    /// <summary>surface/grain.wgsl：A 為效果參數、B 為光學模型常數、MapX/MapY 為輸出→來源參考仿射（w 欄放 r0）、Tone 為亮度帶權重＋像素足跡；96 位元組。</summary>
+    [StructLayout(LayoutKind.Sequential)] private readonly record struct GrainUniforms(Vector4 A, Vector4 B, Vector4 MapX, Vector4 MapY, uint Seed, uint Model, uint Samples, uint RoughQ, Vector4 Tone);
     [StructLayout(LayoutKind.Sequential)] private readonly record struct TextureUniforms(float Scale, float Amount, float Cosine, float Sine, float Hue, float Irregularity, float Density, float ShortSide, int Count, int Polarity, uint Seed, int Leak);
     [StructLayout(LayoutKind.Sequential)] private readonly record struct MultiUniforms(int Layout, float Divider, Vector2 Pad, Vector4 Cell0, Vector4 Tint0, Vector4 Cell1, Vector4 Tint1, Vector4 Cell2, Vector4 Tint2, Vector4 Cell3, Vector4 Tint3)
     {

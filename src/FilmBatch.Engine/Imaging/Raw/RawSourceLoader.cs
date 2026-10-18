@@ -39,9 +39,12 @@ internal static class RawSourceLoader
         if (!string.IsNullOrWhiteSpace(directory) && !Path.IsPathRooted(directory))
             directory = Path.GetFullPath(directory, Path.GetDirectoryName(Path.GetFullPath(path))!);
         var scene = DevelopScene(raw, bytes, edge, rawOptions with { LensDatabasePath = directory });
+        var (referenceWidth, referenceHeight) = info.DevelopedSize();
+        if (info.Orientation.SwapsAxes()) (referenceWidth, referenceHeight) = (referenceHeight, referenceWidth);
         return new SourceImage(scene)
         {
             FilePath = Path.GetFullPath(path), RawOptions = rawOptions, RawInfo = info, SemanticMasks = masks,
+            ReferenceWidth = referenceWidth, ReferenceHeight = referenceHeight,
         };
     }
 

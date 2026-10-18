@@ -60,6 +60,22 @@ dotnet test tests/FilmBatch.App.Tests/FilmBatch.App.Tests.csproj -c Release \
 
 Mac 桌面另以含 gain-table 的 ProRAW 及含畸變／暗角資料的 RAF 驗證：在底片分頁復原／重做 RAW 選項，即使重解碼時間超過縮圖防抖間隔，底片與色相縮圖仍自動跟上新來源，結果須等於同來源重新要求算圖的結果；切到 PNG 不顯示 RAW 控制項，再切回 RAW 恢復顯示且設定不變。驗證前後核對原始 RAW 的 SHA-256。
 
+### 顆粒、白平衡／膚色與 Zone
+
+```bash
+dotnet test tests/FilmBatch.Core.Tests/FilmBatch.Core.Tests.csproj -c Release \
+  --filter "FullyQualifiedName~GrainModelTests|FullyQualifiedName~SurveyRenderingTests|FullyQualifiedName~PhotoAnalysisTests|FullyQualifiedName~PhotoAdjustmentTests"
+dotnet test tests/FilmBatch.App.Tests/FilmBatch.App.Tests.csproj -c Release \
+  --filter "FullyQualifiedName~PhotoToolsTests"
+```
+
+涵蓋原始參考座標、非等比例取整代理圖的旋轉、次像素顆粒衰減、局部膚色／Zone、遮罩後的白平衡正向試算，以及提案、取消、復原與儲存邊界。GPU 數值比對仍須實際 GPU；沒有 GPU 的略過不能當成該路徑通過。
+
+桌面另須展開「照片工具」，以點選／拖曳操作中性區、空間候選與參考色，確認預覽不寫入，接受後一次復原還原全部欄位；再檢查膚色參考重複套用、最近一次 Zone 的 III／V／VIII 放置、雙錨點重複擬合不漂移。旋轉取樣的實際來源外接矩形須與畫布投影相符。顆粒三種模型、seed 與進階品質／明暗響應需在預覽和重開後均可見；操作與限制見[現行功能](grain-white-balance-survey.md#目前實作與操作)。
+
+真實 OS 失焦／重新啟用需要未鎖定的桌面。鎖定畫面下，Avalonia 原生視窗與控制項仍可供受控驗收，但不能據此聲稱 OS 焦點切換、實體滑鼠或鍵盤已通過；這些界線須另記，不能靠送出合成失焦事件假裝完成。
+
+
 ### GPU 讀回與 RAW 數值回歸
 
 ```bash

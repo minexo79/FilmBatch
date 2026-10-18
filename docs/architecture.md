@@ -264,6 +264,7 @@ flowchart LR
 | `CpuFakeRenderer` | `CpuFakeRenderer.cs` | **正式的 CPU 算圖器**（名稱同樣是歷史遺留），內部呼叫 `CpuPipeline`；無 GPU 或使用者強制軟體模式時使用 |
 | `FilmLookProcessing` | `FilmLookProcessing.cs` | 底片風格的 CPU 參考實作：LUT → 八色相帶（OKLCh）→ 暖色 → 褪色 → 依效果比例混合；`BandWeight` 為色相帶權重 |
 | `FilmLookUniforms` | `FilmLookUniforms.cs` | 傳給 `film/look.wgsl` 的 uniform（`Mix`、`Flags`、`Band0`…`Band7`，與 WGSL `struct LookParams` 對齊） |
+| `PhotoAdjustments` | `PhotoAdjustments.cs` | BasicLinear 後的羽化膚色與單調 Zone 亮度曲線；CPU 逐像素與有界分析共用純量數學，GPU 對應 `linear/photo_adjustments.wgsl` |
 | `Oklab` | `Oklab.cs` | 線性 sRGB ↔ OKLab 轉換（與 `look.wgsl` 的 `to_oklab`／`from_oklab` 同係數） |
 | `EffectAssets` | `EffectAssets.cs` | 解析外部素材：雙重曝光的第二張照片、漏光與灰塵的材質檔。材質庫為空時改用程序化效果 |
 
@@ -273,7 +274,7 @@ RAW 來源保持未夾取的浮點線性 Rec.2020，`Rgba16` 只在原圖比較�
 
 | 階段 | 色彩空間 | 模組 |
 |---|---|---|
-| ① 幾何 | 線性光 | 基本調整（曝光、色溫、色調）→ 鏡頭變形 → 多格分鏡 |
+| ① 幾何 | 線性光 | 基本調整（曝光、色溫、色調）→ 局部膚色 → Zone 曲線（僅場景來源）→ 鏡頭變形 → 多格分鏡 |
 | ② 光學 | 線性光 | 雙重曝光 → 散景 → 縮放旋轉模糊 → 動態模糊 → 暗角 → 光暈 → 漏光 |
 | ③ 底片 | 線性光 | 底片風格 → 古典版材 |
 | — | 線性 → sRGB | `linear_to_display` |
@@ -287,6 +288,7 @@ RAW 來源保持未夾取的浮點線性 Rec.2020，`Rgba16` 只在原圖比較�
 - C# 的 uniform record（`[StructLayout(LayoutKind.Sequential)]`）欄位順序、型別、對齊必須與 WGSL 的 `struct Params` 完全一致，通常以 `_pad` 補齊到 16 位元組的倍數。
 - GPU 只有 4 張工作紋理輪流使用（`Next(...)` 會避開正在讀的紋理）；新增需要多張中間結果的 pass 時要用 `reserve` 參數保護。
 - 半徑、大小類參數以**短邊比例**計算，預覽代理圖與原尺寸匯出的外觀才會一致。
+- 顆粒例外地以來源參考平面的短邊決定粒徑：`SourceImage.ReferenceWidth/Height` 穿過代理圖，輸出像素經裁切逆仿射回到該平面；三種模型共用座標、seed、明暗響應與像素足跡濾波。光學圓盤數截斷於每格 8，最大 λ=1.6 時截斷尾機率低於 0.0046%；不是精確片種或化學模擬。
 
 ### 4.7 Engine．算圖排程（Scheduling）
 
@@ -313,9 +315,10 @@ App 端由 `App/Services/PreviewService.cs` 包裝：核對來源世代、遞增
 |---|---|
 | `Imaging/ImageLoader` | 以 Magick.NET 解碼，來源 ICC 轉成 sRGB、套用方向，產生 16-bit RGBA 的 `SourceImage`；可指定長邊產生預覽代理圖。RAW（與含感光資料的 TIFF）先交給 `RawSourceLoader` |
 | `Imaging/Raw/RawSourceLoader` | RAW 解碼、起始外觀、分箱／去馬賽克、高光重建與色彩處理，產生浮點 Rec.2020 場景來源；有 gain table 的 DNG 不額外擬合全域 JPEG tone。CPU／GPU 共用晚期 RAW 收尾，來源載入不提前量化成 SDR |
-| `Imaging/SourceImage` | 一般影像保存 `Rgba16`；RAW 保存場景像素、相機色調／白平衡、共用幾何與語意遮罩。`Downscale` 在場景域縮放；算圖不改寫來源 |
+| `Imaging/SourceImage` | 一般影像保存 `Rgba16`；RAW 保存場景像素、相機色調／白平衡、共用幾何與語意遮罩。`Downscale` 在場景域縮放，保留原始已定向的 `ReferenceWidth/Height`；算圖不改寫來源 |
 | `Imaging/ImageHistogram` | 直方圖與裁切比例 |
 | `Imaging/SampleImages` | 產生「開啟範例照片」用的測試圖 |
+| `Imaging/PhotoAnalysis`／`ZonePlacement` | 至多 4096 點的工作線性 RGB 穩健取樣、相對參考色、候選白平衡正向擬合與 Zone 算術；重用有界取樣緩衝區，不建立全圖遮罩／顯示副本。WB 候選先於 semantic／Basic／局部調整套用，再聚合與計算殘差 |
 | `Exporting/BatchExporter` | 匯出主流程：`BuildJobs` 為每張照片建立不可變快照 → `RunAsync` 在背景依序讀檔、`Render16`、縮放、編碼、寫入 EXIF / ICC → 寫 `export_log.json` |
 | `Exporting/ExportModels` | `ExportOptions`（格式、品質、尺寸、目的地、檔名範本）、`ExportJob` |
 | `Exporting/ExportFileNames` | 檔名範本（例如 `{name}_{preset}`、`{index}`）展開，並移除各平台的非法字元 |
@@ -415,6 +418,7 @@ flowchart TB
 | `FilmstripViewModel` | 縮圖清單、多選、篩選、縮圖背景載入、覆寫 / 預設更新標記 |
 | `PreviewViewModel` | 預覽影像、縮放、兩個畫布共用的平移位置、分割對比、控制點、直方圖資料、右下角拍攝資訊（EXIF 跟著每次解碼的來源重讀，重開資料夾不沿用舊資訊） |
 | `FilmLookViewModel` | film 模組的底片縮圖格、色相修正預設縮圖格與色相帶編輯器（`Controls/FilmLookControl.axaml`）。縮圖由 `FilmLookThumbnails` 以焦點照片算出，只在模組展開時計算，鍵前綴 `film-look/`，與縮圖列共用低優先佇列 |
+| `Tools/PhotoToolsViewModel`／`PhotoRegionTool` | 基本參數頂端的照片工具；裁切逆仿射區域取樣、WB／膚色提案、同專案相對參考色與 Zone 錨點。背景只求解，UI 更新及一次 `SetValues` 接受都在 UI 執行緒 |
 
 #### 編輯生命週期
 
@@ -429,6 +433,7 @@ flowchart TB
 - RAW 的 `wb_mode=as-shot|custom`、自訂 2500–9900 K／色偏與 `mask_*` 只重算畫面，不重新解碼。控制項、JSON 專案、YAML 預設及直接建立的算圖輸入共用自訂色溫範圍；舊自訂值正規化至邊界，不改寫來源的拍攝白平衡中繼資料，也不改相對的 `basic.temperature`。遮罩精確保存 `Name`＋`InstanceId`；缺失或同名不明確時顯示不可用，不改成全圖作用。全尺寸算圖保留原有16-bit alpha與單像素細節，不先降成固定大小；上游 developed matte 會量化為8-bit，不能泛稱任意16-bit軟邊逐碼相同。
 - `embedded_lens`、`camera_local_tone`、`lens_database` 與模組啟用狀態屬於來源快取鍵。外部 Lensfun-format XML 只在缺少已驗證內嵌校正時匹配，拒絕 DTD／外部實體且限制檔案大小；不隨程式散布資料庫。校正的光學中心與半徑取預設裁切，再轉成 ActiveArea 的既有 opcode 慣例；warp、gain table 與語意遮罩共用輸出→有效 RAW 的逆映射。未設定／無匹配不加校正；明確設定但不存在或不可讀的資料庫回報錯誤，不靜默假裝已校正。
 - 解碼失敗／取消的快取項目不重用；外部檔案或資料夾修復後可用相同選項重新要求來源。過期解碼失敗必須同時核對來源選項，不能清除 undo 已還原的畫面。
+- 照片工具以服務、照片、來源及設定世代綁定提案；背景結果另核對請求序號。進入取樣視圖先取消已排隊的一般預覽，收到新影格才允許點選；接受前只疊加暫存設定。Esc（包含文字焦點）、失焦、收合、來源／設定變更、裁切替換與主 ViewModel 處置都不能套用過期提案。
 - `Zoom <= 0` 的 Fit 置中由 `PreviewCanvas.ZoomProperty` 的 class handler 清除 Pan，不只放在 `PreviewViewModel`。Gallery 等沒有綁定同一個 ViewModel 的獨立畫布也需要這個契約；一般畫布切換則仍保留共用 Pan。
 
 #### 大量照片載入與背景 CPU
