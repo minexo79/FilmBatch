@@ -28,6 +28,7 @@
 | 2026-10-18：隨附 JPEG XL 閉包 | `c9cd74d` — `build(raw): bundle pinned JPEG XL runtimes for Mac and Windows` | 固定 ABI 與來源／授權，不靠 Homebrew／PATH 掩蓋缺庫；SDK 的 RID negotiation 曾把主機 Mac dylib 選進 Windows 發佈，故 Engine／Raw 明確保留 RID。App 與 CLI 各自檢查實際封裝根目錄。[建置限制](building.md#macos)、[manifest](../src/FilmBatch.Raw/Native/Jxl/provenance.json)、`PortableJxlTests`／`JpegXlTests`。Windows 載入仍須實際執行。 |
 | 2026-10-18：修正非置中預設裁切 | `07eff8b` — `fix(raw): map Lensfun calibration to off-centre default crops` | 置中 fixture 會漏掉光學中心錯誤。Lensfun 的中心／半徑屬 `DefaultCrop`，執行時轉成完整 `ActiveArea` opcode 單位；warp 與 vignette 必須共用映射。[鏡頭契約](architecture.md#410-app介面層)、`LensProfileTests` 的非置中裁切案例；保留原本全畫框行為與精度。 |
 | 2026-10-18：只保留正式 RAW 收尾 | `cfe4cf9` — `refactor(raw): retire standalone GPU finishing path`；`6e3291a` — `docs(raw): close delayed-review acceptance and package evidence` | 刪除 `FinishRaw`／`raw_display_finish.wgsl` 的平行路徑與專用讀回，回歸改走產品實際的 `Render16`，不放寬原精度。舊 API 與 4096 alpha cap 不應再作修改範本。[RAW parity 記錄](superpowers/plans/2026-10-18-raw-pipeline-parity.md)、`RawGpuDisplayTests`，目前證據見本次稽核。 |
+| 2026-10-18：大量照片與即時白平衡 | `eac234b` — `feat(loading): prioritize photos with live CPU pacing and responsive RAW white balance` | 以有界泵及獨立前景入場取代逐照片等待；先送目前照片／可見縮圖，完成以點陣圖或失敗交付計數。CPU 70% 是可即時調整的合作式目標，不是硬性上限。相同來源已完成影格可持續顯示；失敗需攜帶預覽世代，不能消耗其他要求或堵塞後續縮圖。自訂 Kelvin 收斂至 2500–9900 K，不改拍攝白平衡或相對暖色。[載入契約](architecture.md#大量照片載入與背景-cpu)、[回歸](building.md#大量照片載入與即時預覽回歸)、[本次具條件的觀察](superpowers/plans/2026-10-18-progressive-photo-loading.md)。 |
 
 ## 合併不是線性重寫
 

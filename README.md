@@ -5,11 +5,11 @@
 
 ## 可以用來做什麼
 
-- **像 Lightroom 一樣批次修圖**：開啟整個資料夾，以縮圖列瀏覽，一次選多張照片套用同一組設定，再整批匯出。
+- **像 Lightroom 一樣批次修圖**：開啟整個資料夾，以縮圖列瀏覽，一次選多張照片套用同一組設定，再整批匯出。大量照片載入時顯示掃描、完成張數／總數、失敗數與耗時，優先目前照片及可見縮圖；可取消背景載入，並在背景工作或偏好設定中即時調整 CPU 目標（10–100%，預設 70%；不是硬性上限）。
 - **每張照片各有風格**：建立多個預設（例如「Portra 風 + 漏光」），每張照片可指定不同預設，並在預設上單張微調；只記錄差異，修改預設時其他照片自動同步。
 - **底片色彩 & 類比效果**：底片顏色模擬，內附 36 卷底片 LUT（來自 [RawTherapee Film Simulation Collection](http://rawtherapee.com/shared/HaldCLUT.zip)，CC BY-SA 4.0），可調效果比例、暖色、褪色與八色相帶修正，並以目前照片的縮圖挑選；搭配顆粒、光暈、漏光、暗角、焦外、動態模糊、鏡頭變形、雙重曝光、多格分鏡、灰塵刮痕等，共 16 個模組，以 GPU 即時預覽。
 - **非破壞性編輯**：原始檔永不修改；匯出 JPEG／16-bit TIFF／16-bit PNG，保留 EXIF 並嵌入 sRGB ICC。
-- **直接編輯 RAW**：支援 Sony、Canon（CR2／CR3）、Nikon、Fujifilm、Panasonic、Olympus、Pentax、Samsung、Leica、Hasselblad、Epson、Mamiya 與 DNG（解碼移植自 [LightCraft](https://github.com/storytold/lightcraft)）。保留場景線性高光供曝光調整，提供相機 Kelvin／色偏、內嵌語意遮罩局部調整與鏡頭校正；含 JPEG XL 的 DNG 使用隨附解碼器，不需安裝系統函式庫。不支援的 RAW 直接回報，不以內嵌預覽代替。
+- **直接編輯 RAW**：支援 Sony、Canon（CR2／CR3）、Nikon、Fujifilm、Panasonic、Olympus、Pentax、Samsung、Leica、Hasselblad、Epson、Mamiya 與 DNG（解碼移植自 [LightCraft](https://github.com/storytold/lightcraft)）。保留場景線性高光供曝光調整，提供相機白平衡／自訂 2500–9900 K＋色偏、內嵌語意遮罩局部調整與鏡頭校正；一般幅度的白平衡調整即更新預覽。含 JPEG XL 的 DNG 使用隨附解碼器，不需安裝系統函式庫。不支援的 RAW 直接回報，不以內嵌預覽代替。
 - **命令列批次輸出**：`filmbatch-cli` 可在腳本中直接套用已保存的設定匯出。
 
 ## 快速開始

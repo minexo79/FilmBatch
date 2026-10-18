@@ -11,6 +11,7 @@
 | 調整參數、存檔或 undo | [參數 schema](architecture.md#41-core參數-schemaparams) | [專案設定](architecture.md#42-core專案與照片設定projects) → [復原](architecture.md#43-core復原堆疊commands) |
 | 排查 RAW、白平衡、遮罩或鏡頭 | [讀檔與色彩契約](architecture.md#48-engine影像讀取與批次匯出imaging--exporting) | [RAW 參考輸出與限制](../tools/raw-oracle/README.md) → [八項整合需求](superpowers/plans/2026-10-18-raw-pipeline-parity.md) |
 | 排查裁切、切換照片或非同步重載 | [介面生命週期](architecture.md#410-app介面層) | [生命週期回歸](building.md#編輯生命週期回歸) → [RAW 介面回歸](building.md#raw-介面回歸) |
+| 排查大量資料夾載入、縮圖進度或 CPU 佔用 | [載入與背景 CPU](architecture.md#大量照片載入與背景-cpu) | [載入／即時預覽回歸](building.md#大量照片載入與即時預覽回歸) → [本次需求與觀察](superpowers/plans/2026-10-18-progressive-photo-loading.md) |
 | 調整底片色彩或新增 LUT | [底片風格](film-looks.md) | [LUT 轉換工具](../tools/film-luts/README.md) → [授權聲明](../THIRD-PARTY-NOTICES.txt) |
 | 排查 GPU 精度或效能 | [算圖管線](architecture.md#46-engine算圖管線rendering) | [GPU／SIMD 選型與量測](adr/0003-gpu-stack-decision.md) → [Shader 驗證](building.md#shader-驗證) |
 | 修改匯出或 EXIF | [匯出安全規則](architecture.md#48-engine影像讀取與批次匯出imaging--exporting) | [CLI](building.md#命令列工具cli)；區分算圖後的 DNG 與保留感光樣本的 `raw convert` |

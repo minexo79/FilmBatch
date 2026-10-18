@@ -49,9 +49,10 @@ dotnet test FilmBatch.sln -c Release --logger trx --results-directory "$work/tes
 | 要查的區域 | 測試入口 | 現行契約 |
 |---|---|---|
 | 參數、持久化、貼上、匯出快照 | `PhotoOperationsTests`、`ProjectServiceTests`、`PersistenceTests`、`BatchExporterTests` | [Core 與復原](docs/architecture.md#41-core參數-schemaparams) |
-| RAW 場景域、白平衡、語意遮罩、鏡頭、DNG | `RawSceneIntegrationTests`、`RawWhiteBalanceTests`、`RawSemanticRenderingTests`、`LensProfileTests`、`RawDngConversionTests` | [RAW／匯出](docs/architecture.md#48-engine影像讀取與批次匯出imaging--exporting) |
-| CPU／GPU 行為與精度 | `EffectPipelineTests`、`GpuSpikeTests`、`RawGpuDisplayTests` | [算圖管線](docs/architecture.md#46-engine算圖管線rendering)、[ADR 0003](docs/adr/0003-gpu-stack-decision.md) |
+| RAW 場景域、白平衡、語意遮罩、鏡頭、DNG | `RawSceneIntegrationTests`、`RawWhiteBalanceTests`、`RawWhiteBalanceRangeTests`、`RawSemanticRenderingTests`、`LensProfileTests`、`RawDngConversionTests` | [RAW／匯出](docs/architecture.md#48-engine影像讀取與批次匯出imaging--exporting) |
+| CPU／GPU 行為、精度與排程失敗 | `EffectPipelineTests`、`GpuSpikeTests`、`RawGpuDisplayTests`、`RenderSchedulerTests`、`RenderSchedulerReconfigureTests` | [算圖管線](docs/architecture.md#46-engine算圖管線rendering)、[排程](docs/architecture.md#47-engine算圖排程scheduling)、[ADR 0003](docs/adr/0003-gpu-stack-decision.md) |
 | 非同步來源、裁切取消、undo、視窗狀態 | `EditorLifecycleTests`、`PreviewInteractionTests`、`WindowLifecycleTests`、`RawControlsTests`、`RawSourceLifecycleTests` | [編輯生命週期](docs/architecture.md#410-app介面層) |
+| 大量照片載入、前景／可見縮圖優先、即時 CPU 與預覽交付 | `BulkLoadingTests`、`CacheAdmissionTests`、`FilmstripLoadingTests`、`BackgroundLoadingPreferencesTests`、`PreviewDeliveryTests` | [載入與背景 CPU](docs/architecture.md#大量照片載入與背景-cpu)、[回歸與桌面檢查](docs/building.md#大量照片載入與即時預覽回歸) |
 | 底片 LUT、色相帶、舊設定移除 | `FilmLutTests`、`FilmLookTests`、`RetiredParamsTests` | [底片契約與來源](docs/film-looks.md) |
 | JPEG XL ABI、樣本與錯誤路徑 | `PortableJxlTests`、`JpegXlTests` | [發佈閉包](docs/building.md#macos)、[native manifest](src/FilmBatch.Raw/Native/Jxl/provenance.json) |
 
