@@ -6,8 +6,8 @@ using FilmBatch.Gpu.Device;
 using FilmBatch.Gpu.Resources;
 using FilmBatch.Gpu.ShaderSystem;
 
-if (args.Length == 0 || args[0] is not ("float" or "uint" or "decode" or "decode-dispose" or "decode-single" or "copy"))
-    throw new ArgumentException("Expected float, uint, decode, decode-dispose, decode-single, or copy; optional --sync-stages.");
+if (args.Length == 0 || args[0] is not ("float" or "uint" or "decode" or "decode-dispose" or "decode-single" or "copy" or "decode-select" or "decode-exp"))
+    throw new ArgumentException("Expected a documented upload/decode probe mode; optional --sync-stages.");
 var mode = args[0];
 var syncStages = args.Contains("--sync-stages");
 const int width = 64, height = 48;
@@ -49,6 +49,15 @@ try
         GpuTextureUsage.Sampled | GpuTextureUsage.Storage, "probe linear") : null;
     var decodeShader = decode ? new ShaderLibrary().Load("io/decode_rgba16.wgsl") : null;
     if (mode == "copy") decodeShader = decodeShader!.Replace("srgb_to_linear(raw.rgb)", "raw.rgb", StringComparison.Ordinal);
+    if (mode is "decode-select" or "decode-exp")
+    {
+        var baseValue = "(raw.rgb + vec3f(0.055)) / vec3f(1.055)";
+        var high = mode == "decode-select"
+            ? $"pow({baseValue}, vec3f(2.4))"
+            : $"exp2(log2({baseValue}) * vec3f(2.4))";
+        decodeShader = decodeShader!.Replace("srgb_to_linear(raw.rgb)",
+            $"select({high}, raw.rgb / vec3f(12.92), raw.rgb <= vec3f(0.04045))", StringComparison.Ordinal);
+    }
     using var decoder = decode
         ? gpu.CreateKernel(decodeShader!, "main",
             [BindingSpec.TextureUint, BindingSpec.StorageTexture(GpuTextureFormat.Rgba32Float)], "probe real decoder")
