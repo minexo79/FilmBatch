@@ -1,5 +1,5 @@
 #:project ../src/FilmBatch.Gpu/FilmBatch.Gpu.csproj
-// 驗證編譯後嵌入的 WGSL，使用產品的 ShaderLibrary 展開 #include。
+// 驗證編譯後嵌入的 WGSL 編譯單元；common/ 片段透過產品的 ShaderLibrary 展開後一起驗證。
 // dotnet run build/CheckShaders.cs -- --naga <執行檔>
 // --shaders <Shaders 根目錄> 可驗證開發中的 shader；省略時驗證嵌入資源。
 
@@ -16,6 +16,8 @@ var files = (devFolder is null
         .Select(name => name[prefix.Length..])
     : Directory.EnumerateFiles(devFolder, "*.wgsl", SearchOption.AllDirectories)
         .Select(file => Path.GetRelativePath(devFolder, file).Replace('\\', '/')))
+    // common/ 是 include 片段，可能引用呼叫端的資源宣告，不是獨立編譯單元。
+    .Where(file => !file.Contains("/common/", StringComparison.Ordinal))
     .Order(StringComparer.Ordinal).ToArray();
 if (files.Length == 0)
 {

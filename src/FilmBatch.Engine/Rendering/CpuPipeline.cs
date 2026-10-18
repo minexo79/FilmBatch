@@ -1,6 +1,7 @@
 using FilmBatch.Core.Params;
 using FilmBatch.Core.Random;
 using FilmBatch.Engine.Imaging;
+using FilmBatch.Engine.Imaging.Raw;
 using System.Runtime.Intrinsics;
 
 namespace FilmBatch.Engine.Rendering;
@@ -34,6 +35,13 @@ public static class CpuPipeline
 
         var a = new float[n * 4];
         var b = new float[n * 4];
+
+        if (source.Scene is not null)
+        {
+            if (p.RawWhiteBalanceMatrix is { } wb)
+                ApplyMatrix(cur, RawFinishParams.WorkingWhiteBalance(wb).ToF32());
+            RawSemanticAdjustments.Apply(cur, w, h, source, p, ct);
+        }
 
         // 線性部分：基本調整（曝光 / 色溫 / 色調）
         if (p.BasicOn && (p.Exposure != 0 || p.Temperature != 0 || p.Tint != 0))
@@ -73,7 +81,8 @@ public static class CpuPipeline
         ct.ThrowIfCancellationRequested();
 
         // ③→④ 顯示空間
-        Parallel.For(0, n, i =>
+        if (source.Scene is { } scene) RawDisplay.FinishLinear(cur, scene.Tone);
+        else Parallel.For(0, n, i =>
         {
             var s = i * 4;
             // MathF.Pow 保留純量：M3 實測 Exp(Log) 向量組合反而較慢。
@@ -122,7 +131,23 @@ public static class CpuPipeline
 
     internal static float[] DecodeLinear(SourceImage source)
     {
-        var result = new float[source.Rgba16.Length];
+        var result = new float[checked(source.Width * source.Height * 4)];
+        if (source.Scene is { } scene)
+        {
+            var matrix = RawFinishParams.SceneToWorking(null).ToF32();
+            var data = scene.Image.Data;
+            Parallel.For(0, source.Width * source.Height, pixel =>
+            {
+                var i = pixel * 3;
+                var o = pixel * 4;
+                var r = data[i]; var g = data[i + 1]; var b = data[i + 2];
+                result[o] = matrix[0] * r + matrix[1] * g + matrix[2] * b;
+                result[o + 1] = matrix[3] * r + matrix[4] * g + matrix[5] * b;
+                result[o + 2] = matrix[6] * r + matrix[7] * g + matrix[8] * b;
+                result[o + 3] = 1;
+            });
+            return result;
+        }
         var input = source.Rgba16;
         var scale = Vector128.Create(65535f);
         Parallel.For(0, source.Width * source.Height, pixel =>
@@ -135,6 +160,18 @@ public static class CpuPipeline
                 .CopyTo(result, i);
         });
         return result;
+    }
+
+    private static void ApplyMatrix(float[] rgba, float[] m)
+    {
+        Parallel.For(0, rgba.Length / 4, pixel =>
+        {
+            var i = pixel * 4;
+            var r = rgba[i]; var g = rgba[i + 1]; var b = rgba[i + 2];
+            rgba[i] = m[0] * r + m[1] * g + m[2] * b;
+            rgba[i + 1] = m[3] * r + m[4] * g + m[5] * b;
+            rgba[i + 2] = m[6] * r + m[7] * g + m[8] * b;
+        });
     }
 
     /// <summary>

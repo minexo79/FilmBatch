@@ -198,7 +198,7 @@ public sealed class RawGpuDisplayTests
     }
 
     [Fact]
-    public void Gpu_InsufficientBandBudget_LoadsUnchangedCpuPixels()
+    public void Gpu_InsufficientBandBudget_LoadKeepsSceneForLateRendering()
     {
         using var gpu = TryCreateGpu(new EffectRendererOptions { MaxBandBytes = 1 });
         Assert.SkipWhen(gpu is null, "沒有可用的 GPU 介面卡");
@@ -208,11 +208,14 @@ public sealed class RawGpuDisplayTests
         {
             var path = WriteLinearDng(Path.Combine(folder, "fallback.dng"), 8, 7);
             var expected = ImageLoader.LoadFull(path);
-            var actual = ImageLoader.LoadFull(path, default, gpu!.FinishRaw,
-                TestContext.Current.CancellationToken, out var usedGpu, out var reason);
-            Assert.False(usedGpu);
-            Assert.NotNull(reason);
-            Assert.Equal(expected.Rgba16, actual.Rgba16);
+            var actual = ImageLoader.LoadFull(path);
+            Assert.NotNull(actual.Scene);
+            var rendered = gpu!.Render16(actual, FilmBatch.Core.Params.ModuleCatalog.Defaults,
+                TestContext.Current.CancellationToken);
+            var cpu = CpuPipeline.Process(expected, FilmBatch.Core.Params.ModuleCatalog.Defaults,
+                null, TestContext.Current.CancellationToken);
+            Assert.False(gpu.UsingCpu);
+            Assert.InRange(MaxAbsDiff(cpu.Rgba16, rendered.Rgba16), 0, MaxParityCodes);
         }
         finally { Directory.Delete(folder, recursive: true); }
     }
@@ -233,13 +236,16 @@ public sealed class RawGpuDisplayTests
     [InlineData(true)]
     public async Task RawExport_FullResolution_PreservesPixelsMetadataAndFinishingDevice(bool forceRawFallback)
     {
-        using (var probe = TryCreateGpu())
-            Assert.SkipWhen(probe is null, "沒有可用的 GPU 介面卡");
+        using var probe = TryCreateGpu();
+        Assert.SkipWhen(probe is null, "沒有可用的 GPU 介面卡");
+        // 晚期 RAW 收尾不再獨立退回 CPU；用真實紋理尺寸限制驗證整個匯出 fallback。
+        int width = forceRawFallback ? checked((int)probe!.AdapterInfo.MaxTextureDimension2D + 1) : 64;
+        int height = forceRawFallback ? 2 : 48;
         var folder = Path.Combine(Path.GetTempPath(), "filmbatch-rawgpu-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(folder);
         try
         {
-            var sourcePath = WriteLinearDng(Path.Combine(folder, "scene.dng"), 64, 48);
+            var sourcePath = WriteLinearDng(Path.Combine(folder, "scene.dng"), width, height);
             var project = Project.Open(folder, SamplePresets.PortraWarm);
             var library = new PresetLibrary(SamplePresets.Create());
             var service = new ProjectService(project, library, new CommandStack());
@@ -249,13 +255,8 @@ public sealed class RawGpuDisplayTests
                 Destination = dest, FileNameTemplate = "{name}", Format = ExportFormat.Tiff16,
             };
             var request = new ExportRequest { Service = service, Files = ["scene.dng"], Options = options };
-            var rendererOptions = new EffectRendererOptions
-            {
-                // 一列 RGBA16 可放入，但一列 RGB float 放不入：只讓 RAW 收尾退回 CPU。
-                MaxBandBytes = forceRawFallback ? 64UL * 8 : 0,
-            };
             var summary = await BatchExporter.RunAsync(request,
-                () => GpuSpikeRenderer.Create(effectOptions: rendererOptions),
+                () => GpuSpikeRenderer.Create(),
                 progress: null, TestContext.Current.CancellationToken);
             Assert.Equal(0, summary.Failed);
             var output = Assert.Single(summary.OutputFiles);
@@ -263,7 +264,7 @@ public sealed class RawGpuDisplayTests
             using var cpu = new CpuFakeRenderer();
             var expected = cpu.Render16(ImageLoader.LoadFull(sourcePath),
                 service.SettingsFor("scene.dng"), TestContext.Current.CancellationToken);
-            Assert.Equal((64, 48), (actual.Width, actual.Height));
+            Assert.Equal((width, height), (actual.Width, actual.Height));
             Assert.True(MaxAbsDiff(expected.Rgba16, actual.Rgba16) <= 64);
             Assert.Equal("FilmBatch RAW GPU Proof", PhotoExif.Read(output).Camera);
             using var log = System.Text.Json.JsonDocument.Parse(
@@ -322,7 +323,7 @@ public sealed class RawGpuDisplayTests
                 File.ReadAllText(Path.Combine(folder, ".filmbatch", "export_log.json")));
             var entry = log.RootElement.GetProperty("Entries")[0];
             Assert.Equal("ok", entry.GetProperty("Status").GetString());
-            Assert.Contains("RAW GPU", entry.GetProperty("Renderer").GetString(), StringComparison.Ordinal);
+            Assert.DoesNotContain("CPU", entry.GetProperty("Renderer").GetString(), StringComparison.Ordinal);
         }
         finally { Directory.Delete(folder, recursive: true); }
     }

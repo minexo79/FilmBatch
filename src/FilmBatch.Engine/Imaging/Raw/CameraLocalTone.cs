@@ -18,15 +18,12 @@ internal static class CameraLocalTone
 {
     /// <summary>
     /// 由 <paramref name="raw"/> 建立局部色調（lightcraft <c>local_tone()</c>）：
-    /// 增益表＋預設裁切（相對有效區）＋EXIF 方向。無表時為 null。
+    /// 增益表＋完整鏡頭幾何快照＋預設裁切（相對有效區）＋EXIF 方向。無表時為 null。
     /// </summary>
-    internal static (GainTableMap Map, SourcePlacement Placement)? For(RawImage raw)
+    internal static (GainTableMap Map, RawSourceGeometry Placement)? For(RawImage raw)
     {
         if (raw.Color.Profile.GainTableMap is not { } map) return null;
-        var a = raw.ActiveArea;
-        var (aw, ah) = ((double)Math.Max(1, a.Width), (double)Math.Max(1, a.Height));
-        var c = raw.DevelopCrop(a.Width, a.Height);
-        var placement = new SourcePlacement(c.X / aw, c.Y / ah, c.Width / aw, c.Height / ah, raw.Orientation);
+        var placement = RawSourceGeometry.Create(raw);
         return (map, placement);
     }
 
@@ -35,7 +32,7 @@ internal static class CameraLocalTone
     /// <paramref name="image"/> 須為定向後的完整顯影（預設裁切；縮放後亦可，位置以正規化座標計算）。
     /// <paramref name="enabled"/> 為 false（預設）時不做任何事；回傳是否實際套用。
     /// </summary>
-    internal static bool Apply(RgbImage image, RawImage raw, bool enabled)
+    internal static bool Apply(RgbImage image, RawImage raw, bool enabled, RawSourceGeometry? geometry = null)
     {
         if (!enabled) return false;
         if (For(raw) is not { } lt) return false;
@@ -46,7 +43,7 @@ internal static class CameraLocalTone
         var data = image.Data;
         var (w, h) = (image.Width, image.Height);
         if (w <= 0 || h <= 0 || data.Length != w * h * 3) return false;
-        var placement = lt.Placement;
+        var placement = geometry ?? lt.Placement;
         var orientedW = (double)w;
         var orientedH = (double)h;
         // 定向後影像的畫素中心 → 定向後正規化座標 → 有效區相對位置
@@ -78,7 +75,7 @@ internal static class CameraLocalTone
     /// </summary>
     internal static RgbImage DevelopForTest(RawImage raw)
     {
-        var image = raw.Develop(DemosaicMethod.Bilinear);
+        var image = RawSourceGeometry.Develop(raw, DemosaicMethod.Bilinear);
         var xy = CameraColor.AsShotWhiteXy(raw);
         var transform = CameraColor.CameraTransform(raw, xy);
         var tables = ProfileTables.Create(raw.Color.Profile, CameraColor.IlluminantWeight(raw.Color, xy));

@@ -21,22 +21,8 @@ internal static class RawSourceLoader
         || Path.GetExtension(path).Equals(".tiff", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>一般影像回傳 null；可辨識但不支援或損毀的 RAW 一律回報錯誤，不改用嵌入 JPEG。</summary>
-    internal static SourceImage? TryLoad(string path, int edge, RawLoadOptions rawOptions = default) =>
-        TryLoad(path, edge, rawOptions, finisher: null, cancellationToken: default,
-            out _, out _);
-
-    /// <summary>
-    /// 全解析度匯出用：與 <see cref="TryLoad(string, int, RawLoadOptions)"/> 相同，但 finishing 可走
-    /// 呼叫端傳入的 renderer-owned GPU encoder（同一匯出執行緒；絕不在此建立 GPU）。
-    /// <paramref name="finisher"/> 為 null 時走 CPU；GPU 回傳 (null, reason) 時誠實 fallback 並回報原因。
-    /// 直接預覽／縮圖載入一律用 CPU overload，不經 GPU。
-    /// </summary>
-    internal static SourceImage? TryLoad(string path, int edge, RawLoadOptions rawOptions,
-        RawDisplayFinisher? finisher, CancellationToken cancellationToken,
-        out bool usedGpu, out string? fallbackReason)
+    internal static SourceImage? TryLoad(string path, int edge, RawLoadOptions rawOptions = default)
     {
-        usedGpu = false;
-        fallbackReason = null;
         if (!IsCandidate(path)) return null;
         if (!IsRawExtension(path))
         {
@@ -50,24 +36,11 @@ internal static class RawSourceLoader
         catch (RawException ex) when (!IsRawExtension(path) && ex.Kind == RawErrorKind.NotRaw) { return null; }
         var info = raw.Info();
         var masks = rawOptions.IncludeSemanticMasks ? FilmBatch.Raw.RawSemanticMasks.Read(bytes) : [];
-        var (image, tone) = DevelopLinear(raw, bytes, edge, rawOptions);
-        ushort[] rgba16;
-        if (finisher is not null)
-        {
-            var finished = finisher(image, tone, cancellationToken);
-            if (finished is { Pixels: { } pixels })
-            {
-                usedGpu = true;
-                rgba16 = pixels;
-            }
-            else
-            {
-                fallbackReason = finished.FallbackReason;
-                rgba16 = RawDisplay.Encode(image, tone);
-            }
-        }
-        else rgba16 = RawDisplay.Encode(image, tone);
-        return new SourceImage(image.Width, image.Height, rgba16)
+        var directory = rawOptions.LensDatabasePath;
+        if (!string.IsNullOrWhiteSpace(directory) && !Path.IsPathRooted(directory))
+            directory = Path.GetFullPath(directory, Path.GetDirectoryName(Path.GetFullPath(path))!);
+        var scene = DevelopScene(raw, bytes, edge, rawOptions with { LensDatabasePath = directory });
+        return new SourceImage(scene)
         {
             FilePath = Path.GetFullPath(path), RawOptions = rawOptions, RawInfo = info, SemanticMasks = masks,
         };
@@ -177,16 +150,27 @@ internal static class RawSourceLoader
     /// <summary>保留線性 Rec.2020,直到相機曲線與 sRGB 編碼;嵌入 JPEG 只用來估計相機外觀。</summary>
     internal static (RgbImage Image, CameraTone? Tone) DevelopLinear(RawImage raw, ReadOnlyMemory<byte> bytes, int edge, RawLoadOptions rawOptions = default)
     {
+        var scene = DevelopScene(raw, bytes, edge, rawOptions);
+        return (scene.Image, scene.Tone);
+    }
+
+    private static RawSceneData DevelopScene(RawImage raw, ReadOnlyMemory<byte> bytes, int edge, RawLoadOptions rawOptions)
+    {
         var list3 = raw.Opcodes.List3;
-        var lens = rawOptions.EmbeddedLensCorrections ? CameraPreviewLens.LensGeometryOf(list3) : null;
-        var vignette = rawOptions.EmbeddedLensCorrections
-            ? EmbeddedVignette.FromList3(list3, raw.ActiveArea, raw.Crop, raw.Orientation) : null;
-        // 停用時移除鏡頭運算算碼（維持舊外觀）；啟用時保留,由 raw.Develop 在去馬賽克後套用。
-        if (!rawOptions.EmbeddedLensCorrections) list3.RemoveAll(op => op.IsLensCorrection());
+        // Match against the original embedded corrections first: disabling them must not
+        // cause an external profile to replace an embedded match or remove an external fallback.
+        var disabled = !rawOptions.EmbeddedLensCorrections
+            ? list3.Where(op => op.IsLensCorrection()).ToArray() : [];
+        LensProfiles.ApplyFallback(raw, rawOptions.LensDatabasePath);
+        if (disabled.Length > 0) list3.RemoveAll(op => disabled.Any(original => ReferenceEquals(original, op)));
+        var lens = CameraPreviewLens.LensGeometryOf(list3);
+        var vignette = EmbeddedVignette.FromList3(list3, raw.ActiveArea, raw.Crop, raw.Orientation);
         var (xy, transform, look) = CameraPreview.StartingColour(raw, bytes, lens, vignette);
+        var whiteBalance = RawWhiteBalance.Create(raw, xy, transform, look);
         var factor = BinFactor(raw, edge);
         var binned = factor is { } k ? raw.DevelopBinnedMasked(k, HighlightClip) : null;
-        var image = binned?.Image ?? raw.Develop(edge <= 600 ? DemosaicMethod.Bilinear : DemosaicMethod.Ahd);
+        var image = binned?.Image ?? RawSourceGeometry.Develop(raw, edge <= 600 ? DemosaicMethod.Bilinear : DemosaicMethod.Ahd);
+        var geometry = RawSourceGeometry.Create(raw, binned is not null ? factor ?? 1 : 1);
         raw.Data = new RawData.U16([]);
         var matrix = look is null ? transform.Matrix : look.Matrix.Mul(transform.Matrix);
         var white = ClippedWhite(matrix);
@@ -201,9 +185,9 @@ internal static class RawSourceLoader
         if (Math.Max(image.Width, image.Height) > edge)
             image = Resample.Fit(image, edge, edge, ResampleFilter.Box);
         image = image.Oriented(raw.Orientation);
-        CameraLocalTone.Apply(image, raw, rawOptions.CameraLocalTone);
+        CameraLocalTone.Apply(image, raw, rawOptions.CameraLocalTone, geometry);
         var tone = look?.Tone ?? DngTone(raw.Color.Profile.ToneCurve);
-        return (image, tone);
+        return new RawSceneData(image, tone, whiteBalance, geometry);
     }
 
     private static void ApplyColour(RgbImage image, float[] wb, Mat3 matrix, float gain, ProfileTables? tables, HueSat? hueSat)
@@ -224,9 +208,9 @@ internal static class RawSourceLoader
                 if (tables is not null) (r, g, b) = tables.Apply(r, g, b, gain);
                 else { r *= gain; g *= gain; b *= gain; }
                 if (hueSat is not null) (r, g, b) = hueSat.Apply(r, g, b);
-                data[i] = r > 0 ? r : 0;
-                data[i + 1] = g > 0 ? g : 0;
-                data[i + 2] = b > 0 ? b : 0;
+                data[i] = float.IsFinite(r) && r > 0 ? r : 0;
+                data[i + 1] = float.IsFinite(g) && g > 0 ? g : 0;
+                data[i + 2] = float.IsFinite(b) && b > 0 ? b : 0;
             }
         });
     }

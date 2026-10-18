@@ -39,7 +39,7 @@ public sealed class SettingsJsonConverter : JsonConverter<Settings>
         var expected = definition.Kind switch
         {
             ParamKind.Bool => ValueKind.Bool,
-            ParamKind.Choice or ParamKind.Path or ParamKind.Curve => ValueKind.Text,
+            ParamKind.Choice or ParamKind.Path or ParamKind.Curve or ParamKind.Text => ValueKind.Text,
             _ => ValueKind.Number,
         };
         if (value.Kind != expected) throw new InvalidDataException($"Invalid value type: {key}");

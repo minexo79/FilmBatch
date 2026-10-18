@@ -1,6 +1,7 @@
 // Copyright (c) 2026 ArtCraft Team and the LightCraft contributors，MIT OR Apache-2.0；為 FilmBatch 改寫為 C#。
 // RAW 顯示收尾：沿用 RawDisplay.Encode 的運算順序；同一算圖器快取 kernel，
 // 輸入與輸出皆依實際緩衝區上限分帶，所有暫存資源於呼叫結束時釋放。
+using System.Numerics;
 using System.Runtime.InteropServices;
 using FilmBatch.Gpu.Device;
 using FilmBatch.Gpu.Resources;
@@ -9,13 +10,6 @@ using FilmBatch.Raw.Color;
 using FilmBatch.Raw.Raster;
 
 namespace FilmBatch.Engine.Imaging.Raw;
-
-/// <summary>
-/// RAW finishing 的 GPU 呼叫方式：由 BatchExporter 在匯出執行緒傳入 renderer 擁有的 encoder。
-/// 回傳 (null, reason) 表示應走 CPU；此處不建立 GPU 裝置。
-/// </summary>
-internal delegate (ushort[]? Pixels, string? FallbackReason) RawDisplayFinisher(
-    RgbImage image, CameraTone? tone, CancellationToken ct);
 
 /// <summary>
 /// <c>io/raw_display_finish.wgsl</c> 的 renderer-owned 包裝：延遲編譯、列帶執行、實際上限內分塊。
@@ -29,6 +23,47 @@ internal sealed class RawDisplayGpu : IDisposable
     private readonly ulong _bandCap;
     private ComputeKernel? _kernel;
     private bool _disposed;
+    private ComputeKernel? _textureKernel;
+    private GpuBuffer? _toneLut, _chromaLut, _textureUniform;
+    private CameraTone? _cachedTone;
+    private bool _toneReady;
+
+    // Records the finish directly between linear effects and display effects. No CPU readback.
+    internal void Dispatch(GpuCommandList commands, GpuTexture input, GpuTexture output, CameraTone? tone)
+    {
+        Prepare(tone);
+        var f = RawFinishParams.Working;
+        var m = f.Output; var conversion = f.Input;
+        var values = new WorkingUniforms(new FinishUniforms(m[0], m[1], m[2], 0,
+            m[3], m[4], m[5], 0, m[6], m[7], m[8], 0, output.Width, output.Height, 0, 0),
+            new Vector4(conversion[0], conversion[1], conversion[2], 0),
+            new Vector4(conversion[3], conversion[4], conversion[5], 0),
+            new Vector4(conversion[6], conversion[7], conversion[8], 0));
+        _gpu.WriteBuffer(_textureUniform!, values);
+        commands.Dispatch2D(_textureKernel!, [input, _toneLut!, _chromaLut!, output, _textureUniform!], output.Width, output.Height);
+    }
+
+    internal void Prepare(CameraTone? tone)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        _textureKernel ??= _gpu.CreateKernel(_shaders.Load("io/raw_working_finish.wgsl"), "main",
+            [BindingSpec.TextureFloat, BindingSpec.StorageRead, BindingSpec.StorageRead,
+             BindingSpec.StorageTexture(GpuTextureFormat.Rgba32Float), BindingSpec.Uniform], "raw working finish");
+        if (!_toneReady || !ReferenceEquals(_cachedTone, tone))
+        {
+            var map = tone is null ? ToneMap.Create(0, 0, 0) : ToneMap.Camera(tone, 0, 0, 0);
+            var lut = map.Lut(); var chroma = map.ChromaLut();
+            _toneLut ??= _gpu.CreateBuffer((ulong)lut.Length * 4, GpuBufferUsage.Storage | GpuBufferUsage.CopyDst, "raw tone");
+            _chromaLut ??= _gpu.CreateBuffer((ulong)chroma.Length * 4, GpuBufferUsage.Storage | GpuBufferUsage.CopyDst, "raw chroma");
+            _gpu.WriteBuffer<float>(_toneLut, lut);
+            _gpu.WriteBuffer<float>(_chromaLut, chroma);
+            _cachedTone = tone; _toneReady = true;
+        }
+        _textureUniform ??= _gpu.CreateBuffer(112, GpuBufferUsage.Uniform | GpuBufferUsage.CopyDst, "raw working finish parameters");
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private readonly record struct WorkingUniforms(FinishUniforms Finish, Vector4 Scene0, Vector4 Scene1, Vector4 Scene2);
 
     internal RawDisplayGpu(GpuDevice gpu, ShaderLibrary shaders, ulong maxBandBytes = 0)
     {
@@ -122,11 +157,20 @@ internal sealed class RawDisplayGpu : IDisposable
             "io/raw_display_finish");
     }
 
+    internal void ReleaseWorking()
+    {
+        _toneLut?.Dispose(); _chromaLut?.Dispose(); _textureUniform?.Dispose();
+        _toneLut = _chromaLut = _textureUniform = null;
+        _cachedTone = null; _toneReady = false;
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
         _kernel?.Dispose();
+        _textureKernel?.Dispose();
+        ReleaseWorking();
     }
 
     // 與 WGSL 對齊：三列 vec4f 矩陣與一組 16-byte 列帶參數。

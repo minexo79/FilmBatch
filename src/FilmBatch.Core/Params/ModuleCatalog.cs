@@ -14,11 +14,27 @@ public static class ModuleCatalog
     public static IReadOnlyList<ModuleSchema> Modules { get; } =
     [
         // RAW：來源現像（效果處理之前的來源開發），排在管線最前面。
+        // wb_mode/temperature/tint 與 mask_* 是算圖設定（不進 RawLoadOptions、不重新解碼）；
+        // lens_database 屬於來源快取鍵。basic 的相對色溫/色調仍是獨立的藝術效果，不換單位。
         new("raw", "RAW 原廠處理", ModuleGroup.Basic, PasteCategory.Color,
         [
             Bool(ModuleSchema.EnabledKey, "啟用"),
             Bool("embedded_lens", "內嵌鏡頭校正", true),
             Bool("camera_local_tone", "相機局部色調"),
+            Directory("lens_database", "外部鏡頭資料庫"),
+            Choice("wb_mode", "白平衡", O("as-shot", "拍攝值"), O("custom", "自訂")),
+            Float("temperature", "色溫（K）", 6500, 1000, 50000, 50, "K"),
+            Float("tint", "色調（WB）", 0, -150, 150),
+            Bool("mask_enabled", "語意遮罩調整"),
+            Text("mask_name", "遮罩"),
+            Text("mask_instance", "遮罩實例"),
+            Bool("mask_invert", "反轉遮罩"),
+            Float("mask_amount", "遮罩強度", 100, 0, 100, 1, "%"),
+            Float("mask_exposure", "遮罩曝光", 0, -5, 5, 0.05, "EV"),
+            Float("mask_temperature", "遮罩色溫（相對）", 0, -100, 100),
+            Float("mask_tint", "遮罩色調（相對）", 0, -100, 100),
+            Float("mask_contrast", "遮罩對比（相對）", 0, -100, 100),
+            Float("mask_saturation", "遮罩飽和度（相對）", 0, -100, 100),
         ]),
         // 裁切：效果階段的第一個（docs/cut-and-mask/plan.md D2）；中心點不叫 center_x/y，避免自動產生畫布控制點。
         new("crop", "裁切", ModuleGroup.Geometry, PasteCategory.Crop,
@@ -41,8 +57,8 @@ public static class ModuleCatalog
         [
             Bool(ModuleSchema.EnabledKey, "啟用", true),
             Float("exposure", "曝光", 0, -3, 3, 0.05, "EV"),
-            Float("temperature", "色溫", 0, -100, 100),
-            Float("tint", "色調", 0, -100, 100),
+            Float("temperature", "色溫（相對）", 0, -100, 100),
+            Float("tint", "色調（相對）", 0, -100, 100),
             Float("brightness", "亮度", 0, -100, 100),
             Float("contrast", "對比", 0, -100, 100),
             Float("highlights", "亮部", 0, -100, 100),

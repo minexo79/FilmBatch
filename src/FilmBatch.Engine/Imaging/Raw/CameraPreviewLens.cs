@@ -1,5 +1,5 @@
 // 移植自 LightCraft crates/engine/src/camera_preview.rs（lens_geometry／into_lens_geometry）與
-// files.rs embedded_lens（List3 → 最終影像座標的 warp／vignette；DNG 1.6 鏈除外）。
+// files.rs embedded_lens（List3 → 最終影像座標的 warp／vignette；含 DNG 1.6 鏈）。
 // parent 流程：fit 前以 LensGeometryOf 快照嵌入 JPEG 幾何（與 Proxies 擇優 warp 共用），
 // 傳入 StartingColour／FitPreview／FitDngTone；最終影像由 EmbeddedLensCorrection 另行套用，不雙重校正。
 // 此檔只擁有 CameraPreview*.cs（不碰 PreviewDecode／Icc／JpegColour）。
@@ -13,36 +13,40 @@ namespace FilmBatch.Engine.Imaging.Raw;
 
 /// <summary>
 /// 嵌入鏡頭幾何（parent 在移除 List3 鏡頭 ops 前快照，傳入 camera-fit；最終校正另行套用）。
-/// 上游 <c>camera_preview::LensGeometry</c>：檔案自家鏡頭校正 warp（OpcodeList3 首個 WarpRectilinear 綠平面；
-/// 機內校正無切向項）。DNG 1.6 WarpRectilinear2 鏈無（帶色彩矩陣的手機 DNG，不擬合）。
+/// 上游 <c>camera_preview::LensGeometry</c>：檔案自家鏡頭校正 warp（OpcodeList3 完整 WarpRectilinear／WarpRectilinear2 鏈的綠平面，含切向項）。
 /// </summary>
 internal sealed record CameraPreviewLens(double[] K, double[] Center)
 {
     /// <summary>
-    /// 自 List3 讀嵌入鏡頭幾何（上游 <c>lens_geometry</c>：AppliedOps 順序；有 WarpRectilinear2 即無；
-    /// 首個 WarpRectilinear，綠平面優先；中心須在 [0,1] 內、係數有限）。
+    /// 自 List3 快照實際套用的完整幾何鏈；中心須在 [0,1] 內、係數有限。
     /// </summary>
+    private Opcode[]? Warps { get; init; }
+
     internal static CameraPreviewLens? LensGeometryOf(IReadOnlyList<Opcode> list3)
     {
-        var applied = OpcodeOps.AppliedOps(list3).ToList();
-        if (applied.Any(op => op is WarpRectilinear2))
-            return null;
-        foreach (var op in applied)
+        var warps = new List<Opcode>();
+        foreach (var op in OpcodeOps.AppliedOps(list3))
         {
-            if (op is not WarpRectilinear wr)
-                continue;
-            var plane = wr.Planes.Length > 1 ? wr.Planes[1] : wr.Planes.FirstOrDefault();
-            if (plane is null || plane.Length < 4 || wr.Center.Length < 2)
-                continue;
-            var k = new[] { plane[0], plane[1], plane[2], plane[3] };
-            var center = new[] { wr.Center[0], wr.Center[1] };
-            if (!k.Concat(center).All(double.IsFinite))
-                continue;
-            if (center[0] is < 0.0 or > 1.0 || center[1] is < 0.0 or > 1.0)
-                continue;
-            return new CameraPreviewLens(k, center);
+            var (planes, center, count) = op switch
+            {
+                WarpRectilinear w => (w.Planes, w.Center, 6),
+                WarpRectilinear2 w => (w.Planes, w.Center, OpcodeOps.Wr2Len),
+                _ => (Array.Empty<double[]>(), Array.Empty<double>(), 0),
+            };
+            if (count == 0 || center.Length != 2 || center.Any(c => !double.IsFinite(c) || c < 0 || c > 1)
+                || planes.Length == 0 || planes.Any(p => p.Length < count || !p.All(double.IsFinite))) continue;
+            // A zero radial map collapses the proxy rather than providing useful fitting geometry.
+            if (planes.All(p => p.Take(count == 6 ? 4 : 15).All(k => k == 0))) continue;
+            var copy = planes.Select(p => (double[])p.Clone()).ToArray();
+            var c = (double[])center.Clone();
+            warps.Add(op is WarpRectilinear2 w2
+                ? new WarpRectilinear2(copy, c, w2.Reciprocal, false) : new WarpRectilinear(copy, c));
         }
-        return null;
+        if (warps.Count == 0) return null;
+        // K/Center remain available for existing consumers; sampling uses the complete immutable chain.
+        var first = warps.OfType<WarpRectilinear>().FirstOrDefault();
+        var k = first is null ? new[] { 1d, 0, 0, 0 } : first.Planes[Math.Min(1, first.Planes.Length - 1)][..4];
+        return new CameraPreviewLens(k, first is null ? [.5, .5] : (double[])first.Center.Clone()) { Warps = warps.ToArray() };
     }
 
     /// <summary>
@@ -59,29 +63,19 @@ internal sealed record CameraPreviewLens(double[] K, double[] Center)
         var (w, h) = (img.Width, img.Height);
         if (k == 0 || w != c.Width / k || h != c.Height / k || w == 0 || h == 0 || a.Width < 2 || a.Height < 2)
             return null;
-        var (aw, ah) = ((double)a.Width - 1.0, (double)a.Height - 1.0);
-        var (cx, cy) = (lens.Center[0] * aw, lens.Center[1] * ah);
-        var m = new[] { (0.0, 0.0), (aw, 0.0), (0.0, ah), (aw, ah) }
-            .Select(p => double.Hypot(p.Item1 - cx, p.Item2 - cy)).Max();
-        m = Math.Max(m, 1e-9);
+        var geometry = RawSourceGeometry.CreateSensor(raw, lens.Warps ??
+            [new WarpRectilinear([[lens.K[0], lens.K[1], lens.K[2], lens.K[3], 0, 0]], lens.Center)]);
         var kf = (double)k;
         var (x0, y0) = ((double)c.X, (double)c.Y);
         var @out = new RgbImage(w, h);
         for (var i = 0; i < w * h; i++)
         {
             var (ox, oy) = (x0 + ((i % w) + 0.5) * kf - 0.5, y0 + ((i / w) + 0.5) * kf - 0.5);
-            var (dx, dy) = ((ox - cx) / m, (oy - cy) / m);
-            var r2 = dx * dx + dy * dy;
-            var f = lens.K[0] + r2 * (lens.K[1] + r2 * (lens.K[2] + r2 * lens.K[3]));
-            var (sx, sy) = ((cx + m * dx * f + 0.5 - x0) / kf, (cy + m * dy * f + 0.5 - y0) / kf);
-            float[] px;
-            if (sx >= 0.5 && sy >= 0.5 && sx <= w - 0.5 && sy <= h - 0.5)
-                px = SampleBilinear(img, (float)sx, (float)sy);
-            else
-                px = [float.NaN, float.NaN, float.NaN];
-            @out.Data[i * 3] = px[0];
-            @out.Data[i * 3 + 1] = px[1];
-            @out.Data[i * 3 + 2] = px[2];
+            var (rx, ry) = geometry.ActiveIndex(ox, oy);
+            var (sx, sy) = ((rx + 0.5 - x0) / kf, (ry + 0.5 - y0) / kf);
+            var inside = sx >= 0.5 && sy >= 0.5 && sx <= w - 0.5 && sy <= h - 0.5;
+            for (var channel = 0; channel < 3; channel++)
+                @out.Data[i * 3 + channel] = inside ? SampleBilinear(img, sx, sy, channel) : float.NaN;
         }
         return @out;
     }
@@ -132,29 +126,20 @@ internal sealed record CameraPreviewLens(double[] K, double[] Center)
         };
     }
 
-    private static float[] SampleBilinear(RgbImage img, float x, float y)
+    private static float SampleBilinear(RgbImage img, double x, double y, int channel)
     {
-        var fx = Math.Clamp(x, -1f, img.Width + 1f) - 0.5f;
-        var fy = Math.Clamp(y, -1f, img.Height + 1f) - 0.5f;
-        var x0 = (int)Math.Floor(fx);
-        var y0 = (int)Math.Floor(fy);
-        var tx = fx - x0;
-        var ty = fy - y0;
-        float[] At(int xx, int yy)
-        {
-            xx = Math.Clamp(xx, 0, img.Width - 1);
-            yy = Math.Clamp(yy, 0, img.Height - 1);
-            var i = (yy * img.Width + xx) * 3;
-            return [img.Data[i], img.Data[i + 1], img.Data[i + 2]];
-        }
-        var a = At(x0, y0); var b = At(x0 + 1, y0); var c = At(x0, y0 + 1); var d = At(x0 + 1, y0 + 1);
-        return Enumerable.Range(0, 3).Select(i =>
-        {
-            var top = a[i] + (b[i] - a[i]) * tx;
-            var bot = c[i] + (d[i] - c[i]) * tx;
-            return top + (bot - top) * ty;
-        }).ToArray();
+        var fx = Math.Clamp(x - .5, 0, img.Width - 1d);
+        var fy = Math.Clamp(y - .5, 0, img.Height - 1d);
+        var x0 = (int)Math.Floor(fx); var y0 = (int)Math.Floor(fy);
+        var x1 = Math.Min(x0 + 1, img.Width - 1); var y1 = Math.Min(y0 + 1, img.Height - 1);
+        var tx = (float)(fx - x0); var ty = (float)(fy - y0);
+        var a = img.Data[(y0 * img.Width + x0) * 3 + channel];
+        var b = img.Data[(y0 * img.Width + x1) * 3 + channel];
+        var c = img.Data[(y1 * img.Width + x0) * 3 + channel];
+        var d = img.Data[(y1 * img.Width + x1) * 3 + channel];
+        return (a + (b - a) * tx) * (1 - ty) + (c + (d - c) * tx) * ty;
     }
+
 }
 
 /// <summary>

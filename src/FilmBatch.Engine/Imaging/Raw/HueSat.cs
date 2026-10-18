@@ -36,12 +36,10 @@ internal sealed class HueSat
     private static float Luminance(float r, float g, float b) =>
         r * ColorSpaces.Luma2020[0] + g * ColorSpaces.Luma2020[1] + b * ColorSpaces.Luma2020[2];
 
-    private static float[] Mul(float[] m, float r, float g, float b) =>
-    [
+    private static (float R, float G, float B) Mul(float[] m, float r, float g, float b) => (
         m[0] * r + m[1] * g + m[2] * b,
         m[3] * r + m[4] * g + m[5] * b,
-        m[6] * r + m[7] * g + m[8] * b,
-    ];
+        m[6] * r + m[7] * g + m[8] * b);
 
     private static float RestoreWeight(float share)
     {
@@ -56,21 +54,21 @@ internal sealed class HueSat
     public (float R, float G, float B) Apply(float r, float g, float b)
     {
         var p = Mul(_to, r, g, b);
-        var t = _table.Apply(p[0], p[1], p[2]);
+        var t = _table.Apply(p.R, p.G, p.B);
         var q = Mul(_from, t.R, t.G, t.B);
         var before = Luminance(r, g, b);
-        var after = Luminance(q[0], q[1], q[2]);
-        if (before <= 0f || after <= 0f || !float.IsFinite(q[0]) || !float.IsFinite(q[1]) || !float.IsFinite(q[2]))
+        var after = Luminance(q.R, q.G, q.B);
+        if (before <= 0f || after <= 0f || !float.IsFinite(q.R) || !float.IsFinite(q.G) || !float.IsFinite(q.B))
             return (r, g, b);
         var w = RestoreWeight(after / before);
         if (w >= 1f)
         {
             var k = before / after;
-            return (q[0] * k, q[1] * k, q[2] * k);
+            return (q.R * k, q.G * k, q.B * k);
         }
         if (w <= 0f)
             return (r, g, b);
         var kk = before / after;
-        return (r + (q[0] * kk - r) * w, g + (q[1] * kk - g) * w, b + (q[2] * kk - b) * w);
+        return (r + (q.R * kk - r) * w, g + (q.G * kk - g) * w, b + (q.B * kk - b) * w);
     }
 }

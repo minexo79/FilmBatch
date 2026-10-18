@@ -148,7 +148,7 @@ public static class BatchExporter
                 var (w, h, metadataWarning, rawDevice) = ProcessOne(job, outputs[i], options, renderer, ct);
                 deviceName = renderer.DeviceName;
                 isSoftware |= renderer.IsSoftware;
-                // RAW 收尾的裝置與效果算圖裝置分開記錄，混合批次不沿用上一張的診斷。
+                // RAW 與效果共用同一條完整管線，記錄這張實際採用的 GPU／CPU 路徑。
                 var entryDevice = rawDevice is null ? deviceName : $"{deviceName} + {rawDevice}";
                 outputFiles.Add(outputs[i]);
                 entries[i] = LogEntry(job, outputs[i], options, entryDevice, w, h, "ok", null);
@@ -217,21 +217,15 @@ public static class BatchExporter
         if (!File.Exists(job.SourcePath))
             throw new FileNotFoundException(CoreText.T($"找不到來源照片：{job.FileName}", $"Source photo not found: {job.FileName}"), job.SourcePath);
 
-        // 1. 全解析度解碼（EXIF 已轉正；FilePath 供算圖器解析相對素材/種子）。
-        // RAW 顯示收尾沿用匯出算圖器的裝置；CPU 算圖器與一般影像維持原路徑。
-        RawDisplayFinisher? finisher = renderer is GpuSpikeRenderer gpu
-            ? gpu.FinishRaw : null;
-        var source = ImageLoader.LoadFull(job.SourcePath, RawLoadOptions.FromSettings(job.Settings),
-            finisher, ct, out var rawUsedGpu, out var rawFallback);
-        // 區域變數保留此張的 RAW fallback 原因，不受後續效果算圖的裝置選擇影響。
-        string? rawDevice = source.RawInfo is null ? null
-            : rawUsedGpu ? "RAW GPU"
-            : renderer is GpuSpikeRenderer ? $"RAW CPU（{rawFallback ?? "unknown"}）" : null;
+        // 1. 全解析度解碼；RAW 保留場景線性資料，顯示收尾由完整算圖管線執行一次。
+        var source = ImageLoader.LoadFull(job.SourcePath, RawLoadOptions.FromSettings(job.Settings));
         ct.ThrowIfCancellationRequested();
 
         // 2. 完整 16-bit 算圖（GPU 或 CPU 等效；超限時算圖器內部以等效路徑處理，不靜默截斷）
         var rendered = renderer.Render16(source, job.Settings, ct);
         ct.ThrowIfCancellationRequested();
+        string? rawDevice = source.Scene is null ? null
+            : renderer is GpuSpikeRenderer gpu && !gpu.UsingCpu ? "RAW GPU" : "RAW CPU";
 
         // 3. 長邊縮放（只縮小；16-bit sRGB 端可分離 Lanczos-3，精度保留）
         var sized = options.Size == ExportSize.LongEdge && options.LongEdgePx > 0

@@ -2,6 +2,7 @@ using FilmBatch.Core.Film;
 using FilmBatch.Core.Params;
 using FilmBatch.Core.Random;
 using FilmBatch.Engine.Imaging;
+using FilmBatch.Raw.Color;
 
 namespace FilmBatch.Engine.Rendering;
 
@@ -19,6 +20,13 @@ public sealed class ModuleParams
     // basic
     public bool BasicOn;
     public float Exposure, Temperature, Tint, Brightness, Contrast, Highlights, Shadows, Saturation, Structure;
+    // RAW：場景線性來源的白平衡與語意遮罩；舊 basic.temperature/tint 仍是相對效果。
+    public bool RawProcessingOn, RawCustomWhiteBalance;
+    public float RawTemperature, RawTint;
+    internal Mat3? RawWhiteBalanceMatrix;
+    public bool RawMaskOn, RawMaskInvert;
+    public string RawMaskName = "", RawMaskInstance = "";
+    public float RawMaskStrength, RawMaskExposure, RawMaskTemperature, RawMaskTint, RawMaskContrast, RawMaskSaturation;
     // lens_distortion
     public bool LensOn, AutoCrop;
     public float LensAmount, Chromatic, EdgeSoften;
@@ -123,6 +131,21 @@ public sealed class ModuleParams
             Shadows = N(s, "basic.shadows", 0),
             Saturation = N(s, "basic.saturation", 0),
             Structure = N(s, "basic.structure", 0),
+            // RAW 來源專用；模組停用不會把來源改回已量化的 SDR。
+            RawProcessingOn = source.Scene is not null && B(s, "raw.enabled", false),
+            RawCustomWhiteBalance = T(s, "raw.wb_mode", "as-shot") == "custom",
+            RawTemperature = N(s, "raw.temperature", 6500),
+            RawTint = N(s, "raw.tint", 0),
+            RawMaskOn = source.Scene is not null && B(s, "raw.enabled", false) && B(s, "raw.mask_enabled", false),
+            RawMaskName = T(s, "raw.mask_name", ""),
+            RawMaskInstance = T(s, "raw.mask_instance", ""),
+            RawMaskInvert = B(s, "raw.mask_invert", false),
+            RawMaskStrength = Math.Clamp(N(s, "raw.mask_amount", 100), 0, 100) / 100f,
+            RawMaskExposure = N(s, "raw.mask_exposure", 0),
+            RawMaskTemperature = N(s, "raw.mask_temperature", 0),
+            RawMaskTint = N(s, "raw.mask_tint", 0),
+            RawMaskContrast = N(s, "raw.mask_contrast", 0),
+            RawMaskSaturation = N(s, "raw.mask_saturation", 0),
             // lens_distortion
             LensOn = B(s, "lens_distortion.enabled", false),
             LensAmount = N(s, "lens_distortion.amount", 0),
@@ -255,6 +278,9 @@ public sealed class ModuleParams
         m.CropT = CropGeometry.Compute(source.Width, source.Height, m.Crop);
         m.FilmLut = m.FilmOn ? FilmLookLibrary.TryLut(m.FilmLookKey) : null;
         m.FilmLook = FilmLookUniforms.From(m);
+        m.RawWhiteBalanceMatrix = m.RawProcessingOn && m.RawCustomWhiteBalance
+            ? source.WhiteBalance?.MatrixFor(m.RawTemperature, m.RawTint)
+            : null;
         return m;
     }
 
