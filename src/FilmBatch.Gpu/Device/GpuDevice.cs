@@ -13,6 +13,7 @@ namespace FilmBatch.Gpu.Device;
 /// </summary>
 public sealed class GpuDevice : IDisposable
 {
+    // WebGPUSharp 0.5.7 的 MapSync 雖將參數命名為 timeoutMilliseconds，仍直接轉交 WaitAny 的 ns 值。
     private const ulong RequestTimeoutNs = 10_000_000_000;
 
     internal readonly Instance Instance;
@@ -209,7 +210,7 @@ public sealed class GpuDevice : IDisposable
     public void ReadBuffer<T>(GpuBuffer buffer, T[] destination) where T : unmanaged
     {
         WaitIdle();
-        buffer.Handle.MapSync(MapMode.Read, 0, (nuint)buffer.Size, 10_000);
+        buffer.Handle.MapSync(MapMode.Read, 0, (nuint)buffer.Size, RequestTimeoutNs);
         try
         {
             buffer.Handle.GetConstMappedRange<T>(span => span[..destination.Length].CopyTo(destination));
@@ -228,7 +229,7 @@ public sealed class GpuDevice : IDisposable
     public void ReadBuffer<T>(GpuBuffer buffer, T[] destination, int offset, int count) where T : unmanaged
     {
         WaitIdle();
-        buffer.Handle.MapSync(MapMode.Read, 0, (nuint)buffer.Size, 10_000);
+        buffer.Handle.MapSync(MapMode.Read, 0, (nuint)buffer.Size, RequestTimeoutNs);
         try
         {
             buffer.Handle.GetConstMappedRange<T>(span => span[..count].CopyTo(destination.AsSpan(offset, count)));

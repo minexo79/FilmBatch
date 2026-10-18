@@ -131,10 +131,50 @@ fn chroma_scale(o: f32) -> f32 {
     return rounded(a + rounded((b - a) * t));
 }
 
+// sRGB 冪次：避免後端 pow 的寬鬆精度影響 16-bit 輸出；呼叫端已夾取到 (0.0031308, 1]。
+// x = m·2^e（m∈[1,2)），x^y = m^y·2^(e·y)。兩段以 Chebyshev 節點的
+// 7 次／6 次多項式求值，再以精確的 2^zi 還原比例；y 與 CPU 的 f32(1/2.4) 一致。
+// Horner 內部可融合乘加；不像色域壓縮前的運算，不需逐步 rounding barrier。
+const SRGB_POW_Y: f32 = 0.416666657;
+fn srgb_pow_unit(m: f32) -> f32 {
+    // (1+t)^y，t = m-1 ∈ [0,1)：Sterbenz 精確，Horner 求值。
+    let t = m - 1.0;
+    var p = 0.00147123239;
+    p = p * t + -0.00789271016;
+    p = p * t + 0.0205478109;
+    p = p * t + -0.0378344692;
+    p = p * t + 0.0633168221;
+    p = p * t + -0.121431045;
+    p = p * t + 0.416662186;
+    return p * t + 1.0;
+}
+fn srgb_pow_frac(zf: f32) -> f32 {
+    // 2^zf，zf ∈ [0,1)：Horner 求值。
+    var q = 0.000218657849;
+    q = q * zf + 0.00123913318;
+    q = q * zf + 0.00968418643;
+    q = q * zf + 0.0554806292;
+    q = q * zf + 0.240230456;
+    q = q * zf + 0.693146944;
+    return q * zf + 1.0;
+}
+fn srgb_pow(x: f32) -> f32 {
+    // 滿幅通道可略過多項式，且保持 pow(1,y) = 1。
+    if (x == 1.0) { return 1.0; }
+    let b = bitcast<u32>(x);
+    let e = i32((b >> 23u) & 255u) - 127;
+    let m = bitcast<f32>((b & 0x007fffffu) | 0x3f800000u);
+    let z = f32(e) * SRGB_POW_Y;
+    let zi = i32(floor(z));
+    let zf = z - f32(zi);
+    let scale = bitcast<f32>((u32(127 + zi) << 23u));
+    return srgb_pow_unit(m) * srgb_pow_frac(zf) * scale;
+}
+
 fn linear_to_srgb1(v: f32) -> f32 {
     let x = max(v, 0.0);
     if (x <= 0.0031308) { return x * 12.92; }
-    return rounded(rounded(1.055 * pow(x, 1.0 / 2.4)) - 0.055);
+    return rounded(rounded(1.055 * srgb_pow(x)) - 0.055);
 }
 
 fn clamp_f(v: f32, lo: f32, hi: f32) -> f32 {
