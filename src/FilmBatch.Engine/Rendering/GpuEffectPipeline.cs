@@ -24,8 +24,6 @@ internal sealed class GpuEffectPipeline : IDisposable
     private readonly GpuDevice _gpu;
     private readonly ShaderLibrary _shaders;
     private readonly ulong _budget, _bandCap;
-    internal ShaderLibrary Shaders => _shaders;
-    internal ulong BandCap => _bandCap;
     private readonly List<ComputeKernel> _kernels = [];
     private readonly List<GpuBuffer> _uniforms = [];
     private readonly Dictionary<int, GpuBuffer> _gaussians = [];

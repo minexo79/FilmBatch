@@ -2,10 +2,8 @@ using FilmBatch.Core;
 using System.Diagnostics;
 using FilmBatch.Core.Params;
 using FilmBatch.Engine.Imaging;
-using FilmBatch.Engine.Imaging.Raw;
 using FilmBatch.Gpu.Device;
 using FilmBatch.Gpu.ShaderSystem;
-using FilmBatch.Raw.Raster;
 
 namespace FilmBatch.Engine.Rendering;
 
@@ -17,7 +15,6 @@ public sealed class GpuSpikeRenderer : IPreviewRenderer
     private readonly EffectAssets _assets;
     private string? _cpuReason;
     internal bool UsingCpu => _cpuReason is not null;
-    private RawDisplayGpu? _rawFinish;
 
     public string DeviceName => _cpuReason is { } reason ? CoreText.T($"CPU（{reason}）", $"CPU ({reason})") : _gpu.AdapterInfo.DisplayName;
     public bool IsSoftware => UsingCpu || _gpu.AdapterInfo.IsSoftware;
@@ -100,21 +97,8 @@ public sealed class GpuSpikeRenderer : IPreviewRenderer
         return new(source.Width, source.Height, pixels, timer.Elapsed);
     }
 
-    /// <summary>使用算圖器擁有的裝置完成 RAW 顯示編碼；超限／OOM 回傳原因，shader 錯誤直接傳播。</summary>
-    internal (ushort[]? Pixels, string? FallbackReason) FinishRaw(
-        RgbImage image, CameraTone? tone, CancellationToken ct)
-    {
-        _rawFinish ??= new RawDisplayGpu(_gpu, _pipeline.Shaders, _pipeline.BandCap);
-        var (pixels, fallback) = _rawFinish.Finish(image, tone, ct);
-        if (fallback is not null)
-            GpuDevice.Log?.Invoke($"RAW finishing fallback 到 CPU：{fallback}");
-        return (pixels, fallback);
-    }
-
-
     public void Dispose()
     {
-        _rawFinish?.Dispose();
         _pipeline.Dispose();
         _gpu.Dispose();
     }

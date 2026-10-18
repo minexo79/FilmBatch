@@ -14,7 +14,7 @@ M0 之後需要正式回答兩個問題：
 
 1. **GPU 維持 WebGPUSharp 0.5.7（Dawn）。**沿用既有 WGSL、裝置、資源繫結與讀回模型，符合使用者「可行時延用同一技術」的要求。[ADR 0001](0001-webgpu-binding.md) 已記錄 DX12／Vulkan／Metal 的 spike；本次沒有足以支持遷移的已量測收益。
 2. **CPU 使用 `Vector128<float>` 處理 RGBA 算術、模糊累積與量化。**不新增相依套件，不改公開 API。非線性的 sRGB 曲線與亮度 gamma 保留 `MathF.Pow`，理由見量測。
-3. **RAW 解碼、demosaic 與線性 Rec.2020 顯影保留 CPU；顯示收尾沿用 Dawn。**GPU 工作使用 `GpuSpikeRenderer` 擁有的裝置，不另設全域 GPU 單例；全解析度批次匯出使用此路徑，直接影像／預覽載入仍使用既有 CPU 顯影。
+3. **RAW 解碼、demosaic 與線性 Rec.2020 顯影保留 CPU；編輯與晚期顯示收尾共用 CPU／Dawn 管線。**GPU 工作使用 `GpuSpikeRenderer` 擁有的裝置，不另設全域 GPU 單例；預覽與全解析度匯出都從浮點場景來源執行。
 4. **Halide AOT 暫不採用，記錄為未來選項**，理由與重估觸發條件見下節。
 
 ## 候選比較
@@ -55,26 +55,33 @@ M0 之後需要正式回答兩個問題：
 - M3 上改回 `MathF.Pow` 後，28 組小影像／設定與五組 1600×1067 影像均與原始純量版逐值一致；完整 65536 種 u16 RGBA 解碼與 18 組模糊案例也沒有觀察到浮點差異。這是已測輸入的結果，不是所有平台的逐位元保證。
 - RGB-only 效果不得改變 alpha；單像素／奇數尺寸與完整 16-bit 色階列入回歸檢查。
 
-## RAW 邊界（本次決策）
+## RAW 邊界（現行實作）
 
 - CPU 保留：RAW 解碼、demosaic、線性 Rec.2020 顯影（`RawSourceLoader` 既有路徑）。
-- GPU 新增：`Imaging/Raw/RawDisplayGpu.cs` 與 `Shaders/v1/io/raw_display_finish.wgsl`，完成相機／預設色調映射、色度、高光、色域及 sRGB RGBA16 編碼。kernel 由 `GpuSpikeRenderer.FinishRaw` 延遲建立並快取，使用算圖器原有裝置。
-- 輸入 RGB float（12 B／像素）與輸出 RGBA16（8 B／像素）都依裝置上限及既有 `MaxBandBytes` 分帶；列數不超過實際影像高度，資源在每次收尾結束時釋放，包含部分配置失敗與取消。
+- GPU 使用 `Imaging/Raw/RawDisplayGpu.cs` 與 `Shaders/v1/io/raw_working_finish.wgsl`，在完整效果管線內直接處理工作紋理：完成相機／預設色調、高光、色域及顯示編碼；kernel 與 LUT 由算圖器快取。
+- RAW 場景先轉未夾取線性 sRGB 工作域，收尾前轉回 Rec.2020。沒有獨立 RAW 收尾讀回；最後 RGBA16 匯出仍依裝置上限及 `MaxBandBytes` 分帶讀回，包含最後不足一帶的像素。
 - 超限／GPU OOM 改用 CPU 並保留原因；shader 編譯、提交及讀回錯誤直接回報，不偽裝成功或靜默退回 CPU。
-- 整合點為 `BatchExporter.ProcessOne` → `ImageLoader.LoadFull` 內部多載 → `RawSourceLoader.TryLoad`。直接影像載入與預覽仍使用 CPU；不新增全域 GPU、使用者設定或相依套件。
-- 每筆 `export_log.json` 的 `Renderer` 分別標示效果算圖與 RAW 收尾，例如 `Apple M3 · Metal + RAW GPU`、`… + RAW CPU（原因）`；純 CPU 算圖器維持原有 CPU 標示，混合批次不沿用前一張的狀態。
+- `ImageLoader.LoadFull`／預覽載入僅建立場景來源；實際編輯入口為 `GpuSpikeRenderer.Render16`／`Render`（CPU 等效入口為 `CpuPipeline`）。舊的獨立 RAW finish API、資源與 shader 已移除，不保留只供測試使用的第二條管線。
+- 每筆 RAW `export_log.json` 的 `Renderer` 分別標示效果算圖與 RAW 收尾，例如 `Apple M3 · Metal + RAW GPU`、`… + RAW CPU（原因）`；純 CPU 算圖器也標示 `RAW CPU`，混合批次不沿用前一張的狀態。
 
 ### 裁切與底片管線整合（2026-10-18）
 
-合併提交 `703ff49` 將 `dev-cutandmask`（`de62003`）整合至 `feature/raw-port`；以 `03761e1` 為 RAW／CPU SIMD／Dawn 基準，採用以下邊界：
+合併提交 `703ff49` 將 `dev-cutandmask`（`de62003`）整合至 `feature/raw-port`，基準為 `03761e1`；後續場景線性 RAW 整合修訂收尾時機，現行邊界如下：
 
-- **來源與效果分開。**`raw` 設定在來源載入／顯影時生效；模組目錄依 `raw → crop → basic → …` 排列。RAW 顯示收尾完成後才旋轉／裁切，crop 仍是 CPU 與 WGSL 效果管線的第一步。不以固定模組數或陣列索引識別功能。
+- **來源與效果分開。**來源選項在 RAW 載入／顯影時生效；白平衡與局部調整只重算畫面。裁切先在浮點工作域執行，RAW 收尾位於線性效果與顯示效果之間；不以固定模組數或陣列索引識別功能。
 - **尺寸與來源資訊一起保留。**`GpuSpikeRenderer.Render16` 以 `OutWidth`／`OutHeight` 包裝裁切後像素，同時保留 `FilePath`、`RawOptions`、`RawInfo` 與 `SemanticMasks`。後兩者仍描述原始 RAW 座標，不改寫成裁切座標。
 - **RAW 重載不取消裁切編輯。**預覽先用照片設定檢查是否需要重新顯影，再套用裁切工具的暫時全幅／方向設定與原圖比較；不把暫時預覽設定寫回照片。`EntriesChanged` 也會由 RAW／其他效果變更觸發，因此 `CropTool.Reload` 只在已保存的裁切幾何、啟用或比例設定改變時重置編輯；真正的裁切復原／貼上仍會重載。離開裁切分頁時才套用尚未提交的裁切。
 - **底片整套切換。**採用 dev 的 `FilmLookProcessing`、LUT schema／素材、CPU／WGSL 與介面，維持既有 RAW 收尾與 SIMD 算術；不恢復已移除的 Recipe Lab 命令、工具或 `RecipesFolder`。CLI 保留 `RawCommands`，專案保留 RAW JSON／ICC 嵌入資源及測試組件存取權。
 - **授權與文件跟隨實際內容。**保留 RAW 移植元件聲明與 RawTherapee LUT 的 CC BY-SA 歸屬；文件入口改指向 `film-looks.md`，不留下已移除的配方／校正文件連結。
 
 驗證同時涵蓋 RAW＋裁切／旋轉匯出、CPU／Metal 像素對齊、LUT 路徑、裁切後回到全幅的工作區重建，以及裁切編輯中的 RAW 重載。合併前的基準量測不作為合併後整體匯出效能的宣稱。
+
+### 場景線性驗收與鏡頭畫框
+
+現行 GPU 迴歸走真正的 `Render16`，與 CPU 完整管線比較；不以只剩測試呼叫的獨立收尾證明產品行為。下方浮點精度段落保留早期數值調校的量測來源，現行驗收及限制另見 [RAW pipeline parity 計畫](../superpowers/plans/2026-10-18-raw-pipeline-parity.md)。
+
+外部 Lensfun 的校正中心與半徑屬於未轉正的預設裁切畫框。產生 List3 時換算成整個 ActiveArea 的既有 warp／vignette 座標與多項式單位，不改共用取樣器的慣例；偏心裁切與完整畫框均有像素迴歸。
+
 
 ### 浮點精度
 

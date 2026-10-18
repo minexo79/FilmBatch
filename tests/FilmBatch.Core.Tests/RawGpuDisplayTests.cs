@@ -14,7 +14,7 @@ namespace FilmBatch.Core.Tests;
 
 /// <summary>
 /// RAW GPU 顯示收尾迴歸（真 GPU 才跑；無 GPU 時 SkipWhen 略過，絕不偽造）。
-/// 對齊 CPU 的 RawDisplay：相機色調／chroma／高光／色域／黑白；chunk 尾帶與全解析度 DNG 匯出。
+/// 對齊實際 CPU 完整管線：相機色調／chroma／高光／色域／黑白；Render16 尾帶與全解析度 DNG 匯出。
 /// </summary>
 public sealed class RawGpuDisplayTests
 {
@@ -65,6 +65,17 @@ public sealed class RawGpuDisplayTests
         return max;
     }
 
+    private static SourceImage SceneSource(RgbImage image, CameraTone? tone = null)
+    {
+        var raw = new RawImage
+        {
+            Format = RawFormat.Dng, Width = image.Width, Height = image.Height, Cpp = 3,
+            Data = new RawData.F32(image.Data), Bits = 32, White = [1],
+            ActiveArea = new(0, 0, image.Width, image.Height), Crop = new(0, 0, image.Width, image.Height),
+        };
+        return new SourceImage(new RawSceneData(image, tone, null, RawSourceGeometry.Create(raw)));
+    }
+
 
     [Fact]
     public void Gpu_DefaultTone_MatchesCpu_NonFlatFinite()
@@ -72,10 +83,11 @@ public sealed class RawGpuDisplayTests
         using var gpu = TryCreateGpu();
         Assert.SkipWhen(gpu is null, "沒有可用的 GPU 介面卡");
         var image = NonFlatScene(48, 32);
-        var expected = RawDisplay.Encode(image, null);
-        var (pixels, fallback) = gpu!.FinishRaw(image, null, TestContext.Current.CancellationToken);
-        Assert.Null(fallback);
-        Assert.NotNull(pixels);
+        var expected = CpuPipeline.Process(SceneSource(image), FilmBatch.Core.Params.ModuleCatalog.Defaults,
+            null, TestContext.Current.CancellationToken).Rgba16;
+        var pixels = gpu!.Render16(SceneSource(image), FilmBatch.Core.Params.ModuleCatalog.Defaults,
+            TestContext.Current.CancellationToken).Rgba16;
+        Assert.False(gpu.UsingCpu);
         for (var i = 3; i < pixels!.Length; i += 4)
             Assert.Equal(ushort.MaxValue, pixels[i]);
         Assert.True(MaxAbsDiff(pixels!, expected) <= MaxParityCodes,
@@ -91,10 +103,11 @@ public sealed class RawGpuDisplayTests
             .WithChroma([1.4f, 1.3f, 1.1f, 1f, 0.7f, 0.4f, 0.25f, 0.2f]);
         Assert.NotNull(tone);
         var image = NonFlatScene(40, 28);
-        var expected = RawDisplay.Encode(image, tone);
-        var (pixels, fallback) = gpu!.FinishRaw(image, tone, TestContext.Current.CancellationToken);
-        Assert.Null(fallback);
-        Assert.NotNull(pixels);
+        var expected = CpuPipeline.Process(SceneSource(image, tone), FilmBatch.Core.Params.ModuleCatalog.Defaults,
+            null, TestContext.Current.CancellationToken).Rgba16;
+        var pixels = gpu!.Render16(SceneSource(image, tone), FilmBatch.Core.Params.ModuleCatalog.Defaults,
+            TestContext.Current.CancellationToken).Rgba16;
+        Assert.False(gpu.UsingCpu);
         Assert.True(MaxAbsDiff(pixels!, expected) <= MaxParityCodes,
             $"相機色調 GPU/CPU 差異 {MaxAbsDiff(pixels!, expected)}/65535");
     }
@@ -105,10 +118,11 @@ public sealed class RawGpuDisplayTests
         using var gpu = TryCreateGpu();
         Assert.SkipWhen(gpu is null, "沒有可用的 GPU 介面卡");
         var image = new RgbImage(2, 2, [1.5f, 0.02f, 0.01f, 2.5f, 1.8f, 0.4f, 0.9f, 0.05f, 1.7f, 4f, 4f, 4f]);
-        var expected = RawDisplay.Encode(image, null);
-        var (pixels, fallback) = gpu!.FinishRaw(image, null, TestContext.Current.CancellationToken);
-        Assert.Null(fallback);
-        Assert.NotNull(pixels);
+        var expected = CpuPipeline.Process(SceneSource(image), FilmBatch.Core.Params.ModuleCatalog.Defaults,
+            null, TestContext.Current.CancellationToken).Rgba16;
+        var pixels = gpu!.Render16(SceneSource(image), FilmBatch.Core.Params.ModuleCatalog.Defaults,
+            TestContext.Current.CancellationToken).Rgba16;
+        Assert.False(gpu.UsingCpu);
         // 強飽和紅收斂進色域、紅仍為主色；高光不截斷
         Assert.True(pixels![0] > pixels![1] + 1000 && pixels![0] > pixels![2] + 1000);
         Assert.True(MaxAbsDiff(pixels!, expected) <= MaxParityCodes,
@@ -125,10 +139,11 @@ public sealed class RawGpuDisplayTests
         using var gpu = TryCreateGpu();
         Assert.SkipWhen(gpu is null, "沒有可用的 GPU 介面卡");
         var image = new RgbImage(1, 1, [red, green, blue]);
-        var expected = RawDisplay.Encode(image, null);
-        var (pixels, fallback) = gpu!.FinishRaw(image, null, TestContext.Current.CancellationToken);
-        Assert.Null(fallback);
-        Assert.NotNull(pixels);
+        var expected = CpuPipeline.Process(SceneSource(image), FilmBatch.Core.Params.ModuleCatalog.Defaults,
+            null, TestContext.Current.CancellationToken).Rgba16;
+        var pixels = gpu!.Render16(SceneSource(image), FilmBatch.Core.Params.ModuleCatalog.Defaults,
+            TestContext.Current.CancellationToken).Rgba16;
+        Assert.False(gpu.UsingCpu);
         Assert.True(MaxAbsDiff(expected, pixels) <= MaxParityCodes,
             $"高光接近色域邊界時差異 {MaxAbsDiff(expected, pixels)}/65535");
     }
@@ -139,9 +154,9 @@ public sealed class RawGpuDisplayTests
         using var gpu = TryCreateGpu();
         Assert.SkipWhen(gpu is null, "沒有可用的 GPU 介面卡");
         var black = new RgbImage(3, 2);
-        var (dark, darkFallback) = gpu!.FinishRaw(black, null, TestContext.Current.CancellationToken);
-        Assert.Null(darkFallback);
-        Assert.NotNull(dark);
+        var dark = gpu!.Render16(SceneSource(black), FilmBatch.Core.Params.ModuleCatalog.Defaults,
+            TestContext.Current.CancellationToken).Rgba16;
+        Assert.False(gpu.UsingCpu);
         for (var i = 0; i < dark!.Length; i += 4)
         {
             Assert.Equal((ushort)0, dark[i]);
@@ -151,9 +166,9 @@ public sealed class RawGpuDisplayTests
         }
         var white = new RgbImage(2, 2);
         Array.Fill(white.Data, 8f);
-        var (bright, brightFallback) = gpu.FinishRaw(white, null, TestContext.Current.CancellationToken);
-        Assert.Null(brightFallback);
-        Assert.NotNull(bright);
+        var bright = gpu.Render16(SceneSource(white), FilmBatch.Core.Params.ModuleCatalog.Defaults,
+            TestContext.Current.CancellationToken).Rgba16;
+        Assert.False(gpu.UsingCpu);
         for (var i = 0; i < bright!.Length; i += 4)
         {
             Assert.True(bright[i] > 60000);
@@ -172,26 +187,28 @@ public sealed class RawGpuDisplayTests
         var image = new RgbImage(levels.Length, 1);
         for (var i = 0; i < levels.Length; i++)
             image.Data[i * 3] = image.Data[i * 3 + 1] = image.Data[i * 3 + 2] = levels[i];
-        var expected = RawDisplay.Encode(image, null);
-        var (pixels, fallback) = gpu!.FinishRaw(image, null, TestContext.Current.CancellationToken);
-        Assert.Null(fallback);
-        Assert.NotNull(pixels);
+        var expected = CpuPipeline.Process(SceneSource(image), FilmBatch.Core.Params.ModuleCatalog.Defaults,
+            null, TestContext.Current.CancellationToken).Rgba16;
+        var pixels = gpu!.Render16(SceneSource(image), FilmBatch.Core.Params.ModuleCatalog.Defaults,
+            TestContext.Current.CancellationToken).Rgba16;
+        Assert.False(gpu.UsingCpu);
         Assert.True(MaxAbsDiff(expected, pixels) <= MaxParityCodes);
         for (var i = 3; i < pixels.Length; i += 4)
             Assert.Equal(ushort.MaxValue, pixels[i]);
     }
 
     [Fact]
-    public void Gpu_BandedInputAndOutput_PreserveFinalPartialBand()
+    public void Gpu_BandedReadback_PreserveFinalPartialBand()
     {
         const int width = 19, height = 5;
         using var gpu = TryCreateGpu(new EffectRendererOptions { MaxBandBytes = width * 12 * 2 });
         Assert.SkipWhen(gpu is null, "沒有可用的 GPU 介面卡");
         var image = NonFlatScene(width, height);
-        var expected = RawDisplay.Encode(image, null);
-        var (pixels, fallback) = gpu!.FinishRaw(image, null, TestContext.Current.CancellationToken);
-        Assert.Null(fallback);
-        Assert.NotNull(pixels);
+        var expected = CpuPipeline.Process(SceneSource(image), FilmBatch.Core.Params.ModuleCatalog.Defaults,
+            null, TestContext.Current.CancellationToken).Rgba16;
+        var pixels = gpu!.Render16(SceneSource(image), FilmBatch.Core.Params.ModuleCatalog.Defaults,
+            TestContext.Current.CancellationToken).Rgba16;
+        Assert.False(gpu.UsingCpu);
         Assert.True(MaxAbsDiff(expected, pixels) <= MaxParityCodes);
         for (var i = (height - 1) * width * 4; i < pixels.Length; i++)
             Assert.InRange(Math.Abs(expected[i] - pixels[i]), 0, MaxParityCodes);
@@ -228,7 +245,8 @@ public sealed class RawGpuDisplayTests
         var image = NonFlatScene(8, 8);
         using var cts = new CancellationTokenSource();
         cts.Cancel();
-        Assert.Throws<OperationCanceledException>(() => gpu!.FinishRaw(image, null, cts.Token));
+        Assert.Throws<OperationCanceledException>(() => gpu!.Render16(SceneSource(image),
+            FilmBatch.Core.Params.ModuleCatalog.Defaults, cts.Token));
     }
 
     [Theory]
