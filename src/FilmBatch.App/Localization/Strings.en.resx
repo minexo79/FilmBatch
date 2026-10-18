@@ -74,6 +74,9 @@
   <data name="Filmstrip.OverridesOnly" xml:space="preserve"><value>With overrides</value></data>
   <data name="Filmstrip.Unassigned" xml:space="preserve"><value>Unassigned</value></data>
   <data name="Filmstrip.ByPreset" xml:space="preserve"><value>By preset</value></data>
+  <data name="Filmstrip.AllFiles" xml:space="preserve"><value>All files</value></data>
+  <data name="Filmstrip.RawOnly" xml:space="preserve"><value>RAW only</value></data>
+  <data name="Filmstrip.NonRaw" xml:space="preserve"><value>Non-RAW only</value></data>
   <data name="Presets.Apply" xml:space="preserve"><value>Apply to Selection</value></data>
   <data name="Presets.Rename" xml:space="preserve"><value>Rename…</value></data>
   <data name="Presets.Color" xml:space="preserve"><value>Change Color Label</value></data>

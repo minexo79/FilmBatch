@@ -13,8 +13,7 @@ internal static class RawSourceLoader
 {
     private const float HighlightClip = 0.99f;
 
-    internal static bool IsRawExtension(string path) =>
-        Project.RawExtensions.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase);
+    internal static bool IsRawExtension(string path) => Project.IsRawFile(path);
 
     private static bool IsCandidate(string path) => IsRawExtension(path)
         || Path.GetExtension(path).Equals(".tif", StringComparison.OrdinalIgnoreCase)

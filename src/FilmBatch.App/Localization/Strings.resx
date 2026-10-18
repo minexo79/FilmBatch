@@ -74,6 +74,9 @@
   <data name="Filmstrip.OverridesOnly" xml:space="preserve"><value>只顯示有覆寫</value></data>
   <data name="Filmstrip.Unassigned" xml:space="preserve"><value>未指定預設</value></data>
   <data name="Filmstrip.ByPreset" xml:space="preserve"><value>依預設</value></data>
+  <data name="Filmstrip.AllFiles" xml:space="preserve"><value>所有檔案</value></data>
+  <data name="Filmstrip.RawOnly" xml:space="preserve"><value>只顯示 RAW</value></data>
+  <data name="Filmstrip.NonRaw" xml:space="preserve"><value>只顯示非 RAW</value></data>
   <data name="Presets.Apply" xml:space="preserve"><value>套用到選取照片</value></data>
   <data name="Presets.Rename" xml:space="preserve"><value>重新命名…</value></data>
   <data name="Presets.Color" xml:space="preserve"><value>更改色彩標籤</value></data>
