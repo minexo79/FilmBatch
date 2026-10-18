@@ -24,7 +24,7 @@ dotnet run --project src/FilmBatch.App -- --gallery   # 元件展示視窗
 dotnet test FilmBatch.sln -c Release
 ```
 
-UI 測試以 Avalonia.Headless 執行，不需要顯示器；沒有 GPU 時 GPU 測試自動略過。
+UI 測試以 Avalonia.Headless 執行，不需要顯示器；只有沒有可用 WebGPU 介面卡時才略過 GPU 測試。軟體介面卡仍會執行測試，實際算圖、讀回或像素比對失敗不能當成「沒有 GPU」略過。
 
 ### 編輯生命週期回歸
 
@@ -47,6 +47,17 @@ dotnet test tests/FilmBatch.App.Tests/FilmBatch.App.Tests.csproj -c Release \
 涵蓋 RAW／一般影像切換、隱藏未啟用模組、保留已保存的 RAW 設定、預設展開基本調整、來源選項切換後縮圖自動更新，以及 Kelvin／遮罩設定的復原、儲存、重開、過期解碼失敗與修復後快取重新解碼。永久測試使用隔離的 DNG／一般影像與實際 CPU 管線，不依賴外部相機語料。自訂 Kelvin 範圍為 2500–9900 K；舊 JSON／YAML 值正規化，但拍攝白平衡中繼資料保持原樣。
 
 Mac 桌面另以含 gain-table 的 ProRAW 及含畸變／暗角資料的 RAF 驗證：在底片分頁復原／重做 RAW 選項，即使重解碼時間超過縮圖防抖間隔，底片與色相縮圖仍自動跟上新來源，結果須等於同來源重新要求算圖的結果；切到 PNG 不顯示 RAW 控制項，再切回 RAW 恢復顯示且設定不變。驗證前後核對原始 RAW 的 SHA-256。
+
+### GPU 讀回與 RAW 數值回歸
+
+```bash
+dotnet test tests/FilmBatch.Core.Tests/FilmBatch.Core.Tests.csproj -c Release \
+  --filter "FullyQualifiedName~RawGpuDisplayTests|FullyQualifiedName~RawSceneIntegrationTests|FullyQualifiedName~RawToneTests|FullyQualifiedName~RawCameraLookTests|FullyQualifiedName~GpuSpikeTests|FullyQualifiedName~EffectPipelineTests"
+```
+
+涵蓋預覽／16-bit 匯出的共用 GPU 管線、分帶讀回、裁切後工作區重建及 RAW 飽和高光。兩個 `GpuDevice.ReadBuffer` 多載都使用 10 秒的奈秒預算；WebGPUSharp `0.5.7` 的 `MapSync` 雖將參數命名為 `timeoutMilliseconds`，卻[直接轉交](https://github.com/EmilSV/WebGPUSharp/blob/30d51f3a460c9419a2ae6cc8dee54ed75a3c0008/src/Buffer.cs#L75-L104)給 [以奈秒計的 `WaitAny`](https://github.com/EmilSV/WebGPUSharp/blob/30d51f3a460c9419a2ae6cc8dee54ed75a3c0008/src/Instance.cs#L155-L175)，不能傳入看似代表 10 秒的 `10_000`。真正的裝置錯誤仍會傳播，不因延長等待而改成成功。
+
+RAW 收尾的 sRGB 冪次改採固定多項式，降低對後端 `pow` 精度的依賴；CPU 演算法及既有 2／65535 色碼容差不變。本機 Metal 的通過結果不等於 Windows／D3D12 的裝置遺失或原先 5 色碼差異已獲實機確認，仍須在對應 runner 重跑上述案例。
 
 ### 大量照片載入與即時預覽回歸
 
@@ -104,6 +115,8 @@ dotnet run build/CheckShaders.cs
 
 兩邊安裝 `global.json` 的 `sdk.version`；`rollForward` 僅控制執行時從已安裝 SDK 中選擇版本，不代表安裝最新 `10.0` 通道。CircleCI 的 Windows 工作使用 Git Bash 並明確啟用 `errexit`／`pipefail`。
 
+兩邊的 `dawn-build` 會先用 runner 的 Python 3 建立 `$HOME/.filmbatch-dawn-tools` venv，安裝固定的 `cmake==3.31.6`，並將其 `bin` 加入後續步驟的 PATH；不假設 Xcode 映像已附 CMake，也不透過 Homebrew 安裝或更新工具。這只補足 Dawn 的建置前置需求，仍需 Metal SDK、Python 3 及下載原始碼所需的網路與磁碟空間。
+
 映像對照於 2026-10-18 依 [CircleCI 支援表](https://circleci.com/docs/using-macos/)及官方 manifest（[26.4.1](https://circle-macos-docs.s3.amazonaws.com/image-manifest/v17723/manifest.txt)、[16.4.0](https://circle-macos-docs.s3.amazonaws.com/image-manifest/v15338/manifest.txt)）核對；Windows 依[官方執行環境說明](https://circleci.com/docs/using-windows/)。Xcode 版本不等於宿主 macOS 版本，例如 Xcode 26.0.1 的宿主是 macOS 15.6，不能滿足隨附 Dawn 的 macOS 26.0 最低需求。這些設定統一 OS 基線，不保證兩家託管映像的修補版本或所有預裝工具完全相同。
 
 #### 合併必要檢查
@@ -118,18 +131,34 @@ CircleCI 的 workflow-level GitHub Checks 與上述 job 狀態不同，不能在
 
 #### CircleCI 觸發設定
 
-GitHub App 專案在 **Project Settings → Project Setup**，為同一個 pipeline definition 設定兩個 trigger：
+此儲存庫使用 GitHub，因此這裡的 Merge Request 指 **Pull Request（PR）**，不是 GitLab 的 `merge_request` 事件。CircleCI 先由專案 trigger 決定是否建立 pipeline，再由 YAML 決定是否執行 workflow；只改 `.circleci/config.yml` 不會訂閱新的 webhook。
 
-1. **PR opened or pushed to, default branch and tag pushes**；此儲存庫的預設分支須為 `master`。YAML 會排除自動 tag 及 PR 關閉／標籤等非建置事件。
-2. **Pushes to merge queues**，接收 `gh-readonly-queue/*` 分支推送。
+**GitHub App pipeline**：在 **Project Settings → Project Setup**，為同一個 pipeline definition 設定下列 trigger，事件來源選本儲存庫：
 
-不要以 **All pushes** 代替第一項：開啟 PR 的分支推送及一般分支推送都可能回報 `push`，不能只靠 YAML 的事件名稱分辨。分支與 PR 成員資格由 trigger 篩選，workflow 再篩選事件／tag。UI **Trigger Pipeline** 或 API 手動觸發會同時執行 `ci` 與 `dawn-build`，不再傳入 `run-dawn-build`；手動指定 tag 亦可執行。重跑既有 pipeline 保留原來的觸發事件，不等同建立新的手動 pipeline。
+1. **PR opened or pushed to, default branch and tag pushes**：涵蓋 PR 建立（含草稿）、推送新 commit、重新開啟及預設分支推送；預設分支須為 `master`。
+2. **PR marked ready for review**：草稿轉為可審查時再執行檢查；只有第一項不代表會收到此事件。
+3. **Pushes to merge queues**：接收 `gh-readonly-queue/*` 分支推送。
 
-GitHub App **不會觸發 fork PR**；如果需要接受外部 fork，應保留 GitHub Actions 的 `pre-merge` 作為必要閘門，不要把無法回報的 CircleCI job 狀態設為所有 PR 的必要條件。這是供應商整合限制，不表示 fork PR 已在 CircleCI 驗證。trigger 選項及限制見 [CircleCI 官方說明](https://circleci.com/docs/github-trigger-event-options/)，GitHub merge queue 依[官方事件說明](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#merge_group)設定。
+YAML 接受的事件如下；每次執行 `ci` 都包含 Windows、macOS、WGSL 三項實際檢查：
+
+| 事件 | `ci` | `dawn-build` |
+| --- | --- | --- |
+| PR `opened`、`synchronize`、`reopened`、`ready_for_review` | 執行 | 不執行 |
+| 開啟 PR 的分支、預設分支或 merge queue 推送 | 執行 | 不執行 |
+| PR `closed`、`labeled`；自動 tag 推送 | 不執行 | 不執行 |
+| UI **Trigger Pipeline**／API 手動觸發（含手動 tag） | 執行 | 執行 |
+
+不要以 **All pushes** 代替第一項：單純開啟 PR 並不是 push。開啟 PR 的分支推送及一般分支推送也都可能回報 `push`，不能只靠 YAML 的事件名稱分辨；分支與 PR 成員資格由 trigger 篩選，workflow 再篩選事件／tag。手動觸發不需 `run-dawn-build`；重跑既有 pipeline 保留原來的觸發事件，不等同建立新的手動 pipeline。
+
+**GitHub OAuth pipeline**：在 **Project Setup** 選擇 **Pushes to open pull requests, default branch, and tags**，或在 **Advanced → Only build pull requests** 啟用對應設定。OAuth 的原生 GitHub trigger 主要處理 push，不能把它當成上述 GitHub App 的 PR 生命週期訂閱；需要明確訂閱 PR 建立及轉為可審查事件時，使用 GitHub App pipeline。`gh/` 組織可以同時有 OAuth 與 App pipelines，不能只憑專案 URL 判斷；避免兩者對同一事件重複建置。整合差異見[官方說明](https://circleci.com/docs/guides/integration/using-the-circleci-github-app-in-an-oauth-org/)，OAuth 設定見[開源專案指南](https://circleci.com/docs/guides/integration/oss/#only-build-pull-requests)。
+
+GitHub App **不會觸發 fork PR**；如果需要接受外部 fork，應保留 GitHub Actions 的 `pre-merge` 作為必要閘門，不要把無法回報的 CircleCI job 狀態設為所有 PR 的必要條件。這是供應商整合限制，不表示 fork PR 已在 CircleCI 驗證。trigger 選項及事件值見 [CircleCI 官方說明](https://circleci.com/docs/github-trigger-event-options/)，GitHub merge queue 依[官方事件說明](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#merge_group)設定。
 
 #### 逾時與遠端設定界線
 
-GitHub Actions 的 `timeout-minutes` 是整個 job 上限。依本次選擇，CircleCI **不新增 API token**：`timed-run` 共用剩餘命令預算（桌面 30 分鐘、WGSL 15 分鐘、Dawn 360 分鐘），逾時回傳 124，必要時在 30 秒終止寬限後強制結束；初始化、checkout、產物上傳與 runner 等待不受此包裝器控制，CircleCI 方案的整個 job 上限亦可能較短。不能將兩者宣稱為相同的硬性 job deadline。命令透過環境變數傳入子 Bash，保留單引號、換行、`pipefail` 及原始失敗碼。Mac 初始化若需安裝 coreutils，會禁止 Homebrew 自動升級既有相依使用者及清理舊版。
+GitHub Actions 的 `timeout-minutes` 是整個 job 上限。依本次選擇，CircleCI **不新增 API token**：`timed-run` 共用剩餘命令預算（桌面 30 分鐘、WGSL 15 分鐘、Dawn 360 分鐘），逾時回傳 124，必要時在 30 秒終止寬限後強制結束；初始化、checkout、產物上傳與 runner 等待不受此包裝器控制，CircleCI 方案的整個 job 上限亦可能較短。不能將兩者宣稱為相同的硬性 job deadline。命令透過環境變數傳入子 Bash，保留單引號、換行、`pipefail` 及原始失敗碼。優先使用現有 GNU timeout；沒有時改以 runner 的 Python 3 執行 `build/ci-timeout.py`，對命令 process group 先送 TERM、寬限後送 KILL，並回收直接子程序。啟動計時器可在 checkout 前執行，Python 腳本只在 checkout 後使用；不再為了 timeout 呼叫 Homebrew。
+
+計時器會在初始化階段確認 GNU timeout 或 `python3` 可用；兩者皆缺失時立即報錯，不把故障延後到還原／建置命令。
 
 CircleCI 官方的[自訂整個 job 時限方案](https://support.circleci.com/hc/en-us/articles/14114124583195-How-to-set-a-custom-maximum-job-duration)需要個人 API token 呼叫取消 API，本設定刻意不採用。YAML 不會修改 trigger、VCS 狀態回報、分支保護或 ruleset；這些遠端設定仍須管理員套用，並以實際 PR／merge queue 的回報確認，不能把本機設定驗證當成已啟用的雲端合併保護。
 

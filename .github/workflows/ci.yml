@@ -40,7 +40,7 @@ jobs:
       - name: Build
         run: dotnet build FilmBatch.sln -c Release --no-restore
 
-      # runner 沒有實體 GPU：GPU 測試自動略過；UI 測試使用 Avalonia.Headless + CPU 參考算圖器
+      # 只有沒有可用 WebGPU 介面卡時才略過 GPU 測試；軟體介面卡也實際執行，裝置／像素錯誤仍會失敗。
       - name: Test
         run: dotnet test FilmBatch.sln -c Release --no-build
 
@@ -100,6 +100,12 @@ jobs:
           global-json-file: global.json
       - name: Restore (needs NuGet 內附 Dawn 作 ABI 比對)
         run: dotnet restore FilmBatch.sln
+      - name: Install CMake for Dawn (isolated)
+        run: |
+          python3 -m venv "$HOME/.filmbatch-dawn-tools"
+          "$HOME/.filmbatch-dawn-tools/bin/python" -m pip install --disable-pip-version-check --only-binary=:all: cmake==3.31.6
+          "$HOME/.filmbatch-dawn-tools/bin/cmake" --version
+          echo "$HOME/.filmbatch-dawn-tools/bin" >> "$GITHUB_PATH"
       - name: Build Dawn for Apple Silicon
         run: bash build/build-dawn.sh arm64
       - uses: actions/upload-artifact@v4
