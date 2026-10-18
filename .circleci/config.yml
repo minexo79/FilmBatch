@@ -132,7 +132,13 @@ jobs:
       # 只有沒有可用 WebGPU 介面卡時才略過 GPU 測試；軟體介面卡也實際執行，裝置／像素錯誤仍會失敗。
       - timed-run:
           label: Test
-          command: dotnet test FilmBatch.sln -c Release --no-build
+          command: |
+            # Windows 同時限制專案與 xUnit 集合併發，不變更 GPU 測試與像素容差。
+            if [ "<< parameters.rid >>" = "win-x64" ]; then
+              dotnet test FilmBatch.sln -c Release --no-build -m:1 -- xUnit.ParallelizeTestCollections=false
+            else
+              dotnet test FilmBatch.sln -c Release --no-build
+            fi
 
       # Native availability/ABI is required on BOTH executors; a missing bundle is a failure.
       - timed-run:

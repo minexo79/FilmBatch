@@ -26,6 +26,18 @@ dotnet test FilmBatch.sln -c Release
 
 UI 測試以 Avalonia.Headless 執行，不需要顯示器；只有沒有可用 WebGPU 介面卡時才略過 GPU 測試。軟體介面卡仍會執行測試，實際算圖、讀回或像素比對失敗不能當成「沒有 GPU」略過。
 
+### Windows CI 測試排程
+
+兩套 CI 的 Windows 工作都以同一個命令限制專案與測試集合併發：
+
+```bash
+dotnet test FilmBatch.sln -c Release --no-build -m:1 -- xUnit.ParallelizeTestCollections=false
+```
+
+`-m:1` 限制 MSBuild 同時執行的測試專案；`xUnit.ParallelizeTestCollections=false` 關閉同一測試組件內的集合併發。[RunSettings 的大小寫有意義](https://xunit.net/docs/config-runsettings#switches)，不能寫成 `xunit.parallelizeTestCollections`。macOS 保留原本的平行測試命令；產品的渲染排程、所有 GPU 測試與像素容差都不變。
+
+Windows log 曾顯示四個 GPU 測試類別交錯執行，接連出現十次裝置遺失及一次建立介面卡失敗。序列化移除這層測試資源爭用，不代表已證實 TDR／OOM，也不能代替 Windows／D3D12 回歸；裝置遺失仍會使測試失敗。外部 RAW 樣本、LightCraft oracle 或 `rawinfo` 未提供而產生的略過，與 GPU 失敗分開判讀。
+
 ### 編輯生命週期回歸
 
 ```bash
@@ -140,7 +152,7 @@ dotnet run build/CheckShaders.cs
 | 目前的 `windows.medium` | 4／16 GB | 非專用 GPU 類別 |
 | `windows.gpu.nvidia.medium` | 16／60 GB | Tesla T4、16 GiB GPU 記憶體 |
 
-GPU 指南列為 Scale 方案，且需搭配 Windows GPU 映像；存取資格與映像應在切換前向 CircleCI 確認。不能只把現有一般 Windows 映像的 `resource_class` 改名，也不能將目前 runner 的通過結果當作 NVIDIA 硬體驗證。本次不變更資源方案、CI YAML 或遠端設定。
+GPU 指南列為 Scale 方案，且需搭配 Windows GPU 映像；存取資格與映像應在切換前向 CircleCI 確認。不能只把現有一般 Windows 映像的 `resource_class` 改名，也不能將目前 runner 的通過結果當作 NVIDIA 硬體驗證。Windows 測試排程的調整不啟用專用 GPU 類別，也不變更遠端方案或設定。
 
 Microsoft 的 [WARP 說明](https://learn.microsoft.com/en-us/windows/win32/direct3darticles/directx-warp)指出 Basic Render Adapter 提供軟體渲染，Windows 10 起也支援 D3D12。診斷 log 的 `IsSoftware=False` 是綁定回傳的分類，不能據此認定為實體 GPU。可用軟體介面卡仍執行真正 WebGPU 算圖；裝置遺失或像素錯誤照常失敗，不以 CPU 算圖冒充成功。供應商變更方案、資源類別或映像時，須重新核對本節。
 
