@@ -31,7 +31,7 @@ UI 測試以 Avalonia.Headless 執行，不需要顯示器；只有沒有可用 
 兩套 CI 的 Windows 工作都以同一個命令限制專案與測試集合併發：
 
 ```bash
-dotnet test FilmBatch.sln -c Release --no-build -m:1 -- xUnit.ParallelizeTestCollections=false
+dotnet test FilmBatch.sln -c Release --no-build -m:1 --logger "console;verbosity=detailed" --logger trx --results-directory dist/test-results/win-x64 -- xUnit.ParallelizeTestCollections=false
 ```
 
 `-m:1` 限制 MSBuild 同時執行的測試專案；`xUnit.ParallelizeTestCollections=false` 關閉同一測試組件內的集合併發。[RunSettings 的大小寫有意義](https://xunit.net/docs/config-runsettings#switches)，不能寫成 `xunit.parallelizeTestCollections`。macOS 保留原本的平行測試命令；產品的渲染排程、所有 GPU 測試與像素容差都不變。
@@ -99,9 +99,15 @@ RAW 收尾的 sRGB 冪次先前已改採固定多項式，降低對後端 `pow` 
 
 因此僅在 Windows 對已完成 float32 除法的比值使用 `(float)Math.Log2(ratio)`；其他平台保留 `MathF.Log2`。正式色調映射與診斷共用 `ToneMap.LogExposure`，既有 `2/65535` 容差及 shader 不變。`RawToneTests.RawDisplay_HighlightNearGamutBoundaryPreservesRedDetail` 從 CPU 顯示收尾驗證紅色細節，不要求 GPU。來源連結的強制 Windows 分支冒煙測試得到 `[1319,65535,64083,65535]`；真實 Metal 的四個邊界案例亦與 CPU 完全相同。強制分支不等於 Windows CRT／D3D12 實機執行，六個裝置遺失與完整 Windows 回歸仍須由對應 runner 確認；若 D3D12 專用測試略過，不算該路徑已驗證。
 
-最新 Windows 紀錄仍有三個失敗：全解析度 RAW 匯出已顯示 `scene.dng = [Device] is lost.`；另外兩個改為 `GpuSpikeTests.Gpu_MatchesCpuReference` 的零參數與負參數案例，在 `MapForRead` 失敗，後續介面卡不可用。先前同類錯誤發生於第一次 32×48 裁切讀回及 32×24 單帶讀回；這些尺寸與順序差異不支持「大圖超過緩衝區上限」或固定測試必死的結論，也不能單憑三次失敗判定 TDR、OOM 或行程黑名單。原生參照保留已獨立重現並修正，但是否就是 Windows 裝置遺失的原因仍須該 runner 確認。
+最新 Windows 紀錄仍有三個失敗：64×48 的 RAW 全解析度匯出，以及 `GpuSpikeTests.Gpu_MatchesCpuReference` 的 320×200 零參數與負參數案例。RAW 匯出的 GPU 讀回錯誤遭集合格式化器截短；兩個 spike 案例則完整回報 `Microsoft Basic Render Driver · DX12` 的原生 `[Device] is lost.`，之後多個介面卡請求無法成功。先前同類錯誤發生於第一次 32×48 裁切讀回及 32×24 單帶讀回；這些尺寸與順序差異不支持「大圖超過緩衝區上限」或固定測試必死的結論，也不能單憑三次失敗判定 TDR、OOM 或行程黑名單。原生參照保留已獨立重現並修正，但是否就是 Windows 裝置遺失的原因仍須該 runner 確認。
 
-WebGPUSharp 會將 [遺失與 uncaptured-error callback 排入 ThreadPool](https://github.com/EmilSV/WebGPUSharp/blob/30d51f3a460c9419a2ae6cc8dee54ed75a3c0008/src/Adapter.cs#L388-L468)，所以 `MapSync` 失敗時不保證 callback 已送達。D3D12 讀回現在即使 `IsLost` 尚未設定，也會保留原始綁定例外、介面卡與已收到的最近原生錯誤；未知原因明確標為尚未回報，不假造移除原因。晚到的遺失 callback 另寫入既有 logger，未設定 logger 時寫入標準錯誤。RAW 匯出測試先檢查 `summary.Errors`，CI 可直接顯示檔名與真正錯誤，不再只有 `Failed` 計數。若仍失敗，請同時保留讀回例外與稍後的 callback 訊息；本機驗證不能替代 Windows／D3D12 結果。
+WebGPUSharp 會將 [遺失與 uncaptured-error callback 排入 ThreadPool](https://github.com/EmilSV/WebGPUSharp/blob/30d51f3a460c9419a2ae6cc8dee54ed75a3c0008/src/Adapter.cs#L388-L468)，所以 `MapSync` 失敗時不保證 callback 已送達。D3D12 讀回現在即使 `IsLost` 尚未設定，也會保留原始綁定例外、介面卡與已收到的最近原生錯誤；未知原因明確標為尚未回報，不假造移除原因。晚到的遺失 callback 另寫入既有 logger，未設定 logger 時寫入標準錯誤。RAW 匯出測試會直接以檔名及完整 `summary.Errors` 字串宣告失敗，不再讓 `Assert.Empty` 的集合格式化器截短原生訊息。若仍失敗，請同時保留讀回例外與稍後的 callback 訊息；本機驗證不能替代 Windows／D3D12 結果。
+
+D3D12 介面卡請求失敗另輸出 `[GPU-ADAPTER]`，包含要求的 backend、low-power／fallback 選項及完整綁定例外；裝置初始化失敗輸出 `[GPU-CREATE]`。兩者使用既有 logger，未設定時寫入標準錯誤；請一併保留後續測試略過前的這些訊息。既有可用性判斷未改成全域快取，也未把失敗改成成功或加入重試。WebGPUSharp 的同步介面卡 API 將 `Unavailable`／`Error` 等狀態都轉成 `WebGPUException`，因此不能只看泛用的「沒有介面卡」訊息推斷原因。
+
+兩套 Windows CI 都以 `--logger "console;verbosity=detailed" --logger trx --results-directory dist/test-results/win-x64` 執行，保留原有序列化選項。預設 console logger 不顯示上述 process-level 訊息；實際 xUnit runner 冒煙測試確認 detailed logger 可顯示測試失敗或略過前的原生原因，TRX 亦保留完整 run-level 輸出。CircleCI 於 `FilmBatch-win-x64/test-results` 保存 TRX，GitHub Actions 以 `FilmBatch-win-x64-tests` artifact 保存，即使測試失敗仍會嘗試上傳；macOS 測試命令與產物不變。
+
+目前已先等待佇列完成再以 10 秒預算映射，沒有 `Poll` 忙等；原生映射 callback 的錯誤字串與逾時例外也不同。回呼尚未收到不代表裝置仍健康，縮小讀回列帶也不會自動將 RAW／效果 compute pass 分帶。本機已用真實 Metal 裝置重現「callback 尚未設定但原生操作已拒絕」及 xUnit 訊息截短，確認完整輸出；這是診斷修正，不是三項 Windows 裝置遺失已解決的證據。
 
 另修正命令中止時的 error-scope 生命週期：未提交的命令清單也會 pop 自己的 validation scope，避免後續呼叫拿錯外層錯誤；kernel 建立途中失敗亦以 `finally` 配對。`GpuErrorScopeTests` 使用真正的 Dawn 驗證錯誤檢查歸屬，未以模擬 callback 當成驅動程式驗證。本機 Metal 的失敗前／修正後回歸與正常 RAW 匯出已執行；Windows／D3D12 移除原因及三項失敗是否排除，仍須對應 runner 的新結果。
 

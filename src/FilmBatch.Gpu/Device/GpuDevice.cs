@@ -97,9 +97,14 @@ public sealed class GpuDevice : IDisposable
         var text = $"{reason}: {Encoding.UTF8.GetString(message)}";
         Interlocked.CompareExchange(ref _lastDeviceLost, text, null);
         // 綁定先將此 callback 排到 ThreadPool，可能晚於 MapSync 的失敗；獨立輸出才能保留晚到的原因。
-        if (Log is { } log) log(GpuText.Format("Gpu.DeviceLost", text));
-        else Console.Error.WriteLine(GpuText.Format("Gpu.DeviceLost", text));
+        WriteDiagnostic(GpuText.Format("Gpu.DeviceLost", text));
         DeviceLost?.Invoke(text);
+    }
+
+    private static void WriteDiagnostic(string message)
+    {
+        if (Log is { } log) log(message);
+        else Console.Error.WriteLine(message);
     }
 
     /// <summary>裝置已遺失時丟出含原生遺失原因的例外；尚未遺失則無動作。</summary>
@@ -155,12 +160,13 @@ public sealed class GpuDevice : IDisposable
 
             return new GpuDevice(instance, adapter, QueryInfo(adapter));
         }
-        catch
+        catch (Exception error)
         {
             if (releaseHandles)
             {
                 NativeLifetime.Release(adapter);
                 NativeLifetime.Release(instance);
+                WriteDiagnostic($"[GPU-CREATE] backend={options.Backend} software={options.ForceSoftware}: {error}");
             }
             throw;
         }
@@ -227,8 +233,10 @@ public sealed class GpuDevice : IDisposable
         {
             return instance.RequestAdapterSync(in opts, RequestTimeoutNs);
         }
-        catch (WebGPUException)
+        catch (WebGPUException error)
         {
+            if (backend == GpuBackend.Dx12 || (backend == GpuBackend.Auto && OperatingSystem.IsWindows()))
+                WriteDiagnostic($"[GPU-ADAPTER] backend={backend} lowPower={lowPower} fallback={fallback}: {error}");
             return null; // No supported adapters
         }
     }

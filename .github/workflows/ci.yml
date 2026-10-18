@@ -43,11 +43,18 @@ jobs:
       # 只有沒有可用 WebGPU 介面卡時才略過 GPU 測試；軟體介面卡也實際執行，裝置／像素錯誤仍會失敗。
       - name: Test (Windows serial)
         if: runner.os == 'Windows'
-        run: dotnet test FilmBatch.sln -c Release --no-build -m:1 -- xUnit.ParallelizeTestCollections=false
+        run: dotnet test FilmBatch.sln -c Release --no-build -m:1 --logger "console;verbosity=detailed" --logger trx --results-directory dist/test-results/win-x64 -- xUnit.ParallelizeTestCollections=false
 
       - name: Test
         if: runner.os != 'Windows'
         run: dotnet test FilmBatch.sln -c Release --no-build
+
+      - name: Upload Windows test diagnostics
+        if: always() && runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: FilmBatch-win-x64-tests
+          path: dist/test-results/win-x64
 
       # Native availability/ABI is required on BOTH runners; a missing bundle is a failure.
       - name: Bundled JXL ABI and sample decode

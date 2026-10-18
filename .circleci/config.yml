@@ -135,10 +135,17 @@ jobs:
           command: |
             # Windows 同時限制專案與 xUnit 集合併發，不變更 GPU 測試與像素容差。
             if [ "<< parameters.rid >>" = "win-x64" ]; then
-              dotnet test FilmBatch.sln -c Release --no-build -m:1 -- xUnit.ParallelizeTestCollections=false
+              dotnet test FilmBatch.sln -c Release --no-build -m:1 --logger "console;verbosity=detailed" --logger trx --results-directory dist/test-results/win-x64 -- xUnit.ParallelizeTestCollections=false
             else
               dotnet test FilmBatch.sln -c Release --no-build
             fi
+      - when:
+          condition:
+            equal: [win-x64, << parameters.rid >>]
+          steps:
+            - store_artifacts:
+                path: dist/test-results/win-x64
+                destination: FilmBatch-win-x64/test-results
 
       # Native availability/ABI is required on BOTH executors; a missing bundle is a failure.
       - timed-run:
