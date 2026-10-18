@@ -1,22 +1,16 @@
 // 色彩空間轉換（sRGB ↔ 線性）、亮度與確定性雜湊（與 Core/Random/SeedHash.cs 相同演算法）
 
-fn srgb_to_linear1(c: f32) -> f32 {
-    if (c <= 0.04045) { return c / 12.92; }
-    return pow((c + 0.055) / 1.055, 2.4);
-}
-
-fn linear_to_srgb1(c: f32) -> f32 {
-    let x = max(c, 0.0);
-    if (x <= 0.0031308) { return x * 12.92; }
-    return 1.055 * pow(x, 1.0 / 2.4) - 0.055;
-}
-
+// WebGPUSharp 0.5.7 隨附的 D3D12/WARP 會在逐通道早退的轉換函式中遺失裝置；
+// 等價的向量 select 已通過原生讀回。未選取的 pow 分支也必須保持有效底數。
 fn srgb_to_linear(c: vec3f) -> vec3f {
-    return vec3f(srgb_to_linear1(c.r), srgb_to_linear1(c.g), srgb_to_linear1(c.b));
+    let high = pow((max(c, vec3f(0.04045)) + vec3f(0.055)) / 1.055, vec3f(2.4));
+    return select(high, c / 12.92, c <= vec3f(0.04045));
 }
 
 fn linear_to_srgb(c: vec3f) -> vec3f {
-    return vec3f(linear_to_srgb1(c.r), linear_to_srgb1(c.g), linear_to_srgb1(c.b));
+    let x = max(c, vec3f(0.0));
+    let high = 1.055 * pow(max(x, vec3f(0.0031308)), vec3f(1.0 / 2.4)) - vec3f(0.055);
+    return select(high, x * 12.92, x <= vec3f(0.0031308));
 }
 
 // Rec.709 亮度權重（線性光）
