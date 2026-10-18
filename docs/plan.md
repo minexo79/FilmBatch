@@ -5,6 +5,8 @@
 > 定位：獨立的批次類比效果工具。接收任何 RAW 編輯器（例如 RapidRAW）匯出的照片，為每張照片套上底片色彩與類比效果後批次輸出
 > 技術：C# / **.NET 10（LTS）** ＋ **Avalonia UI 12**（Fluent 深色主題、MVVM）＋ **WebGPU（wgpu-native）與 WGSL compute shader 影像引擎**，以 `dotnet publish` 發佈為 Windows / macOS / Linux 原生執行檔
 
+> **歷史設計稿**：保留當時的需求、方案與里程碑，不是目前功能或驗收清單。RAW、底片 LUT、GPU 綁定與支援平台已有後續決策；現況從[文件地圖](README.md)、[架構](architecture.md)、[驗證入口](../VERIFY.md)及[提交歷史](history.md)查閱，不因本文仍有待辦就推定功能不存在。
+
 ### 版本變更
 
 | 版本 | 變更 |

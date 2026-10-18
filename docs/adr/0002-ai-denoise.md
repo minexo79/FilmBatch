@@ -3,13 +3,15 @@
 - 狀態：**提議中**（2026-10-16，尚未實作，本文的效能數字皆為估算，需 spike 實測）
 - 範圍：`src/FilmBatch.Engine`（新增來源階段）、`src/FilmBatch.Core/Params`（新增 `denoise` 模組）、發佈封裝
 
+> **2026-10-18 現況註記**：本提案仍未實作。下方「沒有 RAW 管線」是 2026-10-16 的設計前提；目前已具備[場景線性 RAW 管線](../architecture.md#48-engine影像讀取與批次匯出imaging--exporting)。重新啟動此提案時，須重新比較資料域、模型／權重授權、品質與部署，不能直接把當時的 sRGB／ONNX 選型當成已採用的方案。原提案保留作為決策歷史。
+
 ## 背景
 
 使用者希望有類似 Lightroom「AI 降噪」的功能，並能調整降噪等級。曾評估 [stefanpenner/ai-denoise](https://github.com/stefanpenner/ai-denoise) 能否直接整合。
 
 Lightroom AI 降噪的做法是：在**解馬賽克之前的 RAW（Bayer）資料**上跑卷積神經網路，同時完成解馬賽克與降噪，輸出新的 DNG；介面只有一個「量」滑桿。
 
-FilmBatch 目前的前提：
+2026-10-16 提案時的前提（非目前功能清單）：
 
 - 只讀 JPEG／TIFF／PNG（`Project.SupportedExtensions`），以 Magick.NET 解碼成 16-bit sRGB RGBA，**沒有 RAW 管線**。
 - 預覽使用 1600px 代理圖，GPU 拖曳更新約 2 ms（見 [ADR 0001](0001-webgpu-binding.md)）；匯出另建算圖器處理全解析度。

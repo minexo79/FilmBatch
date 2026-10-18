@@ -2,7 +2,7 @@
 
 本文件寫給第一次修改 FilmBatch 的開發者：先看懂整體分層與一次編輯的資料流，再查閱各模組的職責、關鍵型別與注意事項。最後的「修改食譜」列出常見改動該動哪些檔案。
 
-設計背景見 [plan.md](plan.md) 第 5、11 章；本頁以目前程式碼為準。
+設計背景見 [plan.md](plan.md) 第 5、11 章；本頁以目前程式碼為準。依任務找文件見[文件地圖](README.md)，執行檢查見[驗證入口](../VERIFY.md)，決策原因與替代方案見[提交歷史](history.md)。
 
 ## 目錄
 
@@ -31,7 +31,7 @@
 
 | 名詞 | 意思 | 程式碼 |
 |---|---|---|
-| 模組（module） | 一個效果，例如暗角、顆粒。共 16 個，每個有 `enabled` 開關 | `ModuleSchema` |
+| 模組（module） | 一個來源或效果區塊。`ModuleCatalog` 目前包含 RAW 來源、裁切與 16 個效果，共 18 個，各有 `enabled` 開關 | `ModuleSchema` |
 | 參數（param） | 模組內的一個欄位，例如 `amount` | `ParamDef` |
 | 扁平 key | `模組.參數` 形式的唯一名稱，例如 `vignette.amount`。整個程式都用它定位參數 | `ModuleSchema.FlatKey` |
 | 設定（Settings） | 扁平 key → 值 的**不可變**字典 | `Settings` |
@@ -67,7 +67,7 @@ flowchart TB
 |---|---|---|---|
 | `FilmBatch.Core` | 資料模型與規則：參數、專案、預設、底片 LUT、復原 | 只有 .NET 與 YAML 函式庫 | Avalonia、GPU、Magick.NET |
 | `FilmBatch.Gpu` | WebGPU 的薄封裝與嵌入的 WGSL | WebGPUSharp | 其他 FilmBatch 專案、Avalonia |
-| `FilmBatch.Raw` | RAW 容器與壓縮解碼、去馬賽克、相機色彩資料（移植自 LightCraft，見 [tools/raw-oracle](../tools/raw-oracle/README.md)） | 只有 .NET | 其他 FilmBatch 專案、Magick.NET、Avalonia、GPU |
+| `FilmBatch.Raw` | RAW 容器與壓縮解碼、去馬賽克、相機色彩資料（移植自 LightCraft，見 [tools/raw-oracle](../tools/raw-oracle/README.md)） | managed 相依僅 .NET；JPEG XL 另需隨附的原生閉包 | 其他 FilmBatch 專案、Magick.NET、Avalonia、GPU |
 | `FilmBatch.Engine` | 把設定變成影像：算圖、排程、讀檔、匯出 | Core、Gpu、Raw、Magick.NET | Avalonia |
 | `FilmBatch.App` | 桌面介面 | Core、Engine | 直接呼叫 Gpu（一律經 Engine） |
 | `FilmBatch.Cli` | 命令列批次匯出 | Core、Engine | Avalonia |
@@ -140,13 +140,13 @@ sequenceDiagram
 
 ### 4.1 Core．參數 schema（Params）
 
-**職責**：定義 16 個效果模組有哪些參數、型別、範圍與預設值。這是整個程式的**單一資料來源**：介面面板、存檔、貼上、鏡像、範圍檢查都從這裡自動產生。
+**職責**：定義 RAW 來源、裁切與效果模組的參數、型別、範圍與預設值。這是整個程式的**單一資料來源**：介面面板、存檔、貼上、鏡像、範圍檢查都從這裡自動產生。
 
 | 型別 | 檔案 | 說明 |
 |---|---|---|
-| `ModuleCatalog` | `Params/ModuleCatalog.cs` | 模組順序為 RAW 來源顯影 → 裁切 → 基本調整與後續效果；RAW 在載入時處理，裁切是效果管線的第一步。面板依分頁／分組顯示；以 `Defaults`、`Param(flatKey)`、`Module(key)` 查詢，不依賴固定數量或陣列索引 |
+| `ModuleCatalog` | `Params/ModuleCatalog.cs` | 模組順序為 RAW 來源 → 裁切 → 基本調整與後續效果；RAW 解碼先於效果，白平衡／局部調整與顯示收尾在算圖時執行。面板依分頁／分組顯示；以 `Defaults`、`Param(flatKey)`、`Module(key)` 查詢，不依賴固定數量或陣列索引 |
 | `ModuleSchema` | `Params/ModuleSchema.cs` | 一個模組：`Key`、`Label`、所屬分組 `ModuleGroup`、選擇性貼上分類 `PasteCategory`、參數清單 |
-| `ParamDef` | `Params/ParamDef.cs` | 一個參數。以工廠方法建立：`Float`、`Int`、`Bool`、`Choice`、`Path`、`Seed`、`Position`、`Offset` |
+| `ParamDef` | `Params/ParamDef.cs` | 一個參數。工廠方法包括 `Float`、`Int`、`Bool`、`Choice`、`Path`、`Directory`、`Text`、`Curve`、`Seed`、`Position`、`Offset` |
 | `ParamValue` | `Params/ParamValue.cs` | 參數值（數字 / 布林 / 文字），以 `AsNumber`、`AsBool`、`AsText` 讀取 |
 | `Settings` | `Params/Settings.cs` | 扁平 key → `ParamValue` 的不可變字典。`Overlay` 用於三層合併，`With` / `Without` 回傳新物件 |
 
@@ -157,6 +157,7 @@ sequenceDiagram
 - `Position` / `Offset` 參數以 0–1 正規化座標儲存，換尺寸照片仍合理；帶有 `center_x`、`center_y` 的模組會自動在預覽上出現控制點（`ModuleSchema.HasCanvasPoint`）。
 - `Seed` 參數預設不會被貼上，每張照片依檔名產生自己的種子（`Core/Random/SeedHash.cs`）。
 - `Label` 是繁中後備文字；實際顯示名稱由 App 的資源檔決定（見 4.10 多國語系）。
+- 自由識別字用 `Text`，不要借用 `Path` 或固定 `Choice`：`ProjectService.SetValue` 會把絕對路徑改成專案相對路徑，`Choice.Coerce` 會把未知值改回預設。語意遮罩的 `Name`／`InstanceId` 必須原樣保存；只有真正的檔案／目錄參數才走路徑處理。
 
 ### 4.2 Core．專案與照片設定（Projects）
 
@@ -203,6 +204,8 @@ flowchart LR
 | `DelegateCommand`、`CompositeCommand` | 以委派實作的一般命令；多個命令組成一筆紀錄 |
 
 **陷阱**：新增一種可復原的操作時，`Execute` 與 `Undo` 都要能重複執行（重做時會再呼叫 `Execute`）。
+
+複合操作要走一次 `ProjectService.SetValues`：例如裁切的一組欄位、語意遮罩的名稱＋實例，undo 一次應還原整組。`InspectorViewModel.SetValues` 提供這個專案契約；`IParamHost` 的預設實作只是逐 key 轉送，不保證其他 host 也有原子復原語意。
 
 ### 4.4 Core．預設庫（Presets）
 
@@ -322,11 +325,21 @@ RAW 中繼資料的標頭辨識與感光解碼一致：RW2 的 `0x0055`、ORF �
 
 一般 TIFF 大於 RAW 可緩衝大小時，略過 RAW 探測，仍由 Magick.NET 載入；RAW 中繼資料損毀不阻止像素匯出，但必須在 `export_log.json` 記錄 `MetadataWarning`。RAW 移植的明確排除項目與 JPEG／ICC 偏差見 [參考輸出說明](../tools/raw-oracle/README.md#比較範圍與已知偏差)。
 
+**讀檔與色彩陷阱**
+
+- 不要在判斷一般 TIFF 之前整檔 `File.ReadAllBytes`；大型一般 TIFF 可由 Magick.NET／串流中繼資料路徑處理，不代表 managed 全檔 RAW 解碼也支援任意大小。檔頭決定的尺寸／樣本數須先以 checked／寬整數驗證，再套用 `RawLimits.MaxSamples`（`1 << 30`）及各分支上限；語意遮罩另限 16 個 IFD、每張 `1 << 25` 個樣本。上限不是保證有足夠記憶體。
+- 損毀 RAW 的內容錯誤依 `RawException.Kind` 分類，不應洩漏索引／整數溢位例外；檔案存取錯誤與資源不足仍需保留原本原因。二維樣本以 `[height, width]`／`[y, x]` 對應，不能用正方形 fixture 掩蓋寬高顛倒。
+- CR3 的 CMT1／CMT2／CMT4 可各自使用不同 byte order；正規化各目錄，不把根目錄的大小端直接套到 EXIF／GPS 子區塊。
+- 嵌入預覽的色彩宣告與像素轉換是兩件事。不要先令 Magick.NET `ColorSpace = RGB`，再套一次 sRGB EOTF；歷史重現中，8-bit 灰階 128 的線性值由約 0.216 變成約 0.038。ICC／EXIF／容器的來源判定與「只線性化一次」須一起驗證，不能只檢查色彩空間標籤。
+
+上述規則由早期 RAW 修復筆記回收；現行支援範圍以程式碼及[語料比較限制](../tools/raw-oracle/README.md#比較範圍與已知偏差)為準，舊筆記的 exclusions 不是目前功能清單。
+
 **匯出的安全規則**（改匯出程式碼前務必知道）
 
 - 匯出開始時先建立參數快照，匯出期間使用者繼續編輯不會影響已排入的照片。
 - 拒絕覆寫來源檔與既有輸出；先寫暫存檔，完成才搬到正式檔名，取消或失敗不留下半成品。
 - EXIF 解析失敗不會讓整張匯出失敗；JPEG EXIF 超過 APP1 上限（65,533 位元組）時先移除 MakerNote，仍超限才只保留方向、尺寸與 sRGB 宣告。這些縮減逐張記錄在 `export_log.json` 的 `MetadataWarning`。
+- 輸出是已轉正的 sRGB 影像：重建尺寸、方向與 Interop `R98`／`0100`，不要沿用來源 Adobe RGB 的 `R03` 或失效指標。Photoshop `ImageSourceData`（37724）等原圖圖層不屬於新算出的影像，不能一併搬入。
 
 ### 4.9 Gpu．WebGPU 薄封裝與 Shader
 
@@ -386,7 +399,7 @@ flowchart TB
     MW --> SB["SidebarViewModel<br/>側邊欄分頁切換"]
     MW --> TO["ToastViewModel<br/>非阻斷提示"]
     SB --> EX["ExportViewModel<br/>照片匯出分頁"]
-    IN --> MS["ModuleSectionViewModel × 16"]
+    IN --> MS["ModuleSectionViewModel<br/>依 ModuleCatalog 產生"]
     MS --> PA["ParamViewModel<br/>Slider / Choice / Toggle / Text"]
     IN --> FL["FilmLookViewModel<br/>底片與色相修正縮圖格"]
 ```
@@ -394,7 +407,7 @@ flowchart TB
 | 型別 | 說明 |
 |---|---|
 | `MainWindowViewModel` | 建立所有子 ViewModel 與服務；開啟資料夾（`OpenFolderAsync`）、選取改變（`OnSelectionChanged`）、`RequestPreview`、複製貼上、指定預設、復原重做。**多數功能從這裡追起** |
-| `InspectorViewModel` | 實作 `IParamHost`：參數 ViewModel 的修改都經它的 `SetValue` / `ResetParam` / `EndEdit` 送到 `ProjectService`；`Refresh()` 從焦點照片重新載入所有參數 |
+| `InspectorViewModel` | 實作 `IParamHost`：修改經 `SetValue` / `SetValues` / `ResetParam` / `EndEdit` 送到 `ProjectService`；`Refresh()` 從焦點照片重新載入所有參數 |
 | `ModuleSectionViewModel` | 一個模組區塊：開關、折疊、覆寫數、`⋯` 選單 |
 | `ParamViewModel` 系列 | `ParamViewModel.Create` 依 `ParamKind` 產生對應子類別，`InspectorView.axaml` 依型別套用 `DataTemplate`，所以**新增參數不需要寫 XAML** |
 | `FilmstripViewModel` | 縮圖清單、多選、篩選、縮圖背景載入、覆寫 / 預設更新標記 |
@@ -414,6 +427,7 @@ flowchart TB
 - RAW 的 `wb_mode=as-shot|custom`、自訂 1000–50000 K／色偏與 `mask_*` 只重算畫面，不重新解碼。遮罩精確保存 `Name`＋`InstanceId`；缺失或同名不明確時顯示不可用，不改成全圖作用。全尺寸算圖保留原有16-bit alpha與單像素細節，不先降成固定大小；上游 developed matte 會量化為8-bit，不能泛稱任意16-bit軟邊逐碼相同。
 - `embedded_lens`、`camera_local_tone`、`lens_database` 與模組啟用狀態屬於來源快取鍵。外部 Lensfun-format XML 只在缺少已驗證內嵌校正時匹配，拒絕 DTD／外部實體且限制檔案大小；不隨程式散布資料庫。校正的光學中心與半徑取預設裁切，再轉成 ActiveArea 的既有 opcode 慣例；warp、gain table 與語意遮罩共用輸出→有效 RAW 的逆映射。未設定／無匹配不加校正；明確設定但不存在或不可讀的資料庫回報錯誤，不靜默假裝已校正。
 - 解碼失敗／取消的快取項目不重用；外部檔案或資料夾修復後可用相同選項重新要求來源。過期解碼失敗必須同時核對來源選項，不能清除 undo 已還原的畫面。
+- `Zoom <= 0` 的 Fit 置中由 `PreviewCanvas.ZoomProperty` 的 class handler 清除 Pan，不只放在 `PreviewViewModel`。Gallery 等沒有綁定同一個 ViewModel 的獨立畫布也需要這個契約；一般畫布切換則仍保留共用 Pan。
 
 #### 服務與控制項
 
@@ -431,6 +445,8 @@ flowchart TB
 | `Dialogs/` | 偏好設定、預設管理、選擇性貼上、關於；`DialogService` 實作 `IDialogService`，測試時可替換 |
 | `Gallery/` | 以 `--gallery` 啟動的元件展示視窗，檢查各元件在各種狀態下的外觀 |
 
+直方圖的平滑只在 `Controls/HistogramView.cs` 的顯示高度上套用五格 `[1,4,6,4,1]/16` 濾波，不改 `ImageHistogram` 的原始 bins 或黑白裁切比例。每次資料更新建立新的 `StreamGeometry`，只在相同資料的重繪間快取；重新 `Open()` 舊 geometry 會累加 figures。空資料與卸載必須清掉舊圖，避免把歷史曲線當成目前統計。
+
 #### 主題
 
 - `Themes/Colors.axaml`：所有顏色 token（`FB.*Brush`）。介面灰階必須 R = G = B，強調色只有一個藍色。新顏色請加 token，不要在 View 裡寫色碼。
@@ -447,7 +463,7 @@ flowchart TB
 
 ### 4.11 Cli．命令列工具
 
-`src/FilmBatch.Cli/Program.cs` 以 System.CommandLine 定義指令：`export`（套用已保存的專案設定批次匯出）、`gpu-info`、`spike`（GPU 基準測試）。它與 GUI 共用 Core 與 Engine，因此匯出結果與 GUI 一致。用法見 [building.md](building.md#命令列工具cli)。
+`src/FilmBatch.Cli/Program.cs` 以 System.CommandLine 定義 `export`（套用已保存的專案設定）、`samples`（產生測試照片）、`gpu-info`、`spike`（GPU 基準測試）及 `raw convert`／`raw masks`。CLI 與 GUI 共用 Core／Engine；`export --format dng` 是算圖後的 DNG，`raw convert` 則保留感光樣本並補足來源色彩描述，兩者不能混為一談。用法見 [building.md](building.md#命令列工具cli)，隔離驗證見 [VERIFY.md](../VERIFY.md)。
 
 ---
 

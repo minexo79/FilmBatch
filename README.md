@@ -64,9 +64,13 @@ macOS（Apple Silicon）改用 `osx-arm64`；不再提供 Intel Mac 建置。
 
 ## 文件
 
+- [文件地圖](docs/README.md)：依任務導向現行文件、歷史決策與尚未落地的提案
+- [驗證入口](VERIFY.md)：從隔離測試、WGSL、App／CLI 到證據與失敗分類
+- [決策與提交歷史](docs/history.md)：以真實 commit 追溯理由、替代方案與後續取代關係
+
 - [docs/architecture.md](docs/architecture.md)：專案架構與算圖流程
 - [docs/building.md](docs/building.md)：建置、測試、CI、發佈與 CLI 用法
 - [docs/adr/0003-gpu-stack-decision.md](docs/adr/0003-gpu-stack-decision.md)：CPU SIMD、RAW GPU 收尾與 Halide AOT 選型紀錄
 - [docs/film-looks.md](docs/film-looks.md)：底片風格的 LUT 來源與授權、演算法與新增底片流程
-- [docs/plan.md](docs/plan.md)：完整計畫書
+- [docs/plan.md](docs/plan.md)：歷史產品設計稿；現行行為以架構與驗證文件為準
 - [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt)：第三方元件授權
