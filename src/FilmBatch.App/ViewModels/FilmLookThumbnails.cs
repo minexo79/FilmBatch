@@ -56,9 +56,10 @@ public sealed class FilmLookThumbnails(MainWindowViewModel main)
         _timer?.Stop();
         var focus = main.FocusFile;
         if (_jobs is null || focus is null || main.Service is null) return;
-        if (main.Preview.Source is not { } preview)
+        if (main.Preview.Source is not { } preview
+            || preview.RawOptions != RawLoadOptions.FromSettings(main.Service.SettingsFor(focus)))
         {
-            // 焦點剛切換、預覽代理圖還在讀取：稍後再試（只在展開且有焦點時才會走到這裡）
+            // 新照片或 RAW 選項的來源尚未就緒；沿用等待來源的排程，不以舊顯影結果算出新設定的縮圖。
             _timer?.Start();
             return;
         }

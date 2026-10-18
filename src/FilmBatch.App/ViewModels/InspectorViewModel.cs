@@ -69,7 +69,7 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
         Modules = schemas
             .Select(s => new ModuleSectionViewModel(s, this,
                 m => { if (_main.Service is { } svc) svc.ResetModule(_main.Selection, m.Key); },
-                m => _main.CopyModuleOnly(m.Key), FilmLook))
+                m => _main.CopyModuleOnly(m.Key), FilmLook) { IsVisible = s.Key != "raw" })
             .ToList();
         foreach (var m in Modules) m.ExpandedChanged += OnModuleExpanded;
         Loc.OnCultureChanged(this, static vm =>
@@ -78,8 +78,8 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
             foreach (var m in vm.Modules) m.RefreshLabels();
             vm.Refresh();
         });
-        // 預設只展開目錄中的第一個模組（基本調整）；底片效果分頁預設全部收合，film 縮圖格不會在背景算圖
-        if (Modules.Count > 0 && Modules[0].Schema == ModuleCatalog.Modules[0]) Modules[0].IsExpanded = true;
+        // 照片基本參數預設展開基本調整；不依賴 RAW／裁切等模組在目錄中的位置。
+        if (Modules.FirstOrDefault(m => m.Key == "basic") is { } basic) basic.IsExpanded = true;
         Groups = new(Modules.GroupBy(m => m.Schema.Group).Select(g => new ModuleGroupViewModel(g.Key, g)));
         RefreshPresetOptions();
     }
@@ -119,6 +119,7 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
             Dimensions = "";
             OverrideText = "";
             HasOverrides = false;
+            if (Modules.FirstOrDefault(m => m.Key == "raw") is { } raw) raw.IsVisible = false;
             if (IsActive) _main.Preview.ShowControlPoint(null, null);
             FilmLook?.OnSettingsChanged();
             return;
@@ -135,7 +136,11 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
         SelectedPreset = PresetOptions.FirstOrDefault(p => p.Id == entry.PresetId);
         _loadingPreset = false;
 
-        foreach (var m in Modules) m.Load(resolved, entry.Overrides, HideDisabledModules);
+        foreach (var m in Modules)
+        {
+            m.Load(resolved, entry.Overrides, HideDisabledModules);
+            if (m.Key == "raw" && _main.Preview.Source?.RawInfo is null) m.IsVisible = false;
+        }
         FilmLook?.OnSettingsChanged();
         UpdateControlPoint(resolved);
     }

@@ -1,3 +1,6 @@
+using Avalonia.Media.Imaging;
+using FilmBatch.Core.Params;
+using FilmBatch.Engine.Imaging;
 using Avalonia.Headless.XUnit;
 using FilmBatch.App.ViewModels;
 
@@ -103,5 +106,38 @@ public class FilmLookViewModelTests
         {
             FilmLookThumbnails.Debounce = oldDebounce;
         }
+    }
+
+    [AvaloniaFact]
+    public async Task Thumbnails_WaitForCurrentRawSource_ThenRenderWithoutAnotherInvalidation()
+    {
+        var oldDebounce = FilmLookThumbnails.Debounce;
+        FilmLookThumbnails.Debounce = TimeSpan.FromMilliseconds(1);
+        try
+        {
+            using var vm = TestEnv.CreateViewModel();
+            await TestEnv.OpenSamplesAsync(vm).WaitAsync(TestContext.Current.CancellationToken);
+            var tile = vm.FilmLook.Looks.First();
+            // The old developed source is blue; current photo settings require RAW processing off.
+            // Keep that source pending across several debounce ticks, then deliver the red replacement.
+            vm.Preview.SetOriginal(new SourceImage(1, 1, [0, 0, 65535, 65535])
+            {
+                RawOptions = new RawLoadOptions(EmbeddedLensCorrections: true),
+            });
+            vm.FilmLook.Thumbnails.Request(() => [("look", tile, ModuleCatalog.Defaults)]);
+            await Task.Delay(200, TestContext.Current.CancellationToken);
+            Assert.Null(tile.Thumbnail);
+
+            vm.Preview.SetOriginal(new SourceImage(1, 1, [65535, 0, 0, 65535]));
+            var deadline = DateTime.UtcNow.AddSeconds(15);
+            while (tile.Thumbnail is null && DateTime.UtcNow < deadline)
+                await Task.Delay(10, TestContext.Current.CancellationToken);
+            Assert.NotNull(tile.Thumbnail);
+            using var framebuffer = ((WriteableBitmap)tile.Thumbnail).Lock();
+            var pixel = new byte[4];
+            System.Runtime.InteropServices.Marshal.Copy(framebuffer.Address, pixel, 0, pixel.Length);
+            Assert.Equal([0, 0, 255, 255], pixel);
+        }
+        finally { FilmLookThumbnails.Debounce = oldDebounce; }
     }
 }

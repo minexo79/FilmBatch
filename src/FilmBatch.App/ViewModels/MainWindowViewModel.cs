@@ -284,6 +284,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 return;
             }
             Preview.SetOriginal(source);
+            Inspector.Refresh();
             if (Sidebar.IsCrop) CropTool.ResumeBegin();
             RequestPreview();
         }
@@ -293,6 +294,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             AppLog.Error($"讀取失敗：{file}", ex);
             Filmstrip.SetError(file, ex.Message);
             Preview.Clear();
+            Inspector.Refresh();
         }
     }
 
