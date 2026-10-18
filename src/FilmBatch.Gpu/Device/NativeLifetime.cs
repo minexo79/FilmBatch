@@ -5,7 +5,7 @@ using WebGpuSharp.Internal;
 
 namespace FilmBatch.Gpu.Device;
 
-/// <summary>WebGPUSharp 0.5.7 的 managed wrapper 未公開 Dispose；透過原有 safe handle 釋放，避免與 finalizer 重複 Release。</summary>
+/// <summary>WebGPUSharp 0.5.7 的原生生命週期與 callback 簽章修正；升級綁定時須重驗。</summary>
 internal static class NativeLifetime
 {
     internal static void Release<T>(WebGPUManagedHandleBase<T>? resource)
@@ -13,6 +13,12 @@ internal static class NativeLifetime
     {
         if (resource is not null) Access<T>.SafeHandle(resource).Dispose();
     }
+
+    // 0.5.7 的 descriptor 宣告兩參數，native trampoline 卻轉型成三參數並吞掉轉型錯誤。
+    // 保留實際三參數 delegate；此兩參數檢視只能交給 descriptor，不可直接 Invoke。
+    internal static Action<T, ReadOnlySpan<byte>> DeviceCallback<T>(
+        Action<DeviceHandle, T, ReadOnlySpan<byte>> callback) where T : struct, Enum
+        => Unsafe.As<Action<T, ReadOnlySpan<byte>>>(callback);
 
     private static class Access<T> where T : unmanaged, IWebGpuHandle<T>, IEquatable<T>
     {

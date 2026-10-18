@@ -52,14 +52,14 @@ public sealed class GpuDevice : IDisposable
         {
             // WebGPUSharp 0.5.7 以強 GCHandle 保存 callbacks；不要讓它永久保留整個 D3D12 裝置。
             var owner = new WeakReference<GpuDevice>(this);
-            desc.UncapturedErrorCallback = (type, message) =>
+            desc.UncapturedErrorCallback = NativeLifetime.DeviceCallback<ErrorType>((_, type, message) =>
             {
                 if (owner.TryGetTarget(out var device)) device.OnUncapturedError(type, message);
-            };
-            desc.DeviceLostCallback = (reason, message) =>
+            });
+            desc.DeviceLostCallback = NativeLifetime.DeviceCallback<DeviceLostReason>((_, reason, message) =>
             {
                 if (owner.TryGetTarget(out var device)) device.OnDeviceLost(reason, message);
-            };
+            });
         }
         else
         {

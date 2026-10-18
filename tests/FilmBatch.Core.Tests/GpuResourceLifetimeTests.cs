@@ -81,6 +81,30 @@ public sealed class GpuResourceLifetimeTests
         Assert.Contains(device.AdapterInfo.DisplayName, error.Message);
     }
 
+    [Fact]
+    public async Task WindowsDx12_UncapturedValidationErrorReachesCaller()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "僅適用於 Windows D3D12 原生錯誤回呼");
+        Assert.SkipWhen(GpuDevice.EnumerateAdapters(GpuBackend.Dx12).Count == 0, "沒有可用的 D3D12 介面卡");
+        using var device = GpuDevice.Create(new GpuDeviceOptions { Backend = GpuBackend.Dx12 });
+        var previousLog = GpuDevice.Log;
+        var reported = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        GpuDevice.Log = _ => reported.TrySetResult();
+        try
+        {
+            // 真正的 Dawn validation error；不放進 error scope，必須由裝置 callback 回報。
+            var descriptor = new BufferDescriptor { Size = 16, Usage = BufferUsage.MapRead | BufferUsage.Storage };
+            var invalid = device.Device.CreateBuffer(ref descriptor);
+            try
+            {
+                await reported.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+                Assert.Throws<GpuException>(() => device.ThrowIfError("native validation"));
+            }
+            finally { NativeLifetime.Release(invalid); }
+        }
+        finally { GpuDevice.Log = previousLog; }
+    }
+
     private static (ulong Instance, ulong Adapter, ulong Device, ulong Queue) DeviceHandles() =>
         (WebGpuSafeHandle.GetActiveHandles<InstanceHandle>(), WebGpuSafeHandle.GetActiveHandles<AdapterHandle>(),
          WebGpuSafeHandle.GetActiveHandles<DeviceHandle>(), WebGpuSafeHandle.GetActiveHandles<QueueHandle>());
