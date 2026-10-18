@@ -37,6 +37,8 @@ public sealed partial class CropToolViewModel : ObservableObject
     private Settings _loaded = ModuleCatalog.Defaults;
     /// <summary>連續拉直時的基準框：角度每次都從這個框重新限制，角度轉回 0 時框也回到原本大小。</summary>
     private CropParams? _rotateBase;
+    /// <summary>「進入裁切」的請求因照片來源未載入而延後；來源就緒時由 <see cref="ResumeBegin"/> 完成。</summary>
+    private bool _beginPending;
     private bool _loading;
     private CropTool? _tool;
 
@@ -149,20 +151,37 @@ public sealed partial class CropToolViewModel : ObservableObject
             N("crop.angle", 0), ((int)Math.Round(N("crop.quarter", 0)) % 4 + 4) % 4, s.Bool("crop.flip_h"), s.Bool("crop.flip_v"));
     }
 
+    internal bool IsBeginPending => _beginPending;
+
     private bool HasSource => _sourceSize() is { W: > 0, H: > 0 };
 
-    /// <summary>進入裁切工具：重新讀取目前照片的裁切，畫布改顯示全幅。</summary>
+    /// <summary>進入裁切工具：重新讀取目前照片的裁切，畫布改顯示全幅；來源尚未載入時延後到載入完成才生效。</summary>
     [RelayCommand]
     public void Begin()
     {
-        if (IsActive || !HasSource) return;
+        if (IsActive) return;
+        if (!HasSource)
+        {
+            _beginPending = true;
+            return;
+        }
         if (_current is not null)
         {
             if (_current() is not { } settings) return;
             Load(settings);
         }
         else Load(_loaded);
+        _beginPending = false;
         IsActive = true;
+    }
+
+    /// <summary>照片來源載入完成後呼叫：只完成先前延後的 <see cref="Begin"/>；
+    /// 同一張照片重載（RAW／偏好設定／重新選取）不會重啟已套用或已取消的工具。</summary>
+    public void ResumeBegin()
+    {
+        if (!_beginPending) return;
+        _beginPending = false;
+        Begin();
     }
 
     /// <summary>套用：有修改時一次寫入所有 <c>crop.*</c>；工具結束。</summary>
@@ -181,12 +200,14 @@ public sealed partial class CropToolViewModel : ObservableObject
         _commit(ToSettings(c, Aspect, Portrait));
     }
 
-    /// <summary>取消：回到進入工具前的值（工具保持啟用，可重新調整）。</summary>
+    /// <summary>取消：放棄未套用的修改、回到進入工具前的值並結束工具（留在裁切分頁，與套用一樣顯示「編輯裁切」）。</summary>
     [RelayCommand]
     public void Cancel()
     {
+        _beginPending = false;
         if (!IsActive) return;
         Load(_loaded);
+        IsActive = false;
     }
 
     /// <summary>只有外部裁切／比例變更才放棄未套用的修改；RAW 與其他效果變更保留編輯中的裁切。</summary>

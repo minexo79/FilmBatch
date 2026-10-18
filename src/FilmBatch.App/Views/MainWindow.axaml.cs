@@ -177,7 +177,7 @@ public partial class MainWindow : Window
             // 裁切工具（cut-and-mask Task 1.7）：R 進入 / 套用並返回，其餘只在工具啟用時有效
             case Key.R: Run(_vm.ToggleCropCommand); break;
             case Key.Enter when crop.IsActive: Run(crop.ApplyCommand); break;
-            case Key.Escape when crop.IsActive && !_vm.IsFullScreen: Run(crop.CancelCommand); break;
+            case Key.Escape when (crop.IsActive || crop.IsBeginPending) && !_vm.IsFullScreen: Run(crop.CancelCommand); break;
             case Key.X when crop.IsActive: Run(crop.SwapOrientationCommand); break;
             case Key.OemOpenBrackets when crop.IsActive: Run(crop.RotateLeftCommand); break;
             case Key.OemCloseBrackets when crop.IsActive: Run(crop.RotateRightCommand); break;

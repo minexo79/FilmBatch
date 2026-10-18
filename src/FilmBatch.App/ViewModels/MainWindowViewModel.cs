@@ -200,6 +200,17 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         // Load first: a corrupt/unreadable target must leave the current project and preview intact.
         var project = await Task.Run(() => Project.Open(folder, SamplePresets.Neutral));
         if (_disposed || generation != _openGeneration) return;
+        // 先讓舊專案的裁切收尾：此時 Service／FocusFile／預覽來源／復原堆疊仍屬於舊專案；
+        // 若留給切換後的選取變更才套用，未提交的裁切會寫進新專案的同名照片，
+        // 舊檔名不存在時更會在 RequestPreview 以新 Service 查舊名而擲出 KeyNotFound。
+        if (CropTool.IsActive)
+        {
+            var changed = CropTool.HasChanges;
+            CropTool.Apply();
+            // 目標可能就是目前資料夾（含別名）；提交後同步重讀，避免採用舊設定與舊磁碟版本。
+            // 不在提交與切換之間 await，避免使用者又開始編輯舊專案。
+            if (changed) project = Project.Open(folder, SamplePresets.Neutral);
+        }
         Renderer.CancelThumbnails();
         Presets.Hover.InvalidateCache();
         FilmLook.InvalidateThumbnails();
@@ -232,9 +243,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         var newFocus = focus ?? selection.LastOrDefault();
         if (FocusFile != newFocus)
         {
-            // 換照片前把未套用的裁切寫回原本的焦點照片；新照片載入後再重新進入裁切工具
+            // 換照片前把未套用的裁切寫回原本的焦點照片；若還在「裁切」分頁，
+            // 記住要對新照片進入裁切——新來源可能尚未解碼，Begin 會延後到載入完成
             if (CropTool.IsActive) CropTool.Apply();
             Preview.Clear();
+            if (Sidebar.IsCrop) CropTool.Begin();
         }
         Selection = selection;
         FocusFile = newFocus;
@@ -271,7 +284,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 return;
             }
             Preview.SetOriginal(source);
-            if (Sidebar.IsCrop && !CropTool.IsActive) CropTool.Begin();
+            if (Sidebar.IsCrop) CropTool.ResumeBegin();
             RequestPreview();
         }
         catch (Exception ex)
