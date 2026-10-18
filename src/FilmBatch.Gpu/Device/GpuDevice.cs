@@ -3,6 +3,7 @@ using FilmBatch.Gpu.Localization;
 using FilmBatch.Gpu.Resources;
 using FilmBatch.Gpu.ShaderSystem;
 using WebGpuSharp;
+using WebGpuSharp.Marshalling;
 
 namespace FilmBatch.Gpu.Device;
 
@@ -44,22 +45,42 @@ public sealed class GpuDevice : IDisposable
         {
             // 使用介面卡支援的上限（大尺寸影像需要較大的紋理與緩衝區）
             RequiredLimits = adapter.GetLimits(),
-            UncapturedErrorCallback = (type, message) =>
-            {
-                var text = $"{type}: {Encoding.UTF8.GetString(message)}";
-                Log?.Invoke(text);
-                _pendingError ??= text;
-            },
-            DeviceLostCallback = (reason, message) =>
-            {
-                if (reason is DeviceLostReason.Destroyed or DeviceLostReason.CallbackCancelled) return;
-                IsLost = true;
-                DeviceLost?.Invoke($"{reason}: {Encoding.UTF8.GetString(message)}");
-            },
         };
+        if (info.Backend == GpuBackend.Dx12)
+        {
+            // WebGPUSharp 0.5.7 以強 GCHandle 保存 callbacks；不要讓它永久保留整個 D3D12 裝置。
+            var owner = new WeakReference<GpuDevice>(this);
+            desc.UncapturedErrorCallback = (type, message) =>
+            {
+                if (owner.TryGetTarget(out var device)) device.OnUncapturedError(type, message);
+            };
+            desc.DeviceLostCallback = (reason, message) =>
+            {
+                if (owner.TryGetTarget(out var device)) device.OnDeviceLost(reason, message);
+            };
+        }
+        else
+        {
+            desc.UncapturedErrorCallback = OnUncapturedError;
+            desc.DeviceLostCallback = OnDeviceLost;
+        }
         Device = adapter.RequestDeviceSync(in desc, RequestTimeoutNs)
             ?? throw new GpuException(GpuText.Get("Gpu.DeviceFailed"));
         Queue = Device.GetQueue() ?? throw new GpuException(GpuText.Get("Gpu.QueueFailed"));
+    }
+
+    private void OnUncapturedError(ErrorType type, ReadOnlySpan<byte> message)
+    {
+        var text = $"{type}: {Encoding.UTF8.GetString(message)}";
+        Log?.Invoke(text);
+        _pendingError ??= text;
+    }
+
+    private void OnDeviceLost(DeviceLostReason reason, ReadOnlySpan<byte> message)
+    {
+        if (reason is DeviceLostReason.Destroyed or DeviceLostReason.CallbackCancelled) return;
+        IsLost = true;
+        DeviceLost?.Invoke($"{reason}: {Encoding.UTF8.GetString(message)}");
     }
 
     /// <summary>綁定與原生函式庫版本（顯示於 log 與 gpu-info）。</summary>
@@ -265,7 +286,7 @@ public sealed class GpuDevice : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
-        // Dawn 物件由 WebGPUSharp 以 GC 釋放；這裡只需確保佇列工作完成
         try { WaitIdle(); } catch (Exception) { /* 已遺失的裝置 */ }
+        if (AdapterInfo.Backend == GpuBackend.Dx12) WebGPUMarshal.GetHandle(Device).Destroy();
     }
 }

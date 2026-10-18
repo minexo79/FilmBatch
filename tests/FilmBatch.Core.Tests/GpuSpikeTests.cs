@@ -58,4 +58,27 @@ public class GpuSpikeTests
         var p = new SpikeParams(0.3f, 0.1f, 0.2f, 0.01f);
         Assert.Equal(gpu!.Render(src, p).Bgra, gpu.Render(src, p).Bgra);
     }
+
+    [Fact]
+    public void WindowsDx12_DisposeReleasesDeviceOwner()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "僅適用於 Windows D3D12 裝置生命週期");
+        Assert.SkipWhen(GpuDevice.EnumerateAdapters(GpuBackend.Dx12).Count == 0, "沒有可用的 D3D12 介面卡");
+        var reference = CreateDisposedDx12Device();
+        for (var i = 0; i < 3 && reference.IsAlive; i++)
+        {
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+        }
+        Assert.False(reference.IsAlive, "已處置的 D3D12 裝置仍被原生 callback 保留");
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static WeakReference CreateDisposedDx12Device()
+    {
+        var device = GpuDevice.Create(new GpuDeviceOptions { Backend = GpuBackend.Dx12 });
+        device.Dispose();
+        return new WeakReference(device);
+    }
 }
