@@ -129,6 +129,19 @@ jobs:
           label: Build
           command: dotnet build FilmBatch.sln -c Release --no-restore
 
+      - when:
+          condition:
+            equal: [win-x64, << parameters.rid >>]
+          steps:
+            - timed-run:
+                label: Native upload boundary diagnostics
+                command: |
+                  failed=0
+                  for mode in float uint decode decode-dispose; do
+                    dotnet run build/GpuUploadProbe.cs -c Release -- "$mode" || failed=1
+                  done
+                  exit "$failed"
+
       # 只有沒有可用 WebGPU 介面卡時才略過 GPU 測試；軟體介面卡也實際執行，裝置／像素錯誤仍會失敗。
       - timed-run:
           label: Test
