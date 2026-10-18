@@ -177,6 +177,7 @@ public static class DngWriter
         ifd.Set(Tags.Orientation, new TiffValue.Short([(ushort)raw.Orientation.ToExif()]));
         ifd.Set(Tags.Software, new TiffValue.Ascii(Software));
         ifd.Set(Tags.Xmp, new TiffValue.Byte(Encoding.UTF8.GetBytes(options.Xmp ?? DngWriterXmp.Build(raw.Metadata))));
+        WriteExif(ifd, raw.Metadata);
 
         if (raw.Cfa is { } cfa)
         {
@@ -210,6 +211,8 @@ public static class DngWriter
         ifd.Set(Tags.ActiveArea, new TiffValue.Long([(uint)aa.Y, (uint)aa.X, (uint)(aa.Y + aa.Height), (uint)(aa.X + aa.Width)]));
         ifd.Set(Tags.DefaultCropOrigin, new TiffValue.Long([(uint)raw.Crop.X, (uint)raw.Crop.Y]));
         ifd.Set(Tags.DefaultCropSize, new TiffValue.Long([(uint)raw.Crop.Width, (uint)raw.Crop.Height]));
+        if (float.IsFinite(raw.PixelAspect) && raw.PixelAspect > 0 && raw.PixelAspect != 1f)
+            ifd.Set(Tags.DefaultScale, RatVec([1, raw.PixelAspect]));
 
         var c = raw.Color;
         var illumTags = new[] { Tags.CalibrationIlluminant1, Tags.CalibrationIlluminant2 };
@@ -521,6 +524,57 @@ public static class DngWriter
         ms.WriteByte((byte)(adler >> 24)); ms.WriteByte((byte)(adler >> 16));
         ms.WriteByte((byte)(adler >> 8)); ms.WriteByte((byte)adler);
         return ms.ToArray();
+    }
+
+    private static void WriteExif(DngWriterIfd root, Metadata metadata)
+    {
+        DngWriterIfd? exif = null;
+        void Set(ushort tag, TiffValue value) => (exif ??= new DngWriterIfd()).Set(tag, value);
+        void Text(ushort tag, string? value)
+        {
+            if (!string.IsNullOrEmpty(value)) Set(tag, new TiffValue.Ascii(value));
+        }
+        void Positive(ushort tag, double? value)
+        {
+            if (value is > 0 && double.IsFinite(value.Value))
+                Set(tag, new TiffValue.Rational([DngWriterTiff.Rational(value.Value)]));
+        }
+        Text(Tags.BodySerialNumber, metadata.SerialNumber);
+        Text(Tags.LensMake, metadata.LensMake);
+        Text(Tags.LensModel, metadata.LensModel);
+        Positive(Tags.ExposureTime, metadata.ExposureTime);
+        Positive(Tags.FNumber, metadata.FNumber);
+        Positive(Tags.FocalLength, metadata.FocalLength);
+        if (metadata.LensSpec is { Length: 4 } spec && spec.All(v => double.IsFinite(v) && v >= 0))
+            Set(Tags.LensSpecification, new TiffValue.Rational(spec.Select(DngWriterTiff.Rational).ToArray()));
+        if (metadata.Iso is { } iso && iso > 0)
+        {
+            Set(Tags.IsoSpeed, new TiffValue.Short([(ushort)Math.Min(iso, ushort.MaxValue)]));
+            if (iso >= ushort.MaxValue)
+            {
+                Set(Tags.SensitivityType, new TiffValue.Short([3]));
+                Set(Tags.IsoSpeedRatingsExt, new TiffValue.Long([iso]));
+            }
+        }
+        if (metadata.FocalLength35mm is { } equivalent && equivalent > 0 && equivalent <= ushort.MaxValue)
+            Set(Tags.FocalLength35mm, new TiffValue.Short([(ushort)Math.Round(equivalent)]));
+        if (metadata.ExposureBias is { } bias && double.IsFinite(bias))
+            Set(Tags.ExposureBias, new TiffValue.SRational([DngWriterTiff.SRational(bias)]));
+        if (metadata.CaptureTime is { } time)
+        {
+            Text(Tags.DateTimeOriginal, FormattableString.Invariant(
+                $"{time.Year:0000}:{time.Month:00}:{time.Day:00} {time.Hour:00}:{time.Minute:00}:{time.Second:00}"));
+            if (time.Millis > 0)
+                Text(Tags.SubsecTimeOriginal, time.Millis.ToString("000", System.Globalization.CultureInfo.InvariantCulture));
+            if (time.OffsetMinutes is { } offset)
+                Text(Tags.OffsetTimeOriginal, FormattableString.Invariant(
+                    $"{(offset < 0 ? "-" : "+")}{Math.Abs(offset) / 60:00}:{Math.Abs(offset) % 60:00}"));
+        }
+        if (exif is not null)
+        {
+            Set(Tags.ExifVersion, new TiffValue.Undefined("0232"u8.ToArray()));
+            root.SetChild(Tags.ExifIfd, exif);
+        }
     }
 
     private static ushort IlluminantOf(Xy white) =>

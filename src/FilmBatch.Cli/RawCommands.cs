@@ -1,5 +1,8 @@
 using System.CommandLine;
+using System.Runtime.InteropServices;
+using FilmBatch.Engine.Imaging.Raw;
 using FilmBatch.Raw;
+using FilmBatch.Raw.Color;
 using ImageMagick;
 
 namespace FilmBatch.Cli;
@@ -10,6 +13,11 @@ internal static class RawCommands
     public static Command Create()
     {
         var sourceArg = new Argument<string>("source") { Description = "RAW 來源檔" };
+        var destinationArg = new Argument<string?>("destination")
+        {
+            Description = "輸出 DNG 路徑（必須不存在）",
+            Arity = ArgumentArity.ZeroOrOne,
+        };
         var outOption = new Option<string>("--out") { Description = "輸出 DNG 路徑(必須不存在,不另取流水號)" };
         var compressionOption = new Option<string>("--compression")
         {
@@ -21,12 +29,19 @@ internal static class RawCommands
 
         var convert = new Command("convert", "把 RAW 感光資料原樣轉存為 DNG(不套用效果)")
         {
-            sourceArg, outOption, compressionOption, qualityOption, longEdgeOption,
+            sourceArg, destinationArg, outOption, compressionOption, qualityOption, longEdgeOption,
         };
         convert.SetAction(r =>
         {
             var source = Path.GetFullPath(r.GetValue(sourceArg)!);
-            var output = r.GetValue(outOption) is { } o ? Path.GetFullPath(o) : null;
+            var destination = r.GetValue(destinationArg);
+            var outPath = r.GetValue(outOption);
+            if (destination is not null && outPath is not null)
+            {
+                Console.Error.WriteLine("輸出路徑只能指定一次：使用 destination 或 --out。");
+                return 2;
+            }
+            var output = (destination ?? outPath) is { } o ? Path.GetFullPath(o) : null;
             if (!File.Exists(source))
             {
                 Console.Error.WriteLine($"找不到 RAW 來源:{source}");
@@ -34,7 +49,7 @@ internal static class RawCommands
             }
             if (output is null)
             {
-                Console.Error.WriteLine("必須指定 --out(不沿用預設檔名,避免誤蓋)。");
+                Console.Error.WriteLine("必須指定輸出路徑或 --out（不沿用預設檔名，避免誤蓋）。");
                 return 2;
             }
             if (File.Exists(output))
@@ -54,10 +69,30 @@ internal static class RawCommands
             }
             try
             {
-                var raw = RawDecoder.Decode(File.ReadAllBytes(source));
+                var bytes = File.ReadAllBytes(source);
+                var raw = RawDecoder.Decode(bytes);
+                // 上游 engine/cmd/convert.rs：轉存前補上檔案開啟時的起始色彩（無自有矩陣的
+                // RAW 才有；鏡頭校正保留在 DNG 中）。不憑空捏造擬合：擬合失敗時只有
+                // 保留缺少描述的狀態，沒有假外觀標籤。
+                RawDngConversion.WithStartingColour(raw, bytes);
+                if (!CameraColor.HasMatrix(raw.Color))
+                    throw new InvalidDataException("來源沒有可用的相機色彩矩陣，且無法從預覽或實測模型合成；未寫入 DNG。");
                 var dng = DngWriter.WriteDng(raw, new DngWriteOptions { Compression = compression });
+                // 寫出的 DNG 先被依賴才可靠：必須解碼回同一感光資料（上游 convert.rs
+                // write_dng_with；失敗不寫檔）。有損壓縮本就改變樣本，不在此檢查。
+                if (BitExact(compression))
+                {
+                    var back = RawDecoder.Decode(dng);
+                    if ((back.Width, back.Height, back.Cpp) != (raw.Width, raw.Height, raw.Cpp) ||
+                        !SameRawData(back.Data, raw.Data))
+                    {
+                        Console.Error.WriteLine($"轉換失敗:寫出的 DNG 解碼後不含同一感光資料,來源保留:{source}");
+                        return 1;
+                    }
+                }
                 Directory.CreateDirectory(Path.GetDirectoryName(output)!);
-                File.WriteAllBytes(output, dng);
+                using (var stream = new FileStream(output, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                    stream.Write(dng);
                 Console.WriteLine(output);
                 return 0;
             }
@@ -81,6 +116,19 @@ internal static class RawCommands
             (byte)Math.Clamp(quality, 1, 100),
             longEdge > 0 ? (uint)longEdge : null),
         var other => throw new InvalidDataException($"未知壓縮:{other}(可用 uncompressed、lj92、deflate、half、lossy)。"),
+    };
+
+    /// <summary>寫出後感光資料必須逐位元相同的壓縮模式（有損 JPEG 與半浮點 Deflate 本就改變樣本）。</summary>
+    private static bool BitExact(DngCompression compression) => compression is
+        DngCompression.Uncompressed or DngCompression.Lj92 or DngCompression.Deflate { Half: false };
+
+    /// <summary>同一感光資料（上游 convert.rs 的 <c>back.data == raw.data</c>；F32 逐位元比較含 NaN 位元組）。</summary>
+    private static bool SameRawData(RawData a, RawData b) => (a, b) switch
+    {
+        (RawData.U16 x, RawData.U16 y) => x.Samples.AsSpan().SequenceEqual(y.Samples),
+        (RawData.F32 x, RawData.F32 y) =>
+            MemoryMarshal.AsBytes(x.Samples.AsSpan()).SequenceEqual(MemoryMarshal.AsBytes(y.Samples.AsSpan())),
+        _ => false,
     };
 
     private static Command CreateMasks()

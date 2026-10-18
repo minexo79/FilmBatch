@@ -105,12 +105,16 @@ internal static partial class CameraPreview
         return (xy, t, null);
     }
 
-    /// <summary>DNG 自家色調擬合資格（camera_preview 的 <c>dng_tone_eligible</c>）。</summary>
+    /// <summary>
+    /// DNG 自家色調擬合資格（camera_preview 的 <c>dng_tone_eligible</c>）：有自有色彩模型、
+    /// 色調尚未由檔案定義的 DNG——非恆等 <c>ProfileToneCurve</c>、<c>LookTable</c> 與
+    /// <c>ProfileGainTableMap</c> 皆無（gain map 是相機的局部色調，檔案自己的渲染）。
+    /// </summary>
     internal static bool DngToneEligible(RawImage raw, CameraTransform t)
     {
         var p = raw.Color.Profile;
         return raw.Format == RawFormat.Dng && !t.MatrixIsFallback &&
-            IdentityToneCurve(p.ToneCurve) && p.LookTable is null;
+            IdentityToneCurve(p.ToneCurve) && p.LookTable is null && p.GainTableMap is null;
     }
 
     private static bool IdentityToneCurve(ToneCurve? curve)
