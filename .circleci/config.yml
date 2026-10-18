@@ -137,9 +137,10 @@ jobs:
                 label: Native upload boundary diagnostics
                 command: |
                   failed=0
-                  for mode in float uint decode decode-dispose; do
+                  for mode in copy decode-single; do
                     dotnet run build/GpuUploadProbe.cs -c Release -- "$mode" || failed=1
                   done
+                  dotnet run build/GpuUploadProbe.cs -c Release -- decode --sync-stages || failed=1
                   exit "$failed"
 
       # 只有沒有可用 WebGPU 介面卡時才略過 GPU 測試；軟體介面卡也實際執行，裝置／像素錯誤仍會失敗。

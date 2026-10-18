@@ -6,8 +6,8 @@ using FilmBatch.Gpu.Device;
 using FilmBatch.Gpu.Resources;
 using FilmBatch.Gpu.ShaderSystem;
 
-if (args.Length == 0 || args[0] is not ("float" or "uint" or "decode" or "decode-dispose"))
-    throw new ArgumentException("Expected float, uint, decode, or decode-dispose; optional --sync-stages.");
+if (args.Length == 0 || args[0] is not ("float" or "uint" or "decode" or "decode-dispose" or "decode-single" or "copy"))
+    throw new ArgumentException("Expected float, uint, decode, decode-dispose, decode-single, or copy; optional --sync-stages.");
 var mode = args[0];
 var syncStages = args.Contains("--sync-stages");
 const int width = 64, height = 48;
@@ -35,7 +35,7 @@ try
                     ? (value <= .04045f ? value / 12.92f : MathF.Pow((value + .055f) / 1.055f, 2.4f))
                     : value;
             }
-    var decode = mode.StartsWith("decode");
+    var decode = mode.StartsWith("decode") || mode == "copy";
     var isFloat = mode == "float";
     using var upload = gpu.CreateTexture(width, height,
         isFloat ? GpuTextureFormat.Rgba32Float : GpuTextureFormat.Rgba16Uint,
@@ -47,19 +47,30 @@ try
     if (syncStages) { gpu.WaitIdle(); Console.WriteLine("STAGE write-texture idle"); }
     using var linear = decode ? gpu.CreateTexture(width, height, GpuTextureFormat.Rgba32Float,
         GpuTextureUsage.Sampled | GpuTextureUsage.Storage, "probe linear") : null;
+    var decodeShader = decode ? new ShaderLibrary().Load("io/decode_rgba16.wgsl") : null;
+    if (mode == "copy") decodeShader = decodeShader!.Replace("srgb_to_linear(raw.rgb)", "raw.rgb", StringComparison.Ordinal);
     using var decoder = decode
-        ? gpu.CreateKernel(new ShaderLibrary().Load("io/decode_rgba16.wgsl"), "main",
+        ? gpu.CreateKernel(decodeShader!, "main",
             [BindingSpec.TextureUint, BindingSpec.StorageTexture(GpuTextureFormat.Rgba32Float)], "probe real decoder")
         : null;
+    using var combined = mode == "decode-single" ? gpu.BeginCommands() : null;
     if (decode)
     {
         stage = "decode-submit";
-        using var commands = gpu.BeginCommands();
-        commands.Dispatch2D(decoder!, [upload, linear!], width, height);
-        commands.Submit();
-        Console.WriteLine("STAGE decode submit returned");
-        if (mode == "decode-dispose") { upload.Dispose(); Console.WriteLine("STAGE upload disposed after submit"); }
-        if (syncStages) { gpu.WaitIdle(); Console.WriteLine("STAGE decode idle"); }
+        if (combined is not null)
+        {
+            combined.Dispatch2D(decoder!, [upload, linear!], width, height);
+            Console.WriteLine("STAGE decode recorded in combined encoder");
+        }
+        else
+        {
+            using var commands = gpu.BeginCommands();
+            commands.Dispatch2D(decoder!, [upload, linear!], width, height);
+            commands.Submit();
+            Console.WriteLine("STAGE decode submit returned");
+            if (mode == "decode-dispose") { upload.Dispose(); Console.WriteLine("STAGE upload disposed after submit"); }
+            if (syncStages) { gpu.WaitIdle(); Console.WriteLine("STAGE decode idle"); }
+        }
     }
     stage = "sample-submit";
     var unsigned = !isFloat && !decode;
@@ -78,7 +89,7 @@ try
     var byteSize = (ulong)expected.Length * sizeof(float);
     using var output = gpu.CreateBuffer(byteSize, GpuBufferUsage.Storage | GpuBufferUsage.CopySrc);
     using var readback = gpu.CreateBuffer(byteSize, GpuBufferUsage.MapRead | GpuBufferUsage.CopyDst);
-    using (var commands = gpu.BeginCommands())
+    using (var commands = combined ?? gpu.BeginCommands())
     {
         commands.Dispatch2D(kernel, [linear ?? upload, output], width, height);
         commands.CopyBuffer(output, readback, byteSize);
