@@ -93,15 +93,35 @@ public sealed partial class ExportViewModel : ObservableObject
         OnPropertyChanged(nameof(StatusText));
     }
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CanExport))]
-    private string? _lastError;
+    // 目前選項／張數的驗證錯誤（擋下匯出）與上一次匯出的執行錯誤（逐張失敗或整批例外）分開保存：
+    // 上一批失敗只供回報、保留到下一次匯出開始，不代表目前設定無效；來源修好後可直接重試。
+    private string? _validationError;
+    private string? _runError;
+
+    /// <summary>警告列：目前的驗證錯誤優先（說明為何不能匯出），否則為上一次匯出的錯誤。</summary>
+    public string? LastError => _validationError ?? _runError;
+
+    private void SetValidationError(string? error)
+    {
+        if (_validationError == error) return;
+        _validationError = error;
+        OnPropertyChanged(nameof(LastError));
+        OnPropertyChanged(nameof(CanExport));
+        StartExportCommand.NotifyCanExecuteChanged();
+    }
+
+    private void SetRunError(string? error)
+    {
+        if (_runError == error) return;
+        _runError = error;
+        OnPropertyChanged(nameof(LastError));
+    }
 
     public bool IsJpeg => Format == Engine.Exporting.ExportFormat.Jpeg;
     public bool IsLongEdge => Size == Engine.Exporting.ExportSize.LongEdge;
     public bool IsByPreset => Scope == ExportScope.ByPreset;
-    /// <summary>未匯出中、且目前規劃有張數、且無驗證錯誤時可匯出（Count 變化時由 Refresh 通知）。</summary>
-    public bool CanExport => !IsExporting && LastError is null && Count > 0;
+    /// <summary>未匯出中、且目前規劃有張數、且目前選項通過驗證時可匯出（Count 變化時由 Refresh 通知）；上一次匯出的錯誤不擋重試。</summary>
+    public bool CanExport => !IsExporting && _validationError is null && Count > 0;
 
     /// <summary>最近一次匯出的結果摘要（headless 檢查用；UI 顯示經 StatusText）。</summary>
     public BatchExportSummary? LastSummary { get; private set; }
@@ -163,11 +183,11 @@ public sealed partial class ExportViewModel : ObservableObject
             BatchExporter.ValidateOptions(ToOptions(Path.Combine(Path.GetTempPath(), "filmbatch-validate")));
             if (Count == 0 && _main.Service is not null)
                 throw new InvalidDataException(Loc.Get(Scope == ExportScope.ByPreset && Preset is null ? "Export.Error.NoPreset" : "Export.Error.NoPhotos"));
-            LastError = null;
+            SetValidationError(null);
         }
         catch (Exception ex)
         {
-            LastError = ex.Message;
+            SetValidationError(ex.Message);
         }
     }
 
@@ -217,7 +237,7 @@ public sealed partial class ExportViewModel : ObservableObject
         _cts = new CancellationTokenSource();
         IsExporting = true;
         ProgressValue = 0;
-        LastError = null;
+        SetRunError(null);
         SetStatus(static () => Loc.Get("Export.Status.Preparing"));
         StartExportCommand.NotifyCanExecuteChanged();
         CancelExportCommand.NotifyCanExecuteChanged();
@@ -246,7 +266,7 @@ public sealed partial class ExportViewModel : ObservableObject
         {
             if (run == _runId)
             {
-                LastError = ex.Message;
+                SetRunError(ex.Message);
                 SetStatus(() => Loc.Format("Export.Status.Failed", ex.Message));
             }
             return;
@@ -274,7 +294,7 @@ public sealed partial class ExportViewModel : ObservableObject
         LastSummary = summary;
         ProgressValue = 100;
         SetStatus(status);
-        if (errors is not null) LastError = errors;
+        SetRunError(errors);
         _main.Toast.Show(status());
     }
 

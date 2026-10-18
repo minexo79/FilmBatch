@@ -4,10 +4,12 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.Threading;
 using FilmBatch.App.ViewModels;
+using FilmBatch.App.ViewModels.Dialogs;
 using FilmBatch.App.ViewModels.Tools;
 using FilmBatch.App.Views;
 using FilmBatch.Core;
 using FilmBatch.Core.Params;
+using FilmBatch.Engine.Exporting;
 
 namespace FilmBatch.App.Tests;
 
@@ -173,5 +175,40 @@ public sealed class EditorLifecycleTests
         main.UndoCommand.Execute(null);
         Assert.Equal(0.5, main.FocusedResolved.Number("vignette.center_x"), 6);
         Assert.Equal(0.5, main.FocusedResolved.Number("vignette.center_y"), 6);
+    }
+
+    [AvaloniaFact]
+    public async Task PartialExportFailure_PreservesErrorAndAllowsDirectRetry()
+    {
+        using var main = TestEnv.CreateViewModel();
+        await TestEnv.OpenSamplesAsync(main);
+        main.Sidebar.Active = SidePanel.Export;
+        var export = main.Sidebar.Export;
+        export.Scope = ExportScope.All;
+        export.Format = ExportFormat.Png16;
+        export.Destination = Path.Combine(AppPaths.Root, "export");
+        var missing = main.Service!.Project.FileNames.Last();
+        var path = main.Service.Project.PathOf(missing);
+        var bytes = File.ReadAllBytes(path);
+        File.Delete(path); // TestEnv's per-test isolated copy, never the shared source fixtures.
+        try
+        {
+            await export.StartExportCommand.ExecuteAsync(null);
+            Assert.Equal(1, export.LastSummary!.Failed);
+            Assert.Equal(3, export.LastSummary.Succeeded);
+            Assert.Contains(missing, export.LastError!);
+            File.WriteAllBytes(path, bytes);
+            // Repair only this fixture's generated outputs; production must still refuse overwrites.
+            foreach (var output in export.LastSummary.OutputFiles) File.Delete(output);
+
+            Assert.True(export.CanExport);
+            Assert.True(export.StartExportCommand.CanExecute(null));
+            Assert.Contains(missing, export.LastError!); // Retry readiness must not hide the failed batch.
+            await export.StartExportCommand.ExecuteAsync(null);
+            Assert.Equal(0, export.LastSummary!.Failed);
+            Assert.Equal(4, export.LastSummary.Succeeded);
+            Assert.Null(export.LastError);
+        }
+        finally { if (!File.Exists(path)) File.WriteAllBytes(path, bytes); }
     }
 }
