@@ -221,6 +221,7 @@ public static class ModuleCatalog
             Float("size", "大小", 30, 1, 100),
             Float("roughness", "粗糙度", 50, 0, 100),
             Float("color", "彩色顆粒", 30, 0, 100),
+            Float("softness", "柔焦", 30, 0, 100),
         ]),
     ];
 

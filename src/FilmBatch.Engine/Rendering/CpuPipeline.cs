@@ -107,7 +107,7 @@ public static class CpuPipeline
             else DirtScratches(cur, w, h, p);
         }
         ct.ThrowIfCancellationRequested();
-        if (p.GrainOn && p.GrainAmount > 0) Grain(cur, w, h, p);
+        if (p.GrainOn && (p.GrainAmount > 0 || p.GrainSoftness > 0)) Grain(cur, a, b, w, h, p);
         ct.ThrowIfCancellationRequested();
 
         // 編碼回 16-bit sRGB RGBA
@@ -1058,8 +1058,7 @@ public static class CpuPipeline
                 var lum = Luminance(v);
                 var bl = Luminance(Vector128.LoadUnsafe(ref tmp2[s]));
                 var diff = (lum - bl) * ck * 0.5f;
-                var scale = lum > 1e-4f ? (lum + diff) / lum : 1f;
-                Vector128.Max(v * Vector128.Create(scale), Vector128<float>.Zero)
+                Vector128.Max(ApplyLumaDelta(v, lum, diff), Vector128<float>.Zero)
                     .WithElement(3, v[3]).CopyTo(buf, s);
             });
         }
@@ -1077,11 +1076,22 @@ public static class CpuPipeline
                 var lum = Luminance(v);
                 var bl = Luminance(Vector128.LoadUnsafe(ref tmp2[s]));
                 var diff = (lum - bl) * sk * 0.7f;
-                var scale = lum > 1e-4f ? (lum + diff) / lum : 1f;
-                Vector128.Max(v * Vector128.Create(scale), Vector128<float>.Zero)
+                Vector128.Max(ApplyLumaDelta(v, lum, diff), Vector128<float>.Zero)
                     .WithElement(3, v[3]).CopyTo(buf, s);
             });
         }
+    }
+
+    /// <summary>
+    /// 把亮度差 diff 套到像素上：一般亮度以 RGB 等比縮放（保留飽和度）；
+    /// 接近黑時改為三通道等量相加，避免 (lum + diff) / lum 的倍率爆大，把暗部色雜訊放大成彩色斑點。
+    /// 與 detail/detail_apply.wgsl 相同。
+    /// </summary>
+    private static Vector128<float> ApplyLumaDelta(Vector128<float> v, float lum, float diff)
+    {
+        var ratio = SmoothStep(0.02f, 0.1f, lum);
+        if (ratio <= 0) return v + Vector128.Create(diff);
+        return v + Vector128.Create(diff) * (v * Vector128.Create(ratio / lum) + Vector128.Create(1 - ratio));
     }
 
     // ───────────── 表面 ─────────────
@@ -1161,45 +1171,118 @@ public static class CpuPipeline
         });
     }
 
-    /// <summary>顆粒（5.3.16）：以 PCG 雜湊的整數雜訊；粗細兩層疊加，強度隨亮度變化。</summary>
-    public static void Grain(float[] buf, int w, int h, ModuleParams p)
+    /// <summary>
+    /// 顆粒（5.3.16）：柔邊團塊模型＋柔焦，與 surface/grain.wgsl 逐步相同。
+    /// 亮部（≥ 0.9）沒有顆粒；暗部團塊較大且最明顯；柔焦半徑隨短邊縮放，縮圖下看起來清晰、放大後才柔。
+    /// </summary>
+    /// <param name="scratch">柔焦模糊結果的暫存緩衝。</param>
+    /// <param name="scratch2">可分離模糊的中間緩衝。</param>
+    public static void Grain(float[] buf, float[] scratch, float[] scratch2, int w, int h, ModuleParams p)
     {
         var amount = p.GrainAmount / 100f;
-        var size = Math.Max(1, p.GrainSize / 100f * 6f);
         var rough = p.GrainRoughness / 100f;
         var color = p.GrainColor / 100f;
         var seed = p.SeedGrain;
         var shortSide = MathF.Min(w, h);
-        var cell = size * shortSide / 800f;
+        var r0 = MathF.Max(0.5f, (0.5f + p.GrainSize / 100f * 2.5f) * shortSide / 3000f);
+        var soft = GrainSoftBlur(shortSide, p.GrainSoftness / 100f);
+        var mix = soft is null ? 0f : p.GrainSoftness / 100f;
+        if (soft is { } blur)
+        {
+            SeparableBlur(buf, scratch2, w, h, blur.Radius, blur.Sigma, horizontal: true);
+            SeparableBlur(scratch2, scratch, w, h, blur.Radius, blur.Sigma, horizontal: false);
+        }
 
         Parallel.For(0, h, y =>
         {
             for (var x = 0; x < w; x++)
             {
                 var i = (y * w + x) * 4;
-                var lum = Luminance(buf[i], buf[i + 1], buf[i + 2]);
-                // 中間調最明顯（Gaussian 權重）
-                var lumW = MathF.Exp(-MathF.Pow((lum - 0.5f) / 0.28f, 2f));
-                var k = amount * 0.22f * lumW;
-                if (k <= 0) continue;
-                // 兩層頻率
-                var n1 = GrainCell(x, y, cell, seed);
-                var n2 = GrainCell(x, y, cell * 2.7f, seed + 31);
-                var gn = (n1 * (1 - rough) + n2 * rough) * 2f - 1f;
-                // 彩色顆粒：RGB 各自取雜訊；單色時共用
-                float rN = gn, gN = gn, bN = gn;
-                if (color > 0)
+                float r = buf[i], g = buf[i + 1], b = buf[i + 2];
+                if (mix > 0)
                 {
-                    rN = (GrainCell(x, y, cell, seed + 101) * 2f - 1f);
-                    gN = (GrainCell(x, y, cell, seed + 103) * 2f - 1f);
-                    bN = (GrainCell(x, y, cell, seed + 107) * 2f - 1f);
+                    r += (scratch[i] - r) * mix;
+                    g += (scratch[i + 1] - g) * mix;
+                    b += (scratch[i + 2] - b) * mix;
                 }
-                var mk = color;
-                buf[i] = Math.Clamp(buf[i] + (gn * (1 - mk) + rN * mk) * k, 0f, 1f);
-                buf[i + 1] = Math.Clamp(buf[i + 1] + (gn * (1 - mk) + gN * mk) * k, 0f, 1f);
-                buf[i + 2] = Math.Clamp(buf[i + 2] + (gn * (1 - mk) + bN * mk) * k, 0f, 1f);
+                var lum = Luminance(r, g, b);
+                var k = amount * 0.16f * (1f - SmoothStep(0.4f, 0.9f, lum));
+                if (k > 0)
+                {
+                    var shadow = 1f - SmoothStep(0.05f, 0.5f, lum);
+                    var (luma, cr, cg, cb) = GrainClumps(x + 0.5f, y + 0.5f, r0, shadow, rough, seed);
+                    // 深暗部的負向顆粒會被 0 截掉，只剩彩色分量 → 黑底冒出彩色斑點；彩色顆粒在暗部淡出
+                    var ck = color * 0.6f * SmoothStep(0.03f, 0.3f, lum);
+                    r = Math.Clamp(r + (luma + cr * ck) * k, 0f, 1f);
+                    g = Math.Clamp(g + (luma + cg * ck) * k, 0f, 1f);
+                    b = Math.Clamp(b + (luma + cb * ck) * k, 0f, 1f);
+                }
+                buf[i] = r; buf[i + 1] = g; buf[i + 2] = b;
             }
         });
+    }
+
+    /// <summary>柔焦模糊參數；sigma 量化到 0.05 px 讓 GPU 權重快取有界。太小（看不出差異）時為 null。</summary>
+    internal static (int Radius, float Sigma)? GrainSoftBlur(float shortSide, float softness)
+    {
+        if (softness <= 0) return null;
+        var sigma = MathF.Round((0.5f + 1.5f * softness) * shortSide / 2400f * 20f) / 20f;
+        if (sigma < 0.5f) return null;
+        return ((int)MathF.Ceiling(sigma * 3f), sigma);
+    }
+
+    /// <summary>
+    /// 柔邊團塊：每格兩顆隨機半徑、隨機正負的柔邊圓點；格密度由低頻值雜訊調變（粗糙度越高越聚集）。
+    /// 彩色分量取自同一批圓點（與亮度顆粒連動），並扣掉灰階平均。
+    /// </summary>
+    private static (float Luma, float R, float G, float B) GrainClumps(float x, float y, float r0, float shadow, float rough, uint seed)
+    {
+        var roughQ = (int)MathF.Round(rough * 256f);
+        var cell = r0 * 2.6f;
+        var ccx = (int)MathF.Floor(x / cell);
+        var ccy = (int)MathF.Floor(y / cell);
+        float luma = 0, sr = 0, sg = 0, sb = 0;
+        for (var dy = -1; dy <= 1; dy++)
+        for (var dx = -1; dx <= 1; dx++)
+        {
+            var cx = ccx + dx;
+            var cy = ccy + dy;
+            var density = (uint)ClumpDensity(cx, cy, roughQ, seed + 71u);
+            var cellBase = unchecked(seed + (uint)cx * 4001u + (uint)cy * 7919u);
+            for (var j = 0u; j < 2u; j++)
+            {
+                var hash = SeedHash.Pcg(cellBase ^ unchecked(j * 2654435769u));
+                if (hash >> 22 >= density) continue;
+                hash = SeedHash.Pcg(hash); var px = (cx + SeedHash.ToUnitFloat(hash)) * cell;
+                hash = SeedHash.Pcg(hash); var py = (cy + SeedHash.ToUnitFloat(hash)) * cell;
+                hash = SeedHash.Pcg(hash); var rr = r0 * (1f + 0.6f * shadow) * (1f + rough * (SeedHash.ToUnitFloat(hash) - 0.5f));
+                var ddx = x - px;
+                var ddy = y - py;
+                var soft = 1f - SmoothStep(rr * 0.35f, rr, MathF.Sqrt(ddx * ddx + ddy * ddy));
+                if (soft <= 0) continue;
+                hash = SeedHash.Pcg(hash); luma += (hash & 1u) == 1u ? soft : -soft;
+                hash = SeedHash.Pcg(hash); sr += soft * (SeedHash.ToUnitFloat(hash) * 2f - 1f);
+                hash = SeedHash.Pcg(hash); sg += soft * (SeedHash.ToUnitFloat(hash) * 2f - 1f);
+                hash = SeedHash.Pcg(hash); sb += soft * (SeedHash.ToUnitFloat(hash) * 2f - 1f);
+            }
+        }
+        var mean = (sr + sg + sb) / 3f;
+        return (Math.Clamp(luma, -1f, 1f), Math.Clamp(sr - mean, -1f, 1f), Math.Clamp(sg - mean, -1f, 1f), Math.Clamp(sb - mean, -1f, 1f));
+    }
+
+    private static readonly int[] Smooth4 = [0, 5, 16, 27];
+
+    /// <summary>團聚密度（0..1024）：全整數的平滑值雜訊（4 格一節點），CPU 與 GPU 逐位元相同，避免圓點有無在門檻邊緣翻轉。</summary>
+    private static int ClumpDensity(int cx, int cy, int roughQ, uint seed)
+    {
+        var ix = cx >> 2;
+        var iy = cy >> 2;
+        var wx = Smooth4[cx & 3];
+        var wy = Smooth4[cy & 3];
+        int H(int a, int b) => (int)(SeedHash.Pcg(unchecked(seed + (uint)a * 379u + (uint)b * 733u)) >> 24);
+        var v = (H(ix, iy) * (32 - wx) + H(ix + 1, iy) * wx) * (32 - wy) + (H(ix, iy + 1) * (32 - wx) + H(ix + 1, iy + 1) * wx) * wy;
+        var clump = Math.Clamp((v - 65280) * 2, 0, 261120) / 255;
+        return 614 + (clump - 614) * roughQ / 256;
     }
 
     // ───────────── 共用工具 ─────────────
@@ -1311,14 +1394,6 @@ public static class CpuPipeline
         var ux = fx * fx * (3f - 2f * fx);
         var uy = fy * fy * (3f - 2f * fy);
         return (h00 * (1 - ux) + h10 * ux) * (1 - uy) + (h01 * (1 - ux) + h11 * ux) * uy;
-    }
-
-    /// <summary>顆粒格雜訊：以量化後的格座標做雜湊，預覽與匯出的顆粒分布相同。</summary>
-    private static float GrainCell(int x, int y, float cell, uint seed)
-    {
-        var cx = (int)MathF.Floor(x / cell);
-        var cy = (int)MathF.Floor(y / cell);
-        return SeedHash.ToUnitFloat(SeedHash.Pcg(seed + (uint)cx * 4001u + (uint)cy * 7919u));
     }
 
     private static void ApplySpot(float[] buf, int w, int h, float cx, float cy, float r, float amount)
