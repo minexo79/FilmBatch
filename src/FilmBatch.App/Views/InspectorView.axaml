@@ -166,6 +166,37 @@
           </DataTemplate>
         </ContentControl.DataTemplates>
       </ContentControl>
+      <!-- AI 降噪：模型生命週期（狀態／授權／下載／匯入／取消／進度）只在「照片基本參數」分頁 -->
+      <ContentControl Content="{Binding Main.Denoise}" IsVisible="{Binding ShowsPhotoTools}">
+        <ContentControl.DataTemplates>
+          <DataTemplate x:DataType="vt:DenoiseViewModel">
+            <Border Classes="tool-group" AutomationProperties.AutomationId="Denoise.Panel" Margin="16,0,16,12" IsVisible="{Binding HasPhoto}">
+              <StackPanel Spacing="6">
+                <TextBlock Classes="panel-title" Text="{l:Tr Denoise.Title}" />
+                <TextBlock Classes="secondary small" Text="{Binding ModelName}" />
+                <TextBlock Classes="secondary small" Text="{Binding ModelDomainText}" />
+                <TextBlock AutomationProperties.AutomationId="Denoise.Attribution" Classes="secondary small" Text="{Binding AttributionText}" TextWrapping="Wrap" />
+                <TextBlock AutomationProperties.AutomationId="Denoise.Status" Classes="secondary small" Text="{Binding StatusText}" TextWrapping="Wrap" />
+                <TextBlock AutomationProperties.AutomationId="Denoise.Provider" Classes="secondary small" Text="{Binding ProviderText}"
+                           IsVisible="{Binding ProviderText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                <ProgressBar AutomationProperties.AutomationId="Denoise.Progress" Minimum="0" Maximum="100"
+                             Value="{Binding ProgressValue}" IsVisible="{Binding HasProgress}" />
+                <TextBlock AutomationProperties.AutomationId="Denoise.Error" Classes="warning small" Text="{Binding ErrorText}" TextWrapping="Wrap"
+                           IsVisible="{Binding ErrorText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                <WrapPanel ItemSpacing="6" LineSpacing="6">
+                  <Button AutomationProperties.AutomationId="Denoise.Download" Command="{Binding DownloadModelCommand}"
+                          IsVisible="{Binding CanDownload}" Content="{l:Tr Denoise.Download}" />
+                  <Button AutomationProperties.AutomationId="Denoise.Import" Command="{Binding ImportModelCommand}"
+                          IsVisible="{Binding CanImport}" Content="{l:Tr Denoise.Import}" />
+                  <Button AutomationProperties.AutomationId="Denoise.Cancel" Command="{Binding CancelCommand}"
+                          IsVisible="{Binding CanCancel}" Content="{l:Tr PhotoTools.Cancel}" />
+                </WrapPanel>
+              </StackPanel>
+            </Border>
+          </DataTemplate>
+        </ContentControl.DataTemplates>
+      </ContentControl>
+
       <ItemsControl ItemsSource="{Binding Groups}" Margin="0,0,0,12">
         <ItemsControl.ItemTemplate>
           <DataTemplate x:DataType="vm:ModuleGroupViewModel">

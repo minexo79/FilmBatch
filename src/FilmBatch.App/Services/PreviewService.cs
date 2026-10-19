@@ -165,9 +165,10 @@ public sealed class PreviewService : IDisposable
         _scheduler.RequestPreview(fileName, source, settings, generation);
     }
 
-    public void CancelPreview()
+    public void CancelPreview(bool cancelMatchingThumbnails = false)
     {
         Interlocked.Exchange(ref _delivered, Interlocked.Increment(ref _requested));
+        _scheduler.CancelPreview(cancelMatchingThumbnails);
         Volatile.Write(ref _source, null);
     }
 

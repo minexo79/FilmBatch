@@ -291,6 +291,12 @@ public sealed partial class PhotoToolsViewModel : ObservableObject
 
     // ───────────── 生命週期 ─────────────
 
+    internal void SetAnalysisSource(SourceImage source)
+    {
+        _source = source;
+        _cropT = CropGeometry.Compute(source.Width, source.Height, CropGeometry.FromSettings(_settings));
+    }
+
     /// <summary>
     /// 每當服務／焦點照片／來源／設定任何一項改變，重設取樣脈絡：
     /// 舊提案與進行中的取樣作廢（世代作廢）；參考色只在同一專案內保留。

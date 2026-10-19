@@ -64,6 +64,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// <summary>「照片基本參數」分頁的照片工具面板（WB／膚色／Zone 取樣與提案）。</summary>
     public PhotoToolsViewModel PhotoTools { get; internal set; }
 
+    public DenoiseViewModel Denoise { get; }
+
     /// <summary>焦點照片的最終參數（三層合併）；沒有照片時為系統預設。</summary>
     public Settings FocusedResolved =>
         Service is not null && FocusFile is not null ? Service.SettingsFor(FocusFile) : ModuleCatalog.Defaults;
@@ -132,6 +134,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
         Toast = new ToastViewModel(Stack);
         Preview = new PreviewViewModel(this);
+        Denoise = new DenoiseViewModel(this);
         Presets = new PresetLibraryViewModel(this);
         Filmstrip = new FilmstripViewModel(this);
         Filmstrip.LoadingProgressChanged += () => _post(UpdateBackgroundText);
@@ -182,6 +185,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         Renderer.PreviewReady += (r, histogram, originalHistogram) =>
         {
             Preview.SetResult(r, histogram, originalHistogram);
+            if (r.PreparedSource is { } prepared) PhotoTools.SetAnalysisSource(prepared);
+            Denoise.OnRendered(r);
             PhotoTools.OnPreviewRendered();
             LastRenderText = $"{r.Elapsed.TotalMilliseconds:F1} ms";
             UpdateBackgroundText();
@@ -204,7 +209,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 FilmLook.Thumbnails.OnThumbnailFailed(file, message);
             }
             if (file == "$init" || (failure.PreviewGeneration is not null && file == FocusFile && !Renderer.IsBusy))
+            {
                 Preview.IsBusy = false;
+                Denoise.OnError(message);
+            }
             Toast.Show(Loc.Format("Toast.RenderFailed", message));
         };
         Renderer.Start();
@@ -322,11 +330,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         _previewWait = new CancellationTokenSource();
         var cancellationToken = _previewWait.Token;
         Renderer.CancelPreview();
+        Denoise.RefreshContext();
         var file = FocusFile;
         var service = Service;
         if (service is null || file is null)
         {
             Preview.Clear();
+            Denoise.RefreshContext();
             return;
         }
         Preview.UpdateOverlay(Selection.Count);
@@ -356,6 +366,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             Filmstrip.SetError(file, ex.Message);
             Preview.Clear();
             Inspector.Refresh();
+            Denoise.RefreshContext();
         }
     }
 
@@ -377,8 +388,15 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         _previewOrientation = CropTool.IsActive ? (CropTool.Working.Quarter, CropTool.Working.FlipH, CropTool.Working.FlipV) : null;
         // 原圖對比也套用同一個裁切 / 方向：只比較調整（與 Lightroom 相同）
         Preview.SetCompareCrop(CropGeometry.FromSettings(settings));
+        Denoise.RefreshContext();
         Renderer.RequestPreview(FocusFile, Preview.Source, settings);
         Preview.IsBusy = true;
+    }
+
+    public void CancelDenoisePreview()
+    {
+        Renderer.CancelPreview(cancelMatchingThumbnails: true);
+        Preview.IsBusy = false;
     }
 
     private (int Quarter, bool FlipH, bool FlipV)? _previewOrientation;
@@ -823,6 +841,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         if (_disposed) return;
         _disposed = true;
         PhotoTools.InvalidateForPhotoChange();
+        Denoise.Dispose();
         ++_openGeneration;
         _loadingTimer.Stop();
         _previewWait?.Cancel();
