@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -5,12 +6,41 @@ using System.Text.Json.Serialization;
 namespace FilmBatch.Mobile.Probes;
 
 public sealed record ProbeOptions(string OutputDirectory, int Width = 768, int Height = 512,
-    string? RawPath = null, string? ModelPath = null, string Provider = "CPU", bool IncludeGpu = true);
+    string? RawPath = null, string? ModelPath = null, string Provider = "CPU", bool IncludeGpu = true,
+    string? RunTag = null)
+{
+    // Genuine workload overrides shared by both iOS hosts and their XCTest consumers.
+    public ProbeOptions WithLaunchArguments(IReadOnlyList<string> arguments)
+    {
+        var options = this;
+        for (var i = 1; i < arguments.Count; i++)
+        {
+            string Value() => ++i < arguments.Count ? arguments[i]
+                : throw new ArgumentException($"Missing value for {arguments[i - 1]}.");
+            switch (arguments[i])
+            {
+                case "-probe-width": options = options with { Width = int.Parse(Value(), CultureInfo.InvariantCulture) }; break;
+                case "-probe-height": options = options with { Height = int.Parse(Value(), CultureInfo.InvariantCulture) }; break;
+                case "-probe-raw": options = options with { RawPath = Value() }; break;
+                case "-probe-model": options = options with { ModelPath = Value() }; break;
+                case "-probe-provider": options = options with { Provider = Value() }; break;
+                case "-probe-no-gpu": options = options with { IncludeGpu = false }; break;
+            }
+        }
+        return options;
+    }
+}
 
 public sealed record ProbeResult(string Name, string Status, string Detail, Dictionary<string, string> Metrics);
 
 public sealed record ProbeReport(string Runtime, string Platform, string Architecture, List<ProbeResult> Results)
 {
+    public string OperatingSystem { get; } = System.OperatingSystem.IsIOS() ? "iOS"
+        : System.OperatingSystem.IsMacOS() ? "macOS"
+        : System.OperatingSystem.IsWindows() ? "Windows"
+        : System.OperatingSystem.IsLinux() ? "Linux" : "unknown";
+    public string RuntimeIdentifier { get; } = RuntimeInformation.RuntimeIdentifier;
+
     public int ExitCode => Results.Any(result => result.Status == "fail") ? 1
         : Results.Any(result => result.Status == "blocked") ? 2 : 0;
 }

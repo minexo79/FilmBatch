@@ -3,6 +3,8 @@
     <TargetFramework>net10.0-ios</TargetFramework>
     <OutputType>Exe</OutputType>
     <SupportedOSPlatformVersion>18.0</SupportedOSPlatformVersion>
+    <!-- Trim unreachable dependency code, including YamlDotNet's unused reflection serializers. -->
+    <TrimMode>full</TrimMode>
     <ApplicationId>org.filmbatch.mobile.probe</ApplicationId>
     <ApplicationTitle>FilmBatch Technical Probe</ApplicationTitle>
     <ApplicationVersion>1</ApplicationVersion>

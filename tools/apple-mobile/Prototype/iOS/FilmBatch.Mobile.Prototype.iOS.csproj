@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-ios</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <SupportedOSPlatformVersion>18.0</SupportedOSPlatformVersion>
+    <TrimMode>full</TrimMode>
+    <ApplicationId>org.filmbatch.mobile.prototype</ApplicationId>
+    <ApplicationTitle>FilmBatch Mobile Prototype</ApplicationTitle>
+    <ApplicationVersion>1</ApplicationVersion>
+    <ApplicationDisplayVersion>0.1</ApplicationDisplayVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Common\FilmBatch.Mobile.Prototype.csproj" />
+    <!-- The package's iOS targets require an app-level reference to link its xcframework. -->
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" />
+    <PackageReference Include="Avalonia.iOS" />
+  </ItemGroup>
+</Project>

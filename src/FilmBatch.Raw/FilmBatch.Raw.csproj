@@ -18,8 +18,8 @@
   </PropertyGroup>
   <ItemGroup>
     <None Remove="Native/Jxl/**" />
-    <None Include="Native/Jxl/$(JxlRuntimeIdentifier)/*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="%(Filename)%(Extension)" />
-    <None Include="Native/Jxl/licenses/*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="native-jxl/licenses/%(Filename)%(Extension)" />
-    <None Include="Native/Jxl/provenance.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="native-jxl/provenance.json" />
+    <None Include="Native/Jxl/$(JxlRuntimeIdentifier)/*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="%(Filename)%(Extension)" PublishFolderType="Resource" />
+    <None Include="Native/Jxl/licenses/*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="native-jxl/licenses/%(Filename)%(Extension)" PublishFolderType="Resource" />
+    <None Include="Native/Jxl/provenance.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" TargetPath="native-jxl/provenance.json" PublishFolderType="Resource" />
   </ItemGroup>
 </Project>

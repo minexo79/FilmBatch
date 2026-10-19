@@ -1,0 +1,42 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="FilmBatch.Mobile.Prototype.PrototypeView">
+  <!-- Small and large layouts are chosen by measured width in code-behind. -->
+  <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+    <Grid x:Name="Layout" Margin="16" RowSpacing="12" ColumnSpacing="16">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="*" />
+      </Grid.RowDefinitions>
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*" />
+        <ColumnDefinition Width="*" />
+      </Grid.ColumnDefinitions>
+      <StackPanel x:Name="Controls" Orientation="Horizontal" Spacing="12"
+                  Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2">
+        <Button x:Name="RunButton" Content="Run probes"
+                AutomationProperties.AutomationId="Prototype.Run"
+                AutomationProperties.Name="Run probes" />
+        <Button x:Name="CancelButton" Content="Cancel" IsEnabled="False"
+                AutomationProperties.AutomationId="Prototype.Cancel"
+                AutomationProperties.Name="Cancel probes" />
+      </StackPanel>
+      <Border x:Name="StatusPane" Grid.Row="1" Grid.Column="0" Padding="12"
+              BorderBrush="Gray" BorderThickness="1">
+        <TextBlock x:Name="StatusText" TextWrapping="Wrap"
+                   AutomationProperties.AutomationId="Prototype.Status"
+                   AutomationProperties.LiveSetting="Polite" />
+      </Border>
+      <Border x:Name="PreviewPane" Grid.Row="1" Grid.Column="1" Padding="12"
+              BorderBrush="Gray" BorderThickness="1">
+        <Image x:Name="PreviewImage" Stretch="Uniform" MinHeight="160"
+               AutomationProperties.AutomationId="Prototype.Preview"
+               AutomationProperties.Name="ImageIO output preview" />
+      </Border>
+      <TextBox x:Name="ReportText" Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2"
+               IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap"
+               MinHeight="200" AutomationProperties.AutomationId="Prototype.Report" AutomationProperties.Name="Probe report" />
+    </Grid>
+  </ScrollViewer>
+</UserControl>
