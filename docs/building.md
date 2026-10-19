@@ -73,6 +73,9 @@ macOS 的相同行動 View、Apple codec 回歸及桌面 solution 測試，均�
 
 Apple 系統輸出的 sRGB ICC 可被獨立 LittleCMS 解析並用於色彩轉換，但 libpng 仍會對此 stock profile 顯示 `known incorrect sRGB profile` 警告；本輪保留此警告，沒有抑制它或新增舊式 `zTXt` ICC 副本。原生輸出保留標準 ICC 與單一 canonical EXIF；這個已觀察的相容性警告不是全平台色彩等價承諾。
 
+完成上述驗證後，額外重跑桌面主 App 的 `--smoke` 遇到主機再次鎖定：`CGSSessionScreenIsLocked=1`、`activeDisplays=0`，Avalonia.Native 啟動 RenderTimer 回傳 `-6661`。這次主 App 重跑列為環境 `blocked`，不算通過；不以改用假的計時器、Headless 或抑制例外替代。先前成功的 Mac 共用行動介面與 iOS Release 證據保留各自範圍，桌面主 App 的這次可見啟動須於解鎖後另驗。
+
+
 
 
 ## 測試
