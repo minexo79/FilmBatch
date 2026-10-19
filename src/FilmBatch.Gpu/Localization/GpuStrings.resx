@@ -25,4 +25,8 @@
   <data name="Gpu.CommandError" xml:space="preserve"><value>GPU 指令錯誤：{0} {1}</value></data>
   <data name="Gpu.PipelineFailed" xml:space="preserve"><value>建立 compute pipeline（{0}）失敗：{1} {2}</value></data>
   <data name="Gpu.ShaderNotFound" xml:space="preserve"><value>找不到嵌入的 shader：{0}</value></data>
+  <data name="Gpu.DeviceLost" xml:space="preserve"><value>GPU 裝置遺失：{0}</value></data>
+  <data name="Gpu.ReadbackFailed" xml:space="preserve"><value>GPU 讀回失敗（{0}）：{1}；裝置遺失回呼：{2}；最近的原生錯誤：{3}</value></data>
+  <data name="Gpu.CallbackPending" xml:space="preserve"><value>尚未收到（不代表未遺失）</value></data>
+  <data name="Gpu.NoNativeError" xml:space="preserve"><value>尚未回報</value></data>
 </root>

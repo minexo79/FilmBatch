@@ -27,6 +27,8 @@ public sealed class SourceImage
             throw new ArgumentException("RGBA16 data length must be width × height × 4.", nameof(rgba16));
         Width = width;
         Height = height;
+        ReferenceWidth = width;
+        ReferenceHeight = height;
         _rgba16 = rgba16;
     }
 
@@ -36,12 +38,19 @@ public sealed class SourceImage
         Scene = scene;
         Width = scene.Image.Width;
         Height = scene.Image.Height;
+        ReferenceWidth = Width;
+        ReferenceHeight = Height;
         _display = new(() => RawDisplay.Encode(scene.Image, scene.Tone), LazyThreadSafetyMode.ExecutionAndPublication);
     }
 
     public int Width { get; }
     public int Height { get; }
     public int ShortSide => Math.Min(Width, Height);
+
+    /// <summary>未縮小的已現像來源尺寸；預覽與匯出共用同一個顆粒座標參考。</summary>
+    public int ReferenceWidth { get; init; }
+    public int ReferenceHeight { get; init; }
+    public bool IsSceneLinear => Scene is not null;
 
     /// <summary>
     /// 每像素 4 個 ushort（R、G、B、A）的 16-bit sRGB 顯示表示。
@@ -82,6 +91,7 @@ public sealed class SourceImage
             })
             {
                 FilePath = FilePath, RawOptions = RawOptions, RawInfo = RawInfo, SemanticMasks = SemanticMasks,
+                ReferenceWidth = ReferenceWidth, ReferenceHeight = ReferenceHeight,
             };
         }
         var dst = new ushort[w * h * 4];
@@ -115,6 +125,7 @@ public sealed class SourceImage
         return new SourceImage(w, h, dst)
         {
             FilePath = FilePath, RawOptions = RawOptions, RawInfo = RawInfo, SemanticMasks = SemanticMasks,
+            ReferenceWidth = ReferenceWidth, ReferenceHeight = ReferenceHeight,
         };
     }
 }

@@ -34,6 +34,7 @@ public sealed class ComputeKernel : IDisposable
 {
     internal readonly ComputePipeline Pipeline;
     internal readonly BindGroupLayout BindGroupLayout;
+    private readonly bool _releaseHandles;
 
     public string Label { get; }
     public IReadOnlyList<BindingSpec> Bindings { get; }
@@ -42,35 +43,67 @@ public sealed class ComputeKernel : IDisposable
     {
         Label = label ?? entryPoint;
         Bindings = bindings;
+        _releaseHandles = gpu.AdapterInfo.Backend == GpuBackend.Dx12;
         var device = gpu.Device;
 
         // 以 error scope 精確取得 shader 編譯與 pipeline 建立的錯誤訊息
         device.PushErrorScope(ErrorFilter.Validation);
-
-        var wgslDesc = new ShaderModuleWGSLDescriptor { Code = wgsl };
-        var module = device.CreateShaderModuleWGSL(Label, in wgslDesc);
-
-        var entries = new BindGroupLayoutEntry[bindings.Count];
-        for (var i = 0; i < bindings.Count; i++)
-            entries[i] = ToLayoutEntry((uint)i, bindings[i]);
-        var bglDesc = new BindGroupLayoutDescriptor { Label = Label, Entries = entries };
-        BindGroupLayout = device.CreateBindGroupLayout(in bglDesc)!;
-
-        var plDesc = new PipelineLayoutDescriptor { Label = Label, BindGroupLayouts = [BindGroupLayout] };
-        var pipelineLayout = device.CreatePipelineLayout(in plDesc);
-
-        var pipeDesc = new ComputePipelineDescriptor
+        ComputePipeline? pipeline = null;
+        BindGroupLayout? bindGroupLayout = null;
+        ShaderModule? module = null;
+        PipelineLayout? pipelineLayout = null;
+        try
         {
-            Label = Label,
-            Layout = pipelineLayout!,
-            Compute = new ComputeState { Module = module!, EntryPoint = entryPoint },
-        };
-        var pipeline = device.CreateComputePipelineSync(in pipeDesc);
+            ErrorType status;
+            string? message;
+            try
+            {
+                var wgslDesc = new ShaderModuleWGSLDescriptor { Code = wgsl };
+                module = device.CreateShaderModuleWGSL(Label, in wgslDesc);
 
-        var (status, message) = device.PopErrorScopeSync(10_000_000_000);
-        if (pipeline is null || !string.IsNullOrEmpty(message))
-            throw new GpuException(GpuText.Format("Gpu.PipelineFailed", Label, status, message));
+                var entries = new BindGroupLayoutEntry[bindings.Count];
+                for (var i = 0; i < bindings.Count; i++)
+                    entries[i] = ToLayoutEntry((uint)i, bindings[i]);
+                var bglDesc = new BindGroupLayoutDescriptor { Label = Label, Entries = entries };
+                bindGroupLayout = device.CreateBindGroupLayout(in bglDesc)!;
+
+                var plDesc = new PipelineLayoutDescriptor { Label = Label, BindGroupLayouts = [bindGroupLayout] };
+                pipelineLayout = device.CreatePipelineLayout(in plDesc);
+
+                var pipeDesc = new ComputePipelineDescriptor
+                {
+                    Label = Label,
+                    Layout = pipelineLayout!,
+                    Compute = new ComputeState { Module = module!, EntryPoint = entryPoint },
+                };
+                pipeline = device.CreateComputePipelineSync(in pipeDesc);
+            }
+            finally
+            {
+                (status, message) = device.PopErrorScopeSync(10_000_000_000);
+            }
+            if (pipeline is null || !string.IsNullOrEmpty(message))
+                throw new GpuException(GpuText.Format("Gpu.PipelineFailed", Label, status, message));
+        }
+        catch
+        {
+            if (_releaseHandles)
+            {
+                NativeLifetime.Release(pipeline);
+                NativeLifetime.Release(bindGroupLayout);
+            }
+            throw;
+        }
+        finally
+        {
+            if (_releaseHandles)
+            {
+                NativeLifetime.Release(module);
+                NativeLifetime.Release(pipelineLayout);
+            }
+        }
         Pipeline = pipeline;
+        BindGroupLayout = bindGroupLayout!;
     }
 
     private static BindGroupLayoutEntry ToLayoutEntry(uint binding, BindingSpec spec)
@@ -105,5 +138,10 @@ public sealed class ComputeKernel : IDisposable
         return e;
     }
 
-    public void Dispose() { }
+    public void Dispose()
+    {
+        if (!_releaseHandles) return;
+        NativeLifetime.Release(Pipeline);
+        NativeLifetime.Release(BindGroupLayout);
+    }
 }

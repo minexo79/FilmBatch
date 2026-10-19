@@ -139,13 +139,17 @@ public sealed class RawGpuDisplayTests
         using var gpu = TryCreateGpu();
         Assert.SkipWhen(gpu is null, "沒有可用的 GPU 介面卡");
         var image = new RgbImage(1, 1, [red, green, blue]);
-        var expected = CpuPipeline.Process(SceneSource(image), FilmBatch.Core.Params.ModuleCatalog.Defaults,
+        var source = SceneSource(image);
+        var expected = CpuPipeline.Process(source, FilmBatch.Core.Params.ModuleCatalog.Defaults,
             null, TestContext.Current.CancellationToken).Rgba16;
-        var pixels = gpu!.Render16(SceneSource(image), FilmBatch.Core.Params.ModuleCatalog.Defaults,
+        var pixels = gpu!.Render16(source, FilmBatch.Core.Params.ModuleCatalog.Defaults,
             TestContext.Current.CancellationToken).Rgba16;
         Assert.False(gpu.UsingCpu);
-        Assert.True(MaxAbsDiff(expected, pixels) <= MaxParityCodes,
-            $"高光接近色域邊界時差異 {MaxAbsDiff(expected, pixels)}/65535");
+        var difference = MaxAbsDiff(expected, pixels);
+        var message = $"高光接近色域邊界時差異 {difference}/65535";
+        if (difference > MaxParityCodes && OperatingSystem.IsWindows())
+            message += "\n" + RawGpuParityDiagnostics.Describe(gpu.Device, source, expected, pixels);
+        Assert.True(difference <= MaxParityCodes, message);
     }
 
     [Fact]
@@ -276,6 +280,9 @@ public sealed class RawGpuDisplayTests
             var summary = await BatchExporter.RunAsync(request,
                 () => GpuSpikeRenderer.Create(),
                 progress: null, TestContext.Current.CancellationToken);
+            if (summary.Errors.Count != 0)
+                Assert.Fail(string.Join(Environment.NewLine,
+                    summary.Errors.Select(error => $"{error.Key}: {error.Value}")));
             Assert.Equal(0, summary.Failed);
             var output = Assert.Single(summary.OutputFiles);
             var actual = ImageLoader.LoadFull(output);
@@ -324,6 +331,9 @@ public sealed class RawGpuDisplayTests
             };
             var ct = TestContext.Current.CancellationToken;
             var summary = await BatchExporter.RunAsync(request, () => GpuSpikeRenderer.Create(), null, ct);
+            if (summary.Errors.Count != 0)
+                Assert.Fail(string.Join(Environment.NewLine,
+                    summary.Errors.Select(error => $"{error.Key}: {error.Value}")));
             Assert.Equal(0, summary.Failed);
             var output = Assert.Single(summary.OutputFiles);
             var actual = ImageLoader.LoadFull(output);

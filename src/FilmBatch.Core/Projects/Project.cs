@@ -19,6 +19,10 @@ public sealed class Project
 
     public static readonly string[] SupportedExtensions = [".tif", ".tiff", ".jpg", ".jpeg", ".png", .. RawExtensions];
 
+    /// <summary>依副檔名判斷是否為 RAW 檔（不讀檔頭）。</summary>
+    public static bool IsRawFile(string path) =>
+        RawExtensions.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase);
+
     private readonly Dictionary<string, PhotoEntry> _photos = new(StringComparer.Ordinal);
     private readonly List<string> _order = [];
     private readonly Dictionary<Guid, DateTimeOffset> _keptPresetUpdates = [];

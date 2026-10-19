@@ -4,6 +4,8 @@
 - 範圍：`src/FilmBatch.Engine`（新增來源階段）、`src/FilmBatch.Core/Params`（新增 `denoise` 模組）、發佈封裝
 
 > **2026-10-18 現況註記**：本提案仍未實作。下方「沒有 RAW 管線」是 2026-10-16 的設計前提；目前已具備[場景線性 RAW 管線](../architecture.md#48-engine影像讀取與批次匯出imaging--exporting)。重新啟動此提案時，須重新比較資料域、模型／權重授權、品質與部署，不能直接把當時的 sRGB／ONNX 選型當成已採用的方案。原提案保留作為決策歷史。
+>
+> 最新的來源與授權比較見 [AI 降噪 Survey](../ai-denoise-survey.md)。調查優先評估線性 Rec.2020 RawNIND 與一般 RGB NAFNet，並記錄 Bayer 模型的 CoreML FP16 限制；兩者均未採用，也未完成實際權重檔與本機推論驗證。下方「決策」仍是原始提案，不因本次 Survey 轉為現行實作。
 
 ## 背景
 

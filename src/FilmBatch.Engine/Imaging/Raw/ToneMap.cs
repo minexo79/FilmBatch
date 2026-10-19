@@ -173,12 +173,20 @@ internal sealed class ToneMap
     {
         if (!float.IsFinite(y) || y <= 0f)
             return 0f;
-        var ev = MathF.Log2(y / Grey);
+        var ev = LogExposure(y / Grey);
         var f = Clamp((ev - LutMinEv) / (LutMaxEv - LutMinEv), 0f, 1f) * (LutCount - 1);
         var i = Math.Min((int)f, LutCount - 2);
         var t = f - i;
         var v = _lut[i] + (_lut[i + 1] - _lut[i]) * t;
         return ev < LutMinEv ? v * (y / (Grey * MathF.Pow(2f, LutMinEv))) : v;
+    }
+
+    /// <summary>由已捨入的亮度比計算對數域 LUT 的曝光座標。</summary>
+    internal static float LogExposure(float ratio)
+    {
+        // 保留 float32 除法；Windows 的 log2f 在高光邊界可能捨入到錯誤鄰值，
+        // 經 double 計算再轉回 float，避免一個 EV 位元階被色域投影放大。
+        return OperatingSystem.IsWindows() ? (float)Math.Log2(ratio) : MathF.Log2(ratio);
     }
 
 

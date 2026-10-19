@@ -10,6 +10,10 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
     let c = textureLoad(src, id.xy, 0);
     let lum = luminance(c.rgb);
     let base = luminance(textureLoad(blurred, id.xy, 0).rgb);
-    let gain = select(1.0, (lum + (lum - base) * p.amount) / lum, lum > .0001);
-    textureStore(dst, id.xy, vec4f(max(c.rgb * gain, vec3f(0.0)), c.a));
+    // 一般亮度等比縮放（保留飽和度）；接近黑時改為三通道等量相加，避免倍率爆大把暗部色雜訊放大成彩色斑點（與 CPU 相同）
+    let diff = (lum - base) * p.amount;
+    let ratio = smoothstep_f(0.02, 0.1, lum);
+    var rgb = c.rgb + vec3f(diff);
+    if (ratio > 0.0) { rgb = c.rgb + vec3f(diff) * (c.rgb * (ratio / lum) + vec3f(1.0 - ratio)); }
+    textureStore(dst, id.xy, vec4f(max(rgb, vec3f(0.0)), c.a));
 }

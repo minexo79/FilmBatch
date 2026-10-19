@@ -553,6 +553,112 @@ public sealed class EffectPipelineTests
         Assert.True(max <= 64, $"GPU 與 CPU 16-bit 差異 {max}/65535");
     }
 
+    private static Settings GrainOnly(double softness = 0) => ModuleCatalog.Defaults
+        .With("grain.enabled", true)
+        .With("grain.amount", 60.0)
+        .With("grain.size", 60.0)
+        .With("grain.roughness", 70.0)
+        .With("grain.softness", softness);
+
+    /// <summary>R 通道的標準差（16-bit 值）：用來量測顆粒在某個灰階上有多明顯。</summary>
+    private static double StdDevR(ushort[] px)
+    {
+        double sum = 0, sq = 0;
+        var n = px.Length / 4;
+        for (var i = 0; i < px.Length; i += 4) { sum += px[i]; sq += (double)px[i] * px[i]; }
+        var mean = sum / n;
+        return Math.Sqrt(Math.Max(0, sq / n - mean * mean));
+    }
+
+    [Fact]
+    public void Grain_IsInvisibleInHighlights_AndStrongestInShadows()
+    {
+        using var cpu = new CpuFakeRenderer();
+        var ct = TestContext.Current.CancellationToken;
+        double Spread(ushort v) => StdDevR(cpu.Render16(Flat(600, 400, v, path: "/tmp/grain.tif"), GrainOnly(), ct).Rgba16);
+
+        var white = Spread(62000);  // ≈ 0.95
+        var mid = Spread(32768);    // ≈ 0.5
+        var dark = Spread(9000);    // ≈ 0.14
+        Assert.Equal(0, white);
+        Assert.True(dark > mid * 1.5, $"暗部顆粒 {dark:F0} 應明顯大於中間調 {mid:F0}");
+        Assert.True(mid > 100, $"中間調仍應有顆粒（{mid:F0}）");
+    }
+
+    [Fact]
+    public void NegativeClarity_DoesNotAmplifyShadowChromaIntoSpecks()
+    {
+        // 近黑、略帶紅的像素緊鄰亮區：負清晰度不可把 (lum + diff) / lum 的倍率放大成飽和色點
+        int w = 400, h = 200;
+        var px = new ushort[w * h * 4];
+        for (var i = 0; i < px.Length; i += 4)
+        {
+            var bright = i / 4 % w >= w / 2;
+            px[i] = bright ? (ushort)50000 : (ushort)1200;
+            px[i + 1] = px[i + 2] = bright ? (ushort)50000 : (ushort)300;
+            px[i + 3] = ushort.MaxValue;
+        }
+        var src = new SourceImage(w, h, px) { FilePath = "/tmp/clarity.tif" };
+        var settings = ModuleCatalog.Defaults.With("detail.enabled", true).With("detail.clarity", -100.0);
+        using var cpu = new CpuFakeRenderer();
+        var outPx = cpu.Render16(src, settings, TestContext.Current.CancellationToken).Rgba16;
+        var i0 = (h / 2 * w + w / 2 - 3) * 4;   // 暗側、緊鄰邊緣
+        Assert.True(outPx[i0] - outPx[i0 + 1] < 2 * (1200 - 300), $"暗部色度被放大：R {outPx[i0]} G {outPx[i0 + 1]}");
+    }
+
+    [Fact]
+    public void Grain_DoesNotSprinkleColoredSpecksOnBlack()
+    {
+        // 負向顆粒在 0 被截掉時，彩色分量不能單獨留下來變成彩色斑點
+        using var cpu = new CpuFakeRenderer();
+        var settings = GrainOnly().With("grain.color", 100.0);
+        var outPx = cpu.Render16(Flat(600, 400, 1500, path: "/tmp/grain-black.tif"), settings, TestContext.Current.CancellationToken).Rgba16;
+        var worst = 0;
+        for (var i = 0; i < outPx.Length; i += 4)
+            worst = Math.Max(worst, Math.Max(outPx[i], Math.Max(outPx[i + 1], outPx[i + 2])) - Math.Min(outPx[i], Math.Min(outPx[i + 1], outPx[i + 2])));
+        Assert.True(worst < 1000, $"黑底的顆粒色度 {worst}/65535 過高");
+    }
+
+    [Fact]
+    public void GrainSoftness_BlursLargeImageEdgesWithoutChangingFlatRegions()
+    {
+        // 大圖：高對比邊緣被柔化（顆粒關閉，只看柔焦）
+        var w = 2400; var h = 3000;
+        var px = new ushort[w * h * 4];
+        for (var i = 0; i < px.Length; i += 4)
+        {
+            var x = i / 4 % w;
+            px[i] = px[i + 1] = px[i + 2] = x < w / 2 ? (ushort)8000 : (ushort)50000;
+            px[i + 3] = ushort.MaxValue;
+        }
+        var src = new SourceImage(w, h, px) { FilePath = "/tmp/soft.tif" };
+        var settings = GrainOnly(softness: 100).With("grain.amount", 0.0);
+        using var cpu = new CpuFakeRenderer();
+        var outPx = cpu.Render16(src, settings, TestContext.Current.CancellationToken).Rgba16;
+        var edge = outPx[(h / 2 * w + w / 2 - 1) * 4];
+        Assert.InRange(edge, 9000, 49000);
+        Assert.Equal(outPx[(h / 2 * w + 10) * 4], src.Rgba16[(h / 2 * w + 10) * 4]);
+    }
+
+    [Theory]
+    [InlineData(0, 0)]
+    [InlineData(0, 100)]
+    [InlineData(80, 0)]
+    [InlineData(80, 100)]
+    public void Gpu_MatchesCpu_OnClumpGrainAndSoftness(double softness, double color)
+    {
+        using var gpu = TryCreateGpu();
+        Assert.SkipWhen(gpu is null, "沒有可用的 GPU 介面卡");
+        var src = Gradient(1600, 1200, "/tmp/parity-grain.tif");
+        var settings = GrainOnly(softness).With("grain.color", color);
+        var ct = TestContext.Current.CancellationToken;
+        var g = gpu!.Render16(src, settings, ct).Rgba16;
+        using var cpu = new CpuFakeRenderer();
+        var c = cpu.Render16(src, settings, ct).Rgba16;
+        var max = MaxAbsDiff(g, c);
+        Assert.True(max <= 64, $"GPU 與 CPU 16-bit 差異 {max}/65535");
+    }
+
     [Theory]
     [InlineData("kodak-portra-400", 0, 0)]
     [InlineData("fuji-velvia-50", 40, 30)]

@@ -74,6 +74,9 @@
   <data name="Filmstrip.OverridesOnly" xml:space="preserve"><value>With overrides</value></data>
   <data name="Filmstrip.Unassigned" xml:space="preserve"><value>Unassigned</value></data>
   <data name="Filmstrip.ByPreset" xml:space="preserve"><value>By preset</value></data>
+  <data name="Filmstrip.AllFiles" xml:space="preserve"><value>All files</value></data>
+  <data name="Filmstrip.RawOnly" xml:space="preserve"><value>RAW only</value></data>
+  <data name="Filmstrip.NonRaw" xml:space="preserve"><value>Non-RAW only</value></data>
   <data name="Presets.Apply" xml:space="preserve"><value>Apply to Selection</value></data>
   <data name="Presets.Rename" xml:space="preserve"><value>Rename…</value></data>
   <data name="Presets.Color" xml:space="preserve"><value>Change Color Label</value></data>
@@ -471,6 +474,7 @@ Clear overrides: use the new preset entirely.</value></data>
   <data name="Choice.dirt_scratches.polarity.mixed" xml:space="preserve"><value>Mixed</value></data>
   <data name="Param.grain.roughness" xml:space="preserve"><value>Roughness</value></data>
   <data name="Param.grain.color" xml:space="preserve"><value>Color Grain</value></data>
+  <data name="Param.grain.softness" xml:space="preserve"><value>Softness</value></data>
   <!-- Film look (FilmLookControl) -->
   <data name="Film.Look" xml:space="preserve"><value>Film</value></data>
   <data name="Film.HueCorrection" xml:space="preserve"><value>Hue Correction</value></data>
@@ -549,4 +553,79 @@ Clear overrides: use the new preset entirely.</value></data>
   <data name="Raw.NoMasks" xml:space="preserve"><value>This photo has no embedded semantic masks</value></data>
   <data name="Raw.MaskEdit" xml:space="preserve"><value>Adjust semantic mask</value></data>
   <data name="Raw.BrowseFolder" xml:space="preserve"><value>Browse Folder…</value></data>
+  <data name="Module.skin" xml:space="preserve"><value>Skin Tone Assist</value></data>
+  <data name="Module.zone" xml:space="preserve"><value>Zone Metering &amp; Tone</value></data>
+  <data name="Param.skin.region_cx" xml:space="preserve"><value>Region Center X</value></data>
+  <data name="Param.skin.region_cy" xml:space="preserve"><value>Region Center Y</value></data>
+  <data name="Param.skin.radius_x" xml:space="preserve"><value>Region Radius X</value></data>
+  <data name="Param.skin.radius_y" xml:space="preserve"><value>Region Radius Y</value></data>
+  <data name="Param.skin.feather" xml:space="preserve"><value>Feather</value></data>
+  <data name="Param.skin.amount" xml:space="preserve"><value>Strength</value></data>
+  <data name="Param.skin.temperature" xml:space="preserve"><value>Local Warmth</value></data>
+  <data name="Param.skin.tint" xml:space="preserve"><value>Local Green–Magenta</value></data>
+  <data name="Param.skin.ref_red" xml:space="preserve"><value>Reference Red Gain</value></data>
+  <data name="Param.skin.ref_green" xml:space="preserve"><value>Reference Green Gain</value></data>
+  <data name="Param.skin.ref_blue" xml:space="preserve"><value>Reference Blue Gain</value></data>
+  <data name="Param.zone.slope" xml:space="preserve"><value>Exposure Span</value></data>
+  <data name="Param.zone.offset" xml:space="preserve"><value>Exposure Offset</value></data>
+  <data name="Param.grain.model" xml:space="preserve"><value>Model</value></data>
+  <data name="Param.grain.shadows" xml:space="preserve"><value>Shadow Response</value></data>
+  <data name="Param.grain.midtones" xml:space="preserve"><value>Midtone Response</value></data>
+  <data name="Param.grain.highlights" xml:space="preserve"><value>Highlight Response</value></data>
+  <data name="Param.grain.aperture" xml:space="preserve"><value>Aperture Softening</value></data>
+  <data name="Param.grain.radius_spread" xml:space="preserve"><value>Radius Spread</value></data>
+  <data name="Param.grain.samples" xml:space="preserve"><value>Optical Samples</value></data>
+  <data name="Choice.grain.model.clumps" xml:space="preserve"><value>Soft Clumps</value></data>
+  <data name="Choice.grain.model.correlated" xml:space="preserve"><value>Correlated Grain</value></data>
+  <data name="Choice.grain.model.optical" xml:space="preserve"><value>Optical Disks</value></data>
+  <data name="PhotoTools.Title" xml:space="preserve"><value>Photo Tools</value></data>
+  <data name="PhotoTools.WbTitle" xml:space="preserve"><value>Neutral White Balance</value></data>
+  <data name="PhotoTools.SkinTitle" xml:space="preserve"><value>Skin Tone</value></data>
+  <data name="PhotoTools.ZoneTitle" xml:space="preserve"><value>Zones</value></data>
+  <data name="PhotoTools.PickWb" xml:space="preserve"><value>Pick Neutral Area</value></data>
+  <data name="PhotoTools.PickSkin" xml:space="preserve"><value>Pick Skin Area</value></data>
+  <data name="PhotoTools.PickZoneShadow" xml:space="preserve"><value>Pick Shadow</value></data>
+  <data name="PhotoTools.PickZoneHighlight" xml:space="preserve"><value>Pick Highlight</value></data>
+  <data name="PhotoTools.AutoWb" xml:space="preserve"><value>Auto White Balance</value></data>
+  <data name="PhotoTools.CaptureWbRef" xml:space="preserve"><value>Capture Reference</value></data>
+  <data name="PhotoTools.CaptureSkinRef" xml:space="preserve"><value>Capture Skin Reference</value></data>
+  <data name="PhotoTools.ClearRef" xml:space="preserve"><value>Clear Reference</value></data>
+  <data name="PhotoTools.UseWbReference" xml:space="preserve"><value>Use Reference</value></data>
+  <data name="PhotoTools.UseSkinRef" xml:space="preserve"><value>Use Reference as Target</value></data>
+  <data name="PhotoTools.Preview" xml:space="preserve"><value>Preview Proposal</value></data>
+  <data name="PhotoTools.ApplyWb" xml:space="preserve"><value>Apply White Balance</value></data>
+  <data name="PhotoTools.ApplySkin" xml:space="preserve"><value>Apply Skin</value></data>
+  <data name="PhotoTools.Cancel" xml:space="preserve"><value>Cancel</value></data>
+  <data name="PhotoTools.FitZone" xml:space="preserve"><value>Fit Zone Curve</value></data>
+  <data name="PhotoTools.SkinTemperature" xml:space="preserve"><value>Warmth</value></data>
+  <data name="PhotoTools.SkinTint" xml:space="preserve"><value>Tint</value></data>
+  <data name="PhotoTools.SkinStrength" xml:space="preserve"><value>Strength</value></data>
+  <data name="PhotoTools.SkinFeather" xml:space="preserve"><value>Feather</value></data>
+  <data name="PhotoTools.RefValue" xml:space="preserve"><value>Reference RGB {0:0.###} {1:0.###} {2:0.###}</value></data>
+  <data name="PhotoTools.SkinRegionSet" xml:space="preserve"><value>Skin region {0:0.##}×{1:0.##} selected</value></data>
+  <data name="PhotoTools.WbUnavailable" xml:space="preserve"><value>White balance cannot be estimated for this photo</value></data>
+  <data name="PhotoTools.WbProposal" xml:space="preserve"><value>Proposal {0}K, tint {1} | confidence {2:0.##} | residual {3:0.###} | samples {4} (rejected {5}) | dispersion {6:0.###}</value></data>
+  <data name="PhotoTools.ClipWarning" xml:space="preserve"><value>Output clipped: lower exposure and resample</value></data>
+  <data name="PhotoTools.WbBoundary" xml:space="preserve"><value>Proposal reached the temperature or tint range boundary</value></data>
+  <data name="PhotoTools.WbResidual" xml:space="preserve"><value>High residual; the area may not be neutral</value></data>
+  <data name="PhotoTools.WbLowConfidence" xml:space="preserve"><value>Low confidence</value></data>
+  <data name="PhotoTools.AutoNone" xml:space="preserve"><value>No white-balance candidates found</value></data>
+  <data name="PhotoTools.AutoCandidates" xml:space="preserve"><value>{0} white-balance candidates</value></data>
+  <data name="PhotoTools.CandidateChosen" xml:space="preserve"><value>Selected {0}K・tint {1} | confidence {2:0.##} | residual {3:0.###}</value></data>
+  <data name="PhotoTools.RefUnavailable" xml:space="preserve"><value>Could not capture a reference</value></data>
+  <data name="PhotoTools.RefCaptured" xml:space="preserve"><value>Captured reference RGB {0:0.###} {1:0.###} {2:0.###}</value></data>
+  <data name="PhotoTools.SkinRefCaptured" xml:space="preserve"><value>Captured skin reference RGB {0:0.###} {1:0.###} {2:0.###}</value></data>
+  <data name="PhotoTools.ZoneUnavailable" xml:space="preserve"><value>Zone could not be determined</value></data>
+  <data name="PhotoTools.ZoneSample" xml:space="preserve"><value>Zone {0} | luminance {1:0.###} | samples {2} | dispersion {3:0.###}</value></data>
+  <data name="PhotoTools.ZonePlaced" xml:space="preserve"><value>Placed on Zone {0}</value></data>
+  <data name="PhotoTools.ZoneUnreachable" xml:space="preserve"><value>Cannot reach Zone {0}: required exposure {1:0.##} is outside {2:0.##}…{3:0.##}; nothing written</value></data>
+  <data name="PhotoTools.ZoneFitInvalid" xml:space="preserve"><value>Invalid anchor samples; cannot fit</value></data>
+  <data name="PhotoTools.ZoneFitReversed" xml:space="preserve"><value>Highlight anchor must be brighter than shadow</value></data>
+  <data name="PhotoTools.ZoneFitted" xml:space="preserve"><value>Fitted zone slope {0:0.###} offset {1:0.###}</value></data>
+  <data name="PhotoTools.WbNeedsRaw" xml:space="preserve"><value>This photo has no RAW white-balance model</value></data>
+  <data name="PhotoTools.WbEnableRaw" xml:space="preserve"><value>Enable RAW processing first in RAW panel</value></data>
+  <data name="PhotoTools.ZoneNeedsRaw" xml:space="preserve"><value>Zones need a scene-linear (RAW) source</value></data>
+  <data name="PhotoTools.ZoneFitUnreachable" xml:space="preserve"><value>Fitted slope {0:0.###} / offset {1:0.###} is outside the schema range (slope {2:0.##}…{3:0.##}, offset {4:0.##}…{5:0.##}); nothing written</value></data>
+  <data name="PhotoTools.Confidence" xml:space="preserve"><value>Confidence</value></data>
+  <data name="PhotoTools.Residual" xml:space="preserve"><value>Residual</value></data>
 </root>

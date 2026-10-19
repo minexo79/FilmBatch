@@ -41,7 +41,7 @@ public partial class MainWindow : Window
             if (Clipboard is { } cb) await cb.SetTextAsync(json);
         };
         vm.PropertyChanged += OnViewModelPropertyChanged;
-        Deactivated += (_, _) => vm.Preview.ShowOriginal = false;
+        Deactivated += (_, _) => { vm.Preview.ShowOriginal = false; vm.PhotoTools.CancelStale(); };
         Loc.Instance.PropertyChanged += (_, _) =>
         {
             if (DockHost.Layout is { } l) _factory.UpdateTitles(l);
@@ -199,9 +199,17 @@ public partial class MainWindow : Window
             return;
         }
 
-        // ── 單鍵（輸入文字時不處理） ──
-        if (typing || mods != KeyModifiers.None) return;
+        // ── 單鍵（輸入文字時不處理）──
         var crop = _vm.CropTool;
+        // Esc 在輸入焦點中也要生效：照片工具提案／取樣不允許被文字輸入吞掉。
+        if (e.Key == Key.Escape && mods == KeyModifiers.None
+            && (_vm.PhotoTools.IsSampling || _vm.PhotoTools.IsPicking) && !_vm.IsFullScreen)
+        {
+            _vm.PhotoTools.CancelCommand.Execute(null);
+            e.Handled = true;
+            return;
+        }
+        if (typing || mods != KeyModifiers.None) return;
         switch (e.Key)
         {
             // 裁切工具（cut-and-mask Task 1.7）：R 進入 / 套用並返回，其餘只在工具啟用時有效

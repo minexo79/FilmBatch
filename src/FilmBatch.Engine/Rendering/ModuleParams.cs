@@ -17,6 +17,7 @@ public sealed class ModuleParams
     public CropTransform CropT;
     public int OutWidth => CropT.OutWidth;
     public int OutHeight => CropT.OutHeight;
+    public int SourceWidth, SourceHeight, ReferenceWidth, ReferenceHeight;
     // basic
     public bool BasicOn;
     public float Exposure, Temperature, Tint, Brightness, Contrast, Highlights, Shadows, Saturation, Structure;
@@ -27,6 +28,10 @@ public sealed class ModuleParams
     public bool RawMaskOn, RawMaskInvert;
     public string RawMaskName = "", RawMaskInstance = "";
     public float RawMaskStrength, RawMaskExposure, RawMaskTemperature, RawMaskTint, RawMaskContrast, RawMaskSaturation;
+    // Developed-source local correction and monotonic scene-linear tonal placement.
+    public bool SkinOn, ZoneOn;
+    public float SkinCx, SkinCy, SkinRadiusX, SkinRadiusY, SkinFeather, SkinStrength, SkinTemperature, SkinTint;
+    public float SkinRefRed, SkinRefGreen, SkinRefBlue, ZoneSlope, ZoneOffset;
     // lens_distortion
     public bool LensOn, AutoCrop;
     public float LensAmount, Chromatic, EdgeSoften;
@@ -84,7 +89,9 @@ public sealed class ModuleParams
     public float DirtDust, DirtScratches, DirtHairs, DirtStrength, DirtScale;
     // grain
     public bool GrainOn;
-    public float GrainAmount, GrainSize, GrainRoughness, GrainColor;
+    public float GrainAmount, GrainSize, GrainRoughness, GrainColor, GrainSoftness;
+    public int GrainModel, GrainSamples;
+    public float GrainShadows, GrainMidtones, GrainHighlights, GrainAperture, GrainRadiusSpread;
     // seeds
     public uint SeedMultiLens, SeedLightLeak, SeedPhotoPlate, SeedDirt, SeedGrain;
 
@@ -115,6 +122,8 @@ public sealed class ModuleParams
         var m = new ModuleParams
         {
             // crop
+            SourceWidth = source.Width, SourceHeight = source.Height,
+            ReferenceWidth = source.ReferenceWidth, ReferenceHeight = source.ReferenceHeight,
             Crop = new CropParams(
                 B(s, "crop.enabled", false),
                 N(s, "crop.rect_cx", 0.5f), N(s, "crop.rect_cy", 0.5f),
@@ -147,6 +156,14 @@ public sealed class ModuleParams
             RawMaskTint = N(s, "raw.mask_tint", 0),
             RawMaskContrast = N(s, "raw.mask_contrast", 0),
             RawMaskSaturation = N(s, "raw.mask_saturation", 0),
+            SkinOn = B(s, "skin.enabled", false) && N(s, "skin.amount", 100) > 0,
+            SkinCx = N(s, "skin.region_cx", 0.5f), SkinCy = N(s, "skin.region_cy", 0.5f),
+            SkinRadiusX = N(s, "skin.radius_x", 0.15f), SkinRadiusY = N(s, "skin.radius_y", 0.15f),
+            SkinFeather = N(s, "skin.feather", 50) / 100f, SkinStrength = N(s, "skin.amount", 100) / 100f,
+            SkinTemperature = N(s, "skin.temperature", 0), SkinTint = N(s, "skin.tint", 0),
+            SkinRefRed = N(s, "skin.ref_red", 1), SkinRefGreen = N(s, "skin.ref_green", 1), SkinRefBlue = N(s, "skin.ref_blue", 1),
+            ZoneOn = source.Scene is not null && B(s, "zone.enabled", false),
+            ZoneSlope = N(s, "zone.slope", 1), ZoneOffset = N(s, "zone.offset", 0),
             // lens_distortion
             LensOn = B(s, "lens_distortion.enabled", false),
             LensAmount = N(s, "lens_distortion.amount", 0),
@@ -268,6 +285,11 @@ public sealed class ModuleParams
             GrainSize = N(s, "grain.size", 30),
             GrainRoughness = N(s, "grain.roughness", 50),
             GrainColor = N(s, "grain.color", 30),
+            GrainSoftness = N(s, "grain.softness", 30),
+            GrainModel = C("grain.model"),
+            GrainShadows = N(s, "grain.shadows", 100), GrainMidtones = N(s, "grain.midtones", 100),
+            GrainHighlights = N(s, "grain.highlights", 0), GrainAperture = N(s, "grain.aperture", 0.65f),
+            GrainRadiusSpread = N(s, "grain.radius_spread", 0.35f), GrainSamples = Math.Clamp(I(s, "grain.samples", 8), 4, 32),
             // seeds（照片種子 ⊕ 模組種子參數；Downscale 後檔名不變）
             SeedMultiLens = SeedHash.Combine(photoSeed, (uint)N(s, "multi_lens.seed", 0)),
             SeedLightLeak = SeedHash.Combine(photoSeed, (uint)N(s, "light_leak.seed", 0)),

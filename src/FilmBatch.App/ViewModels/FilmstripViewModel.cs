@@ -16,6 +16,9 @@ namespace FilmBatch.App.ViewModels;
 
 public enum FilmstripFilter { All, OverridesOnly, Unassigned, ByPreset }
 
+/// <summary>依檔案類型篩選，與 <see cref="FilmstripFilter"/> 同時生效。</summary>
+public enum FilmstripFileKind { All, RawOnly, NonRaw }
+
 /// <summary>縮圖列中的一張照片（計畫書 2.4.4）。</summary>
 public sealed partial class ThumbnailViewModel(string fileName) : ObservableObject
 {
@@ -107,6 +110,19 @@ public sealed partial class FilmstripViewModel : ObservableObject
         set { if (value is not null) Filter = value.Value; }
     }
 
+    public IReadOnlyList<Dialogs.Option<FilmstripFileKind>> FileKindOptions { get; } =
+    [
+        Dialogs.Option<FilmstripFileKind>.Localized(FilmstripFileKind.All, "Filmstrip.AllFiles"),
+        Dialogs.Option<FilmstripFileKind>.Localized(FilmstripFileKind.RawOnly, "Filmstrip.RawOnly"),
+        Dialogs.Option<FilmstripFileKind>.Localized(FilmstripFileKind.NonRaw, "Filmstrip.NonRaw"),
+    ];
+
+    public Dialogs.Option<FilmstripFileKind> SelectedFileKindOption
+    {
+        get => FileKindOptions.First(o => o.Value == FileKind);
+        set { if (value is not null) FileKind = value.Value; }
+    }
+
     public IEnumerable<PresetItemViewModel> PresetOptions => _main.Library.Presets.Select(p => new PresetItemViewModel(p));
 
 
@@ -115,6 +131,9 @@ public sealed partial class FilmstripViewModel : ObservableObject
 
     [ObservableProperty]
     private PresetItemViewModel? _filterPreset;
+
+    [ObservableProperty]
+    private FilmstripFileKind _fileKind = FilmstripFileKind.All;
 
     [ObservableProperty]
     private string _countText = "";
@@ -631,6 +650,11 @@ public sealed partial class FilmstripViewModel : ObservableObject
         OnPropertyChanged(nameof(SelectedFilterOption));
         ApplyFilter();
     }
+    partial void OnFileKindChanged(FilmstripFileKind value)
+    {
+        OnPropertyChanged(nameof(SelectedFileKindOption));
+        ApplyFilter();
+    }
     partial void OnFilterPresetChanged(PresetItemViewModel? value)
     {
         if (value is not null) Filter = FilmstripFilter.ByPreset;
@@ -639,6 +663,8 @@ public sealed partial class FilmstripViewModel : ObservableObject
 
     private bool Matches(ThumbnailViewModel vm)
     {
+        if (FileKind != FilmstripFileKind.All && Project.IsRawFile(vm.FileName) != (FileKind == FilmstripFileKind.RawOnly))
+            return false;
         if (_main.Service is not { } svc) return true;
         var e = svc.Project[vm.FileName];
         return Filter switch

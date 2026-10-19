@@ -1,5 +1,5 @@
 # 與 .github/workflows/ci.yml 共用建置／驗證命令；平台及觸發設定見 docs/building.md「合併前 CI」。
-# GitHub App 專案須設定 PR／預設分支及 merge queue 兩個 trigger；YAML 再排除自動 tag／非建置事件。
+# GitHub App 專案須設定 PR 生命週期及 merge queue trigger；YAML 不會自行訂閱 webhook，見 docs/building.md。
 # 手動 UI／API 觸發同時執行 ci 與 dawn-build，不需額外參數。
 # 合併規則直接要求 desktop-win-x64、desktop-osx-arm64、shaders 三項實際檢查，不使用空的聚合工作。
 # macOS 封裝為 ad-hoc 簽章；Dawn 重建僅產生可選的 artifacts/dawn/，desktop 不自動套用。
@@ -37,16 +37,19 @@ commands:
           name: Start job timer (<< parameters.minutes >> min)
           command: |
             echo $(( $(date +%s) + << parameters.minutes >> * 60 )) > "$HOME/.job-deadline"
-            # Git Bash 的 /usr/bin/timeout 優先，避免叫到 Windows 的 timeout.exe；macOS 沒有內建 timeout。
+            # Git Bash 的 /usr/bin/timeout 優先，避免叫到 Windows 的 timeout.exe。
             if [ -x /usr/bin/timeout ]; then
               t=/usr/bin/timeout
             elif command -v gtimeout >/dev/null 2>&1; then
               t=gtimeout
             elif command -v timeout >/dev/null 2>&1; then
               t=timeout
+            elif command -v python3 >/dev/null 2>&1; then
+              # Mac 使用 runner 內建 Python3；腳本在 checkout 後由 timed-run 執行，不安裝 Homebrew 套件。
+              t=python3
             else
-              HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK=1 HOMEBREW_NO_INSTALL_CLEANUP=1 brew install coreutils
-              t=gtimeout
+              echo "CI timeout requires GNU timeout or python3." >&2
+              exit 1
             fi
             echo "$t" > "$HOME/.job-timeout-bin"
 
@@ -67,7 +70,12 @@ commands:
               echo "CI command budget exhausted." >&2
               exit 124
             fi
-            "$(cat "$HOME/.job-timeout-bin")" --kill-after=30s "$remaining" bash -eo pipefail -c "$FILMBATCH_CI_COMMAND"
+            timeout_bin=$(cat "$HOME/.job-timeout-bin")
+            if [ "$timeout_bin" = python3 ]; then
+              python3 build/ci-timeout.py "$remaining" bash -eo pipefail -c "$FILMBATCH_CI_COMMAND"
+            else
+              "$timeout_bin" --kill-after=30s "$remaining" bash -eo pipefail -c "$FILMBATCH_CI_COMMAND"
+            fi
 
   # 與 actions/setup-dotnet@v4 的 global-json-file 一致：安裝 sdk.version 指定版本。
   # rollForward 只控制已安裝 SDK 的選擇，不改成安裝最新 major.minor 通道。
@@ -121,10 +129,23 @@ jobs:
           label: Build
           command: dotnet build FilmBatch.sln -c Release --no-restore
 
-      # executor 沒有實體 GPU：GPU 測試自動略過；UI 測試使用 Avalonia.Headless + CPU 參考算圖器
+      # 只有沒有可用 WebGPU 介面卡時才略過 GPU 測試；軟體介面卡也實際執行，裝置／像素錯誤仍會失敗。
       - timed-run:
           label: Test
-          command: dotnet test FilmBatch.sln -c Release --no-build
+          command: |
+            # Windows 同時限制專案與 xUnit 集合併發，不變更 GPU 測試與像素容差。
+            if [ "<< parameters.rid >>" = "win-x64" ]; then
+              dotnet test FilmBatch.sln -c Release --no-build -m:1 --logger "console;verbosity=detailed" --logger trx --results-directory dist/test-results/win-x64 -- xUnit.ParallelizeTestCollections=false
+            else
+              dotnet test FilmBatch.sln -c Release --no-build
+            fi
+      - when:
+          condition:
+            equal: [win-x64, << parameters.rid >>]
+          steps:
+            - store_artifacts:
+                path: dist/test-results/win-x64
+                destination: FilmBatch-win-x64/test-results
 
       # Native availability/ABI is required on BOTH executors; a missing bundle is a failure.
       - timed-run:
@@ -181,6 +202,13 @@ jobs:
           label: Restore (needs NuGet 內附 Dawn 作 ABI 比對)
           command: dotnet restore FilmBatch.sln
       - timed-run:
+          label: Install CMake for Dawn (isolated)
+          command: |
+            python3 -m venv "$HOME/.filmbatch-dawn-tools"
+            "$HOME/.filmbatch-dawn-tools/bin/python" -m pip install --disable-pip-version-check --only-binary=:all: cmake==3.31.6
+            "$HOME/.filmbatch-dawn-tools/bin/cmake" --version
+            printf 'export PATH=%q:$PATH\n' "$HOME/.filmbatch-dawn-tools/bin" >> "$BASH_ENV"
+      - timed-run:
           label: Build Dawn for Apple Silicon
           command: bash build/build-dawn.sh arm64
       # 對應 actions/upload-artifact@v4（名稱 dawn-macos-minos14）
@@ -203,6 +231,7 @@ workflows:
                         - equal: [opened, << pipeline.event.action >>]
                         - equal: [synchronize, << pipeline.event.action >>]
                         - equal: [reopened, << pipeline.event.action >>]
+                        - equal: [ready_for_review, << pipeline.event.action >>]
     jobs:
       # 對應 Actions matrix（fail-fast: false：CircleCI 各工作本來就互不中止）
       - desktop:

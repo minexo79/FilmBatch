@@ -24,6 +24,12 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
     /// <summary>是否顯示照片資訊（檔名、預設、重設與預設按鈕）；只有「照片基本參數」分頁顯示。</summary>
     public bool ShowsPhotoInfo { get; }
 
+    /// <summary>照片工具（取樣／提案）所在的主視窗 VM；同時控制要不要顯示工具面板。</summary>
+    public MainWindowViewModel Main => _main;
+
+    /// <summary>「照片基本參數」分頁是否顯示照片工具面板（取樣／WB／膚色／Zone）。</summary>
+    public bool ShowsPhotoTools => ShowsPhotoInfo;
+
     /// <summary>是否為目前顯示中的分頁；畫布控制點只採用顯示中分頁裡展開的模組。由 <see cref="SidebarViewModel"/> 設定。</summary>
     public bool IsActive
     {
