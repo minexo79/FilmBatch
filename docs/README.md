@@ -18,6 +18,7 @@
 | 評估顆粒、白平衡、膚色輔助或 Zone 測光 | [顆粒、中性點白平衡與 Zone Survey](grain-white-balance-survey.md) | 區分已觀察現況、工程提案與未知；顆粒晚期輸出、中性 patch、膚色獨立、Zone 只調曝光階調，不把候選當作已採用功能 |
 | 修改匯出或 EXIF | [匯出安全規則](architecture.md#48-engine影像讀取與批次匯出imaging--exporting) | [CLI](building.md#命令列工具cli)；區分算圖後的 DNG 與保留感光樣本的 `raw convert` |
 | 建置 Mac／Windows 發佈檔 | [發佈](building.md#發佈) | [簽章與公證](building.md#簽章與公證)；原生相依庫、目標 RID 與本機執行結果分開驗證 |
+| 驗證 iPad／iPhone 移植的共用技術 | [共用優先決策 ADR 0004](adr/0004-apple-mobile-shared-core.md) | [技術進入點與實驗記錄](superpowers/plans/2026-10-19-apple-mobile-technical-entry.md)；正式 UI 延後，不把 Mac 證據當成 iPad 已支援 |
 | 了解當時為何這樣做 | [決策與提交歷史](history.md) | 相應 ADR／現行契約／回歸測試；commit 標題不等於驗證結果 |
 | 盤點後續工作 | 下方「文件狀態」 | 先分辨已實作、核心元件、未落地提案與歷史設計，不把舊 checklist 當目前缺陷 |
 
@@ -29,6 +30,7 @@
 | [VERIFY.md](../VERIFY.md) | 執行入口與失敗分類，不是主機強制的政策或鎖定 oracle |
 | [history.md](history.md) | 精選真實提交、理由與取代關係；Git 保留完整歷史 |
 | [ADR 0001](adr/0001-webgpu-binding.md)、[ADR 0003](adr/0003-gpu-stack-decision.md) | GPU 選型、量測與後續修正；依文中的日期、狀態與邊界解讀 |
+| [ADR 0004](adr/0004-apple-mobile-shared-core.md) | Apple 行動版共用 C#／技術優先、iPad 優先、正式 UI 延後的已採納方向；實機、原生閉包與記憶體仍須獨立驗證 |
 | [ADR 0002](adr/0002-ai-denoise.md) | AI 降噪仍是提案；當時「沒有 RAW」的前提已過期，模型與部署未獲本次驗證 |
 | [AI 降噪 Survey](ai-denoise-survey.md) | 2026-10-18 的來源調查、commit pin、模型與權重授權差異；未下載權重或執行推論，不是實作／效能承諾 |
 | [顆粒、白平衡與 Zone Survey](grain-white-balance-survey.md) | 2026-10-18／19 的顆粒模型、中性點 WB、膚色輔助與 Zone III／V／VIII 調查；只執行現有 CPU 顆粒觀察，未實作候選、未做盲評或效能校準 |
