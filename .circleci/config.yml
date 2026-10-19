@@ -188,6 +188,17 @@ jobs:
           label: Validate embedded WGSL
           command: dotnet run build/CheckShaders.cs
 
+  # 對應 Actions 的 pre-merge：在 ruleset 中將 ci/circleci: pre-merge 設為必要檢查。
+  # CircleCI 只在所有 requires 皆成功時才執行此工作；任何平台失敗都不會回報成功，合併保持封鎖。
+  pre-merge:
+    docker:
+      - image: cimg/base:current
+    resource_class: small
+    steps:
+      - run:
+          name: Require all checks
+          command: echo "desktop-win-x64, desktop-osx-arm64, shaders all succeeded"
+
   # 可重現的 Dawn 重建：下載產物到本機 artifacts/dawn/ 後再執行 Build.cs。
   # desktop 工作不會自動下載此產物；不改 Mach-O、不隱藏最低系統需求。
   dawn-build:
@@ -249,6 +260,11 @@ workflows:
             tags:
               only: /.*/
       - shaders:
+          filters:
+            tags:
+              only: /.*/
+      - pre-merge:
+          requires: [desktop-win-x64, desktop-osx-arm64, shaders]
           filters:
             tags:
               only: /.*/
