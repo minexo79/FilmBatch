@@ -1,5 +1,3 @@
-using System.Globalization;
-using System.Text;
 using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Layout;
@@ -67,7 +65,7 @@ public sealed partial class PrototypeView : UserControl
             ProbeRunner.WriteReport(path, report);
             File.WriteAllText(Path.Combine(_options.OutputDirectory, "run-tag.txt"), _options.RunTag ?? Guid.NewGuid().ToString("N"));
             ReportText.Text = File.ReadAllText(path);
-            StatusText.Text = $"Run {id} complete; exit {report.ExitCode}.\n\n" + Summarize(report, path);
+            StatusText.Text = $"Run {id} complete; exit {report.ExitCode}.";
             if (report.Results.Any(result => result.Name == "apple-imageio" && result.Status == "pass"))
                 LoadPreview();
         }
@@ -148,16 +146,6 @@ public sealed partial class PrototypeView : UserControl
         }
     }
 
-    private static string Summarize(ProbeReport report, string reportPath)
-    {
-        var text = new StringBuilder();
-        text.Append(CultureInfo.InvariantCulture,
-            $"Runtime: {report.Runtime}\nPlatform: {report.Platform}\nArchitecture: {report.Architecture}\nExitCode: {report.ExitCode}\n\n");
-        foreach (var result in report.Results)
-            text.Append(CultureInfo.InvariantCulture, $"{result.Name}: {result.Status} — {result.Detail}\n");
-        text.Append(CultureInfo.InvariantCulture, $"\nReport: {Path.GetFullPath(reportPath)}");
-        return text.ToString();
-    }
 
     private string ReadyText() =>
         "Isolated iOS prototype, not the FilmBatch editor.\n\n"

@@ -31,6 +31,12 @@ public sealed class SceneDelegate : UIWindowSceneDelegate
         Window.MakeKeyAndVisible();
     }
 
+    public override void WillResignActive(UIScene scene)
+    {
+        // Cancel on interruption, before backgrounding; Cancel leaves completed reports intact.
+        (Window?.RootViewController as ProbeController)?.Cancel();
+    }
+
     public override void DidEnterBackground(UIScene scene)
     {
         // No entitlement or promise of unlimited background GPU/AI execution in this experiment.

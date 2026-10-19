@@ -9,8 +9,8 @@ Dawn (WebGPU)               BSD-3-Clause https://dawn.googlesource.com/dawn
 Magick.NET / ImageMagick    Apache-2.0 / ImageMagick License  https://github.com/dlemstra/Magick.NET
 System.CommandLine          MIT          https://github.com/dotnet/command-line-api
 .NET Runtime                MIT          https://github.com/dotnet/runtime
-ONNX Runtime 1.24.4（tools/apple-mobile 技術實驗） MIT https://github.com/microsoft/onnxruntime
-  Copyright (c) Microsoft Corporation。原生套件來源 commit：2d924974ef147392ced8409d36bd6d2e7fcc8a74。
+ONNX Runtime 1.25.0（tools/apple-mobile 技術實驗） MIT https://github.com/microsoft/onnxruntime
+  Copyright (c) Microsoft Corporation。原生套件來源 commit：7a71bc575b189cdedea7fa2c0f87389f870bd10e。
   授權全文、第三方聲明與隱私說明隨實驗輸出放在 native-onnxruntime/；不代表桌面產品已在此分支整合 AI 降噪。
 RawTherapee Film Simulation Collection（2015-09-20 版，底片 LUT） CC BY-SA 4.0 http://rawtherapee.com/shared/HaldCLUT.zip
   原作者：Pat David、Pavlov Dmitry、Michael Ezra。授權：Creative Commons Attribution-ShareAlike 4.0
