@@ -1,11 +1,17 @@
 using System.Runtime.InteropServices;
 using FilmBatch.Core.Params;
 using FilmBatch.Engine.Imaging;
+using FilmBatch.Engine.Denoising;
 
 namespace FilmBatch.Engine.Rendering;
 
 /// <summary>算圖結果：8-bit BGRA（premultiplied 與否不影響，alpha 恆為不透明）。</summary>
-public sealed record RenderResult(int Width, int Height, byte[] Bgra, TimeSpan Elapsed);
+public sealed record RenderResult(int Width, int Height, byte[] Bgra, TimeSpan Elapsed)
+{
+    public DenoiseReport? Denoise { get; init; }
+    /// <summary>供照片工具分析的效果前來源；原圖比較仍保留未降噪的原始來源。</summary>
+    public SourceImage? PreparedSource { get; init; }
+}
 
 /// <summary>
 /// 預覽與匯出共用的算圖器。只能在單一執行緒（GPU 執行緒）上呼叫。
@@ -17,7 +23,7 @@ public interface IPreviewRenderer : IDisposable
     string DeviceName { get; }
     bool IsSoftware { get; }
     /// <summary>預覽：輸出 8-bit BGRA。</summary>
-    RenderResult Render(SourceImage source, Settings settings);
+    RenderResult Render(SourceImage source, Settings settings, CancellationToken cancellationToken = default);
     /// <summary>
     /// 完整算圖：輸出 16-bit sRGB RGBA（與輸入同位深），供匯出。
     /// 尊重 <paramref name="cancellationToken"/>（在 pass 之間檢查）；超過 GPU 上限時自動改用 CPU 等效路徑。

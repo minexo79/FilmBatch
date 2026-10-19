@@ -203,10 +203,10 @@ public sealed class FilmstripLoadingTests
         private readonly CpuFakeRenderer _inner = new();
         public string DeviceName => _inner.DeviceName;
         public bool IsSoftware => _inner.IsSoftware;
-        public RenderResult Render(SourceImage source, Settings settings) =>
+        public RenderResult Render(SourceImage source, Settings settings, CancellationToken cancellationToken = default) =>
             Math.Max(source.Width, source.Height) > 200
                 ? throw new InvalidOperationException("Preview exceeds device size")
-                : _inner.Render(source, settings);
+                : _inner.Render(source, settings, cancellationToken);
         public SourceImage Render16(SourceImage source, Settings settings, CancellationToken token = default) =>
             _inner.Render16(source, settings, token);
         public void Dispose() => _inner.Dispose();

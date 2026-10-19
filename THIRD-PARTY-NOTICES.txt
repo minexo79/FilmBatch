@@ -9,6 +9,15 @@ Dawn (WebGPU)               BSD-3-Clause https://dawn.googlesource.com/dawn
 Magick.NET / ImageMagick    Apache-2.0 / ImageMagick License  https://github.com/dlemstra/Magick.NET
 System.CommandLine          MIT          https://github.com/dotnet/command-line-api
 .NET Runtime                MIT          https://github.com/dotnet/runtime
+ONNX Runtime 1.24.4          MIT          https://github.com/microsoft/onnxruntime
+  Copyright (c) Microsoft Corporation. Native runtime package source commit:
+  2d924974ef147392ced8409d36bd6d2e7fcc8a74. Its full LICENSE, ThirdPartyNotices.txt
+  and Privacy.md accompany App/CLI outputs in native-onnxruntime/.
+Microsoft.AI.DirectML 1.15.4 (Windows only) Microsoft Software License Terms
+  https://www.nuget.org/packages/Microsoft.AI.DirectML/1.15.4
+  This is NOT covered by ONNX Runtime's MIT license. The original redistributable
+  terms accompany Windows App/CLI outputs in native-onnxruntime/directml/LICENSE.txt.
+  Distributed only as part of the Windows application, not as a standalone product.
 RawTherapee Film Simulation Collection（2015-09-20 版，底片 LUT） CC BY-SA 4.0 http://rawtherapee.com/shared/HaldCLUT.zip
   原作者：Pat David、Pavlov Dmitry、Michael Ezra。授權：Creative Commons Attribution-ShareAlike 4.0
   International（https://creativecommons.org/licenses/by-sa/4.0/）。
@@ -35,6 +44,51 @@ rawtoaces-data v1.1.0（相機光譜靈敏度） Apache-2.0 https://github.com/A
 CIE 1931 色彩配對函數 CC BY 4.0 https://creativecommons.org/licenses/by/4.0/
   © CIE（International Commission on Illumination），隨 rawtoaces-data 發佈；只用來擬合上列相機矩陣（修改：
   FilmBatch 不含原始資料）。
+
+Optional external AI model data (not embedded in the application)
+----------------------------------------------------------------
+Packages: darktable-ai nightly-5.7.0
+https://github.com/darktable-org/darktable-ai/releases/tag/nightly-5.7.0
+Source contract revision: f1a46e2d3feebc917a94f14705d128316fcf8114.
+FilmBatch extracts only pinned ONNX model data; it does not include the GPL
+training/export/packaging tools or the different legacy NIND model.
+
+RawNIND Linear: Creative Commons Attribution 4.0 International (CC BY 4.0).
+https://creativecommons.org/licenses/by/4.0/
+RawNIND by Benoit Brummer; Benoit Brummer and Christophe De Vleeschouwer,
+"Joint Denoising, Demosaicing, and Compression: A Recommended Paradigm for
+Learning-Based Image Workflows" (EUVIP 2026).
+https://github.com/trougnouf/rawnind_jddc
+The author explicitly dual-licenses the weights under GPL-3 and CC-BY-4.0:
+https://github.com/storytold/lightcraft/issues/1760
+FilmBatch uses the CC-BY-4.0 option for these weights, not a license conversion
+of the GPL tools. The ONNX conversion is supplied by darktable-ai; FilmBatch
+does not retrain or modify its weights.
+
+NAFNet-SIDD width32: MIT License.
+Copyright (c) 2022 megvii-model
+https://github.com/megvii-research/NAFNet
+Model data license declaration:
+https://github.com/darktable-org/darktable-ai/blob/f1a46e2d3feebc917a94f14705d128316fcf8114/models/denoise-nafnet/README.md
+Paper: "Simple Baselines for Image Restoration" (ECCV 2022).
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 
 MIT License (LightCraft)
 Copyright (c) 2026 ArtCraft Team and the LightCraft contributors

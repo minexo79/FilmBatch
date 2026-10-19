@@ -704,7 +704,7 @@ public sealed class EffectPipelineTests
         var settings = FilmOnly().With("grain.enabled", true).With("grain.amount", 80.0);
         var ct = TestContext.Current.CancellationToken;
 
-        gpu!.Render(src, settings);
+        gpu!.Render(src, settings, ct);
         Assert.StartsWith("CPU", gpu.DeviceName);
 
         var g = gpu.Render16(src, settings, ct).Rgba16;
@@ -726,7 +726,7 @@ public sealed class EffectPipelineTests
         var ct = TestContext.Current.CancellationToken;
 
         Assert.Equal(single!.Render16(src, settings, ct).Rgba16, banded!.Render16(src, settings, ct).Rgba16);
-        Assert.Equal(single.Render(src, settings).Bgra, banded.Render(src, settings).Bgra);
+        Assert.Equal(single.Render(src, settings, ct).Bgra, banded.Render(src, settings, ct).Bgra);
     }
 
     // ───────────── 裁切（docs/cut-and-mask/plan.md Task 1.3、1.4）─────────────
@@ -828,7 +828,7 @@ public sealed class EffectPipelineTests
         var max = MaxAbsDiff(cpu.Rgba16, gpuOut.Rgba16);
         Assert.True(max <= 64, $"GPU 與 CPU 16-bit 差異 {max}/65535");   // 與其他幾何模組相同容差
 
-        var preview = gpu.Render(src, s);   // 預覽（BGRA8）也是裁切後尺寸
+        var preview = gpu.Render(src, s, ct);   // 預覽（BGRA8）也是裁切後尺寸
         Assert.Equal((cpu.Width, cpu.Height), (preview.Width, preview.Height));
         Assert.Equal(cpu.Width * cpu.Height * 4, preview.Bgra.Length);
     }

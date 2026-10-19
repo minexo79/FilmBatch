@@ -50,4 +50,87 @@ public sealed class RenderSchedulerTests
         scheduler.Start();
         Assert.IsType<ArgumentException>(await failed.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
     }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task SourceSwitch_InterruptsSlowWork_AndDeliversCurrentPixels(bool backgroundThumbnail)
+    {
+        var renderer = new SlowFirstCpuRenderer();
+        using var scheduler = new RenderScheduler(() => renderer);
+        var delivered = new TaskCompletionSource<RenderResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var staleDelivered = false;
+        var reinitialized = false;
+        scheduler.PreviewRendered += result =>
+        {
+            if (result.Key == "current.tif") delivered.TrySetResult(result.Result);
+            else staleDelivered = true;
+        };
+        scheduler.ThumbnailRendered += (_, _) => { if (!delivered.Task.IsCompleted) staleDelivered = true; };
+        scheduler.Notice += _ => reinitialized = true;
+        scheduler.RenderFailed += failure => delivered.TrySetException(failure.Error);
+        var old = new SourceImage(1, 1, [65535, 0, 0, 65535]);
+        if (backgroundThumbnail) scheduler.RequestThumbnail("old.tif", old, ModuleCatalog.Defaults);
+        else scheduler.RequestPreview("old.tif", old, ModuleCatalog.Defaults, 1);
+        scheduler.Start();
+        await renderer.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        scheduler.RequestPreview("current.tif", new SourceImage(1, 1, [0, 65535, 0, 65535]), ModuleCatalog.Defaults, 2);
+        var current = await delivered.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        Assert.Equal(new byte[] { 0, 255, 0, 255 }, current.Bgra);
+        Assert.False(staleDelivered);
+        Assert.False(reinitialized);
+    }
+
+    [Fact]
+    public async Task ExplicitCancel_StopsMatchingThumbnailWork_ButAllowsOtherPhotosAndRetry()
+    {
+        var renderer = new SlowFirstCpuRenderer();
+        using var scheduler = new RenderScheduler(() => renderer);
+        var background = new TaskCompletionSource<RenderResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var retried = new TaskCompletionSource<RenderResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        scheduler.RenderFailed += failure => background.TrySetException(failure.Error);
+        scheduler.ThumbnailRendered += (key, result) =>
+        {
+            if (key == "other.tif") background.TrySetResult(result);
+            else background.TrySetException(new InvalidOperationException("Cancelled source resumed through a thumbnail"));
+        };
+        scheduler.PreviewRendered += result => retried.TrySetResult(result.Result);
+        var source = new SourceImage(1, 1, [65535, 0, 0, 65535]) { FilePath = "/photos/current.tif" };
+        scheduler.RequestPreview("current.tif", source, ModuleCatalog.Defaults, 1);
+        scheduler.Start();
+        await renderer.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        scheduler.RequestThumbnail("$look/current", source, ModuleCatalog.Defaults);
+        scheduler.RequestThumbnail("other.tif", new SourceImage(1, 1, [0, 0, 65535, 65535]), ModuleCatalog.Defaults);
+        scheduler.CancelPreview(cancelMatchingThumbnails: true);
+        // A decode already in flight can enqueue this later; cancellation still belongs to this source.
+        scheduler.RequestThumbnail("$look/late", source, ModuleCatalog.Defaults);
+        Assert.Equal(new byte[] { 255, 0, 0, 255 },
+            (await background.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken)).Bgra);
+        scheduler.RequestPreview("current.tif", source, ModuleCatalog.Defaults, 2);
+        Assert.Equal(new byte[] { 0, 0, 255, 255 },
+            (await retried.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken)).Bgra);
+    }
+
+    // Simulates a slow native inference boundary, but keeps rendering and its pixels real.
+    private sealed class SlowFirstCpuRenderer : IPreviewRenderer
+    {
+        private readonly CpuFakeRenderer _inner = new();
+        private int _calls;
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public string DeviceName => _inner.DeviceName;
+        public bool IsSoftware => _inner.IsSoftware;
+        public RenderResult Render(SourceImage source, Settings settings, CancellationToken cancellationToken = default)
+        {
+            if (Interlocked.Increment(ref _calls) == 1)
+            {
+                Entered.TrySetResult();
+                cancellationToken.WaitHandle.WaitOne(TimeSpan.FromSeconds(15));
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+            return _inner.Render(source, settings, cancellationToken);
+        }
+        public SourceImage Render16(SourceImage source, Settings settings, CancellationToken cancellationToken = default) =>
+            _inner.Render16(source, settings, cancellationToken);
+        public void Dispose() => _inner.Dispose();
+    }
 }

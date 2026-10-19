@@ -36,6 +36,17 @@ public static class ModuleCatalog
             Float("mask_contrast", "遮罩對比（相對）", 0, -100, 100),
             Float("mask_saturation", "遮罩飽和度（相對）", 0, -100, 100),
         ]),
+
+        // AI 降噪：來源階段（RAW 現像之後、裁切／創意效果之前）的 ONNX 推論；預設關閉。
+        // amount 是整體混合強度，luminance/color 是後神經混合權重（不重新推論）；模型選擇依來源域自動決定。
+        new("denoise", "AI 降噪", ModuleGroup.Basic, PasteCategory.Color,
+        [
+            Bool(ModuleSchema.EnabledKey, "啟用"),
+            Float("amount", "強度", 50, 0, 100, 1, "%"),
+            Float("luminance", "亮度降噪", 100, 0, 100, 1, "%"),
+            Float("color", "色度降噪", 100, 0, 100, 1, "%"),
+        ]),
+
         // 裁切：效果階段的第一個（docs/cut-and-mask/plan.md D2）；中心點不叫 center_x/y，避免自動產生畫布控制點。
         new("crop", "裁切", ModuleGroup.Geometry, PasteCategory.Crop,
         [

@@ -1,3 +1,4 @@
+using FilmBatch.Engine.Denoising;
 using FilmBatch.Core;
 using System.Diagnostics;
 using FilmBatch.Core.Params;
@@ -17,10 +18,12 @@ public sealed class CpuFakeRenderer : IPreviewRenderer
 
     public CpuFakeRenderer(EffectRendererOptions? options = null) => _assets = new(options ?? new());
 
-    public RenderResult Render(SourceImage source, Settings settings)
+    public RenderResult Render(SourceImage source, Settings settings, CancellationToken cancellationToken = default)
     {
         var sw = Stopwatch.StartNew();
-        var rendered = Render16(source, settings);
+        if (DenoiseSettings.From(settings).IsActive)
+            source = DenoiseProcessor.Shared.Prepare(source, settings, cancellationToken);
+        var rendered = RenderPrepared16(source, settings, cancellationToken);
         var pixels = rendered.Rgba16;
         var bgra = new byte[pixels.Length];
         for (var i = 0; i < pixels.Length; i += 4)
@@ -30,10 +33,20 @@ public sealed class CpuFakeRenderer : IPreviewRenderer
             bgra[i + 2] = (byte)((pixels[i] + 128) / 257);
             bgra[i + 3] = (byte)((pixels[i + 3] + 128) / 257);
         }
-        return new RenderResult(rendered.Width, rendered.Height, bgra, sw.Elapsed);
+        return new RenderResult(rendered.Width, rendered.Height, bgra, sw.Elapsed)
+        {
+            Denoise = source.Denoise, PreparedSource = source,
+        };
     }
 
     public SourceImage Render16(SourceImage source, Settings settings, CancellationToken cancellationToken = default)
+    {
+        if (DenoiseSettings.From(settings).IsActive)
+            source = DenoiseProcessor.Shared.Prepare(source, settings, cancellationToken);
+        return RenderPrepared16(source, settings, cancellationToken);
+    }
+
+    private SourceImage RenderPrepared16(SourceImage source, Settings settings, CancellationToken cancellationToken)
     {
         var parameters = ModuleParams.From(source, settings);
         _assets.Prepare(source, parameters);

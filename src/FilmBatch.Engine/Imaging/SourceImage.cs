@@ -1,3 +1,4 @@
+using FilmBatch.Engine.Denoising;
 using FilmBatch.Engine.Imaging.Raw;
 using FilmBatch.Raw;
 using FilmBatch.Raw.Raster;
@@ -76,6 +77,9 @@ public sealed class SourceImage
     /// <summary>取得原始 RAW 座標的語意遮罩；依 RawInfo 的有效區域、裁切與方向對齊來源影像。</summary>
     public IReadOnlyList<SemanticMask> SemanticMasks { get; init; } = [];
 
+    /// <summary>實際來源階段 AI 推論資訊；不影響原始檔與 RAW 場景的色彩／幾何中繼資料。</summary>
+    public DenoiseReport? Denoise { get; init; }
+
     /// <summary>縮小（box filter），用於縮圖或拖曳中的降解析度預覽。RAW 來源在場景域縮放並保留中繼資料。</summary>
     public SourceImage Downscale(int maxLongEdge)
     {
@@ -83,6 +87,11 @@ public sealed class SourceImage
         if (scale >= 1) return this;
         var w = Math.Max(1, (int)Math.Round(Width * scale));
         var h = Math.Max(1, (int)Math.Round(Height * scale));
+        return Resize(w, h);
+    }
+
+    internal SourceImage Resize(int w, int h)
+    {
         if (Scene is { } scene)
         {
             return new SourceImage(scene with
@@ -92,6 +101,7 @@ public sealed class SourceImage
             {
                 FilePath = FilePath, RawOptions = RawOptions, RawInfo = RawInfo, SemanticMasks = SemanticMasks,
                 ReferenceWidth = ReferenceWidth, ReferenceHeight = ReferenceHeight,
+                Denoise = Denoise,
             };
         }
         var dst = new ushort[w * h * 4];
@@ -126,6 +136,7 @@ public sealed class SourceImage
         {
             FilePath = FilePath, RawOptions = RawOptions, RawInfo = RawInfo, SemanticMasks = SemanticMasks,
             ReferenceWidth = ReferenceWidth, ReferenceHeight = ReferenceHeight,
+            Denoise = Denoise,
         };
     }
 }

@@ -628,4 +628,32 @@ Clear overrides: use the new preset entirely.</value></data>
   <data name="PhotoTools.ZoneFitUnreachable" xml:space="preserve"><value>Fitted slope {0:0.###} / offset {1:0.###} is outside the schema range (slope {2:0.##}…{3:0.##}, offset {4:0.##}…{5:0.##}); nothing written</value></data>
   <data name="PhotoTools.Confidence" xml:space="preserve"><value>Confidence</value></data>
   <data name="PhotoTools.Residual" xml:space="preserve"><value>Residual</value></data>
+  <data name="Module.denoise" xml:space="preserve"><value>AI Denoise</value></data>
+  <data name="Param.denoise.amount" xml:space="preserve"><value>Strength</value></data>
+  <data name="Param.denoise.luminance" xml:space="preserve"><value>Luminance Denoise</value></data>
+  <data name="Param.denoise.color" xml:space="preserve"><value>Color Denoise</value></data>
+  <data name="Denoise.Title" xml:space="preserve"><value>AI Denoise Model</value></data>
+  <data name="Denoise.Domain.Raw" xml:space="preserve"><value>RAW scene-linear source</value></data>
+  <data name="Denoise.Domain.Srgb" xml:space="preserve"><value>sRGB source</value></data>
+  <data name="Denoise.Attribution" xml:space="preserve"><value>{0} | {1}</value></data>
+  <data name="Denoise.Download" xml:space="preserve"><value>Download Model…</value></data>
+  <data name="Denoise.Import" xml:space="preserve"><value>Import Package…</value></data>
+  <data name="Denoise.ImportTitle" xml:space="preserve"><value>Import {0} model package</value></data>
+  <data name="Denoise.Status.Missing" xml:space="preserve"><value>{0} is not installed — download or import it to enable AI denoise</value></data>
+  <data name="Denoise.Status.Ready" xml:space="preserve"><value>Model installed; ready</value></data>
+  <data name="Denoise.Status.ReadyDisabled" xml:space="preserve"><value>Model installed (denoise off)</value></data>
+  <data name="Denoise.Status.Downloading" xml:space="preserve"><value>Downloading model… {0:P0}</value></data>
+  <data name="Denoise.Status.Importing" xml:space="preserve"><value>Importing and verifying model package…</value></data>
+  <data name="Denoise.Status.Loading" xml:space="preserve"><value>Loading model…</value></data>
+  <data name="Denoise.Status.Inferring" xml:space="preserve"><value>Denoising tile {0} of {1}</value></data>
+  <data name="Denoise.Status.DoneProgress" xml:space="preserve"><value>Denoise complete ({0})</value></data>
+  <data name="Denoise.Status.Done" xml:space="preserve"><value>Denoised in {0:0.##} s, {1} tiles ({2})</value></data>
+  <data name="Denoise.Status.DoneCached" xml:space="preserve"><value>Denoise complete: cached result ({0})</value></data>
+  <data name="Denoise.Status.Cancelled" xml:space="preserve"><value>Denoise cancelled</value></data>
+  <data name="Denoise.Status.Failed" xml:space="preserve"><value>Denoise failed</value></data>
+  <data name="Denoise.Status.Installed" xml:space="preserve"><value>Installed {0}</value></data>
+  <data name="Denoise.Status.InstallFailed" xml:space="preserve"><value>Failed to install {0}</value></data>
+  <data name="Denoise.Status.ImportFailed" xml:space="preserve"><value>Failed to import {0}</value></data>
+  <data name="Denoise.InstalledToast" xml:space="preserve"><value>Installed {0}; denoise is available</value></data>
+  <data name="Denoise.InstallFailedToast" xml:space="preserve"><value>Model install failed: {0}</value></data>
 </root>

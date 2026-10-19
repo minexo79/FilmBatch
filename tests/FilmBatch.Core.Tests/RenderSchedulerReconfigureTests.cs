@@ -30,7 +30,7 @@ public sealed class RenderSchedulerReconfigureTests
     {
         public string DeviceName => tag;
         public bool IsSoftware => true;
-        public RenderResult Render(SourceImage source, Settings settings)
+        public RenderResult Render(SourceImage source, Settings settings, CancellationToken cancellationToken = default)
         {
             var bgra = new byte[source.Width * source.Height * 4];
             for (var i = 0; i < bgra.Length; i += 4)
@@ -51,7 +51,7 @@ public sealed class RenderSchedulerReconfigureTests
     {
         public string DeviceName => "blocking";
         public bool IsSoftware => true;
-        public RenderResult Render(SourceImage source, Settings settings)
+        public RenderResult Render(SourceImage source, Settings settings, CancellationToken cancellationToken = default)
         {
             started.TrySetResult();
             release.Task.Wait(TimeSpan.FromSeconds(10));

@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using FilmBatch.Engine.Denoising;
 
 namespace FilmBatch.Engine.Exporting;
 
@@ -25,6 +26,9 @@ public sealed record ExportOptions
 
     /// <summary>暫時覆蓋照片的相機局部色調選項；不修改專案或預設。</summary>
     public bool? CameraLocalTone { get; init; }
+
+    /// <summary>僅覆蓋本次匯出的 AI 降噪強度（0–100）；null 沿用專案設定。</summary>
+    public double? DenoiseAmount { get; init; }
 }
 
 /// <summary>單張匯出的不可變快照（匯出期間的編輯不影響已排入的照片，計畫書 2.6）。</summary>
@@ -78,6 +82,7 @@ public sealed class ExportLogEntry
     public string? Error { get; set; }
     /// <summary>Pixels were exported, but source EXIF was omitted or reduced; null when preserved.</summary>
     public string? MetadataWarning { get; set; }
+    public DenoiseReport? Denoise { get; set; }
 }
 
 public sealed class ExportLogDocument

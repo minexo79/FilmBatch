@@ -4,6 +4,8 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <!-- 將 App／CLI 的 RID 傳到帶原生 JXL 內容的 Raw 參考。 -->
     <IsRidAgnostic>false</IsRidAgnostic>
+    <!-- Select by target RID first so cross-publishing Windows on a Mac retains DirectML. -->
+    <FilmBatchUseDirectML Condition="$([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('win-')) Or ('$(RuntimeIdentifier)' == '' And $([MSBuild]::IsOSPlatform('Windows')))">true</FilmBatchUseDirectML>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\FilmBatch.Core\FilmBatch.Core.csproj" />
@@ -12,7 +14,21 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Magick.NET-Q16-HDRI-AnyCPU" />
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" GeneratePathProperty="true" Condition="'$(FilmBatchUseDirectML)' != 'true'" />
+    <PackageReference Include="Microsoft.ML.OnnxRuntime.DirectML" GeneratePathProperty="true" Condition="'$(FilmBatchUseDirectML)' == 'true'" />
+    <!-- Already the DirectML runtime's dependency; expose its exact redistributable license path. -->
+    <PackageReference Include="Microsoft.AI.DirectML" GeneratePathProperty="true" Condition="'$(FilmBatchUseDirectML)' == 'true'" />
     <InternalsVisibleTo Include="FilmBatch.Core.Tests" />
+  </ItemGroup>
+  <PropertyGroup>
+    <FilmBatchOnnxPackagePath Condition="'$(FilmBatchUseDirectML)' != 'true'">$(PkgMicrosoft_ML_OnnxRuntime)</FilmBatchOnnxPackagePath>
+    <FilmBatchOnnxPackagePath Condition="'$(FilmBatchUseDirectML)' == 'true'">$(PkgMicrosoft_ML_OnnxRuntime_DirectML)</FilmBatchOnnxPackagePath>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="$(FilmBatchOnnxPackagePath)/LICENSE;$(FilmBatchOnnxPackagePath)/ThirdPartyNotices.txt;$(FilmBatchOnnxPackagePath)/Privacy.md"
+          Link="native-onnxruntime/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="$(PkgMicrosoft_AI_DirectML)/LICENSE.txt" Condition="'$(FilmBatchUseDirectML)' == 'true'"
+          Link="native-onnxruntime/directml/LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="Imaging\Raw\Profiles\*.json" />

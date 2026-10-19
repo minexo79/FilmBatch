@@ -1,5 +1,6 @@
 using FilmBatch.Core;
 using FilmBatch.Core.Params;
+using FilmBatch.Engine.Denoising;
 using FilmBatch.Engine.Imaging;
 using FilmBatch.Engine.Rendering;
 
@@ -33,6 +34,11 @@ public sealed class RenderScheduler : IDisposable
     private volatile bool _disposed;
     private bool _started;
     private IPreviewRenderer? _renderer;
+    private CancellationTokenSource? _activeRender;
+    private SourceImage? _activeSource;
+    private bool _activeIsPreview, _activeDenoise;
+    private string? _previewKey, _previewPath, _activeKey;
+    private (string? Key, string? Path)? _cancelledPreview;
 
     /// <summary>算圖器建立完成（或改用備援）。參數為裝置名稱與是否為軟體介面卡。</summary>
     public event Action<string, bool>? DeviceReady;
@@ -84,15 +90,50 @@ public sealed class RenderScheduler : IDisposable
 
     public void RequestPreview(string key, SourceImage source, Settings settings, long generation)
     {
-        lock (_lock) _preview = (key, source, settings, generation, _epoch);
+        lock (_lock)
+        {
+            _preview = (key, source, settings, generation, _epoch);
+            _previewKey = key;
+            _previewPath = source.FilePath;
+            _cancelledPreview = null;
+            // Keep same-source slider delivery live, but stop obsolete neural work and background tiles.
+            if (!_activeIsPreview || !ReferenceEquals(source, _activeSource)
+                || DenoiseSettings.From(settings).IsActive != _activeDenoise)
+                _activeRender?.Cancel();
+        }
         _signal.Set();
     }
+
+    public void CancelPreview(bool cancelMatchingThumbnails = false)
+    {
+        lock (_lock)
+        {
+            _preview = null;
+            if (cancelMatchingThumbnails)
+            {
+                _cancelledPreview = (_previewKey, _previewPath);
+                for (var node = _thumbs.First; node is not null;)
+                {
+                    var next = node.Next;
+                    if (MatchesCancelled(node.Value.Key, node.Value.Source)) _thumbs.Remove(node);
+                    node = next;
+                }
+                if (_activeSource is { } source && MatchesCancelled(_activeKey, source)) _activeRender?.Cancel();
+            }
+            if (_activeIsPreview) _activeRender?.Cancel();
+        }
+    }
+
+    private bool MatchesCancelled(string? key, SourceImage source) =>
+        _cancelledPreview is { } cancelled
+        && (key == cancelled.Key || cancelled.Path is not null && source.FilePath == cancelled.Path);
 
     /// <summary>排入縮圖更新；同一張照片只保留最新的設定。</summary>
     public void RequestThumbnail(string key, SourceImage source, Settings settings)
     {
         lock (_lock)
         {
+            if (MatchesCancelled(key, source)) return;
             for (var n = _thumbs.First; n != null; n = n.Next)
             {
                 if (n.Value.Key != key) continue;
@@ -111,6 +152,7 @@ public sealed class RenderScheduler : IDisposable
             _thumbs.Clear();
             _preview = null;
             _epoch++;
+            _activeRender?.Cancel();
         }
     }
 
@@ -129,6 +171,7 @@ public sealed class RenderScheduler : IDisposable
             _epoch++;
             _preview = null;
             _thumbs.Clear();
+            _activeRender?.Cancel();
             _signal.Set();
         }
     }
@@ -164,6 +207,7 @@ public sealed class RenderScheduler : IDisposable
                 (string Key, SourceImage Source, Settings Settings, long Generation, long Epoch)? preview;
                 (string Key, SourceImage Source, Settings Settings, long Epoch)? thumb = null;
                 long epoch;
+                CancellationTokenSource? cancellation = null;
                 lock (_lock)
                 {
                     epoch = _epoch;
@@ -174,35 +218,61 @@ public sealed class RenderScheduler : IDisposable
                         thumb = first.Value;
                         _thumbs.RemoveFirst();
                     }
+                    if (preview is not null || thumb is not null)
+                    {
+                        cancellation = _activeRender = new CancellationTokenSource();
+                        _activeIsPreview = preview is not null;
+                        _activeSource = preview?.Source ?? thumb!.Value.Source;
+                        _activeKey = preview?.Key ?? thumb!.Value.Key;
+                        _activeDenoise = DenoiseSettings.From(preview?.Settings ?? thumb!.Value.Settings).IsActive;
+                    }
                 }
 
-                if (preview is { } p)
+                try
                 {
-                    if (p.Epoch != epoch) continue; // 重建後的舊請求：丟棄
-                    if (TryRender(p.Key, p.Source, p.Settings, p.Epoch, p.Generation) is { } r)
+                    if (preview is { } p)
                     {
-                        lock (_lock)
-                            if (p.Epoch == _epoch)
-                                PreviewRendered?.Invoke(new PreviewRendered(p.Key, p.Generation, r));
+                        if (p.Epoch != epoch) continue;
+                        if (TryRender(p.Key, p.Source, p.Settings, p.Epoch, cancellation!.Token, p.Generation) is { } r)
+                        {
+                            lock (_lock)
+                                if (p.Epoch == _epoch && !cancellation.IsCancellationRequested)
+                                    PreviewRendered?.Invoke(new PreviewRendered(p.Key, p.Generation, r));
+                        }
                     }
+                    else if (thumb is { } t)
+                    {
+                        if (t.Epoch != epoch) continue;
+                        if (TryRender(t.Key, t.Source, t.Settings, t.Epoch, cancellation!.Token) is { } r)
+                        {
+                            lock (_lock)
+                                if (t.Epoch == _epoch && !cancellation.IsCancellationRequested)
+                                    ThumbnailRendered?.Invoke(t.Key, r);
+                        }
+                    }
+                    else break;
                 }
-                else if (thumb is { } t)
+                finally
                 {
-                    if (t.Epoch != epoch) continue;
-                    if (TryRender(t.Key, t.Source, t.Settings, t.Epoch) is { } r)
+                    lock (_lock)
                     {
-                        lock (_lock)
-                            if (t.Epoch == _epoch)
-                                ThumbnailRendered?.Invoke(t.Key, r);
+                        // A foreground request interrupted this thumbnail, rather than cancelling the folder.
+                        if (thumb is { } interrupted && cancellation!.IsCancellationRequested
+                            && interrupted.Epoch == _epoch && _preview is not null
+                            && !_thumbs.Any(item => item.Key == interrupted.Key))
+                            _thumbs.AddFirst(interrupted);
+                        _activeRender = null;
+                        _activeSource = null;
                     }
+                    cancellation?.Dispose();
                 }
-                else break;
             }
         }
         _renderer?.Dispose();
     }
 
-    private RenderResult? TryRender(string key, SourceImage source, Settings settings, long epoch, long? previewGeneration = null)
+    private RenderResult? TryRender(string key, SourceImage source, Settings settings, long epoch,
+        CancellationToken cancellationToken, long? previewGeneration = null)
     {
         if (_renderer is null)
         {
@@ -219,9 +289,17 @@ public sealed class RenderScheduler : IDisposable
         {
             try
             {
-                return _renderer!.Render(source, settings);
+                cancellationToken.ThrowIfCancellationRequested();
+                var result = _renderer!.Render(source, settings, cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
+                return result;
             }
-            catch (Exception ex) when (attempt == 0)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return null;
+            }
+            catch (Exception ex) when (attempt == 0 && ex is not OperationCanceledException
+                && !(DenoiseSettings.From(settings).IsActive && ex is IOException))
             {
                 // 裝置遺失或驅動程式重置：重建裝置並重新上傳後重試一次
                 Notice?.Invoke(CoreText.T($"GPU 已重新初始化（{ex.Message}）", $"GPU reinitialized ({ex.Message})"));
@@ -297,6 +375,7 @@ public sealed class RenderScheduler : IDisposable
             if (_disposed) return;
             _disposed = true;
             started = _started;
+            _activeRender?.Cancel();
             _signal.Set();
         }
         if (!started || _thread.Join(TimeSpan.FromSeconds(3))) _signal.Dispose();

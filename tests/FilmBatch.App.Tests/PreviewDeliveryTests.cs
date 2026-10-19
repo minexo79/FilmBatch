@@ -156,7 +156,7 @@ public sealed class PreviewDeliveryTests
         public ManualResetEventSlim[] Release { get; } = [new(), new()];
         public string DeviceName => _inner.DeviceName;
         public bool IsSoftware => _inner.IsSoftware;
-        public RenderResult Render(SourceImage source, Settings settings)
+        public RenderResult Render(SourceImage source, Settings settings, CancellationToken renderCancellation = default)
         {
             var index = Interlocked.Increment(ref _calls) - 1;
             if (index < 2)
@@ -164,7 +164,7 @@ public sealed class PreviewDeliveryTests
                 Entered[index].TrySetResult();
                 if (!Release[index].Wait(TimeSpan.FromSeconds(10), cancellationToken)) throw new TimeoutException("Held render was not released");
             }
-            return _inner.Render(source, settings);
+            return _inner.Render(source, settings, renderCancellation);
         }
         public SourceImage Render16(SourceImage source, Settings settings, CancellationToken token = default) => _inner.Render16(source, settings, token);
         public void Dispose() { _inner.Dispose(); foreach (var gate in Release) gate.Dispose(); }

@@ -3,6 +3,7 @@ using FilmBatch.Core;
 using FilmBatch.Core.Projects;
 using FilmBatch.Engine.Imaging;
 using FilmBatch.Engine.Imaging.Raw;
+using FilmBatch.Engine.Denoising;
 using FilmBatch.Engine.Rendering;
 using ImageMagick;
 using FilmBatch.Raw;
@@ -41,6 +42,8 @@ public static class BatchExporter
                     .With("raw.embedded_lens", options.EmbeddedLensCorrections ?? current.EmbeddedLensCorrections)
                     .With("raw.camera_local_tone", options.CameraLocalTone ?? current.CameraLocalTone);
             }
+            if (options?.DenoiseAmount is { } amount)
+                settings = settings.With("denoise.enabled", amount > 0).With("denoise.amount", amount);
             jobs.Add(new ExportJob
             {
                 FileName = file,
@@ -67,6 +70,8 @@ public static class BatchExporter
             throw new InvalidDataException(CoreText.T(
                 $"長邊必須為 100–20000 px（目前 {options.LongEdgePx}）。",
                 $"Long edge must be 100–20000 px (currently {options.LongEdgePx})."));
+        if (options.DenoiseAmount is { } amount && (!double.IsFinite(amount) || amount is < 0 or > 100))
+            throw new InvalidDataException(CoreText.T("AI 降噪強度必須為 0–100。", "AI denoising strength must be 0–100."));
         // 範本語法預檢（以佔位值展開一次；{ext} 與未知 token 在此報錯）
         ExportFileNames.RenderTemplate(options.FileNameTemplate, "name", "preset", 1);
     }
@@ -145,7 +150,7 @@ public static class BatchExporter
             try
             {
                 // 同一執行緒直接處理（算圖器親和性；GUI 端已在背景 Task 內）
-                var (w, h, metadataWarning, rawDevice) = ProcessOne(job, outputs[i], options, renderer, ct);
+                var (w, h, metadataWarning, rawDevice, denoise) = ProcessOne(job, outputs[i], options, renderer, ct);
                 deviceName = renderer.DeviceName;
                 isSoftware |= renderer.IsSoftware;
                 // RAW 與效果共用同一條完整管線，記錄這張實際採用的 GPU／CPU 路徑。
@@ -153,6 +158,7 @@ public static class BatchExporter
                 outputFiles.Add(outputs[i]);
                 entries[i] = LogEntry(job, outputs[i], options, entryDevice, w, h, "ok", null);
                 entries[i].MetadataWarning = metadataWarning;
+                entries[i].Denoise = denoise;
             }
             catch (OperationCanceledException)
             {
@@ -210,7 +216,7 @@ public static class BatchExporter
         Error = error,
     };
 
-    private static (int Width, int Height, string? MetadataWarning, string? RawDevice) ProcessOne(
+    private static (int Width, int Height, string? MetadataWarning, string? RawDevice, DenoiseReport? Denoise) ProcessOne(
         ExportJob job, string outputPath, ExportOptions options, IPreviewRenderer renderer, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
@@ -234,7 +240,7 @@ public static class BatchExporter
 
         // 4. 編碼寫檔（原子寫入；絕不覆寫既有檔；取消時刪除未完成暫存）
         var metadataWarning = Encode(sized, job, outputPath, options, ct);
-        return (sized.Width, sized.Height, metadataWarning, rawDevice);
+        return (sized.Width, sized.Height, metadataWarning, rawDevice, rendered.Denoise);
     }
 
     internal static SourceImage DownscaleLongEdge(SourceImage image, int longEdge, CancellationToken ct)
@@ -286,6 +292,7 @@ public static class BatchExporter
         {
             FilePath = image.FilePath, RawOptions = image.RawOptions,
             RawInfo = image.RawInfo, SemanticMasks = image.SemanticMasks,
+            Denoise = image.Denoise,
         };
     }
 

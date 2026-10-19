@@ -385,6 +385,34 @@
   <data name="Choice.grain.model.clumps" xml:space="preserve"><value>柔邊團塊</value></data>
   <data name="Choice.grain.model.correlated" xml:space="preserve"><value>連續相關顆粒</value></data>
   <data name="Choice.grain.model.optical" xml:space="preserve"><value>光學圓盤</value></data>
+  <data name="Module.denoise" xml:space="preserve"><value>AI 降噪</value></data>
+  <data name="Param.denoise.amount" xml:space="preserve"><value>強度</value></data>
+  <data name="Param.denoise.luminance" xml:space="preserve"><value>亮度降噪</value></data>
+  <data name="Param.denoise.color" xml:space="preserve"><value>色度降噪</value></data>
+  <data name="Denoise.Title" xml:space="preserve"><value>AI 降噪模型</value></data>
+  <data name="Denoise.Domain.Raw" xml:space="preserve"><value>RAW 場景線性來源</value></data>
+  <data name="Denoise.Domain.Srgb" xml:space="preserve"><value>sRGB 來源</value></data>
+  <data name="Denoise.Attribution" xml:space="preserve"><value>{0}｜{1}</value></data>
+  <data name="Denoise.Download" xml:space="preserve"><value>下載模型…</value></data>
+  <data name="Denoise.Import" xml:space="preserve"><value>匯入套件…</value></data>
+  <data name="Denoise.ImportTitle" xml:space="preserve"><value>匯入 {0} 模型套件</value></data>
+  <data name="Denoise.Status.Missing" xml:space="preserve"><value>未安裝 {0}——下載或匯入後才能執行 AI 降噪</value></data>
+  <data name="Denoise.Status.Ready" xml:space="preserve"><value>模型已安裝，待機中</value></data>
+  <data name="Denoise.Status.ReadyDisabled" xml:space="preserve"><value>模型已安裝（降噪未啟用）</value></data>
+  <data name="Denoise.Status.Downloading" xml:space="preserve"><value>下載模型…{0:P0}</value></data>
+  <data name="Denoise.Status.Importing" xml:space="preserve"><value>匯入並驗證模型套件…</value></data>
+  <data name="Denoise.Status.Loading" xml:space="preserve"><value>載入模型…</value></data>
+  <data name="Denoise.Status.Inferring" xml:space="preserve"><value>降噪推論 {0}/{1} 區塊</value></data>
+  <data name="Denoise.Status.DoneProgress" xml:space="preserve"><value>降噪完成（{0}）</value></data>
+  <data name="Denoise.Status.Done" xml:space="preserve"><value>降噪完成：{0:0.##} 秒、{1} 區塊（{2}）</value></data>
+  <data name="Denoise.Status.DoneCached" xml:space="preserve"><value>降噪完成：使用快取結果（{0}）</value></data>
+  <data name="Denoise.Status.Cancelled" xml:space="preserve"><value>已取消降噪</value></data>
+  <data name="Denoise.Status.Failed" xml:space="preserve"><value>降噪失敗</value></data>
+  <data name="Denoise.Status.Installed" xml:space="preserve"><value>已安裝 {0}</value></data>
+  <data name="Denoise.Status.InstallFailed" xml:space="preserve"><value>{0} 安裝失敗</value></data>
+  <data name="Denoise.Status.ImportFailed" xml:space="preserve"><value>{0} 匯入失敗</value></data>
+  <data name="Denoise.InstalledToast" xml:space="preserve"><value>已安裝 {0}，現在可以降噪</value></data>
+  <data name="Denoise.InstallFailedToast" xml:space="preserve"><value>模型安裝失敗：{0}</value></data>
   <data name="PhotoTools.Title" xml:space="preserve"><value>照片工具</value></data>
   <data name="PhotoTools.WbTitle" xml:space="preserve"><value>中性白平衡</value></data>
   <data name="PhotoTools.SkinTitle" xml:space="preserve"><value>膚色調整</value></data>

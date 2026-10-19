@@ -1,3 +1,4 @@
+using FilmBatch.Engine.Denoising;
 using FilmBatch.Core;
 using System.Diagnostics;
 using FilmBatch.Core.Params;
@@ -35,6 +36,8 @@ public sealed class GpuSpikeRenderer : IPreviewRenderer
     public SourceImage Render16(SourceImage source, Settings settings, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (DenoiseSettings.From(settings).IsActive)
+            source = DenoiseProcessor.Shared.Prepare(source, settings, cancellationToken);
         var parameters = ModuleParams.From(source, settings);
         _assets.Prepare(source, parameters);
         // 匯出不受預覽記憶體預算限制：只要不超過裝置紋理上限就用 GPU，
@@ -55,18 +58,21 @@ public sealed class GpuSpikeRenderer : IPreviewRenderer
         {
             FilePath = source.FilePath, RawOptions = source.RawOptions,
             RawInfo = source.RawInfo, SemanticMasks = source.SemanticMasks,
+            Denoise = source.Denoise,
         };
     }
 
-    public RenderResult Render(SourceImage source, Settings settings)
+    public RenderResult Render(SourceImage source, Settings settings, CancellationToken cancellationToken = default)
     {
         var timer = Stopwatch.StartNew();
+        if (DenoiseSettings.From(settings).IsActive)
+            source = DenoiseProcessor.Shared.Prepare(source, settings, cancellationToken);
         var parameters = Prepare(source, settings);
         // 輸出為裁切後的尺寸
         var output = new byte[parameters.OutWidth * parameters.OutHeight * 4];
         if (UsingCpu)
         {
-            var rendered = CpuPipeline.Process(source, parameters, null, default).Rgba16;
+            var rendered = CpuPipeline.Process(source, parameters, null, cancellationToken).Rgba16;
             for (var i = 0; i < rendered.Length; i += 4)
             {
                 output[i] = (byte)((rendered[i + 2] + 128) / 257);
@@ -75,8 +81,11 @@ public sealed class GpuSpikeRenderer : IPreviewRenderer
                 output[i + 3] = (byte)((rendered[i + 3] + 128) / 257);
             }
         }
-        else _pipeline.Render(source, parameters, output, default);
-        return new(parameters.OutWidth, parameters.OutHeight, output, timer.Elapsed);
+        else _pipeline.Render(source, parameters, output, cancellationToken);
+        return new(parameters.OutWidth, parameters.OutHeight, output, timer.Elapsed)
+        {
+            Denoise = source.Denoise, PreparedSource = source,
+        };
     }
 
     private ModuleParams Prepare(SourceImage source, Settings settings)

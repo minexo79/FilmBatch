@@ -1,3 +1,4 @@
+using FilmBatch.Engine.Denoising;
 using FilmBatch.Core.Params;
 using FilmBatch.Core.Random;
 using FilmBatch.Engine.Imaging;
@@ -19,6 +20,8 @@ public static class CpuPipeline
     /// </summary>
     public static SourceImage Process(SourceImage source, Settings settings, ushort[]? outRgba16, CancellationToken ct)
     {
+        if (DenoiseSettings.From(settings).IsActive)
+            source = DenoiseProcessor.Shared.Prepare(source, settings, ct);
         var p = ModuleParams.From(source, settings);
         return Process(source, p, outRgba16, ct);
     }
@@ -127,6 +130,7 @@ public static class CpuPipeline
         {
             FilePath = source.FilePath, RawOptions = source.RawOptions,
             RawInfo = source.RawInfo, SemanticMasks = source.SemanticMasks,
+            Denoise = source.Denoise,
         };
     }
 
