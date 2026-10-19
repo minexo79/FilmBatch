@@ -58,13 +58,14 @@ var onlyUnassignedOption = new Option<bool>("--only-unassigned") { Description =
 var presetsFolderOption = new Option<string?>("--presets-folder") { Description = "預設庫資料夾（預設使用者 presets）" };
 var embeddedLensOption = new Option<bool>("--embedded-lens") { Description = "啟用 RAW 內嵌鏡頭校正（只影響本次匯出）" };
 var cameraLocalToneOption = new Option<bool>("--camera-local-tone") { Description = "啟用 DNG 相機局部色調（只影響本次匯出）" };
+var denoiseOption = new Option<double?>("--denoise") { Description = "本次匯出的 AI 降噪強度 0–100（省略則沿用專案；須先安裝模型）" };
 
 var export = new Command("export", "批次匯出（與 GUI 共用匯出器）")
 {
     exportFolder, outOption, formatOption, qualityOption, longEdgeOption,
     presetOption, onlyUnassignedOption, presetsFolderOption,
     backendOption, softwareOption, lowPowerOption,
-    embeddedLensOption, cameraLocalToneOption,
+    embeddedLensOption, cameraLocalToneOption, denoiseOption,
 };
 export.SetAction(async (r, ct) =>
 {
@@ -103,6 +104,7 @@ export.SetAction(async (r, ct) =>
         LongEdgePx = longEdge,
         EmbeddedLensCorrections = r.GetValue(embeddedLensOption) ? true : null,
         CameraLocalTone = r.GetValue(cameraLocalToneOption) ? true : null,
+        DenoiseAmount = r.GetValue(denoiseOption),
     };
     try
     {
@@ -210,5 +212,5 @@ static Func<IPreviewRenderer> CreateExportFactory(GpuDeviceOptions deviceOptions
     }
 }
 
-var root = new RootCommand("FilmBatch 命令列") { gpuInfo, spike, samples, export, RawCommands.Create() };
+var root = new RootCommand("FilmBatch 命令列") { gpuInfo, spike, samples, export, RawCommands.Create(), DenoiseCommands.Create() };
 return root.Parse(args).Invoke();
