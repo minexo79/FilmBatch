@@ -95,7 +95,7 @@ IPOL 原文的強度為 `lambda(y) = -ln(1-u(y)) / E[pi*r²]`，輸入 `u` 正�
 
 以下保留調查當時的 UI 提案；已交付範圍與操作以[目前實作](#目前實作與操作)為準：
 
-1. 在「RAW 原廠處理」增加中性取樣工具。單擊取小 patch，拖曳擴大取樣範圍；縮放、平移、旋轉、crop／鏡頭校正後仍須映射回同一來源區域。現有 [PreviewCanvas.cs](../src/FilmBatch.App/Controls/PreviewCanvas.cs) 的 `ActiveTool`／`ICanvasTool` 是可重用入口，但顯示 bitmap 本身不是正確取樣資料。
+1. 在「RAW 原廠處理」增加中性取樣工具。單擊取小 patch，拖曳擴大取樣範圍；縮放、平移、旋轉、crop／鏡頭校正後仍須映射回同一來源區域。現有 [PreviewCanvas.cs](../src/FilmBatch.App.Shared/Controls/PreviewCanvas.cs) 的 `ActiveTool`／`ICanvasTool` 是可重用入口，但顯示 bitmap 本身不是正確取樣資料。
 2. 顯示有效樣本、區域差異與剪裁／重建警告；沒有原始感光遮罩時，只能報處理後影像的可用性代理，不能稱為精確感測器飽和偵測。
 3. 預覽前後差異，接受時一次切換 `raw.wb_mode=custom` 並套用 Kelvin／Tint，作為一筆可復原操作；取消不留參數變更。
 4. 「自動」顯示候選位置及不確定性，由使用者接受或改選，不把最亮像素直接指定為白。

@@ -1,17 +1,19 @@
 # ADR 0004：Apple 行動版以共用程式碼與技術驗證優先
 
 - 日期：2026-10-19
-- 狀態：已採納開發方向；正式 UI 尚未選定，iPad／iPhone 支援尚未驗證。
+- 狀態：已採納共用 C# 與獨立 Avalonia 行動編輯器；正式實機支援及效能尚未驗證。
 - 授權：先記錄共用技術決策並分組提交實驗；後續補齊工具鏈、開發隔離 Avalonia prototype 與 pure iOS／官方 Simulator 測試。Simulator 測試實際成功後才獨立 commit；六案例全通過後，使用者明確授權本次 commit／push 並繼續共用主要邏輯的 iOS 介面與功能移植。實機驗證仍延後。
 - 執行記錄：[初始技術實驗](../superpowers/plans/2026-10-19-apple-mobile-technical-entry.md)、[Simulator／prototype 與目前工具鏈 gate](../superpowers/plans/2026-10-19-ios-simulator-prototype.md)。
 
 ## 決定
 
-保留 C# 的 `FilmBatch.Core`、`FilmBatch.Raw` 及可驗證的算圖／參數契約，不為行動 UI 先重寫攝影演算法。新增獨立的 .NET for iOS **診斷 host** 與桌面命令列 host，執行同一份共用實驗程式碼；不引用桌面的 Avalonia/Dock 啟動組合，也不先選 Avalonia iOS、MAUI 或 SwiftUI 為正式 UI。
+原始診斷階段保留 C# 的 `FilmBatch.Core`、`FilmBatch.Raw` 及可驗證的算圖／參數契約，不為行動 UI 先重寫攝影演算法。獨立 .NET for iOS 診斷 host 與桌面命令列 host 執行同一份實驗程式碼，不引用桌面的 Avalonia/Dock 啟動組合；此階段不選正式 UI。
 
 診斷 host 只負責啟動、取消及寫出報告，不是產品介面設計。實驗放在 `tools/apple-mobile/`，不加入桌面 `FilmBatch.sln`，不讓既有桌面 CI 突然需要 iOS SDK。優先直接 `ProjectReference` 既有元件，不複製 RAW、預設集、復原或 GPU 實作。NativeAOT 不作為 C#／Swift 靜態函式庫已可交付的假設。
 
 本分支 `dev-ios-app` 起點為 `858648d`；已完成的 AI 降噪功能在獨立的 `dev-ai-denoising` 分支。本輪不自行合併該分支、不另造一套產品降噪服務。ONNX 實驗驗證原生 runtime／張量／模型載入，不代表已接入完整降噪流程或達到攝影品質標準。
+
+後續主要功能移植依使用者授權採用 `FilmBatch.Mobile.iOS`＋`FilmBatch.Mobile` 的獨立 Avalonia 編輯器。`FilmBatch.App.Shared` 是桌面與行動版唯一的 ViewModel、控制項、非視窗 View、語系及主題來源；不複製 Core／RAW／Engine 攝影邏輯，不把 Dock／桌面視窗搬到 iOS。Files／PHPicker 選取內容複製至 app 自有專案，匯出先存於自有目錄再提供 Files 副本；影像 I/O 依 iOS RID 選擇 ImageIO，攝影算圖明確使用 CPU。診斷 app 與已通過的六案例仍只證明診斷面向，不能替代[主要編輯器驗收](../building.md#ios-行動版)。
 
 ## 為什麼不直接換 UI
 
@@ -26,7 +28,7 @@
 ## 本輪的驗證邊界
 
 1. **Core／RAW**：直接執行既有參數、復原、儲存及 RAW 解碼／發展 API；保留來源檔案雜湊與影像尺寸／有限值等不變量。產生的線性 DNG 清楚標示為 fixture，不冒稱相機 Bayer RAW。
-2. **Apple image IO**：同一份 C# P/Invoke 在 macOS 與 iOS host 使用 ImageIO/CoreGraphics，實測 16-bit、奇數列寬、ICC 與中繼資料 round trip。它是候選替代路徑，並非已取代 Magick.NET 或證實全格式等價。
+2. **Apple image IO**：同一份 C# P/Invoke 在 macOS 與 iOS 使用 ImageIO/CoreGraphics，驗證 16-bit、奇數列寬、ICC、直通 alpha 與中繼資料 round trip。主要編輯器的 Engine 依 iOS RID 選擇此後端並排除 Magick.NET；桌面仍使用原後端，不宣稱全格式等價。
 3. **ONNX**：固定 `1.25.0`，以有獨立數值預期的測試圖驗證真正 native 執行與取消；可另指定實際 ONNX 權重。只有實際模型執行才能支持模型可用的說法；簡單測試圖不能證明 CoreML 已承接整張網路。升級時須重建原生執行檔，避免 managed／native 混用舊版本。
 4. **GPU／原生套件**：透過既有 `FilmBatch.Gpu` 建立裝置、送出運算並讀回數值；缺少 iOS 原生庫必須明確阻擋，而非回退 CPU 後宣稱 GPU 成功。
 5. **記憶體與建置**：報告實際輸入、緩衝區大小、耗時與可取得的程序／受控記憶體資訊；分開標示 managed compile、AOT/link、模擬器及實機證據。大圖實驗不等於量測到 iPad 記憶體上限。
@@ -35,11 +37,14 @@
 
 隔離 Avalonia prototype 延伸本決定，但不是正式 UI 定案：重用同一 `ProbeRunner`，不引用桌面產品 App／Dock。兩個 iOS Release app 已在 Xcode 27.1 實驗工具鏈建置成功，UIKit 與 Avalonia 均已於官方 iOS 27.1 Simulator 執行，產生 Core／RAW、RGB16 ImageIO、ONNX 的真實成功報告；GPU 保留缺少 iOS Dawn 的阻擋。後續開啟 Xcode 27 的 Device Hub，排除只有 CoreSimulator 而沒有可見視窗的問題；將背景驅動改成直接啟用 SpringBoard 後，完整六個 UI 案例 6 pass／0 fail／0 skip／0 expected failures，包含兩個 app 的真正背景取消與前景重跑、手動取消／重跑及 Avalonia 真實預覽。Simulator 測試依授權獨立提交 `d3a21b9`；使用者隨後授權推送並接續主要功能移植。[本輪結果](../superpowers/plans/2026-10-19-ios-simulator-prototype.md#已實測結果2026-10-19)保留先前失敗與修正後證據；Simulator UI 成功不推定正式 SDK 相容性、GPU 或實機支援。
 
+主要編輯器隨後完成獨立於診斷 app 的原生驗收：以相同最終 Release 執行檔分別操作 Files／Photos 匯入、共用編輯／復原／預設／裁切與重開、四格式匯出、Files 輸出副本及實際大圖取消，並獨立解碼輸出、核對來源與副本雜湊。Mac 共用行動 View 及桌面回歸另行執行，不用來替代 iOS 證據。修復 iOS 不支援的 CPU clock／檔案監看、背景入場、可存取的模組標題、低高度面板及 ImageIO 的 ICC／EXIF 出口；沒有合併 AI 分支或宣稱 iOS Dawn 支援。[實測結果與已知限制](../building.md#本輪實測2026-10-20)仍保留實機、效能、工具鏈與色彩相容性的未驗證邊界。
+
+
 ## 下一輪才決定的事項
 
-- 正式 UI 框架、操作流程、觸控／Apple Pencil、iPhone 是否具備同等批次管理功能。
+- 觸控／Apple Pencil 的細部互動，以及 iPhone 是否具備與 iPad 相同的批次規模；共用介面可操作不代表實機已通過效能驗收。
 - 支援的 iPad／iPhone 與最低 OS；診斷 host 的 deployment target 不是產品支援承諾。
-- Photos 匯入、security-scoped Files／bookmark／File Provider、P3／EDR、背景工作與強制結束的產品契約。
+- Files／Photos provider 中斷、持久 bookmark、app 更新與系統回收情境，以及 P3／EDR 和持續背景工作的實機契約；目前採用使用者選取副本，不取得整個圖庫權限。
 - Dawn iOS 自建閉包或獨立 Metal backend 的選擇；必須先有實機運算／精度／記憶體證據。
 - 合併既有 AI 功能分支後的完整來源級降噪、HDR／alpha／tile seam、取消／重用與真實相機品質驗收。
 

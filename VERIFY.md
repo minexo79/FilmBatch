@@ -56,6 +56,9 @@ dotnet test FilmBatch.sln -c Release --logger trx --results-directory "$work/tes
 | 底片 LUT、色相帶、舊設定移除 | `FilmLutTests`、`FilmLookTests`、`RetiredParamsTests` | [底片契約與來源](docs/film-looks.md) |
 | 顆粒座標／足跡、局部膚色、白平衡提案與 Zone | `GrainModelTests`、`SurveyRenderingTests`、`PhotoAdjustmentTests`、`PhotoAnalysisTests`、`PhotoToolsTests` | [現行操作與限制](docs/grain-white-balance-survey.md#目前實作與操作)、[實作及原生驗收](docs/superpowers/plans/2026-10-19-grain-neutral-zone.md) |
 | JPEG XL ABI、樣本與錯誤路徑 | `PortableJxlTests`、`JpegXlTests` | [發佈閉包](docs/building.md#macos)、[native manifest](src/FilmBatch.Raw/Native/Jxl/provenance.json) |
+| Apple ImageIO、方向／16-bit／ICC、來源 EXIF 與 TIFF 目錄 | `AppleImageCodecTests`、`AppleImagingTests`、`TiffMetadataTests` | [影像與匯出契約](docs/architecture.md#48-engine影像讀取與批次匯出imaging--exporting)、[iOS 原生驗證邊界](docs/building.md#驗證邊界) |
+| 共用觸控標題、滑桿與背景時的編輯入場 | `ModuleSectionTests`、`ParamSliderTests`、`BulkLoadingTests` | [行動版操作與資料所有權](docs/building.md#操作與資料所有權)；Headless／Mac 結果不代替 iOS 原生操作 |
+| iOS 主要編輯器的實際 Files／Photos、編輯、輸出與取消 | `src/FilmBatch.Mobile.iOS` 的實際 Release app；原生 XCTest 操作及獨立輸出解碼 | [建置／操作](docs/building.md#ios-行動版)、[本輪實測與證據邊界](docs/building.md#本輪實測2026-10-20)；不以診斷 app、Headless 或 Mac 的 pass 代替 |
 
 需要縮小範圍時，用 `--filter FullyQualifiedName~類別名稱`；先確認實際執行了預期測試，不能把沒有匹配 case 的 exit 當 pass。外部語料取得與釘選參考輸出見 [raw-oracle](tools/raw-oracle/README.md)。
 

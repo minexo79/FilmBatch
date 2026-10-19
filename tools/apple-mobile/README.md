@@ -2,6 +2,8 @@
 
 這是 [ADR 0004](../../docs/adr/0004-apple-mobile-shared-core.md) 的共用技術進入點，**不是行動版編輯器或正式 UI 框架選擇**。Mac CLI、獨立 UIKit iOS 診斷 app 與隔離的 Avalonia prototype 呼叫相同 C# 實驗程式碼；不複製 Core／RAW／GPU 實作，不引用桌面產品 App／Dock／Magick.NET。
 
+主要編輯器已獨立放在 `src/FilmBatch.Mobile.iOS`／`FilmBatch.Mobile`；建置及 Files／Photos、專案、編輯與輸出方式見 [iOS 行動版](../../docs/building.md#ios-行動版)。下列診斷與六案例 prototype 驗證不替代主要編輯器的端到端驗收。
+
 分支起點是 `dev-ios-app@858648d`。既有完整 AI 降噪功能在 `dev-ai-denoising`；本輪不自行合併、不另造降噪服務。此處的 ONNX 檢查是 native runtime／張量及選用權重的執行實驗，不能當成降噪品質或完整產品管線的驗收。
 
 ## 在目前的 .NET 主機執行
