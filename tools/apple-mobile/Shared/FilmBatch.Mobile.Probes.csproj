@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../src/FilmBatch.Core/FilmBatch.Core.csproj" />
+    <ProjectReference Include="../../../src/FilmBatch.Raw/FilmBatch.Raw.csproj" />
+    <ProjectReference Include="../../../src/FilmBatch.Gpu/FilmBatch.Gpu.csproj" />
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" GeneratePathProperty="true" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="$(PkgMicrosoft_ML_OnnxRuntime)/LICENSE;$(PkgMicrosoft_ML_OnnxRuntime)/ThirdPartyNotices.txt;$(PkgMicrosoft_ML_OnnxRuntime)/Privacy.md"
+          Link="native-onnxruntime/%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>
