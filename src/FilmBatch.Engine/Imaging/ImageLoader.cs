@@ -19,6 +19,14 @@ public static class ImageLoader
 
     public static SourceImage Load(string path, int maxLongEdge = PreviewLongEdge, RawLoadOptions rawOptions = default)
     {
+        // 縮圖快路徑：RAW 直接取內嵌相機 JPEG（稀疏讀取、不顯影），作為 sRGB 一般影像打底。
+        // 語意遮罩需要 RAW 座標，預覽/匯出需要場景線性，故兩者一律走完整顯影。
+        if (!rawOptions.IncludeSemanticMasks && maxLongEdge <= ThumbnailLongEdge
+            && RawSourceLoader.TryExtractThumbnail(path, maxLongEdge, out var preview, out var info))
+        {
+            try { return FromEmbeddedPreview(preview, path, rawOptions, maxLongEdge, info!); }
+            catch (Exception ex) when (ex is MagickException or InvalidDataException or IOException) { }
+        }
         if (RawSourceLoader.TryLoad(path, maxLongEdge, rawOptions) is { } raw) return raw;
         var settings = new MagickReadSettings();
         // JPEG 可在解碼時直接縮小，大幅加快縮圖
@@ -64,8 +72,39 @@ public static class ImageLoader
         return swap ? ((int)image.Height, (int)image.Width) : ((int)image.Width, (int)image.Height);
     }
 
+    /// <summary>內嵌預覽→一般影像：嵌入 JPEG 已是相機渲染的外觀，故僅轉正、縮圖、轉 sRGB，
+    /// 不進入場景線性管線（否則會重複套用相機曲線）。方向以 RAW 檔頭為準，覆寫 JPEG 自帶的 EXIF 方向。</summary>
+    private static SourceImage FromEmbeddedPreview(byte[] preview, string path, RawLoadOptions rawOptions,
+        int maxLongEdge, RawInfo info)
+    {
+        // 不用 JPEG size hint：內嵌預覽常小於縮圖尺寸，hint 會把小圖放大。
+        using var image = new MagickImage(preview);
+        image.Orientation = ToOrientation(info.Orientation);
+        image.AutoOrient();
+        if (Math.Max(image.Width, image.Height) > maxLongEdge)
+        {
+            var geometry = new MagickGeometry((uint)maxLongEdge, (uint)maxLongEdge) { Greater = true };
+            image.Resize(geometry);
+        }
+        var (referenceWidth, referenceHeight) = info.DevelopedSize();
+        if (info.Orientation.SwapsAxes()) (referenceWidth, referenceHeight) = (referenceHeight, referenceWidth);
+        return ToSource(image, path, rawOptions, (referenceWidth, referenceHeight), info);
+    }
+
+    private static OrientationType ToOrientation(FilmBatch.Raw.Orientation orientation) => orientation switch
+    {
+        FilmBatch.Raw.Orientation.FlipH => OrientationType.TopRight,
+        FilmBatch.Raw.Orientation.Rotate180 => OrientationType.BottomRight,
+        FilmBatch.Raw.Orientation.FlipV => OrientationType.BottomLeft,
+        FilmBatch.Raw.Orientation.Transpose => OrientationType.LeftTop,
+        FilmBatch.Raw.Orientation.Rotate90 => OrientationType.RightTop,
+        FilmBatch.Raw.Orientation.Transverse => OrientationType.RightBottom,
+        FilmBatch.Raw.Orientation.Rotate270 => OrientationType.LeftBottom,
+        _ => OrientationType.TopLeft,
+    };
+
     private static SourceImage ToSource(MagickImage image, string path, RawLoadOptions rawOptions,
-        (int Width, int Height)? reference = null)
+        (int Width, int Height)? reference = null, RawInfo? rawInfo = null)
     {
         image.TransformColorSpace(ColorProfiles.SRGB);
         image.ColorSpace = ColorSpace.sRGB;
@@ -78,6 +117,7 @@ public static class ImageLoader
         {
             FilePath = Path.GetFullPath(path),
             RawOptions = rawOptions,
+            RawInfo = rawInfo,
             ReferenceWidth = reference?.Width ?? (int)image.Width,
             ReferenceHeight = reference?.Height ?? (int)image.Height,
         };

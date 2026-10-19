@@ -13,6 +13,7 @@
   <ItemGroup>
     <PackageReference Include="Magick.NET-Q16-HDRI-AnyCPU" />
     <InternalsVisibleTo Include="FilmBatch.Core.Tests" />
+    <InternalsVisibleTo Include="FilmBatch.Raw.Tests" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="Imaging\Raw\Profiles\*.json" />
