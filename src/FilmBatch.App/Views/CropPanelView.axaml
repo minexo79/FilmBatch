@@ -1,0 +1,75 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:t="using:FilmBatch.App.ViewModels.Tools"
+             xmlns:l="using:FilmBatch.App.Localization"
+             x:Class="FilmBatch.App.Views.CropPanelView"
+             x:DataType="t:CropToolViewModel">
+  <!-- 「裁切」分頁（cut-and-mask Task 1.7）：裁切的控制項全部在這裡，預覽底部不另加工具列 -->
+  <DockPanel Background="{DynamicResource FB.PanelBrush}">
+    <Border DockPanel.Dock="Top" Classes="panel-header">
+      <TextBlock Classes="panel-title" Text="{l:Tr Panel.Crop}" />
+    </Border>
+
+    <!-- 底部：套用 / 取消；套用後（工具結束）改顯示「編輯裁切」 -->
+    <Border DockPanel.Dock="Bottom" BorderBrush="{DynamicResource FB.DividerBrush}" BorderThickness="0,1,0,0" Padding="16,12">
+      <StackPanel Spacing="10">
+        <Grid ColumnDefinitions="*,8,*" IsVisible="{Binding IsActive}">
+          <Button Grid.Column="0" Classes="outline pill" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                  Command="{Binding CancelCommand}" Content="{l:Tr Tool.Crop.Cancel}" ToolTip.Tip="Esc" />
+          <Button Grid.Column="2" Classes="accent pill" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                  Command="{Binding ApplyCommand}" Content="{l:Tr Tool.Crop.Apply}" ToolTip.Tip="Enter" />
+        </Grid>
+        <Button Classes="outline pill" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                Command="{Binding BeginCommand}" Content="{l:Tr Tool.Crop.Edit}" IsVisible="{Binding !IsActive}" />
+      </StackPanel>
+    </Border>
+
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+      <StackPanel Margin="16,8,16,16" Spacing="18" IsEnabled="{Binding IsActive}">
+        <TextBlock Classes="warning small" Text="{l:Tr Tool.Crop.FocusedOnly}" TextWrapping="Wrap" IsVisible="{Binding FocusedOnly}" />
+
+        <StackPanel Classes="field">
+          <TextBlock Classes="field-label" Text="{l:Tr Tool.Crop.Aspect}" />
+          <Grid ColumnDefinitions="*,Auto">
+            <ComboBox Classes="flat" HorizontalAlignment="Stretch" ItemsSource="{Binding Aspects}" SelectedItem="{Binding SelectedAspect}"
+                      DisplayMemberBinding="{Binding Label, x:DataType=t:CropAspectOption}" />
+            <ToggleButton Grid.Column="1" Classes="tool" Margin="8,0,0,0" IsChecked="{Binding Portrait}"
+                          IsEnabled="{Binding CanSwapOrientation}" ToolTip.Tip="{l:Tr Tool.Crop.SwapOrientation}">
+              <PathIcon Data="{StaticResource Icon.Orientation}" />
+            </ToggleButton>
+          </Grid>
+        </StackPanel>
+
+        <StackPanel Classes="field">
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBlock Classes="field-label" Text="{l:Tr Tool.Crop.Straighten}" />
+            <TextBlock Grid.Column="1" Classes="numeric secondary" Text="{Binding Angle, StringFormat={}{0:F1}°}" />
+          </Grid>
+          <Slider Name="AngleSlider" Minimum="-45" Maximum="45" SmallChange="0.1" LargeChange="1" Value="{Binding Angle}" />
+        </StackPanel>
+
+        <StackPanel Classes="field">
+          <TextBlock Classes="field-label" Text="{l:Tr Tool.Crop.Orientation}" />
+          <StackPanel Orientation="Horizontal" Spacing="4">
+            <Button Classes="tool" Command="{Binding RotateLeftCommand}" ToolTip.Tip="{l:Tr Tool.Crop.RotateLeft}">
+              <PathIcon Data="{StaticResource Icon.RotateLeft}" />
+            </Button>
+            <Button Classes="tool" Command="{Binding RotateRightCommand}" ToolTip.Tip="{l:Tr Tool.Crop.RotateRight}">
+              <PathIcon Data="{StaticResource Icon.RotateRight}" />
+            </Button>
+            <Button Classes="tool" Command="{Binding FlipHorizontalCommand}" ToolTip.Tip="{l:Tr Tool.Crop.FlipH}">
+              <PathIcon Data="{StaticResource Icon.FlipHorizontal}" />
+            </Button>
+            <Button Classes="tool" Command="{Binding FlipVerticalCommand}" ToolTip.Tip="{l:Tr Tool.Crop.FlipV}">
+              <PathIcon Data="{StaticResource Icon.FlipVertical}" />
+            </Button>
+          </StackPanel>
+        </StackPanel>
+
+        <Button Classes="outline" HorizontalAlignment="Left" Command="{Binding ResetCommand}" Content="{l:Tr Tool.Crop.Reset}" />
+
+        <TextBlock Classes="secondary small" Text="{l:Tr Tool.Crop.Shortcuts}" TextWrapping="Wrap" />
+      </StackPanel>
+    </ScrollViewer>
+  </DockPanel>
+</UserControl>

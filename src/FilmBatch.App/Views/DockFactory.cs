@@ -9,7 +9,8 @@ using FilmBatch.App.ViewModels;
 namespace FilmBatch.App.Views;
 
 /// <summary>
-/// 停靠版面（計畫書 2.3）：中央預覽、右側邊欄（預設庫｜照片資訊與模組｜照片匯出，以分頁工具列切換）、下縮圖列。
+/// 停靠版面（計畫書 2.3）：左欄為預覽＋下方縮圖列，右側邊欄（預設庫｜照片基本參數｜照片匯出，以分頁工具列切換）
+/// 佔滿整個高度、與縮圖列並排。
 /// 面板只用 Dock 內建的 Tool / Document 型別（以 Id 識別），ViewModel 經 <see cref="Factory.ContextLocator"/> 指派，
 /// 因此 layout.json 只包含版面本身，可安全地序列化與還原。
 /// </summary>
@@ -38,20 +39,20 @@ public sealed class DockFactory(MainWindowViewModel main) : Factory
             Id = "RightDock", Proportion = 0.27, Alignment = Alignment.Right,
             ActiveDockable = sidebar, VisibleDockables = CreateList<IDockable>(sidebar),
         };
-        var top = new ProportionalDock
-        {
-            Id = "TopRow", Orientation = Orientation.Horizontal,
-            VisibleDockables = CreateList<IDockable>(center, new ProportionalDockSplitter(), right),
-        };
         var bottom = new ToolDock
         {
             Id = "BottomDock", Proportion = 0.2, Alignment = Alignment.Bottom,
             ActiveDockable = filmstrip, VisibleDockables = CreateList<IDockable>(filmstrip),
         };
+        var left = new ProportionalDock
+        {
+            Id = "LeftColumn", Orientation = Orientation.Vertical,
+            VisibleDockables = CreateList<IDockable>(center, new ProportionalDockSplitter(), bottom),
+        };
         var layout = new ProportionalDock
         {
-            Id = "MainLayout", Orientation = Orientation.Vertical,
-            VisibleDockables = CreateList<IDockable>(top, new ProportionalDockSplitter(), bottom),
+            Id = "MainLayout", Orientation = Orientation.Horizontal,
+            VisibleDockables = CreateList<IDockable>(left, new ProportionalDockSplitter(), right),
         };
 
         var root = CreateRootDock();
@@ -99,11 +100,17 @@ public sealed class DockFactory(MainWindowViewModel main) : Factory
         }
     }
 
-    /// <summary>版面是否恰好包含目前版本的面板（不多不少）。</summary>
+    /// <summary>
+    /// 版面是否恰好包含目前版本的面板（不多不少），且側邊欄位於最外層的水平分割（佔滿整個高度）；
+    /// 舊版的側邊欄與預覽同列、縮圖列橫跨整個寬度，載入時改用預設版面。
+    /// </summary>
     public static bool IsCurrentLayout(IDockable root)
     {
         var ids = Enumerate(root).Where(d => d is ITool or IDocument).Select(d => d.Id).ToHashSet();
-        return ids.SetEquals(ExpectedIds);
+        if (!ids.SetEquals(ExpectedIds)) return false;
+        return root is IRootDock { VisibleDockables: [IProportionalDock { Orientation: Orientation.Horizontal } main] }
+            && main.VisibleDockables is { } columns
+            && columns.Any(c => c is IToolDock { VisibleDockables: { } tools } && tools.Any(t => t.Id == SidebarId));
     }
 
     private static IEnumerable<IDockable> Enumerate(IDockable d)

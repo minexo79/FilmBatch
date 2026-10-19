@@ -8,16 +8,44 @@ namespace FilmBatch.App.ViewModels;
 /// <summary>
 /// 右面板：照片資訊 + 模組面板（計畫書 2.4.5）。模組區塊依 schema 建立一次，切換照片時只更新數值。
 /// 修改套用到所有選取照片；顯示的是焦點照片的值與覆寫狀態。
+/// 「照片基本參數」與「底片效果」兩個分頁各一個實例，以要顯示的 <see cref="ModuleGroup"/> 集合區分（cut-and-mask D8）。
 /// </summary>
 public sealed partial class InspectorViewModel : ObservableObject, IParamHost
 {
     private readonly MainWindowViewModel _main;
     private bool _loadingPreset;
 
-    public FilmRecipeViewModel Film { get; }
-
     public ObservableCollection<ModuleGroupViewModel> Groups { get; }
     public IReadOnlyList<ModuleSectionViewModel> Modules { get; }
+
+    /// <summary>film 模組頂部的底片風格縮圖格與色相帶編輯器；只有包含 film 模組的分頁才有。</summary>
+    public FilmLookViewModel? FilmLook { get; }
+
+    /// <summary>是否顯示照片資訊（檔名、預設、重設與預設按鈕）；只有「照片基本參數」分頁顯示。</summary>
+    public bool ShowsPhotoInfo { get; }
+
+    /// <summary>照片工具（取樣／提案）所在的主視窗 VM；同時控制要不要顯示工具面板。</summary>
+    public MainWindowViewModel Main => _main;
+
+    /// <summary>「照片基本參數」分頁是否顯示照片工具面板（取樣／WB／膚色／Zone）。</summary>
+    public bool ShowsPhotoTools => ShowsPhotoInfo;
+
+    /// <summary>是否為目前顯示中的分頁；畫布控制點只採用顯示中分頁裡展開的模組。由 <see cref="SidebarViewModel"/> 設定。</summary>
+    public bool IsActive
+    {
+        get => _isActive;
+        set
+        {
+            if (!SetProperty(ref _isActive, value) || !value) return;
+            if (_main.Service is not null && _main.FocusFile is not null)
+                UpdateControlPoint(_main.Service.SettingsFor(_main.FocusFile));
+        }
+    }
+
+    private bool _isActive;
+
+    /// <summary>只在各自分頁編輯、不出現在模組面板中的模組（裁切、細部調整）。</summary>
+    private static readonly HashSet<string> TabOnlyModules = ["crop"];
     public ObservableCollection<PresetItemViewModel> PresetOptions { get; } = [];
 
     [ObservableProperty]
@@ -38,14 +66,16 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
     [ObservableProperty]
     private PresetItemViewModel? _selectedPreset;
 
-    public InspectorViewModel(MainWindowViewModel main)
+    public InspectorViewModel(MainWindowViewModel main, IReadOnlySet<ModuleGroup> groups, bool showsPhotoInfo = true)
     {
         _main = main;
-        Film = new FilmRecipeViewModel(main);
-        Modules = ModuleCatalog.Modules
+        ShowsPhotoInfo = showsPhotoInfo;
+        var schemas = ModuleCatalog.Modules.Where(s => groups.Contains(s.Group) && !TabOnlyModules.Contains(s.Key)).ToList();
+        FilmLook = schemas.Any(s => s.Key == "film") ? new FilmLookViewModel(main) : null;
+        Modules = schemas
             .Select(s => new ModuleSectionViewModel(s, this,
                 m => { if (_main.Service is { } svc) svc.ResetModule(_main.Selection, m.Key); },
-                m => _main.CopyModuleOnly(m.Key), Film))
+                m => _main.CopyModuleOnly(m.Key), FilmLook) { IsVisible = s.Key != "raw" })
             .ToList();
         foreach (var m in Modules) m.ExpandedChanged += OnModuleExpanded;
         Loc.OnCultureChanged(this, static vm =>
@@ -54,7 +84,8 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
             foreach (var m in vm.Modules) m.RefreshLabels();
             vm.Refresh();
         });
-        Modules[0].IsExpanded = true;
+        // 照片基本參數預設展開基本調整；不依賴 RAW／裁切等模組在目錄中的位置。
+        if (Modules.FirstOrDefault(m => m.Key == "basic") is { } basic) basic.IsExpanded = true;
         Groups = new(Modules.GroupBy(m => m.Schema.Group).Select(g => new ModuleGroupViewModel(g.Key, g)));
         RefreshPresetOptions();
     }
@@ -66,9 +97,11 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
         {
             if (value == _main.Settings.HideDisabledModules) return;
             _main.ApplyHideDisabledModules(value);
-            OnPropertyChanged();
         }
     }
+
+    /// <summary>「隱藏停用的模組」由兩個模組分頁共用；設定改變後由 <see cref="MainWindowViewModel"/> 通知每個分頁。</summary>
+    internal void NotifyHideDisabledModulesChanged() => OnPropertyChanged(nameof(HideDisabledModules));
 
     public void RefreshPresetOptions()
     {
@@ -92,8 +125,9 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
             Dimensions = "";
             OverrideText = "";
             HasOverrides = false;
-            Film.RefreshSelection();
-            _main.Preview.ShowControlPoint(null, null);
+            if (Modules.FirstOrDefault(m => m.Key == "raw") is { } raw) { raw.IsVisible = false; raw.SetRawSource(null); }
+            if (IsActive) _main.Preview.ShowControlPoint(null, null);
+            FilmLook?.OnSettingsChanged();
             return;
         }
 
@@ -108,8 +142,18 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
         SelectedPreset = PresetOptions.FirstOrDefault(p => p.Id == entry.PresetId);
         _loadingPreset = false;
 
-        foreach (var m in Modules) m.Load(resolved, entry.Overrides, HideDisabledModules);
-        Film.RefreshSelection();
+        foreach (var m in Modules)
+        {
+            m.Load(resolved, entry.Overrides, HideDisabledModules);
+            if (m.Key == "raw")
+            {
+                var source = _main.Preview.Source;
+                if (source?.FilePath != svc.Project.PathOf(file)) source = null;
+                m.SetRawSource(source);
+                if (source?.RawInfo is null) m.IsVisible = false;
+            }
+        }
+        FilmLook?.OnSettingsChanged();
         UpdateControlPoint(resolved);
     }
 
@@ -133,6 +177,24 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
         _main.Service.SetValue(_main.Selection, flatKey, value, mergeKey);
     }
 
+    public void SetValues(IReadOnlyDictionary<string, ParamValue> values, string? mergeKey)
+    {
+        if (_main.Service is null || _main.Selection.Count == 0) return;
+        _main.Service.SetValues(_main.Selection, new Settings(values), Loc.Get("Raw.MaskEdit"));
+    }
+
+    public async Task<string?> PickFolderAsync(string? current)
+    {
+        var service = _main.Service;
+        if (service is null) return null;
+        var selection = _main.Selection.ToArray();
+        var start = string.IsNullOrWhiteSpace(current) ? service.Project.Folder
+            : Path.GetFullPath(current, service.Project.Folder);
+        var picked = await _main.Dialogs.PickFolderAsync(Directory.Exists(start) ? start : service.Project.Folder);
+        // A modal picker may outlive a project/photo change; never apply its result elsewhere.
+        return _main.Service == service && selection.SequenceEqual(_main.Selection) ? picked : null;
+    }
+
     public void ResetParam(string flatKey)
     {
         if (_main.Service is null) return;
@@ -153,6 +215,9 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
             UpdateControlPoint(_main.Service.SettingsFor(_main.FocusFile));
     }
 
-    private void UpdateControlPoint(Settings resolved) =>
+    private void UpdateControlPoint(Settings resolved)
+    {
+        if (!IsActive) return;
         _main.Preview.ShowControlPoint(_pointModule?.Key, _pointModule is null ? null : resolved);
+    }
 }

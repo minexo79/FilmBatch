@@ -8,7 +8,7 @@ namespace FilmBatch.App.Services;
 
 /// <summary>
 /// UI 與 GPU 執行緒之間的橋樑：送出算圖請求，並把結果經 <see cref="_post"/>（預設為 Dispatcher.UIThread.Post）帶回 UI 執行緒。
-/// 只有最新一次預覽請求的結果會交給 UI（generation 比對），舊結果直接丟棄（計畫書 11.3）。
+/// 同一來源依完成順序交付預覽，避免持續拖曳時飢餓；換來源、取消及重建後的過期結果丟棄。
 /// </summary>
 public sealed class PreviewService : IDisposable
 {
@@ -16,6 +16,7 @@ public sealed class PreviewService : IDisposable
     private readonly Action<Action> _post;
     private long _requested;
     private long _delivered;
+    private long _firstSourceGeneration;
     private long _configuration;
     private bool _disposed;
     private volatile bool _collectHistogram = true;
@@ -30,7 +31,7 @@ public sealed class PreviewService : IDisposable
     public event Action<string, RenderResult>? ThumbnailReady;
     public event Action<string, bool>? DeviceReady;
     public event Action<string>? Notice;
-    public event Action<string, string>? Failed;
+    public event Action<RenderFailure>? Failed;
 
     public bool IsBusy => Interlocked.Read(ref _requested) > Interlocked.Read(ref _delivered);
     public int PendingThumbnails => _scheduler.PendingThumbnails;
@@ -55,18 +56,24 @@ public sealed class PreviewService : IDisposable
             AppLog.Warn(msg);
             PostCurrent(() => Notice?.Invoke(msg));
         };
-        _scheduler.RenderFailed += (key, ex) =>
+        _scheduler.RenderFailed += failure =>
         {
-            AppLog.Error($"算圖失敗：{key}", ex);
+            AppLog.Error($"算圖失敗：{failure.Key}", failure.Error);
             PostCurrent(() =>
             {
-                Interlocked.Exchange(ref _delivered, Interlocked.Read(ref _requested));
-                Failed?.Invoke(key, ex.Message);
+                if (failure.PreviewGeneration is { } generation)
+                {
+                    if (generation < Interlocked.Read(ref _firstSourceGeneration)
+                        || generation <= Interlocked.Read(ref _delivered)) return;
+                    Interlocked.Exchange(ref _delivered, generation);
+                }
+                Failed?.Invoke(failure);
             });
         };
         _scheduler.PreviewRendered += r =>
         {
-            if (r.Generation != Interlocked.Read(ref _requested)) return;
+            if (r.Generation < Interlocked.Read(ref _firstSourceGeneration)
+                || r.Generation <= Interlocked.Read(ref _delivered)) return;
             ImageHistogram? histogram = null, original = null;
             if (_collectHistogram)
             {
@@ -81,7 +88,8 @@ public sealed class PreviewService : IDisposable
             }
             PostCurrent(() =>
             {
-                if (r.Generation != Interlocked.Read(ref _requested)) return;
+                if (r.Generation < Interlocked.Read(ref _firstSourceGeneration)
+                    || r.Generation <= Interlocked.Read(ref _delivered)) return;
                 Interlocked.Exchange(ref _delivered, r.Generation);
                 PreviewReady?.Invoke(r.Result, histogram, original);
             });
@@ -111,7 +119,7 @@ public sealed class PreviewService : IDisposable
     public void Reconfigure(Func<IPreviewRenderer> factory, Func<IPreviewRenderer>? fallback = null)
     {
         Interlocked.Increment(ref _configuration);
-        Interlocked.Exchange(ref _delivered, Interlocked.Increment(ref _requested));
+        CancelPreview();
         _scheduler.ResetRenderer(factory, fallback);
     }
 
@@ -150,8 +158,11 @@ public sealed class PreviewService : IDisposable
 
     public void RequestPreview(string fileName, SourceImage source, Settings settings)
     {
+        var generation = Interlocked.Increment(ref _requested);
+        if (!ReferenceEquals(source, Volatile.Read(ref _source)))
+            Interlocked.Exchange(ref _firstSourceGeneration, generation);
         Volatile.Write(ref _source, source);
-        _scheduler.RequestPreview(fileName, source, settings, Interlocked.Increment(ref _requested));
+        _scheduler.RequestPreview(fileName, source, settings, generation);
     }
 
     public void CancelPreview()

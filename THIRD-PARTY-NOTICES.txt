@@ -1,4 +1,4 @@
-FilmBatch 使用下列第三方元件（M0 原型；正式發佈前於 M7 補齊完整授權全文）
+FilmBatch 使用下列第三方元件；RAW 移植的授權全文與 RawTherapee 底片 LUT 的來源及授權聲明列於下方。
 
 Avalonia UI 12              MIT          https://github.com/AvaloniaUI/Avalonia
 Dock.Avalonia 12            MIT          https://github.com/wieslawsoltes/Dock
@@ -9,18 +9,35 @@ Dawn (WebGPU)               BSD-3-Clause https://dawn.googlesource.com/dawn
 Magick.NET / ImageMagick    Apache-2.0 / ImageMagick License  https://github.com/dlemstra/Magick.NET
 System.CommandLine          MIT          https://github.com/dotnet/command-line-api
 .NET Runtime                MIT          https://github.com/dotnet/runtime
-Recipe Lab v1.7.0（底片配方資料與測試樣張） MIT https://github.com/voxivoid/recipe-lab-sony-pmca
-  Copyright (c) 2026 André Domingues。內建 77 組配方的原始數值、欄位語意、品牌分組與自訂配方格式 1
-  搬移自 src/com/voxivoid/recipelab/Recipes.java（釘選 tag v1.7.0，commit 6d70495e62d4a9ec15a9c5cfcf835e775ff9c8cc，
-  見 src/FilmBatch.Core/Film/recipelab.json 檔頭）。配方名稱中的 Kodak、Fujifilm、Ilford 等為各公司商標，
-  僅用來描述近似的風格，FilmBatch 不宣稱與其有關聯。
-  tests/FilmBatch.Core.Tests/Fixtures/Film/ 的 01、15、17 號 JPEG 為同一 commit 的
-  docs/samples/ 原始檔；僅用於色彩回歸，不作為 FilmBatch 產生的影像。
-  注意：FilmBatch 僅使用 Recipe Lab v1.7.0（含）以前以 MIT 授權釋出的內容。上游自 v1.8.0 起改採
-  GPL-3.0；FilmBatch 未使用 v1.8.0 及之後版本的任何程式碼、資料或樣張。
+RawTherapee Film Simulation Collection（2015-09-20 版，底片 LUT） CC BY-SA 4.0 http://rawtherapee.com/shared/HaldCLUT.zip
+  原作者：Pat David、Pavlov Dmitry、Michael Ezra。授權：Creative Commons Attribution-ShareAlike 4.0
+  International（https://creativecommons.org/licenses/by-sa/4.0/）。
+  src/FilmBatch.Core/Film/Looks/*.fblut 的 36 個 LUT 衍生自該集合（421,602,289 bytes 的 HaldCLUT.zip）。
+  修改：由 Hald CLUT（8-bit sRGB PNG；多數為 level 12／144³，Kodak Ektar 100 為 level 16／256³）
+  以四面體內插重新取樣成 33³，存成 16-bit 的 FilmBatch .fblut 格式（tools/film-luts）。
+  這些 LUT 檔依 CC BY-SA 4.0 散布；詳見 src/FilmBatch.Core/Film/Looks/LICENSE.txt 與 docs/film-looks.md。
+  商標聲明：底片名稱（Kodak、Fuji、Agfa、Ilford、Lomography、Polaroid 等）為各公司商標，僅用於說明
+  LUT 意圖模擬的底片，FilmBatch 與上述商標所有者無任何關係，亦未獲其背書。
+LightCraft（RAW 解碼、相機色彩與色調） MIT OR Apache-2.0（FilmBatch 依 MIT 使用） https://github.com/storytold/lightcraft
+  Copyright (c) 2026 ArtCraft Team and the LightCraft contributors。src/FilmBatch.Raw 與 src/FilmBatch.Engine/Imaging/Raw
+  為釘選 commit f34c7a8a89e0d1bade0a6889185f40acecc84a9f 的 C# 移植（已修改；各檔檔頭標示上游路徑）。
+  src/FilmBatch.Engine/Imaging/Raw/Profiles/*.json 搬移自上游 assets/camera-profiles/ 與 assets/camera-tone/：
+  相機描述檔由 Harald Hoyer（ILCE-7M4）、Michael Anderson（@endthestart；NIKON Z 6II、Z 8、D5300）與
+  LightCraft contributors（ILCA-99M2 樣張 @PiMinusMax、ILCE-7CR 樣張 @AlexChambers、X-H2S／X-T4 樣張
+  Sebastian Pfluegelmeier）擬合；sony-dro-off.json 由 LightCraft contributors 以 raw.pixls.us CC0 樣張擬合。
+zune-jpeg 0.5.15（失真 JPEG 解碼） MIT OR Apache-2.0 OR Zlib（FilmBatch 依 MIT 使用） https://github.com/etemesi254/zune-image
+  Copyright (c) zune-image developers。src/FilmBatch.Raw/Codecs/Jpeg8*.cs 為其解碼器的 C# 移植（已修改）。
+rawtoaces-data v1.1.0（相機光譜靈敏度） Apache-2.0 https://github.com/AcademySoftwareFoundation/rawtoaces-data
+  Academy Software Foundation；量測者 Weta Digital、scitech 與 National Physical Laboratory 的 Jonathon Irons。
+  src/FilmBatch.Raw/Color/SpectralTable.cs 的相機矩陣與型號別名由 LightCraft contributors 以
+  tools/spectral_camera_table.py 自 commit 5cfa53707b053594b2d0d48e8019fb56e6582d6c 的資料擬合
+  （修改：每個標準光源擬合一個 3×3 矩陣，不含逐字量測值；別名取自 data/aliases.json）。
+CIE 1931 色彩配對函數 CC BY 4.0 https://creativecommons.org/licenses/by/4.0/
+  © CIE（International Commission on Illumination），隨 rawtoaces-data 發佈；只用來擬合上列相機矩陣（修改：
+  FilmBatch 不含原始資料）。
 
-MIT License (Recipe Lab v1.7.0)
-Copyright (c) 2026 André Domingues
+MIT License (LightCraft)
+Copyright (c) 2026 ArtCraft Team and the LightCraft contributors
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -39,3 +56,235 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+MIT License (zune-jpeg)
+Copyright (c) zune-image developers
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+Apache License 2.0 (rawtoaces-data)
+
+                                 Apache License
+                           Version 2.0, January 2004
+                        http://www.apache.org/licenses/
+
+   TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+
+   1. Definitions.
+
+      "License" shall mean the terms and conditions for use, reproduction,
+      and distribution as defined by Sections 1 through 9 of this document.
+
+      "Licensor" shall mean the copyright owner or entity authorized by
+      the copyright owner that is granting the License.
+
+      "Legal Entity" shall mean the union of the acting entity and all
+      other entities that control, are controlled by, or are under common
+      control with that entity. For the purposes of this definition,
+      "control" means (i) the power, direct or indirect, to cause the
+      direction or management of such entity, whether by contract or
+      otherwise, or (ii) ownership of fifty percent (50%) or more of the
+      outstanding shares, or (iii) beneficial ownership of such entity.
+
+      "You" (or "Your") shall mean an individual or Legal Entity
+      exercising permissions granted by this License.
+
+      "Source" form shall mean the preferred form for making modifications,
+      including but not limited to software source code, documentation
+      source, and configuration files.
+
+      "Object" form shall mean any form resulting from mechanical
+      transformation or translation of a Source form, including but
+      not limited to compiled object code, generated documentation,
+      and conversions to other media types.
+
+      "Work" shall mean the work of authorship, whether in Source or
+      Object form, made available under the License, as indicated by a
+      copyright notice that is included in or attached to the work
+      (an example is provided in the Appendix below).
+
+      "Derivative Works" shall mean any work, whether in Source or Object
+      form, that is based on (or derived from) the Work and for which the
+      editorial revisions, annotations, elaborations, or other modifications
+      represent, as a whole, an original work of authorship. For the purposes
+      of this License, Derivative Works shall not include works that remain
+      separable from, or merely link (or bind by name) to the interfaces of,
+      the Work and Derivative Works thereof.
+
+      "Contribution" shall mean any work of authorship, including
+      the original version of the Work and any modifications or additions
+      to that Work or Derivative Works thereof, that is intentionally
+      submitted to Licensor for inclusion in the Work by the copyright owner
+      or by an individual or Legal Entity authorized to submit on behalf of
+      the copyright owner. For the purposes of this definition, "submitted"
+      means any form of electronic, verbal, or written communication sent
+      to the Licensor or its representatives, including but not limited to
+      communication on electronic mailing lists, source code control systems,
+      and issue tracking systems that are managed by, or on behalf of, the
+      Licensor for the purpose of discussing and improving the Work, but
+      excluding communication that is conspicuously marked or otherwise
+      designated in writing by the copyright owner as "Not a Contribution."
+
+      "Contributor" shall mean Licensor and any individual or Legal Entity
+      on behalf of whom a Contribution has been received by Licensor and
+      subsequently incorporated within the Work.
+
+   2. Grant of Copyright License. Subject to the terms and conditions of
+      this License, each Contributor hereby grants to You a perpetual,
+      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+      copyright license to reproduce, prepare Derivative Works of,
+      publicly display, publicly perform, sublicense, and distribute the
+      Work and such Derivative Works in Source or Object form.
+
+   3. Grant of Patent License. Subject to the terms and conditions of
+      this License, each Contributor hereby grants to You a perpetual,
+      worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+      (except as stated in this section) patent license to make, have made,
+      use, offer to sell, sell, import, and otherwise transfer the Work,
+      where such license applies only to those patent claims licensable
+      by such Contributor that are necessarily infringed by their
+      Contribution(s) alone or by combination of their Contribution(s)
+      with the Work to which such Contribution(s) was submitted. If You
+      institute patent litigation against any entity (including a
+      cross-claim or counterclaim in a lawsuit) alleging that the Work
+      or a Contribution incorporated within the Work constitutes direct
+      or contributory patent infringement, then any patent licenses
+      granted to You under this License for that Work shall terminate
+      as of the date such litigation is filed.
+
+   4. Redistribution. You may reproduce and distribute copies of the
+      Work or Derivative Works thereof in any medium, with or without
+      modifications, and in Source or Object form, provided that You
+      meet the following conditions:
+
+      (a) You must give any other recipients of the Work or
+          Derivative Works a copy of this License; and
+
+      (b) You must cause any modified files to carry prominent notices
+          stating that You changed the files; and
+
+      (c) You must retain, in the Source form of any Derivative Works
+          that You distribute, all copyright, patent, trademark, and
+          attribution notices from the Source form of the Work,
+          excluding those notices that do not pertain to any part of
+          the Derivative Works; and
+
+      (d) If the Work includes a "NOTICE" text file as part of its
+          distribution, then any Derivative Works that You distribute must
+          include a readable copy of the attribution notices contained
+          within such NOTICE file, excluding those notices that do not
+          pertain to any part of the Derivative Works, in at least one
+          of the following places: within a NOTICE text file distributed
+          as part of the Derivative Works; within the Source form or
+          documentation, if provided along with the Derivative Works; or,
+          within a display generated by the Derivative Works, if and
+          wherever such third-party notices normally appear. The contents
+          of the NOTICE file are for informational purposes only and
+          do not modify the License. You may add Your own attribution
+          notices within Derivative Works that You distribute, alongside
+          or as an addendum to the NOTICE text from the Work, provided
+          that such additional attribution notices cannot be construed
+          as modifying the License.
+
+      You may add Your own copyright statement to Your modifications and
+      may provide additional or different license terms and conditions
+      for use, reproduction, or distribution of Your modifications, or
+      for any such Derivative Works as a whole, provided Your use,
+      reproduction, and distribution of the Work otherwise complies with
+      the conditions stated in this License.
+
+   5. Submission of Contributions. Unless You explicitly state otherwise,
+      any Contribution intentionally submitted for inclusion in the Work
+      by You to the Licensor shall be under the terms and conditions of
+      this License, without any additional terms or conditions.
+      Notwithstanding the above, nothing herein shall supersede or modify
+      the terms of any separate license agreement you may have executed
+      with Licensor regarding such Contributions.
+
+   6. Trademarks. This License does not grant permission to use the trade
+      names, trademarks, service marks, or product names of the Licensor,
+      except as required for reasonable and customary use in describing the
+      origin of the Work and reproducing the content of the NOTICE file.
+
+   7. Disclaimer of Warranty. Unless required by applicable law or
+      agreed to in writing, Licensor provides the Work (and each
+      Contributor provides its Contributions) on an "AS IS" BASIS,
+      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+      implied, including, without limitation, any warranties or conditions
+      of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
+      PARTICULAR PURPOSE. You are solely responsible for determining the
+      appropriateness of using or redistributing the Work and assume any
+      risks associated with Your exercise of permissions under this License.
+
+   8. Limitation of Liability. In no event and under no legal theory,
+      whether in tort (including negligence), contract, or otherwise,
+      unless required by applicable law (such as deliberate and grossly
+      negligent acts) or agreed to in writing, shall any Contributor be
+      liable to You for damages, including any direct, indirect, special,
+      incidental, or consequential damages of any character arising as a
+      result of this License or out of the use or inability to use the
+      Work (including but not limited to damages for loss of goodwill,
+      work stoppage, computer failure or malfunction, or any and all
+      other commercial damages or losses), even if such Contributor
+      has been advised of the possibility of such damages.
+
+   9. Accepting Warranty or Additional Liability. While redistributing
+      the Work or Derivative Works thereof, You may choose to offer,
+      and charge a fee for, acceptance of support, warranty, indemnity,
+      or other liability obligations and/or rights consistent with this
+      License. However, in accepting such obligations, You may act only
+      on Your own behalf and on Your sole responsibility, not on behalf
+      of any other Contributor, and only if You agree to indemnify,
+      defend, and hold each Contributor harmless for any liability
+      incurred by, or claims asserted against, such Contributor by reason
+      of your accepting any such warranty or additional liability.
+
+   END OF TERMS AND CONDITIONS
+
+
+Bundled JPEG XL native runtime (libjxl 0.11.2, decoder ABI 11002)
+--------------------------------------------------------------
+App and CLI include the pinned native payload for osx-arm64 and win-x64.
+Full copyright/license texts accompany each output in native-jxl/licenses/;
+archive/source SHA-256, source revisions and per-file hashes are in
+native-jxl/provenance.json (repository: src/FilmBatch.Raw/Native/Jxl/).
+
+libjxl: JPEG XL Project Authors, BSD-3-Clause.
+https://github.com/libjxl/libjxl/releases/tag/v0.11.2
+Brotli: Google Inc., MIT.
+Highway: Google LLC, Apache-2.0 / BSD-3-Clause (see accompanying licenses).
+Little CMS 2: Marti Maria / Little CMS contributors, MIT.
+The runtime does not use developer-installed Homebrew or system libjxl.
+
+Windows uses official MSYS2 MinGW packages: libjxl 0.11.2-4, Brotli 1.2.0-1,
+Highway 1.4.0-3, Little CMS 2 2.19.1-1, GCC libraries 16.1.0-3 and
+libwinpthread 14.0.0.r37.g2bfe61fba-1. Exact package origins, hashes,
+PKGBUILD hashes, package/build metadata and extracted members accompany the bundle.
+Highway's Windows package supplies Apache-2.0 terms.
+GCC libgcc_s_seh-1.dll and libstdc++-6.dll: Free Software Foundation;
+GPL-3.0-or-later with GCC Runtime Library Exception 3.1. The supplied
+COPYING3, COPYING.RUNTIME, COPYING.LIB (LGPL-2.1) and README are preserved.
+libwinpthread-1.dll: MinGW-w64 contributors; MIT AND BSD-3-Clause-Clear;
+see the complete supplied COPYING, including its additional notices.
+Little CMS's package declares MIT AND GPL-3.0-or-later; both its LICENSE and
+LICENSE-fast_float texts are retained, although only liblcms2-2.dll is bundled.
+Package-level license declarations do not assign every package license to every DLL.
+See msys2-*-PKGINFO.txt and msys2-*-BUILDINFO.txt for unabridged metadata.
+The only external PE imports are Windows OS KERNEL32.dll and msvcrt.dll.
+No Microsoft Visual C++ redistributable DLLs are included.

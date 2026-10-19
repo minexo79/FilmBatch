@@ -50,12 +50,11 @@ public static class PhotoOperations
 
             case PasteMode.Full:
             {
-                // 來源的所有覆寫；種子沿用目標自己的（除非勾選包含種子）
-                var incoming = clip.Overrides.Where((k, _) => options.IncludeSeeds || !IsSeed(k));
-                var keptSeeds = options.IncludeSeeds
-                    ? Settings.Empty
-                    : target.Overrides.Where((k, _) => IsSeed(k));
-                var overrides = keptSeeds.Overlay(Mirror(incoming, options.MirrorPositions));
+                // 來源的所有覆寫；種子沿用目標自己的（除非勾選包含種子）。
+                // 裁切與細部調整只屬於單張照片：不貼上，目標自己的保留（只能以選擇性貼上複製）。
+                var incoming = clip.Overrides.Where((k, _) => (options.IncludeSeeds || !IsSeed(k)) && !IsPerPhoto(k));
+                var kept = target.Overrides.Where((k, _) => (!options.IncludeSeeds && IsSeed(k)) || IsPerPhoto(k));
+                var overrides = kept.Overlay(Mirror(incoming, options.MirrorPositions));
                 var presetBase = baseFor(clip.PresetId);
                 return target with { PresetId = clip.PresetId, Overrides = Clean(overrides, presetBase) };
             }
@@ -85,6 +84,12 @@ public static class PhotoOperations
     }
 
     private static bool IsSeed(string key) => ModuleCatalog.Param(key)?.IsSeed == true;
+
+    /// <summary>只屬於單張照片的分類（裁切）：全部貼上預設不含。</summary>
+    public static bool IsPerPhoto(PasteCategory category) => category is PasteCategory.Crop;
+
+    private static bool IsPerPhoto(string key) =>
+        ModuleCatalog.TryGetModule(ModuleSchema.ModuleOf(key), out var m) && IsPerPhoto(m.PasteCategory);
 
     private static Settings Mirror(Settings s, bool mirror)
     {

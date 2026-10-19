@@ -35,18 +35,19 @@ public static class PresetFile
                     if (keyNode is not YamlScalarNode { Value: { } key } || valueNode is not YamlScalarNode scalar)
                         throw new InvalidDataException("Preset parameters must be scalar values.");
                     var flatKey = module + "." + key;
+                    if (RetiredParams.IsRetired(flatKey)) continue;
                     var definition = ModuleCatalog.Param(flatKey) ?? throw new InvalidDataException($"Unknown parameter: {flatKey}");
                     var text = scalar.Value ?? "";
                     var value = definition.Kind switch
                     {
                         ParamKind.Bool when bool.TryParse(text, out var boolean) => ParamValue.Of(boolean),
-                        ParamKind.Choice or ParamKind.Path => ParamValue.Of(
+                        ParamKind.Choice or ParamKind.Path or ParamKind.Curve or ParamKind.Text => ParamValue.Of(
                             scalar.Style == ScalarStyle.Plain && text is "null" or "~" ? "" : text),
                         ParamKind.Float or ParamKind.Int or ParamKind.Seed when double.TryParse(text, NumberStyles.Float,
                             CultureInfo.InvariantCulture, out var number) => ParamValue.Of(number),
                         _ => throw new InvalidDataException($"Invalid value: {flatKey}"),
                     };
-                    SettingsJsonConverter.Validate(flatKey, value);
+                    value = SettingsJsonConverter.ValidateAndNormalize(flatKey, value);
                     values.Add(flatKey, value);
                 }
             }
@@ -74,9 +75,9 @@ public static class PresetFile
             var parameters = new YamlMappingNode();
             foreach (var (key, value) in group)
             {
-                SettingsJsonConverter.Validate(key, value);
-                parameters.Add(key[(key.IndexOf('.') + 1)..], new YamlScalarNode(value.ToString())
-                { Style = value.Kind == ValueKind.Text ? ScalarStyle.DoubleQuoted : ScalarStyle.Plain });
+                var normalized = SettingsJsonConverter.ValidateAndNormalize(key, value);
+                parameters.Add(key[(key.IndexOf('.') + 1)..], new YamlScalarNode(normalized.ToString())
+                { Style = normalized.Kind == ValueKind.Text ? ScalarStyle.DoubleQuoted : ScalarStyle.Plain });
             }
             modules.Add(group.Key, parameters);
         }

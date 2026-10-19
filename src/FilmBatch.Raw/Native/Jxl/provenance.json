@@ -1,0 +1,400 @@
+{
+  "decoderVersion": 11002,
+  "libjxlVersion": "0.11.2",
+  "sources": [
+    {
+      "name": "little-cms2",
+      "version": "2.18",
+      "url": "https://downloads.sourceforge.net/project/lcms/lcms/2.18/lcms2-2.18.tar.gz",
+      "sha256": "ee67be3566f459362c1ee094fde2c159d33fa0390aa4ed5f5af676f9e5004347"
+    },
+    {
+      "name": "highway",
+      "version": "1.3.0",
+      "url": "https://github.com/google/highway/archive/refs/tags/1.3.0.tar.gz",
+      "sha256": "07b3c1ba2c1096878a85a31a5b9b3757427af963b1141ca904db2f9f4afe0bc2"
+    },
+    {
+      "name": "brotli",
+      "version": "1.2.0",
+      "url": "https://github.com/google/brotli/archive/refs/tags/v1.2.0.tar.gz",
+      "sha256": "816c96e8e8f193b40151dad7e8ff37b1221d019dbcb9c35cd3fadbfe6477dfec"
+    },
+    {
+      "name": "jpeg-xl",
+      "version": "0.11.2",
+      "url": "https://github.com/libjxl/libjxl/archive/refs/tags/v0.11.2.tar.gz",
+      "sha256": "ab38928f7f6248e2a98cc184956021acb927b16a0dee71b4d260dc040a4320ea"
+    }
+  ],
+  "archives": [
+    {
+      "name": "jpeg-xl",
+      "filename": "jxl-bottle.tar.gz",
+      "origin": "https://ghcr.io/v2/homebrew/core/jpeg-xl/blobs/sha256:3c55d4e64f4287188f3289178528f67573d2df7b12f6f78732cb35df13c09bc2",
+      "sha256": "3c55d4e64f4287188f3289178528f67573d2df7b12f6f78732cb35df13c09bc2"
+    },
+    {
+      "name": "brotli",
+      "filename": "dep-0.tar.gz",
+      "origin": "https://ghcr.io/v2/homebrew/core/brotli/blobs/sha256:46b1cc7ef8ba325e56f7363de1068a84449dac940187dd2290a75e7008b3b4e1",
+      "sha256": "46b1cc7ef8ba325e56f7363de1068a84449dac940187dd2290a75e7008b3b4e1"
+    },
+    {
+      "name": "highway",
+      "filename": "dep-1.tar.gz",
+      "origin": "https://ghcr.io/v2/homebrew/core/highway/blobs/sha256:2f9c0e4c9aff6efe166b35fd6ddc8d1caa136f3bdcc50ab8aa96119ab72874aa",
+      "sha256": "2f9c0e4c9aff6efe166b35fd6ddc8d1caa136f3bdcc50ab8aa96119ab72874aa"
+    },
+    {
+      "name": "little-cms2",
+      "filename": "dep-2.tar.gz",
+      "origin": "https://ghcr.io/v2/homebrew/core/little-cms2/blobs/sha256:a3b6b7e04b11587086a64a17b6c8880cf20bab9d92d00cad8f6d71cc0d347289",
+      "sha256": "a3b6b7e04b11587086a64a17b6c8880cf20bab9d92d00cad8f6d71cc0d347289"
+    },
+    {
+      "name": "windows-libjxl",
+      "filename": "mingw-w64-x86_64-libjxl-0.11.2-4-any.pkg.tar.zst",
+      "origin": "https://repo.msys2.org/mingw/mingw64/mingw-w64-x86_64-libjxl-0.11.2-4-any.pkg.tar.zst",
+      "sha256": "cf6e93c550cfc47a3bb0789577410b7784cb9f7682df683010aad6b655642b37",
+      "version": "0.11.2-4",
+      "packageBase": "mingw-w64-libjxl",
+      "upstream": "https://jpeg.org/jpegxl/",
+      "recipeReference": "https://github.com/msys2/MINGW-packages/tree/master/mingw-w64-libjxl",
+      "recipeSha256": "7558d4398a2b307decc920b867295c961041360c54395724e1bb1872a45186ed",
+      "sourceProvenance": "Exact package/build metadata retained below. Recipe reference is a discovery URL, not a verified immutable source archive; source archive hashes are not asserted.",
+      "members": {
+        "mingw64/bin/libjxl.dll": {
+          "output": "libjxl.dll",
+          "sha256": "d0d46269f1bcbf9939f3975c8bd15764a077dda6b0ac9435719ea6ed5418011d"
+        },
+        "mingw64/bin/libjxl_cms.dll": {
+          "output": "libjxl_cms.dll",
+          "sha256": "059dc80fad6f96c04e254c1a3109f0bcfee1930a20ab0e1a2907ca7f603139ea"
+        },
+        "mingw64/share/licenses/libjxl/LICENSE": {
+          "output": "licenses/msys2-libjxl-LICENSE.txt",
+          "sha256": "8405932022a556380c2d8c272eff154a923feb197233f348ce5f7334fb0a5ede"
+        },
+        ".PKGINFO": {
+          "output": "licenses/msys2-libjxl-PKGINFO.txt",
+          "sha256": "c6bece4dc986d496c29e94eabad2934553e9ea86c44cef2a16a3a7c091b7e248"
+        },
+        ".BUILDINFO": {
+          "output": "licenses/msys2-libjxl-BUILDINFO.txt",
+          "sha256": "0da10611dd6cb237b93ee655fcb12ca5a3a437caa7fc5ee31a10337d2433bc6d"
+        }
+      }
+    },
+    {
+      "name": "windows-brotli",
+      "filename": "mingw-w64-x86_64-brotli-1.2.0-1-any.pkg.tar.zst",
+      "origin": "https://repo.msys2.org/mingw/mingw64/mingw-w64-x86_64-brotli-1.2.0-1-any.pkg.tar.zst",
+      "sha256": "f5f2f7e723a08378241d15f0537386950c1a48e2d82bc47bedd632bd61852aba",
+      "version": "1.2.0-1",
+      "packageBase": "mingw-w64-brotli",
+      "upstream": "https://github.com/google/brotli",
+      "recipeReference": "https://github.com/msys2/MINGW-packages/tree/master/mingw-w64-brotli",
+      "recipeSha256": "894120dac11e7fffd72224148e22d424075fabf23a8cafbf4f2c5390c73755c9",
+      "sourceProvenance": "Exact package/build metadata retained below. Recipe reference is a discovery URL, not a verified immutable source archive; source archive hashes are not asserted.",
+      "members": {
+        "mingw64/bin/libbrotlidec.dll": {
+          "output": "libbrotlidec.dll",
+          "sha256": "a142dc6cfa77cb907028aa9426f486f3d8de37855e8db2ae2894147908121881"
+        },
+        "mingw64/bin/libbrotlienc.dll": {
+          "output": "libbrotlienc.dll",
+          "sha256": "50c3aca8abcf0d5576f0b62dbd608be285246f8fd1b48ef87d58fa6b8b744e5f"
+        },
+        "mingw64/bin/libbrotlicommon.dll": {
+          "output": "libbrotlicommon.dll",
+          "sha256": "ca7bc06ead80259971badf2cd0bfc688db9154dad65f139f49a38b4be9976f97"
+        },
+        "mingw64/share/licenses/brotli/LICENSE": {
+          "output": "licenses/msys2-brotli-LICENSE.txt",
+          "sha256": "3d180008e36922a4e8daec11c34c7af264fed5962d07924aea928c38e8663c94"
+        },
+        ".PKGINFO": {
+          "output": "licenses/msys2-brotli-PKGINFO.txt",
+          "sha256": "90a3d61300e9e6c7457eac613d3fbed2a7fbad7d0d19960c626c5206ccec0043"
+        },
+        ".BUILDINFO": {
+          "output": "licenses/msys2-brotli-BUILDINFO.txt",
+          "sha256": "0e79b529733a6dd1e180c43f2acb0d7a81892564492d3c1de22ce04a1b4d230a"
+        }
+      }
+    },
+    {
+      "name": "windows-highway",
+      "filename": "mingw-w64-x86_64-highway-1.4.0-3-any.pkg.tar.zst",
+      "origin": "https://repo.msys2.org/mingw/mingw64/mingw-w64-x86_64-highway-1.4.0-3-any.pkg.tar.zst",
+      "sha256": "f75b4c243dacfed39dc9ce4c841f97cc09508fc09a94bd2fb8742552885a0c58",
+      "version": "1.4.0-3",
+      "packageBase": "mingw-w64-highway",
+      "upstream": "https://github.com/google/highway",
+      "recipeReference": "https://github.com/msys2/MINGW-packages/tree/master/mingw-w64-highway",
+      "recipeSha256": "f3719af88cb60e6d5d83b9ca76552bfddeae72c91c9cda1f81323ef016daa19a",
+      "sourceProvenance": "Exact package/build metadata retained below. Recipe reference is a discovery URL, not a verified immutable source archive; source archive hashes are not asserted.",
+      "members": {
+        "mingw64/bin/libhwy.dll": {
+          "output": "libhwy.dll",
+          "sha256": "4cd65f4bb3c123471a23f3eed734adbb31522b012c2c1776640d9634fbeb623c"
+        },
+        "mingw64/share/licenses/highway/LICENSE": {
+          "output": "licenses/msys2-highway-LICENSE.txt",
+          "sha256": "e340270d4f64384569a91d546acb5b094d69ce47f0c015db77abb74dc6f815af"
+        },
+        ".PKGINFO": {
+          "output": "licenses/msys2-highway-PKGINFO.txt",
+          "sha256": "968459edd0513a278a9ed21ab25afd0cadff07281ecc70a88ee47599a804e279"
+        },
+        ".BUILDINFO": {
+          "output": "licenses/msys2-highway-BUILDINFO.txt",
+          "sha256": "080c928b2e89101f72022589a633265042403d88ffb3b0c41dc28f21fb28fc39"
+        }
+      }
+    },
+    {
+      "name": "windows-lcms2",
+      "filename": "mingw-w64-x86_64-lcms2-2.19.1-1-any.pkg.tar.zst",
+      "origin": "https://repo.msys2.org/mingw/mingw64/mingw-w64-x86_64-lcms2-2.19.1-1-any.pkg.tar.zst",
+      "sha256": "f9858d910df27d3762590e5da75e2589f9f0216ebbf1b6d58bdddbab3d4f35ad",
+      "version": "2.19.1-1",
+      "packageBase": "mingw-w64-lcms2",
+      "upstream": "https://www.littlecms.com/color-engine/",
+      "recipeReference": "https://github.com/msys2/MINGW-packages/tree/master/mingw-w64-lcms2",
+      "recipeSha256": "6f39c90313ec3f739b7406d6c7e2eb802c8aa8142323278a36d41083e765350f",
+      "sourceProvenance": "Exact package/build metadata retained below. Recipe reference is a discovery URL, not a verified immutable source archive; source archive hashes are not asserted.",
+      "members": {
+        "mingw64/bin/liblcms2-2.dll": {
+          "output": "liblcms2-2.dll",
+          "sha256": "dc241cbdf2d295846ec564c1eb3c01639d43c0d72415a8758e65d71df31cc0ba"
+        },
+        "mingw64/share/licenses/lcms2/LICENSE": {
+          "output": "licenses/msys2-lcms2-LICENSE.txt",
+          "sha256": "6dbd60437f8ef91d8de1f08ad75882547fd4931bfcc3566a0735f28db1484d31"
+        },
+        "mingw64/share/licenses/lcms2/LICENSE-fast_float": {
+          "output": "licenses/msys2-lcms2-LICENSE-fast_float.txt",
+          "sha256": "c53a65c2fd561c87eaabf1072ef5dcab8653042bc15308465f52413585eb6271"
+        },
+        ".PKGINFO": {
+          "output": "licenses/msys2-lcms2-PKGINFO.txt",
+          "sha256": "72c638554b6009cfb7665f72bfe88a7713f766c2eab17216ca9e08831e41ff12"
+        },
+        ".BUILDINFO": {
+          "output": "licenses/msys2-lcms2-BUILDINFO.txt",
+          "sha256": "ade85c2ffc7459fb130da7fe17275c61827597a8fec3bc90d2c96869470635fd"
+        }
+      }
+    },
+    {
+      "name": "windows-gcc-libs",
+      "filename": "mingw-w64-x86_64-gcc-libs-16.1.0-3-any.pkg.tar.zst",
+      "origin": "https://repo.msys2.org/mingw/mingw64/mingw-w64-x86_64-gcc-libs-16.1.0-3-any.pkg.tar.zst",
+      "sha256": "722506254482a003a88a87dc4152a5cd4a88c8eb758017266ed15d4f83af2f80",
+      "version": "16.1.0-3",
+      "packageBase": "mingw-w64-gcc",
+      "upstream": "https://gcc.gnu.org",
+      "recipeReference": "https://github.com/msys2/MINGW-packages/tree/master/mingw-w64-gcc",
+      "recipeSha256": "a83540774e2073cabeba860442d474cd0d500cba325a96e2ffd2f8dc10c0f8f0",
+      "sourceProvenance": "Exact package/build metadata retained below. Recipe reference is a discovery URL, not a verified immutable source archive; source archive hashes are not asserted.",
+      "members": {
+        "mingw64/bin/libgcc_s_seh-1.dll": {
+          "output": "libgcc_s_seh-1.dll",
+          "sha256": "c2cc71e70138575d1b708513c42fed13167702f712c0a74c18dad6b9232507ae"
+        },
+        "mingw64/bin/libstdc++-6.dll": {
+          "output": "libstdc++-6.dll",
+          "sha256": "f2aef4816f366f2e7a4415c74503d4855a9fe5d6b2564624cd01277dc22e4efe"
+        },
+        "mingw64/share/licenses/gcc-libs/COPYING.LIB": {
+          "output": "licenses/msys2-gcc-libs-COPYING.LIB.txt",
+          "sha256": "a9bdde5616ecdd1e980b44f360600ee8783b1f99b8cc83a2beb163a0a390e861"
+        },
+        "mingw64/share/licenses/gcc-libs/COPYING.RUNTIME": {
+          "output": "licenses/msys2-gcc-libs-COPYING.RUNTIME.txt",
+          "sha256": "9d6b43ce4d8de0c878bf16b54d8e7a10d9bd42b75178153e3af6a815bdc90f74"
+        },
+        "mingw64/share/licenses/gcc-libs/COPYING3": {
+          "output": "licenses/msys2-gcc-libs-COPYING3.txt",
+          "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
+        },
+        "mingw64/share/licenses/gcc-libs/README": {
+          "output": "licenses/msys2-gcc-libs-README.txt",
+          "sha256": "33400d067fa3e2bd670a0868dcdb60c9486e8f559b675cf9ff1ff55d4e0d06ab"
+        },
+        ".PKGINFO": {
+          "output": "licenses/msys2-gcc-libs-PKGINFO.txt",
+          "sha256": "d02080df946a323b1a32dc4f8688483e83e605e234c1f6ff9178387cd15a85e1"
+        },
+        ".BUILDINFO": {
+          "output": "licenses/msys2-gcc-libs-BUILDINFO.txt",
+          "sha256": "5d464f0e52922084f4ac220664fececc27ce8ad216c599f46c53c01b51b4cd00"
+        }
+      }
+    },
+    {
+      "name": "windows-libwinpthread",
+      "filename": "mingw-w64-x86_64-libwinpthread-14.0.0.r37.g2bfe61fba-1-any.pkg.tar.zst",
+      "origin": "https://repo.msys2.org/mingw/mingw64/mingw-w64-x86_64-libwinpthread-14.0.0.r37.g2bfe61fba-1-any.pkg.tar.zst",
+      "sha256": "18ff4a5d5d51ece609ee29c2fef6e8eaff73b60d12840d93d556ae3f530bd907",
+      "version": "14.0.0.r37.g2bfe61fba-1",
+      "packageBase": "mingw-w64-winpthreads",
+      "upstream": "https://www.mingw-w64.org/",
+      "recipeReference": "https://github.com/msys2/MINGW-packages/tree/master/mingw-w64-winpthreads",
+      "recipeSha256": "371709e705f56c8fe0f39f68a14c2ed784d2fe3ddb60a5f584066691d4d49bdc",
+      "sourceProvenance": "Exact package/build metadata retained below. Recipe reference is a discovery URL, not a verified immutable source archive; source archive hashes are not asserted.",
+      "members": {
+        "mingw64/bin/libwinpthread-1.dll": {
+          "output": "libwinpthread-1.dll",
+          "sha256": "f7d57886d46b8065f8a7951c5ec8fe52d97a0f55b165c3d0c733854119b5803f"
+        },
+        "mingw64/share/licenses/libwinpthread/COPYING": {
+          "output": "licenses/msys2-libwinpthread-COPYING.txt",
+          "sha256": "63263614cdd29f2f93cba85e992f041b31f9fc7b4033692f31269489a8a1b177"
+        },
+        ".PKGINFO": {
+          "output": "licenses/msys2-libwinpthread-PKGINFO.txt",
+          "sha256": "f9bdac915dbde94d4d3ea8af40d2a4e227954f6e7a04ea11ceadbb78894ce9bb"
+        },
+        ".BUILDINFO": {
+          "output": "licenses/msys2-libwinpthread-BUILDINFO.txt",
+          "sha256": "d181238b0f6d769502a197e3255f4b4752a923f766f1bca7c41dc99f3b264295"
+        }
+      }
+    }
+  ],
+  "macRepack": "All non-OS install names rewritten to @loader_path/<filename>; LC_RPATH removed before signing. No Homebrew installation is used at runtime.",
+  "windowsRuntime": "Static PE inspection only; actual Windows execution unverified. Official MSYS2 MinGW packages; bundled open-source DLL closure plus Windows OS KERNEL32.dll and msvcrt.dll. No separately redistributed Microsoft VC runtime.",
+  "files": {
+    "osx-arm64": {
+      "libbrotlicommon.1.dylib": "e2931daba5cfa62ee90ae952c730cbf8f3d38973fde5914d5fa21f9acda969a2",
+      "libbrotlidec.1.dylib": "6f6394fb94329e8a7ecedaa64876219bf7e8e79166bbe90363e307f66e699703",
+      "libbrotlienc.1.dylib": "9e1b97cf069ae7a18f950b7463d31ad69b02ad1ef3026f4f4bb70ff3b6d7a506",
+      "libhwy.1.dylib": "f31dc58697d28320008d541420ce766dcfd4d1fd217ab99ee928148d0205b02a",
+      "libjxl.0.11.dylib": "2131fbb02607f2a5c019d9d9d6ddbd7900aac67455cce84fa733b45f982ade0c",
+      "libjxl_cms.0.11.dylib": "b80c02c317e79ec737b7f45b78ae5dc805316fbcccca311996fd3b2458a5a146",
+      "liblcms2.2.dylib": "ee3c1905cb6facfac156af89332d4700cd66627794f3d5a0db5e96c1e19076bf"
+    },
+    "win-x64": {
+      "libbrotlicommon.dll": "ca7bc06ead80259971badf2cd0bfc688db9154dad65f139f49a38b4be9976f97",
+      "libbrotlidec.dll": "a142dc6cfa77cb907028aa9426f486f3d8de37855e8db2ae2894147908121881",
+      "libbrotlienc.dll": "50c3aca8abcf0d5576f0b62dbd608be285246f8fd1b48ef87d58fa6b8b744e5f",
+      "libgcc_s_seh-1.dll": "c2cc71e70138575d1b708513c42fed13167702f712c0a74c18dad6b9232507ae",
+      "libhwy.dll": "4cd65f4bb3c123471a23f3eed734adbb31522b012c2c1776640d9634fbeb623c",
+      "libjxl.dll": "d0d46269f1bcbf9939f3975c8bd15764a077dda6b0ac9435719ea6ed5418011d",
+      "libjxl_cms.dll": "059dc80fad6f96c04e254c1a3109f0bcfee1930a20ab0e1a2907ca7f603139ea",
+      "liblcms2-2.dll": "dc241cbdf2d295846ec564c1eb3c01639d43c0d72415a8758e65d71df31cc0ba",
+      "libstdc++-6.dll": "f2aef4816f366f2e7a4415c74503d4855a9fe5d6b2564624cd01277dc22e4efe",
+      "libwinpthread-1.dll": "f7d57886d46b8065f8a7951c5ec8fe52d97a0f55b165c3d0c733854119b5803f"
+    }
+  },
+  "dependencyInspection": {
+    "win-x64": {
+      "libbrotlicommon.dll": [
+        "KERNEL32.dll",
+        "msvcrt.dll"
+      ],
+      "libbrotlidec.dll": [
+        "KERNEL32.dll",
+        "msvcrt.dll",
+        "libbrotlicommon.dll"
+      ],
+      "libbrotlienc.dll": [
+        "KERNEL32.dll",
+        "msvcrt.dll",
+        "libbrotlicommon.dll"
+      ],
+      "libgcc_s_seh-1.dll": [
+        "KERNEL32.dll",
+        "msvcrt.dll",
+        "libwinpthread-1.dll"
+      ],
+      "libhwy.dll": [
+        "libgcc_s_seh-1.dll",
+        "KERNEL32.dll",
+        "msvcrt.dll",
+        "libstdc++-6.dll"
+      ],
+      "libjxl.dll": [
+        "libgcc_s_seh-1.dll",
+        "KERNEL32.dll",
+        "msvcrt.dll",
+        "libstdc++-6.dll",
+        "libbrotlidec.dll",
+        "libbrotlienc.dll",
+        "libhwy.dll",
+        "libjxl_cms.dll"
+      ],
+      "libjxl_cms.dll": [
+        "libgcc_s_seh-1.dll",
+        "KERNEL32.dll",
+        "msvcrt.dll",
+        "libstdc++-6.dll",
+        "libhwy.dll",
+        "liblcms2-2.dll"
+      ],
+      "liblcms2-2.dll": [
+        "KERNEL32.dll",
+        "msvcrt.dll"
+      ],
+      "libstdc++-6.dll": [
+        "libgcc_s_seh-1.dll",
+        "KERNEL32.dll",
+        "msvcrt.dll",
+        "libwinpthread-1.dll"
+      ],
+      "libwinpthread-1.dll": [
+        "KERNEL32.dll",
+        "msvcrt.dll"
+      ]
+    },
+    "osx-arm64": {
+      "libbrotlicommon.1.dylib": [
+        "@loader_path/libbrotlicommon.1.dylib",
+        "/usr/lib/libSystem.B.dylib"
+      ],
+      "libbrotlidec.1.dylib": [
+        "@loader_path/libbrotlidec.1.dylib",
+        "/usr/lib/libSystem.B.dylib",
+        "@loader_path/libbrotlicommon.1.dylib"
+      ],
+      "libbrotlienc.1.dylib": [
+        "@loader_path/libbrotlienc.1.dylib",
+        "/usr/lib/libSystem.B.dylib",
+        "@loader_path/libbrotlicommon.1.dylib"
+      ],
+      "libhwy.1.dylib": [
+        "@loader_path/libhwy.1.dylib",
+        "/usr/lib/libc++.1.dylib",
+        "/usr/lib/libSystem.B.dylib"
+      ],
+      "libjxl.0.11.dylib": [
+        "@loader_path/libjxl.0.11.dylib",
+        "@loader_path/libjxl_cms.0.11.dylib",
+        "@loader_path/libhwy.1.dylib",
+        "@loader_path/libbrotlidec.1.dylib",
+        "@loader_path/libbrotlicommon.1.dylib",
+        "@loader_path/libbrotlienc.1.dylib",
+        "/usr/lib/libc++.1.dylib",
+        "/usr/lib/libSystem.B.dylib"
+      ],
+      "libjxl_cms.0.11.dylib": [
+        "@loader_path/libjxl_cms.0.11.dylib",
+        "@loader_path/liblcms2.2.dylib",
+        "@loader_path/libhwy.1.dylib",
+        "/usr/lib/libc++.1.dylib",
+        "/usr/lib/libSystem.B.dylib"
+      ],
+      "liblcms2.2.dylib": [
+        "@loader_path/liblcms2.2.dylib",
+        "/usr/lib/libSystem.B.dylib"
+      ]
+    }
+  },
+  "references": [
+    "https://repo.msys2.org/mingw/mingw64/"
+  ],
+  "windowsRepack": "Exact pinned .pkg.tar.zst members only; DLLs are unmodified. Package and build metadata plus all package license texts retained. Closure derives from PE imports, not package dependency lists. libjxl_threads, Highway test/contrib DLLs and other GCC runtimes are not used."
+}

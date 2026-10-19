@@ -1,0 +1,10 @@
+本資料夾的 *.fblut 衍生自 RawTherapee Film Simulation Collection（2015-09-20 版，
+http://rawtherapee.com/shared/HaldCLUT.zip），授權為 Creative Commons Attribution-ShareAlike 4.0
+International（CC BY-SA 4.0，https://creativecommons.org/licenses/by-sa/4.0/）。
+
+原作者：Pat David、Pavlov Dmitry、Michael Ezra。
+
+修改：由 Hald CLUT（8-bit sRGB PNG；多數為 level 12／144³，Kodak Ektar 100 為 level 16／256³）以四面體內插重新取樣成 33³，
+存成 16-bit 的 FilmBatch .fblut 格式（tools/film-luts）。本資料夾的 LUT 檔依 CC BY-SA 4.0 散布。
+
+商標聲明：檔名中的底片名稱僅用於說明 LUT 意圖模擬的底片，FilmBatch 與上述商標所有者無任何關係，亦未獲其背書。

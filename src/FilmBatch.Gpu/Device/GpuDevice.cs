@@ -3,6 +3,7 @@ using FilmBatch.Gpu.Localization;
 using FilmBatch.Gpu.Resources;
 using FilmBatch.Gpu.ShaderSystem;
 using WebGpuSharp;
+using WebGpuSharp.Marshalling;
 
 namespace FilmBatch.Gpu.Device;
 
@@ -13,6 +14,7 @@ namespace FilmBatch.Gpu.Device;
 /// </summary>
 public sealed class GpuDevice : IDisposable
 {
+    // WebGPUSharp 0.5.7 的 MapSync 雖將參數命名為 timeoutMilliseconds，仍直接轉交 WaitAny 的 ns 值。
     private const ulong RequestTimeoutNs = 10_000_000_000;
 
     internal readonly Instance Instance;
@@ -21,14 +23,16 @@ public sealed class GpuDevice : IDisposable
     internal readonly Queue Queue;
 
     private string? _pendingError;
+    private string? _lastNativeError;
     private bool _disposed;
+    private string? _lastDeviceLost;
 
     public GpuAdapterInfo AdapterInfo { get; }
 
     /// <summary>裝置遺失（驅動程式重置等）。參數為原因說明。可能在任意執行緒觸發。</summary>
     public event Action<string>? DeviceLost;
 
-    public bool IsLost { get; private set; }
+    public bool IsLost => Volatile.Read(ref _lastDeviceLost) is not null;
 
     /// <summary>GPU 驗證錯誤等訊息的記錄輸出（例如寫入 log 檔）。</summary>
     public static Action<string>? Log { get; set; }
@@ -43,22 +47,91 @@ public sealed class GpuDevice : IDisposable
         {
             // 使用介面卡支援的上限（大尺寸影像需要較大的紋理與緩衝區）
             RequiredLimits = adapter.GetLimits(),
-            UncapturedErrorCallback = (type, message) =>
-            {
-                var text = $"{type}: {Encoding.UTF8.GetString(message)}";
-                Log?.Invoke(text);
-                _pendingError ??= text;
-            },
-            DeviceLostCallback = (reason, message) =>
-            {
-                if (reason is DeviceLostReason.Destroyed or DeviceLostReason.CallbackCancelled) return;
-                IsLost = true;
-                DeviceLost?.Invoke($"{reason}: {Encoding.UTF8.GetString(message)}");
-            },
         };
+        if (info.Backend == GpuBackend.Dx12)
+        {
+            // WebGPUSharp 0.5.7 以強 GCHandle 保存 callbacks；不要讓它永久保留整個 D3D12 裝置。
+            var owner = new WeakReference<GpuDevice>(this);
+            desc.UncapturedErrorCallback = NativeLifetime.DeviceCallback<ErrorType>((_, type, message) =>
+            {
+                if (owner.TryGetTarget(out var device)) device.OnUncapturedError(type, message);
+            });
+            desc.DeviceLostCallback = NativeLifetime.DeviceCallback<DeviceLostReason>((_, reason, message) =>
+            {
+                if (owner.TryGetTarget(out var device)) device.OnDeviceLost(reason, message);
+            });
+        }
+        else
+        {
+            desc.UncapturedErrorCallback = OnUncapturedError;
+            desc.DeviceLostCallback = OnDeviceLost;
+        }
         Device = adapter.RequestDeviceSync(in desc, RequestTimeoutNs)
             ?? throw new GpuException(GpuText.Get("Gpu.DeviceFailed"));
-        Queue = Device.GetQueue() ?? throw new GpuException(GpuText.Get("Gpu.QueueFailed"));
+        try
+        {
+            Queue = Device.GetQueue() ?? throw new GpuException(GpuText.Get("Gpu.QueueFailed"));
+        }
+        catch
+        {
+            if (info.Backend == GpuBackend.Dx12)
+            {
+                WebGPUMarshal.GetHandle(Device).Destroy();
+                NativeLifetime.Release(Device);
+            }
+            throw;
+        }
+    }
+
+    private void OnUncapturedError(ErrorType type, ReadOnlySpan<byte> message)
+    {
+        var text = $"{type}: {Encoding.UTF8.GetString(message)}";
+        Volatile.Write(ref _lastNativeError, text);
+        Interlocked.CompareExchange(ref _pendingError, text, null);
+        Log?.Invoke(text);
+    }
+
+    private void OnDeviceLost(DeviceLostReason reason, ReadOnlySpan<byte> message)
+    {
+        if (reason is DeviceLostReason.Destroyed or DeviceLostReason.CallbackCancelled) return;
+        var text = $"{reason}: {Encoding.UTF8.GetString(message)}";
+        Interlocked.CompareExchange(ref _lastDeviceLost, text, null);
+        // 綁定先將此 callback 排到 ThreadPool，可能晚於 MapSync 的失敗；獨立輸出才能保留晚到的原因。
+        WriteDiagnostic(GpuText.Format("Gpu.DeviceLost", text));
+        DeviceLost?.Invoke(text);
+    }
+
+    private static void WriteDiagnostic(string message)
+    {
+        if (Log is { } log) log(message);
+        else Console.Error.WriteLine(message);
+    }
+
+    /// <summary>裝置已遺失時丟出含原生遺失原因的例外；尚未遺失則無動作。</summary>
+    private void ThrowIfLost()
+    {
+        if (IsLost)
+            throw new GpuException(GpuText.Format("Gpu.DeviceLost", Volatile.Read(ref _lastDeviceLost)));
+    }
+
+    /// <summary>
+    /// 佇列完成 + MapRead。Dawn 的 MapSync 可能在排入 ThreadPool 的遺失 callback 之前失敗；
+    /// D3D12 讀回一律保留原始例外與目前已收到的原生診斷，晚到的 callback 另寫入 log。
+    /// </summary>
+    private void MapForRead(GpuBuffer buffer)
+    {
+        ThrowIfLost();
+        try
+        {
+            WaitIdle();
+            buffer.Handle.MapSync(MapMode.Read, 0, (nuint)buffer.Size, RequestTimeoutNs);
+        }
+        catch (WebGPUException error) when (IsLost || AdapterInfo.Backend == GpuBackend.Dx12)
+        {
+            throw new GpuException(GpuText.Format("Gpu.ReadbackFailed", AdapterInfo.DisplayName,
+                error.Message, Volatile.Read(ref _lastDeviceLost) ?? GpuText.Get("Gpu.CallbackPending"),
+                Volatile.Read(ref _lastNativeError) ?? GpuText.Get("Gpu.NoNativeError")), error);
+        }
     }
 
     /// <summary>綁定與原生函式庫版本（顯示於 log 與 gpu-info）。</summary>
@@ -72,16 +145,31 @@ public sealed class GpuDevice : IDisposable
         var instance = WebGPU.CreateInstance() ?? throw new GpuException(GpuText.Get("Gpu.InstanceFailed"));
 
         Adapter? adapter = null;
-        if (!options.ForceSoftware)
-            adapter = RequestAdapter(instance, options.Backend, options.LowPower, fallback: false);
-        // 沒有硬體介面卡時改用軟體介面卡（需 Dawn 建置包含 SwiftShader / WARP，見 ADR）
-        adapter ??= RequestAdapter(instance, options.Backend, options.LowPower, fallback: true);
-        if (adapter == null)
-            throw new GpuException(options.ForceSoftware
-                ? GpuText.Get("Gpu.NoSoftwareAdapter")
-                : GpuText.Get("Gpu.NoAdapter"));
+        var releaseHandles = options.Backend == GpuBackend.Dx12
+            || (options.Backend == GpuBackend.Auto && OperatingSystem.IsWindows());
+        try
+        {
+            if (!options.ForceSoftware)
+                adapter = RequestAdapter(instance, options.Backend, options.LowPower, fallback: false);
+            // 沒有硬體介面卡時改用軟體介面卡（需 Dawn 建置包含 SwiftShader / WARP，見 ADR）
+            adapter ??= RequestAdapter(instance, options.Backend, options.LowPower, fallback: true);
+            if (adapter == null)
+                throw new GpuException(options.ForceSoftware
+                    ? GpuText.Get("Gpu.NoSoftwareAdapter")
+                    : GpuText.Get("Gpu.NoAdapter"));
 
-        return new GpuDevice(instance, adapter, QueryInfo(adapter));
+            return new GpuDevice(instance, adapter, QueryInfo(adapter));
+        }
+        catch (Exception error)
+        {
+            if (releaseHandles)
+            {
+                NativeLifetime.Release(adapter);
+                NativeLifetime.Release(instance);
+                WriteDiagnostic($"[GPU-CREATE] backend={options.Backend} software={options.ForceSoftware}: {error}");
+            }
+            throw;
+        }
     }
 
     /// <summary>
@@ -95,15 +183,30 @@ public sealed class GpuDevice : IDisposable
             : OperatingSystem.IsMacOS() ? [GpuBackend.Metal]
             : [GpuBackend.Vulkan];
 
-        var list = new List<GpuAdapterInfo>();
-        foreach (var b in backends)
-        foreach (var (lowPower, fallback) in new[] { (false, false), (true, false), (false, true) })
+        try
         {
-            if (RequestAdapter(instance, b, lowPower, fallback) is not { } a) continue;
-            var info = QueryInfo(a);
-            if (!list.Any(x => x.Name == info.Name && x.Backend == info.Backend)) list.Add(info);
+            var list = new List<GpuAdapterInfo>();
+            foreach (var b in backends)
+            foreach (var (lowPower, fallback) in new[] { (false, false), (true, false), (false, true) })
+            {
+                if (RequestAdapter(instance, b, lowPower, fallback) is not { } a) continue;
+                try
+                {
+                    var info = QueryInfo(a);
+                    if (!list.Any(x => x.Name == info.Name && x.Backend == info.Backend)) list.Add(info);
+                }
+                finally
+                {
+                    if (b == GpuBackend.Dx12) NativeLifetime.Release(a);
+                }
+            }
+            return list;
         }
-        return list;
+        finally
+        {
+            if (backend == GpuBackend.Dx12 || (backend == GpuBackend.Auto && OperatingSystem.IsWindows()))
+                NativeLifetime.Release(instance);
+        }
     }
 
     private static Adapter? RequestAdapter(Instance instance, GpuBackend backend, bool lowPower, bool fallback)
@@ -120,7 +223,9 @@ public sealed class GpuDevice : IDisposable
                 GpuBackend.Vulkan => BackendType.Vulkan,
                 GpuBackend.Metal => BackendType.Metal,
                 GpuBackend.Gl => BackendType.OpenGL,
-                // Dawn 的預設：Windows → D3D12、macOS → Metal、Linux → Vulkan
+                // Windows 自動依文件契約（ADR 0001）明確要求 D3D12；Undefined 在部分 runner 會回到不支援的 D3D11。
+                GpuBackend.Auto when OperatingSystem.IsWindows() => BackendType.D3D12,
+                // 其餘 Auto（macOS → Metal、Linux → Vulkan）沿用 Dawn 預設。
                 _ => BackendType.Undefined,
             },
         };
@@ -128,8 +233,10 @@ public sealed class GpuDevice : IDisposable
         {
             return instance.RequestAdapterSync(in opts, RequestTimeoutNs);
         }
-        catch (WebGPUException)
+        catch (WebGPUException error)
         {
+            if (backend == GpuBackend.Dx12 || (backend == GpuBackend.Auto && OperatingSystem.IsWindows()))
+                WriteDiagnostic($"[GPU-ADAPTER] backend={backend} lowPower={lowPower} fallback={fallback}: {error}");
             return null; // No supported adapters
         }
     }
@@ -208,8 +315,7 @@ public sealed class GpuDevice : IDisposable
     /// <summary>同步讀回（MapRead 緩衝區）到 <paramref name="destination"/>。呼叫端應在 GPU 執行緒上呼叫。</summary>
     public void ReadBuffer<T>(GpuBuffer buffer, T[] destination) where T : unmanaged
     {
-        WaitIdle();
-        buffer.Handle.MapSync(MapMode.Read, 0, (nuint)buffer.Size, 10_000);
+        MapForRead(buffer);
         try
         {
             buffer.Handle.GetConstMappedRange<T>(span => span[..destination.Length].CopyTo(destination));
@@ -227,8 +333,7 @@ public sealed class GpuDevice : IDisposable
     /// </summary>
     public void ReadBuffer<T>(GpuBuffer buffer, T[] destination, int offset, int count) where T : unmanaged
     {
-        WaitIdle();
-        buffer.Handle.MapSync(MapMode.Read, 0, (nuint)buffer.Size, 10_000);
+        MapForRead(buffer);
         try
         {
             buffer.Handle.GetConstMappedRange<T>(span => span[..count].CopyTo(destination.AsSpan(offset, count)));
@@ -241,16 +346,20 @@ public sealed class GpuDevice : IDisposable
     }
 
     /// <summary>
-    /// 在 OutOfMemory error scope 內配置資源；配置失敗時回傳錯誤訊息（null 表示成功）。
-    /// 大尺寸匯出用來偵測顯示記憶體不足，再由呼叫端決定改用 CPU。
+    /// 在 OutOfMemory error scope 內配置資源；只有 scope 單獨回報 OOM 時回傳訊息。
+    /// 操作本身的例外一律傳播，不能因同時收到 OOM 而掩蓋驗證／裝置錯誤或取消。
     /// </summary>
     public string? TryAllocate(Action allocate)
     {
         string? message = null;
+        Exception? failure = null;
         Device.PushErrorScope(ErrorFilter.OutOfMemory);
         try { allocate(); }
+        catch (Exception ex) { failure = ex; }
         finally { (_, message) = Device.PopErrorScopeSync(RequestTimeoutNs); }
-        return string.IsNullOrEmpty(message) ? null : message;
+        if (failure is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
+        if (!string.IsNullOrEmpty(message)) return message;
+        return null;
     }
 
     /// <summary>等待佇列中的工作全部完成。</summary>
@@ -260,7 +369,14 @@ public sealed class GpuDevice : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
-        // Dawn 物件由 WebGPUSharp 以 GC 釋放；這裡只需確保佇列工作完成
         try { WaitIdle(); } catch (Exception) { /* 已遺失的裝置 */ }
+        if (AdapterInfo.Backend == GpuBackend.Dx12)
+        {
+            WebGPUMarshal.GetHandle(Device).Destroy();
+            NativeLifetime.Release(Queue);
+            NativeLifetime.Release(Device);
+            NativeLifetime.Release(Adapter);
+            NativeLifetime.Release(Instance);
+        }
     }
 }

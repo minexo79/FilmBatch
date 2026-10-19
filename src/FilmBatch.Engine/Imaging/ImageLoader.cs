@@ -1,11 +1,13 @@
 using FilmBatch.Core;
+using FilmBatch.Engine.Imaging.Raw;
 using ImageMagick;
+using FilmBatch.Raw;
 
 namespace FilmBatch.Engine.Imaging;
 
-/// <summary>以 Magick.NET 解碼照片：EXIF 轉正後轉成 16-bit sRGB RGBA。CPU 不做任何效果運算。</summary>
+/// <summary>RAW 由受控的 C# 解碼器顯影；一般影像由 Magick.NET 解碼。RAW 保留轉正的場景線性 Rec.2020；一般影像輸出 16-bit sRGB RGBA。</summary>
 /// <remarks>
-/// <see cref="Load(string, int)"/> 供預覽/縮圖（縮成代理圖）；<see cref="LoadFull"/> 供匯出（全解析度，不縮放）。
+/// <see cref="Load"/> 供預覽/縮圖（縮成代理圖）；<see cref="LoadFull"/> 供匯出（全解析度，不縮放）。
 /// 兩者皆執行 <c>AutoOrient</c>（像素已轉正），因此匯出編碼時 EXIF 方向一律寫 1（計畫書第 10 章）。
 /// <see cref="FilePath"/> 一律設為來源完整路徑，供算圖器解析相對路徑素材與每檔確定性種子。
 /// </remarks>
@@ -15,34 +17,46 @@ public static class ImageLoader
     public const int PreviewLongEdge = 1600;
     public const int ThumbnailLongEdge = 240;
 
-    public static SourceImage Load(string path, int maxLongEdge = PreviewLongEdge)
+    public static SourceImage Load(string path, int maxLongEdge = PreviewLongEdge, RawLoadOptions rawOptions = default)
     {
+        if (RawSourceLoader.TryLoad(path, maxLongEdge, rawOptions) is { } raw) return raw;
         var settings = new MagickReadSettings();
         // JPEG 可在解碼時直接縮小，大幅加快縮圖
         if (maxLongEdge <= ThumbnailLongEdge * 2)
             settings.SetDefine(MagickFormat.Jpeg, "size", $"{maxLongEdge * 2}x{maxLongEdge * 2}");
 
         using var image = new MagickImage(path, settings);
+        // Base dimensions retain the file raster even when JPEG's decoder-size hint was used.
+        var swap = image.Orientation is OrientationType.RightTop or OrientationType.RightBottom
+            or OrientationType.LeftTop or OrientationType.LeftBottom;
+        var reference = swap ? ((int)image.BaseHeight, (int)image.BaseWidth)
+            : ((int)image.BaseWidth, (int)image.BaseHeight);
         image.AutoOrient();
         if (Math.Max(image.Width, image.Height) > maxLongEdge)
         {
             var geometry = new MagickGeometry((uint)maxLongEdge, (uint)maxLongEdge) { Greater = true };
             image.Resize(geometry);
         }
-        return ToSource(image, path);
+        return ToSource(image, path, rawOptions, reference);
     }
 
     /// <summary>全解析度解碼（匯出用）：EXIF 轉正、不縮放，保留 16-bit 資料。</summary>
-    public static SourceImage LoadFull(string path)
+    public static SourceImage LoadFull(string path, RawLoadOptions rawOptions = default)
     {
+        if (RawSourceLoader.TryLoad(path, int.MaxValue, rawOptions) is { } raw) return raw;
         using var image = new MagickImage(path);
         image.AutoOrient();
-        return ToSource(image, path);
+        return ToSource(image, path, rawOptions);
     }
 
     /// <summary>只讀檔頭尺寸（Ping，不解碼像素）。回傳轉正後的寬高（以 EXIF 方向判斷是否交換）。</summary>
     public static (int Width, int Height) DecodeInfo(string path)
     {
+        if (RawSourceLoader.TryReadInfo(path) is { } raw)
+        {
+            var (width, height) = raw.DevelopedSize();
+            return raw.Orientation.SwapsAxes() ? (height, width) : (width, height);
+        }
         using var image = new MagickImage();
         image.Ping(path);
         var swap = image.Orientation is OrientationType.RightTop or OrientationType.RightBottom
@@ -50,7 +64,8 @@ public static class ImageLoader
         return swap ? ((int)image.Height, (int)image.Width) : ((int)image.Width, (int)image.Height);
     }
 
-    private static SourceImage ToSource(MagickImage image, string path)
+    private static SourceImage ToSource(MagickImage image, string path, RawLoadOptions rawOptions,
+        (int Width, int Height)? reference = null)
     {
         image.TransformColorSpace(ColorProfiles.SRGB);
         image.ColorSpace = ColorSpace.sRGB;
@@ -62,6 +77,9 @@ public static class ImageLoader
         return new SourceImage((int)image.Width, (int)image.Height, data)
         {
             FilePath = Path.GetFullPath(path),
+            RawOptions = rawOptions,
+            ReferenceWidth = reference?.Width ?? (int)image.Width,
+            ReferenceHeight = reference?.Height ?? (int)image.Height,
         };
     }
 

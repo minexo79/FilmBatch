@@ -1,6 +1,8 @@
 using FilmBatch.Core.Params;
 using FilmBatch.Core.Random;
 using FilmBatch.Engine.Imaging;
+using FilmBatch.Engine.Imaging.Raw;
+using System.Runtime.Intrinsics;
 
 namespace FilmBatch.Engine.Rendering;
 
@@ -23,16 +25,28 @@ public static class CpuPipeline
 
     public static SourceImage Process(SourceImage source, ModuleParams p, ushort[]? outRgba16, CancellationToken ct)
     {
-        int w = source.Width, h = source.Height, n = w * h;
         var cur = DecodeLinear(source);
+        ct.ThrowIfCancellationRequested();
+
+        // 裁切（旋轉 90°、翻轉、拉直、裁切）：之後所有模組都以裁切後的畫框計算
+        if (p.Crop.On) cur = Crop(cur, source.Width, source.Height, p.CropT);
+        int w = p.OutWidth, h = p.OutHeight, n = w * h;
         ct.ThrowIfCancellationRequested();
 
         var a = new float[n * 4];
         var b = new float[n * 4];
 
+        if (source.Scene is not null)
+        {
+            if (p.RawWhiteBalanceMatrix is { } wb)
+                ApplyMatrix(cur, RawFinishParams.WorkingWhiteBalance(wb).ToF32());
+            RawSemanticAdjustments.Apply(cur, w, h, source, p, ct);
+        }
+
         // 線性部分：基本調整（曝光 / 色溫 / 色調）
         if (p.BasicOn && (p.Exposure != 0 || p.Temperature != 0 || p.Tint != 0))
             BasicLinear(cur, n, p);
+        if (p.SkinOn || p.ZoneOn) PhotoAdjustments.Apply(cur, w, h, p, ct);
         ct.ThrowIfCancellationRequested();
 
         // ① 幾何（線性）：鏡頭變形 → 多格分鏡
@@ -61,19 +75,21 @@ public static class CpuPipeline
         }
         ct.ThrowIfCancellationRequested();
 
-        // ③ 底片（線性 → 顯示）：底片色彩 → 效果比例 → 古典版材
-        if (p.FilmOn) FilmProcessing.Apply(cur, a, b, w, h, p.Film);
+        // ③ 底片（線性）：底片風格 → 古典版材
+        if (p.FilmOn && p.FilmLut is not null && p.FilmStrength > 0) FilmLookProcessing.Apply(cur, n, p.FilmLook, p.FilmLut);
         ct.ThrowIfCancellationRequested();
         if (p.PlateOn && p.PlateStrength > 0) PhotoPlate(cur, w, h, p);
         ct.ThrowIfCancellationRequested();
 
         // ③→④ 顯示空間
-        Parallel.For(0, n, i =>
+        if (source.Scene is { } scene) RawDisplay.FinishLinear(cur, scene.Tone);
+        else Parallel.For(0, n, i =>
         {
             var s = i * 4;
-            cur[s] = LinearToSrgb(cur[s]);
-            cur[s + 1] = LinearToSrgb(cur[s + 1]);
-            cur[s + 2] = LinearToSrgb(cur[s + 2]);
+            // MathF.Pow 保留純量：M3 實測 Exp(Log) 向量組合反而較慢。
+            var px = Vector128.LoadUnsafe(ref cur[s]);
+            Vector128.Create(LinearToSrgb(px[0]), LinearToSrgb(px[1]), LinearToSrgb(px[2]), px[3])
+                .CopyTo(cur, s);
         });
         ct.ThrowIfCancellationRequested();
 
@@ -92,7 +108,7 @@ public static class CpuPipeline
             else DirtScratches(cur, w, h, p);
         }
         ct.ThrowIfCancellationRequested();
-        if (p.GrainOn && p.GrainAmount > 0) Grain(cur, w, h, p);
+        if (p.GrainOn && (p.GrainAmount > 0 || p.GrainSoftness > 0)) Grain(cur, a, b, w, h, p);
         ct.ThrowIfCancellationRequested();
 
         // 編碼回 16-bit sRGB RGBA
@@ -101,27 +117,85 @@ public static class CpuPipeline
         Parallel.For(0, n, i =>
         {
             var s = i * 4;
-            outArr[s] = Q16(cur[s]);
-            outArr[s + 1] = Q16(cur[s + 1]);
-            outArr[s + 2] = Q16(cur[s + 2]);
-            outArr[s + 3] = Q16(cur[s + 3]);
+            var px = Vector128.LoadUnsafe(ref cur[s]);
+            var q = Vector128.ConvertToInt32(
+                Vector128.Round(Vector128.Max(Vector128.Min(px, Vector128.Create(1f)), Vector128.Create(0f)) * 65535f));
+            var packed = Vector128.Narrow(q.AsUInt32(), q.AsUInt32());
+            packed.GetLower().StoreUnsafe(ref outArr[s]);
         });
-        return new SourceImage(w, h, outArr) { FilePath = source.FilePath };
+        return new SourceImage(w, h, outArr)
+        {
+            FilePath = source.FilePath, RawOptions = source.RawOptions,
+            RawInfo = source.RawInfo, SemanticMasks = source.SemanticMasks,
+        };
     }
 
     internal static float[] DecodeLinear(SourceImage source)
     {
-        var result = new float[source.Rgba16.Length];
+        var result = new float[checked(source.Width * source.Height * 4)];
+        if (source.Scene is { } scene)
+        {
+            var matrix = RawFinishParams.SceneToWorking(null).ToF32();
+            var data = scene.Image.Data;
+            Parallel.For(0, source.Width * source.Height, pixel =>
+            {
+                var i = pixel * 3;
+                var o = pixel * 4;
+                var r = data[i]; var g = data[i + 1]; var b = data[i + 2];
+                result[o] = matrix[0] * r + matrix[1] * g + matrix[2] * b;
+                result[o + 1] = matrix[3] * r + matrix[4] * g + matrix[5] * b;
+                result[o + 2] = matrix[6] * r + matrix[7] * g + matrix[8] * b;
+                result[o + 3] = 1;
+            });
+            return result;
+        }
         var input = source.Rgba16;
+        var scale = Vector128.Create(65535f);
         Parallel.For(0, source.Width * source.Height, pixel =>
         {
             var i = pixel * 4;
-            result[i] = SrgbToLinear(input[i] / 65535f);
-            result[i + 1] = SrgbToLinear(input[i + 1] / 65535f);
-            result[i + 2] = SrgbToLinear(input[i + 2] / 65535f);
-            result[i + 3] = input[i + 3] / 65535f;
+            // 每像素僅讀 4 個 ushort，最後一個像素也不會跨出陣列。
+            var q = Vector64.LoadUnsafe(ref input[i]).ToVector128();
+            var f = Vector128.ConvertToSingle(Vector128.WidenLower(q).AsInt32()) / scale;
+            Vector128.Create(SrgbToLinear(f[0]), SrgbToLinear(f[1]), SrgbToLinear(f[2]), f[3])
+                .CopyTo(result, i);
         });
         return result;
+    }
+
+    private static void ApplyMatrix(float[] rgba, float[] m)
+    {
+        Parallel.For(0, rgba.Length / 4, pixel =>
+        {
+            var i = pixel * 4;
+            var r = rgba[i]; var g = rgba[i + 1]; var b = rgba[i + 2];
+            rgba[i] = m[0] * r + m[1] * g + m[2] * b;
+            rgba[i + 1] = m[3] * r + m[4] * g + m[5] * b;
+            rgba[i + 2] = m[6] * r + m[7] * g + m[8] * b;
+        });
+    }
+
+    /// <summary>
+    /// 裁切取樣（與 geometry/crop.wgsl 同演算法）：輸出像素中心經 <see cref="CropTransform.OutToSource"/>
+    /// 映到來源，雙線性取樣，超出邊界以邊緣像素延伸。
+    /// </summary>
+    public static float[] Crop(float[] srcLinear, int srcW, int srcH, CropTransform t)
+    {
+        int w = t.OutWidth, h = t.OutHeight;
+        var dst = new float[w * h * 4];
+        var m = t.OutToSource;
+        Parallel.For(0, h, y =>
+        {
+            for (var x = 0; x < w; x++)
+            {
+                var (sx, sy) = m.Apply(x + 0.5, y + 0.5);
+                var fx = (float)(sx - 0.5);
+                var fy = (float)(sy - 0.5);
+                var o = (y * w + x) * 4;
+                for (var c = 0; c < 4; c++) dst[o + c] = SampleBilinear(srcLinear, srcW, srcH, fx, fy, c);
+            }
+        });
+        return dst;
     }
 
     private static void BasicLinear(float[] pixels, int count, ModuleParams p)
@@ -130,10 +204,11 @@ public static class CpuPipeline
         var red = gain * (1 + p.Temperature / 100f * .18f);
         var green = gain * (1 + p.Tint / 100f * .12f);
         var blue = gain * (1 - p.Temperature / 100f * .18f);
+        var mult = Vector128.Create(red, green, blue, 1f);
         Parallel.For(0, count, pixel =>
         {
             var i = pixel * 4;
-            pixels[i] *= red; pixels[i + 1] *= green; pixels[i + 2] *= blue;
+            Vector128.Multiply(Vector128.LoadUnsafe(ref pixels[i]), mult).CopyTo(pixels, i);
         });
     }
     // ───────────── 色彩工具（與 WGSL common/color.wgsl 同演算法）─────────────
@@ -149,7 +224,9 @@ public static class CpuPipeline
 
     public static float Luminance(float r, float g, float b) => 0.2126f * r + 0.7152f * g + 0.0722f * b;
 
-    private static ushort Q16(float v) => (ushort)MathF.Round(Math.Clamp(v, 0f, 1f) * 65535f);
+    /// <summary>RGB 向量亮度（alpha lane 忽略）。</summary>
+    internal static float Luminance(Vector128<float> v) =>
+        v[0] * 0.2126f + v[1] * 0.7152f + v[2] * 0.0722f;
 
     /// <summary>HSV → RGB（h 0–360）。與 WGSL 版相同。</summary>
     public static (float R, float G, float B) HsvToRgb(float h, float s, float v)
@@ -888,53 +965,46 @@ public static class CpuPipeline
             SeparableBlur(tt, structBlur, w, h, r, sigma, horizontal: false);
         }
 
+        var gm = brightness != 0 ? MathF.Pow(2f, -brightness) : 0f;
+        var cMul = contrast != 0 ? 1f + contrast : 0f;
+        var satK = 1f + saturation;
         Parallel.For(0, n, i =>
         {
             var s = i * 4;
-            var r = buf[s]; var g = buf[s + 1]; var b = buf[s + 2];
+            var v = Vector128.LoadUnsafe(ref buf[s]);
             // 亮度：中間調 gamma（0 恆等）
             if (brightness != 0)
             {
-                var gm = MathF.Pow(2f, -brightness);
-                r = MathF.Pow(Math.Clamp(r, 0f, 1f), gm);
-                g = MathF.Pow(Math.Clamp(g, 0f, 1f), gm);
-                b = MathF.Pow(Math.Clamp(b, 0f, 1f), gm);
+                v = Vector128.Create(
+                    MathF.Pow(Math.Clamp(v[0], 0f, 1f), gm),
+                    MathF.Pow(Math.Clamp(v[1], 0f, 1f), gm),
+                    MathF.Pow(Math.Clamp(v[2], 0f, 1f), gm), v[3]);
             }
             // 對比：圍繞中間調
             if (contrast != 0)
-            {
-                var c = 1f + contrast;
-                r = (r - 0.5f) * c + 0.5f;
-                g = (g - 0.5f) * c + 0.5f;
-                b = (b - 0.5f) * c + 0.5f;
-            }
+                v = (v - Vector128.Create(0.5f)) * Vector128.Create(cMul) + Vector128.Create(0.5f);
             // 亮部/暗部：分段加權
-            var lum = Luminance(r, g, b);
+            var lum = Luminance(v);
             var hi = SmoothStep(0.45f, 0.95f, lum);
             var lo = 1f - SmoothStep(0.05f, 0.45f, lum);
             var k = highlights * hi * 0.35f + shadows * lo * 0.35f;
-            r += k; g += k; b += k;
+            v += Vector128.Create(k);
             // 飽和度
             if (saturation != 0)
             {
-                var l = Luminance(r, g, b);
-                var kk = 1f + saturation;
-                r = MathF.Max(l + (r - l) * kk, 0f);
-                g = MathF.Max(l + (g - l) * kk, 0f);
-                b = MathF.Max(l + (b - l) * kk, 0f);
+                var l = Vector128.Create(Luminance(v));
+                v = Vector128.Max(l + (v - l) * Vector128.Create(satK), Vector128<float>.Zero);
             }
             // 細節提取：以中頻差異增強局部對比
             if (structBlur != null && p.Structure != 0)
             {
-                var l = Luminance(r, g, b);
-                var bl = Luminance(structBlur[s], structBlur[s + 1], structBlur[s + 2]);
+                var l = Luminance(v);
+                var bl = Luminance(Vector128.LoadUnsafe(ref structBlur[s]));
                 var diff = (l - bl) * p.Structure / 100f * 0.6f;
                 var scale = l > 1e-4f ? (l + diff) / l : 1f;
-                r = MathF.Max(r * scale, 0f);
-                g = MathF.Max(g * scale, 0f);
-                b = MathF.Max(b * scale, 0f);
+                v = Vector128.Max(v * Vector128.Create(scale), Vector128<float>.Zero);
             }
-            buf[s] = r; buf[s + 1] = g; buf[s + 2] = b;
+            buf[s] = v[0]; buf[s + 1] = v[1]; buf[s + 2] = v[2];
         });
     }
 
@@ -951,21 +1021,21 @@ public static class CpuPipeline
 
         var (sr, sg, sb) = HsvToRgb(sh, 0.6f, 1f);
         var (hr, hg, hb) = HsvToRgb(hh, 0.6f, 1f);
+        var shadow = Vector128.Create(sr, sg, sb, 0f);
+        var highlight = Vector128.Create(hr, hg, hb, 0f);
+        var one = Vector128.Create(1f);
 
         Parallel.For(0, n, i =>
         {
             var s = i * 4;
-            var r = buf[s]; var g = buf[s + 1]; var b = buf[s + 2];
-            var lum = Luminance(r, g, b);
-            var tS = 1f - SmoothStep(split - 0.15f, split + 0.15f, lum);
+            var v = Vector128.LoadUnsafe(ref buf[s]);
+            var lum = Luminance(v);
+            var lv = Vector128.Create(lum);
             var tH = SmoothStep(split - 0.15f, split + 0.15f, lum);
-            r = r * (1 - sa * tS * (1 - sr)) + lum * sr * sa * tS;
-            g = g * (1 - sa * tS * (1 - sg)) + lum * sg * sa * tS;
-            b = b * (1 - sa * tS * (1 - sb)) + lum * sb * sa * tS;
-            r = r * (1 - ha * tH * (1 - hr)) + lum * hr * ha * tH;
-            g = g * (1 - ha * tH * (1 - hg)) + lum * hg * ha * tH;
-            b = b * (1 - ha * tH * (1 - hb)) + lum * hb * ha * tH;
-            buf[s] = r; buf[s + 1] = g; buf[s + 2] = b;
+            var tS = 1f - tH;
+            var rgb = v * (one - sa * tS * (one - shadow)) + lv * shadow * sa * tS;
+            rgb = rgb * (one - ha * tH * (one - highlight)) + lv * highlight * ha * tH;
+            buf[s] = rgb[0]; buf[s + 1] = rgb[1]; buf[s + 2] = rgb[2];
         });
     }
 
@@ -985,13 +1055,12 @@ public static class CpuPipeline
             Parallel.For(0, n, i =>
             {
                 var s = i * 4;
-                var lum = Luminance(buf[s], buf[s + 1], buf[s + 2]);
-                var bl = Luminance(tmp2[s], tmp2[s + 1], tmp2[s + 2]);
+                var v = Vector128.LoadUnsafe(ref buf[s]);
+                var lum = Luminance(v);
+                var bl = Luminance(Vector128.LoadUnsafe(ref tmp2[s]));
                 var diff = (lum - bl) * ck * 0.5f;
-                var scale = lum > 1e-4f ? (lum + diff) / lum : 1f;
-                buf[s] = MathF.Max(buf[s] * scale, 0f);
-                buf[s + 1] = MathF.Max(buf[s + 1] * scale, 0f);
-                buf[s + 2] = MathF.Max(buf[s + 2] * scale, 0f);
+                Vector128.Max(ApplyLumaDelta(v, lum, diff), Vector128<float>.Zero)
+                    .WithElement(3, v[3]).CopyTo(buf, s);
             });
         }
         if (p.Sharpen != 0)
@@ -1004,15 +1073,26 @@ public static class CpuPipeline
             Parallel.For(0, n, i =>
             {
                 var s = i * 4;
-                var lum = Luminance(buf[s], buf[s + 1], buf[s + 2]);
-                var bl = Luminance(tmp2[s], tmp2[s + 1], tmp2[s + 2]);
+                var v = Vector128.LoadUnsafe(ref buf[s]);
+                var lum = Luminance(v);
+                var bl = Luminance(Vector128.LoadUnsafe(ref tmp2[s]));
                 var diff = (lum - bl) * sk * 0.7f;
-                var scale = lum > 1e-4f ? (lum + diff) / lum : 1f;
-                buf[s] = MathF.Max(buf[s] * scale, 0f);
-                buf[s + 1] = MathF.Max(buf[s + 1] * scale, 0f);
-                buf[s + 2] = MathF.Max(buf[s + 2] * scale, 0f);
+                Vector128.Max(ApplyLumaDelta(v, lum, diff), Vector128<float>.Zero)
+                    .WithElement(3, v[3]).CopyTo(buf, s);
             });
         }
+    }
+
+    /// <summary>
+    /// 把亮度差 diff 套到像素上：一般亮度以 RGB 等比縮放（保留飽和度）；
+    /// 接近黑時改為三通道等量相加，避免 (lum + diff) / lum 的倍率爆大，把暗部色雜訊放大成彩色斑點。
+    /// 與 detail/detail_apply.wgsl 相同。
+    /// </summary>
+    private static Vector128<float> ApplyLumaDelta(Vector128<float> v, float lum, float diff)
+    {
+        var ratio = SmoothStep(0.02f, 0.1f, lum);
+        if (ratio <= 0) return v + Vector128.Create(diff);
+        return v + Vector128.Create(diff) * (v * Vector128.Create(ratio / lum) + Vector128.Create(1 - ratio));
     }
 
     // ───────────── 表面 ─────────────
@@ -1092,45 +1172,411 @@ public static class CpuPipeline
         });
     }
 
-    /// <summary>顆粒（5.3.16）：以 PCG 雜湊的整數雜訊；粗細兩層疊加，強度隨亮度變化。</summary>
-    public static void Grain(float[] buf, int w, int h, ModuleParams p)
+    /// <summary>
+    /// 顆粒（5.3.16）：三種可選模型，全部以「已現像來源像素」為座標與尺度的參考，
+    /// 與 surface/grain.wgsl 逐步相同；裁切、旋轉、翻轉、縮小預覽或分帶匯出都不改變底層紋理。
+    /// <list type="bullet">
+    /// <item>clumps：柔邊團塊（既有預設），格密度由低頻值雜訊調變。</item>
+    /// <item>correlated：多尺度 Poisson 脈衝經等向徑向 Wendland 核重建的連續相關場；粗糙度控制高頻倍頻的衰減。</item>
+    /// <item>optical：2D Poisson／布林圓盤的光學統計近似（獨立實作，非顯影化學模擬）；
+    /// 以有界高斯光圈 Monte Carlo 估算每個輸出像素覆蓋的來源參考面積，粒徑服從以 r0 為中心的均勻分布。</item>
+    /// </list>
+    /// 輸出像素的來源參考足跡大於顆粒結構時做足跡濾波（次像素倍頻／圓盤淡出），
+    /// 不是把顆粒座標直接縮小。暗部／中間調／高光響應為獨立的顯示亮度帶權重。
+    /// </summary>
+    /// <param name="scratch">柔焦模糊結果的暫存緩衝。</param>
+    /// <param name="scratch2">可分離模糊的中間緩衝。</param>
+    public static void Grain(float[] buf, float[] scratch, float[] scratch2, int w, int h, ModuleParams p)
     {
         var amount = p.GrainAmount / 100f;
-        var size = Math.Max(1, p.GrainSize / 100f * 6f);
-        var rough = p.GrainRoughness / 100f;
         var color = p.GrainColor / 100f;
         var seed = p.SeedGrain;
-        var shortSide = MathF.Min(w, h);
-        var cell = size * shortSide / 800f;
+        var d = DeriveGrain(p, w, h);
+        var geom = d.Geom;
+        var soft = GrainSoftBlur(geom.RefShort, p.GrainSoftness / 100f, geom.PixelScale);
+        var mix = soft is null ? 0f : p.GrainSoftness / 100f;
+        if (soft is { } blur)
+        {
+            SeparableBlur(buf, scratch2, w, h, blur.Radius, blur.Sigma, horizontal: true);
+            SeparableBlur(scratch2, scratch, w, h, blur.Radius, blur.Sigma, horizontal: false);
+        }
+
+        var shadows = p.GrainShadows / 100f;
+        var midtones = p.GrainMidtones / 100f;
+        var highlights = p.GrainHighlights / 100f;
+        var spread = Math.Clamp(p.GrainRadiusSpread, 0f, 1f);
+        var fp = geom.PixelScale;
 
         Parallel.For(0, h, y =>
         {
             for (var x = 0; x < w; x++)
             {
                 var i = (y * w + x) * 4;
-                var lum = Luminance(buf[i], buf[i + 1], buf[i + 2]);
-                // 中間調最明顯（Gaussian 權重）
-                var lumW = MathF.Exp(-MathF.Pow((lum - 0.5f) / 0.28f, 2f));
-                var k = amount * 0.22f * lumW;
-                if (k <= 0) continue;
-                // 兩層頻率
-                var n1 = GrainCell(x, y, cell, seed);
-                var n2 = GrainCell(x, y, cell * 2.7f, seed + 31);
-                var gn = (n1 * (1 - rough) + n2 * rough) * 2f - 1f;
-                // 彩色顆粒：RGB 各自取雜訊；單色時共用
-                float rN = gn, gN = gn, bN = gn;
-                if (color > 0)
+                float r = buf[i], g = buf[i + 1], b = buf[i + 2];
+                if (mix > 0)
                 {
-                    rN = (GrainCell(x, y, cell, seed + 101) * 2f - 1f);
-                    gN = (GrainCell(x, y, cell, seed + 103) * 2f - 1f);
-                    bN = (GrainCell(x, y, cell, seed + 107) * 2f - 1f);
+                    r += (scratch[i] - r) * mix;
+                    g += (scratch[i + 1] - g) * mix;
+                    b += (scratch[i + 2] - b) * mix;
                 }
-                var mk = color;
-                buf[i] = Math.Clamp(buf[i] + (gn * (1 - mk) + rN * mk) * k, 0f, 1f);
-                buf[i + 1] = Math.Clamp(buf[i + 1] + (gn * (1 - mk) + gN * mk) * k, 0f, 1f);
-                buf[i + 2] = Math.Clamp(buf[i + 2] + (gn * (1 - mk) + bN * mk) * k, 0f, 1f);
+                var lum = Luminance(r, g, b);
+                var s = SmoothStep(0.05f, 0.5f, lum);
+                var t2 = SmoothStep(0.4f, 0.9f, lum);
+                var band = shadows * (1f - s) + midtones * (s * (1f - t2)) + highlights * t2;
+                var k = amount * band;
+                if (k <= 0)
+                {
+                    buf[i] = r; buf[i + 1] = g; buf[i + 2] = b;
+                    continue;
+                }
+                var shadow = 1f - s;
+                var px = x + 0.5f;
+                var py = y + 0.5f;
+                var gx = geom.A00 * px + geom.A01 * py + geom.B0;
+                var gy = geom.A10 * px + geom.A11 * py + geom.B1;
+                float luma, cr, cg, cb;
+                switch (p.GrainModel)
+                {
+                    case 2:
+                        var (ol, ocr, ocg, ocb) = GrainOptical(gx, gy, d.R0, shadow, d.RoughQ, spread,
+                            p.GrainSamples, d.CellOpt, d.SigmaOpt, seed);
+                        (luma, cr, cg, cb) = (ol * 0.35f, ocr * 0.35f, ocg * 0.35f, ocb * 0.35f);
+                        break;
+                    case 1:
+                        var (nl, ncr, ncg, ncb) = GrainCorrelated(gx, gy, d.R0, d.RoughQ, fp, d.CorrScale, d.CorrGain, seed);
+                        (luma, cr, cg, cb) = (nl * 0.16f, ncr * 0.16f, ncg * 0.16f, ncb * 0.16f);
+                        break;
+                    default:
+                        var (cl, ccr, ccg, ccb) = GrainClumps(gx, gy, d.R0, shadow, d.RoughQ, fp, seed);
+                        (luma, cr, cg, cb) = (cl * 0.16f, ccr * 0.16f, ccg * 0.16f, ccb * 0.16f);
+                        break;
+                }
+                // 深暗部的負向顆粒會被 0 截掉，只剩彩色分量 → 黑底冒出彩色斑點；彩色顆粒在暗部淡出
+                var ck = color * 0.6f * SmoothStep(0.03f, 0.3f, lum);
+                r = Math.Clamp(r + (luma + cr * ck) * k, 0f, 1f);
+                g = Math.Clamp(g + (luma + cg * ck) * k, 0f, 1f);
+                b = Math.Clamp(b + (luma + cb * ck) * k, 0f, 1f);
+                buf[i] = r; buf[i + 1] = g; buf[i + 2] = b;
             }
         });
+    }
+
+    /// <summary>
+    /// 輸出像素 → 來源參考座標的幾何：OutToSource 把輸出像素中心映到「已現像來源」像素，
+    /// 再乘 <c>ReferenceWidth/SourceWidth</c> 得到未縮小來源的參考像素座標（A、B 為合成後的仿射）。
+    /// PixelScale 為輸出像素在參考平面上覆蓋的邊長（仿射兩軸長度平均），供次像素結構的振幅衰減；
+    /// 裁切或拉直產生各向異性時取兩軸平均，顆粒仍各向同性（保守近似）。
+    /// </summary>
+    internal readonly record struct GrainMapping(
+        float RefShort, float PixelScale, float A00, float A01, float B0,
+        float A10, float A11, float B1);
+
+    internal static GrainMapping GrainGeometry(ModuleParams p, int w, int h)
+    {
+        var m = p.CropT.OutToSource;
+        var sx = p.SourceWidth > 0 ? p.ReferenceWidth / (float)p.SourceWidth : 1f;
+        var sy = p.SourceHeight > 0 ? p.ReferenceHeight / (float)p.SourceHeight : 1f;
+        var a = MathF.Abs((float)m.M00) * sx;
+        var b = MathF.Abs((float)m.M01) * sx;
+        var c = MathF.Abs((float)m.M10) * sy;
+        var d = MathF.Abs((float)m.M11) * sy;
+        var pixelScale = MathF.Max(1e-6f, (MathF.Sqrt(a * a + c * c) + MathF.Sqrt(b * b + d * d)) * 0.5f);
+        var refShort = MathF.Min(p.ReferenceWidth, p.ReferenceHeight);
+        return new(refShort > 0 ? refShort : MathF.Min(w, h), pixelScale,
+            (float)m.M00 * sx, (float)m.M01 * sx, (float)m.M02 * sx,
+            (float)m.M10 * sy, (float)m.M11 * sy, (float)m.M12 * sy);
+    }
+
+    /// <summary>
+    /// 柔焦模糊參數：sigma 以「來源參考像素」為單位（<paramref name="refShort"/> 為來源參考短邊），
+    /// 再除以 <paramref name="pixelScale"/>（輸出像素的參考足跡）換算成輸出像素；
+    /// sigma 量化到 0.05 px 讓 GPU 權重快取有界。太小（看不出差異）時為 null。
+    /// </summary>
+    internal static (int Radius, float Sigma)? GrainSoftBlur(float refShort, float softness, float pixelScale = 1f)
+    {
+        if (softness <= 0) return null;
+        var sigmaRef = MathF.Round((0.5f + 1.5f * softness) * refShort / 2400f * 20f) / 20f;
+        var sigma = MathF.Round(sigmaRef / MathF.Max(pixelScale, 1e-6f) * 20f) / 20f;
+        if (sigma < 0.5f) return null;
+        return ((int)MathF.Ceiling(sigma * 3f), sigma);
+    }
+    /// <summary>由設定推導、與像素位置無關的顆粒常數；CPU 與 GPU dispatch 共用同一份計算，保證兩端常數逐位元相同。</summary>
+    internal readonly record struct GrainDerivation(
+        GrainMapping Geom, float R0, int RoughQ, float CorrGain,
+        float CorrScale, float CellOpt, float SigmaOpt);
+
+    internal static GrainDerivation DeriveGrain(ModuleParams p, int w, int h)
+    {
+        var geom = GrainGeometry(p, w, h);
+        var r0 = MathF.Max(0.5f, (0.5f + p.GrainSize / 100f * 2.5f) * geom.RefShort / 3000f);
+        var roughQ = (int)MathF.Round(p.GrainRoughness / 100f * 256f);
+        var roughN = roughQ / 256f;
+        var cellOpt = r0 * 2.4f;
+        return new(geom, r0, roughQ,
+            GrainCorrelatedGain(roughN), GrainShotNorm(), cellOpt,
+            GrainOpticalSigma(p.GrainAperture, r0, geom.PixelScale));
+    }
+
+
+    /// <summary>只正規化未濾波倍頻的方差；足跡低通造成的能量衰減不得被增益抵消。</summary>
+    private static float GrainCorrelatedGain(float rough)
+    {
+        var persistence = 0.28f + 0.52f * rough;
+        float amp = 1f, norm2 = 0;
+        for (var octave = 0; octave < 5; octave++)
+        {
+            norm2 += amp * amp;
+            amp *= persistence;
+        }
+        return 0.45f * MathF.Sqrt(3f / norm2);
+    }
+
+    /// <summary>optical 模型的高斯光圈 σ（參考像素）：觀測柔化參數與輸出像素足跡的正交合成。</summary>
+    private static float GrainOpticalSigma(float aperture, float r0, float footprint)
+    {
+        var ap = MathF.Max(0.05f, aperture) * r0;
+        return MathF.Sqrt(ap * ap + footprint * footprint * 0.25f);
+    }
+
+    /// <summary>
+    /// 光學模型的每格圓盤數：真正的 Poisson(λ) 計數（λ = density/640，density 0..1024 量化值），
+    /// 以反函數累積機率質量取得；N 截斷於 8（λ ≤ 1.6 時 P(N≥9) &lt; 0.0046%）。
+    /// CPU 與 WGSL 使用同一個累積順序，實際數值一致性另由 GPU 像素比對驗證。
+    /// </summary>
+    private static int PoissonCellCount(uint h, int density)
+    {
+        var lambda = density * (1f / 640f);
+        var u = SeedHash.ToUnitFloat(h);
+        var p = MathF.Exp(-lambda);
+        var cum = p;
+        if (u < cum) return 0;
+        for (var n = 1; n <= 8; n++)
+        {
+            p = p * lambda / n;
+            cum += p;
+            if (u < cum) return n;
+        }
+        return 8;
+    }
+
+    /// <summary>
+    /// 柔邊團塊：每格兩顆隨機半徑、隨機正負的柔邊圓點；格密度由低頻值雜訊調變（粗糙度越高越聚集）。
+    /// 彩色分量取自同一批圓點（與亮度顆粒連動），並扣掉灰階平均。
+    /// 足跡大於圓點半徑時整體淡出（次像素結構被像素濾波平均掉）。
+    /// </summary>
+    private static (float Luma, float R, float G, float B) GrainClumps(
+        float x, float y, float r0, float shadow, int roughQ, float footprint, uint seed)
+    {
+        var fade = 1f - SmoothStep(1f, 2.6f, footprint / MathF.Max(r0, 1e-3f));
+        if (fade <= 0) return (0, 0, 0, 0);
+        var cell = r0 * 2.6f;
+        var ccx = (int)MathF.Floor(x / cell);
+        var ccy = (int)MathF.Floor(y / cell);
+        float luma = 0, sr = 0, sg = 0, sb = 0;
+        for (var dy = -1; dy <= 1; dy++)
+        for (var dx = -1; dx <= 1; dx++)
+        {
+            var cx = ccx + dx;
+            var cy = ccy + dy;
+            var density = (uint)ClumpDensity(cx, cy, roughQ, seed + 71u);
+            var cellBase = unchecked(seed + (uint)cx * 4001u + (uint)cy * 7919u);
+            for (var j = 0u; j < 2u; j++)
+            {
+                var hash = SeedHash.Pcg(cellBase ^ unchecked(j * 2654435769u));
+                if (hash >> 22 >= density) continue;
+                hash = SeedHash.Pcg(hash); var px = (cx + SeedHash.ToUnitFloat(hash)) * cell;
+                hash = SeedHash.Pcg(hash); var py = (cy + SeedHash.ToUnitFloat(hash)) * cell;
+                hash = SeedHash.Pcg(hash); var rr = r0 * (1f + 0.6f * shadow) * (1f + roughQ * (1f / 256f) * (SeedHash.ToUnitFloat(hash) - 0.5f));
+                var ddx = x - px;
+                var ddy = y - py;
+                var soft = 1f - SmoothStep(rr * 0.35f, rr, MathF.Sqrt(ddx * ddx + ddy * ddy));
+                if (soft <= 0) continue;
+                hash = SeedHash.Pcg(hash); luma += (hash & 1u) == 1u ? soft : -soft;
+                hash = SeedHash.Pcg(hash); sr += soft * (SeedHash.ToUnitFloat(hash) * 2f - 1f);
+                hash = SeedHash.Pcg(hash); sg += soft * (SeedHash.ToUnitFloat(hash) * 2f - 1f);
+                hash = SeedHash.Pcg(hash); sb += soft * (SeedHash.ToUnitFloat(hash) * 2f - 1f);
+            }
+        }
+        var mean = (sr + sg + sb) / 3f;
+        return (Math.Clamp(luma * fade, -1f, 1f), Math.Clamp((sr - mean) * fade, -1f, 1f),
+            Math.Clamp((sg - mean) * fade, -1f, 1f), Math.Clamp((sb - mean) * fade, -1f, 1f));
+    }
+
+    /// <summary>
+    /// 等向的連續多尺度相關場：每個倍頻以固定 λ 的齊次 Poisson 脈衝（有界計數尾端見
+    /// <see cref="PoissonCellCount"/>）經緊支撐徑向核 Wendland w(t)=(1−t)⁴(1+4t) 重建有號 shot noise。
+    /// 不用軸向插值或格狀密度調變；方向性只剩有界點過程近似的誤差。
+    /// 每格脈衝搜尋 ±2 格有界：格寬 R/2、核支撐半徑 R，跨 2 格外的脈衝接觸不到取樣點。
+    /// 粗糙度控制高頻倍頻的衰減；足跡超過核半徑四分之一時該倍頻淡出（足跡濾波）。
+    /// 每倍頻場做解析歸一化：Var = λ̄_area·E[v²]·2πR²·J，J = ∫₀¹t·(1−t)⁸(1+4t)²dt ≈ 0.035354，
+    /// λ̄_area·R² = (700/640)·(R/cell)² = 4.375 與 R 無關 → 各倍頻同方差，<paramref name="norm"/> 由
+    /// DeriveGrain 傳入；<paramref name="gain"/> 按未濾波的 Σamp² 正規化，保留足跡濾波的能量衰減。
+    /// </summary>
+    private static (float Luma, float R, float G, float B) GrainCorrelated(
+        float x, float y, float r0, int roughQ, float footprint, float norm, float gain, uint seed)
+    {
+        var persistence = 0.28f + 0.52f * (roughQ * (1f / 256f));
+        float luma = 0, sr = 0, sg = 0, sb = 0;
+        var amp = 1f;
+        var rad = r0 * 8.8f;
+        for (var octave = 0; octave < 5; octave++)
+        {
+            var cell = rad * 0.5f;
+            var invR = 1f / rad;
+            var fade = 1f - SmoothStep(0.7f, 1.8f, footprint / (rad * 0.25f));
+            if (fade > 0)
+            {
+                var os = seed + (uint)octave * 911u;
+                var ccx = (int)MathF.Floor(x / cell);
+                var ccy = (int)MathF.Floor(y / cell);
+                float sum = 0, ar = 0, ag = 0, ab = 0;
+                for (var dy = -2; dy <= 2; dy++)
+                for (var dx = -2; dx <= 2; dx++)
+                {
+                    var cx = ccx + dx;
+                    var cy = ccy + dy;
+                    const int density = 700;
+                    var cellBase = unchecked(os + (uint)cx * 4001u + (uint)cy * 7919u);
+                    var count = PoissonCellCount(SeedHash.Pcg(cellBase), density);
+                    for (var j = 0; j < count; j++)
+                    {
+                        var hash = SeedHash.Pcg(unchecked(cellBase + (uint)j * 2654435769u + 0x9E3779B9u));
+                        var px = (cx + SeedHash.ToUnitFloat(hash)) * cell;
+                        hash = SeedHash.Pcg(hash); var py = (cy + SeedHash.ToUnitFloat(hash)) * cell;
+                        var ddx = x - px;
+                        var ddy = y - py;
+                        var t = MathF.Sqrt(ddx * ddx + ddy * ddy) * invR;
+                        if (t >= 1f) continue;
+                        var u = 1f - t;
+                        var w = u * u * u * u * (1f + 4f * t);
+                        hash = SeedHash.Pcg(hash); sum += w * (SeedHash.ToUnitFloat(hash) * 2f - 1f);
+                        hash = SeedHash.Pcg(hash); ar += w * (SeedHash.ToUnitFloat(hash) * 2f - 1f);
+                        hash = SeedHash.Pcg(hash); ag += w * (SeedHash.ToUnitFloat(hash) * 2f - 1f);
+                        hash = SeedHash.Pcg(hash); ab += w * (SeedHash.ToUnitFloat(hash) * 2f - 1f);
+                    }
+                }
+                var a = amp * fade;
+                luma += a * sum * norm;
+                sr += a * ar * norm;
+                sg += a * ag * norm;
+                sb += a * ab * norm;
+            }
+            amp *= persistence;
+            rad *= 0.5f;
+        }
+        var mean = (sr + sg + sb) / 3f;
+        return (Math.Clamp(luma * gain, -1.5f, 1.5f), Math.Clamp((sr - mean) * gain, -1.5f, 1.5f),
+            Math.Clamp((sg - mean) * gain, -1.5f, 1.5f), Math.Clamp((sb - mean) * gain, -1.5f, 1.5f));
+    }
+
+    /// <summary>shot noise 場的歸一化常數：1/√(λ̄_area·E[v²]·2πJ) = 1/√(4.375·π·0.0707071/3) ≈ 1.757。</summary>
+    private static float GrainShotNorm() => 1f / MathF.Sqrt(4.375f * MathF.PI * 0.0707071f / 3f);
+
+    /// <summary>
+    /// 2D Poisson／布林圓盤的光學統計近似（獨立實作；不是顯影化學，也未採用 IPOL 參考碼）：
+    /// 參考平面上每格圓盤數為 Poisson(λ)，λ 由低頻團聚雜訊調變（粗糙度越高覆蓋越不均）；
+    /// 圓盤位置、粒徑與色度各自獨立雜湊，粒徑為以 r0 為中心的均勻分布（radius_spread 控制相對散布，
+    /// 暗部圓盤略大）。覆蓋率 = 布林聯集的空隙率補數 1 − ∏(1 − w_i)，逐像素以當前 shadow 的
+    /// 布林期望空隙率置中（不再用全域平均）；觀測值 = 高斯光圈內的覆蓋率，
+    /// 以有界 Monte Carlo（等面積極座標分層＋每像素種子抖動）估算，光圈 σ 已含像素足跡。
+    /// </summary>
+    private static (float Luma, float R, float G, float B) GrainOptical(
+        float x, float y, float r0, float shadow, int roughQ, float spread,
+        int samples, float cell, float sigma, uint seed)
+    {
+        var pix = SeedHash.Pcg(unchecked(seed + (uint)(int)MathF.Floor(x) * 668265263u
+            + (uint)(int)MathF.Floor(y) * 2246822519u));
+        // 布林模型期望空隙率：E[cover] = 1 − e^(−λ̄·π·E[A])，λ̄ = 平均密度 700/640 每格；
+        // E[A] = π·(E[rr²] + E[edge²])，edge = max(rr/4, 0.35) 分段近似。逐像素隨 shadow 置中。
+        var g = 1f + 0.6f * shadow;
+        var meanR2 = r0 * r0 * g * g * (1f + 0.64f * spread * spread / 3f);
+        var meanA = MathF.PI * (meanR2 + MathF.Max(meanR2 * 0.0625f, 0.1225f));
+        var pExp = 1f - MathF.Exp(-(700f / 640f) * meanA / (cell * cell));
+        float luma = 0, sr = 0, sg = 0, sb = 0;
+        for (var sIndex = 0; sIndex < samples; sIndex++)
+        {
+            var h = SeedHash.Pcg(unchecked(pix + (uint)sIndex * 747796405u));
+            var u1 = SeedHash.ToUnitFloat(h);
+            h = SeedHash.Pcg(h);
+            var u2 = SeedHash.ToUnitFloat(h);
+            // 等面積高斯光圈取樣：角度按取樣序分層＋抖動，半徑 r = σ·√(−2·ln(1−u))
+            var ang = (sIndex + u2) / samples * (2f * MathF.PI);
+            var radius = sigma * MathF.Sqrt(-2f * MathF.Log(1f - u1 * 0.9999f));
+            var qx = x + radius * MathF.Cos(ang);
+            var qy = y + radius * MathF.Sin(ang);
+            var (cover, cvr, cvg, cvb) = OpticalCoverage(qx, qy, r0, shadow, roughQ, spread, cell, seed);
+            var dev = cover - pExp;
+            luma += dev;
+            sr += cvr * dev;
+            sg += cvg * dev;
+            sb += cvb * dev;
+        }
+        var inv = 1f / samples;
+        return (luma * inv, sr * inv, sg * inv, sb * inv);
+    }
+
+    /// <summary>
+    /// 單一光圈取樣點的布林覆蓋：每格圓盤數為有界 Poisson(λ)（<see cref="PoissonCellCount"/>），
+    /// 圓盤位置／粒徑／色度獨立雜湊；覆蓋率為聯集空隙率的補數 1 − ∏(1 − w_i)，
+    /// w_i 為柔邊圓盤權重（邊緣以 max(rr/4, 0.35) 平滑，無硬門檻，CPU/GPU 浮點差異安全）；
+    /// 色度按逐層吸收量 w_i·∏_j&lt;i(1 − w_j) 加權（固定列舉序，前層先吸收）。
+    /// 候選搜尋 ±2 格有界：格寬 2.4·r0，最大圓盤觸及範圍 rr + edge ≤ 2.88·r0 + 0.72·r0 = 3.6·r0 &lt; 2 格寬。
+    /// </summary>
+    private static (float Cover, float R, float G, float B) OpticalCoverage(
+        float qx, float qy, float r0, float shadow, int roughQ, float spread, float cell, uint seed)
+    {
+        var ccx = (int)MathF.Floor(qx / cell);
+        var ccy = (int)MathF.Floor(qy / cell);
+        float transmit = 1f, sr = 0, sg = 0, sb = 0;
+        for (var dy = -2; dy <= 2; dy++)
+        for (var dx = -2; dx <= 2; dx++)
+        {
+            var cx = ccx + dx;
+            var cy = ccy + dy;
+            // 每格圓盤密度的低頻調變（0..1024）：基準 700，粗糙度越高覆蓋越不均
+            var density = Math.Clamp(700 + ClumpDensity(cx, cy, roughQ, seed + 1409u) - 614, 0, 1024);
+            var cellBase = unchecked(seed + (uint)cx * 4001u + (uint)cy * 7919u + 1409u);
+            var count = PoissonCellCount(SeedHash.Pcg(cellBase), density);
+            for (var j = 0; j < count; j++)
+            {
+                var hash = SeedHash.Pcg(unchecked(cellBase + (uint)j * 2654435769u + 0x9E3779B9u));
+                var px = (cx + SeedHash.ToUnitFloat(hash)) * cell;
+                hash = SeedHash.Pcg(hash); var py = (cy + SeedHash.ToUnitFloat(hash)) * cell;
+                hash = SeedHash.Pcg(hash);
+                var rr = r0 * (1f + 0.6f * shadow) * (1f + spread * (SeedHash.ToUnitFloat(hash) * 2f - 1f) * 0.8f);
+                var ddx = qx - px;
+                var ddy = qy - py;
+                var edge = MathF.Max(rr * 0.25f, 0.35f);
+                var w = 1f - SmoothStep(rr - edge, rr + edge, MathF.Sqrt(ddx * ddx + ddy * ddy));
+                if (w <= 0) continue;
+                var absorbed = w * transmit;
+                transmit *= 1f - w;
+                hash = SeedHash.Pcg(hash); sr += absorbed * (SeedHash.ToUnitFloat(hash) * 2f - 1f);
+                hash = SeedHash.Pcg(hash); sg += absorbed * (SeedHash.ToUnitFloat(hash) * 2f - 1f);
+                hash = SeedHash.Pcg(hash); sb += absorbed * (SeedHash.ToUnitFloat(hash) * 2f - 1f);
+            }
+        }
+        var cover = 1f - transmit;
+        if (cover <= 0) return (0, 0, 0, 0);
+        var inv = 1f / cover;
+        return (cover, Math.Clamp(sr * inv, -1f, 1f),
+            Math.Clamp(sg * inv, -1f, 1f), Math.Clamp(sb * inv, -1f, 1f));
+    }
+
+
+    private static readonly int[] Smooth4 = [0, 5, 16, 27];
+
+    /// <summary>團聚密度（0..1024）：全整數的平滑值雜訊（4 格一節點），CPU 與 GPU 逐位元相同，避免圓點有無在門檻邊緣翻轉。</summary>
+    private static int ClumpDensity(int cx, int cy, int roughQ, uint seed)
+    {
+        var ix = cx >> 2;
+        var iy = cy >> 2;
+        var wx = Smooth4[cx & 3];
+        var wy = Smooth4[cy & 3];
+        int H(int a, int b) => (int)(SeedHash.Pcg(unchecked(seed + (uint)a * 379u + (uint)b * 733u)) >> 24);
+        var v = (H(ix, iy) * (32 - wx) + H(ix + 1, iy) * wx) * (32 - wy) + (H(ix, iy + 1) * (32 - wx) + H(ix + 1, iy + 1) * wx) * wy;
+        var clump = Math.Clamp((v - 65280) * 2, 0, 261120) / 255;
+        return 614 + (clump - 614) * roughQ / 256;
     }
 
     // ───────────── 共用工具 ─────────────
@@ -1163,18 +1609,16 @@ public static class CpuPipeline
         if (horizontal)
             Parallel.For(0, h, y =>
             {
+                var row = y * w;
                 for (var x = 0; x < w; x++)
                 {
-                    float r = 0, g = 0, b = 0, a = 0;
+                    var acc = Vector128<float>.Zero;
                     for (var d = -radius; d <= radius; d++)
                     {
                         var sx = Math.Clamp(x + d, 0, w - 1);
-                        var o = (y * w + sx) * 4;
-                        var wt = weights[d + radius];
-                        r += src[o] * wt; g += src[o + 1] * wt; b += src[o + 2] * wt; a += src[o + 3] * wt;
+                        acc += Vector128.LoadUnsafe(ref src[(row + sx) * 4]) * Vector128.Create(weights[d + radius]);
                     }
-                    var i = (y * w + x) * 4;
-                    dst[i] = r; dst[i + 1] = g; dst[i + 2] = b; dst[i + 3] = a;
+                    acc.CopyTo(dst, (row + x) * 4);
                 }
             });
         else
@@ -1182,16 +1626,13 @@ public static class CpuPipeline
             {
                 for (var y = 0; y < h; y++)
                 {
-                    float r = 0, g = 0, b = 0, a = 0;
+                    var acc = Vector128<float>.Zero;
                     for (var d = -radius; d <= radius; d++)
                     {
                         var sy = Math.Clamp(y + d, 0, h - 1);
-                        var o = (sy * w + x) * 4;
-                        var wt = weights[d + radius];
-                        r += src[o] * wt; g += src[o + 1] * wt; b += src[o + 2] * wt; a += src[o + 3] * wt;
+                        acc += Vector128.LoadUnsafe(ref src[(sy * w + x) * 4]) * Vector128.Create(weights[d + radius]);
                     }
-                    var i = (y * w + x) * 4;
-                    dst[i] = r; dst[i + 1] = g; dst[i + 2] = b; dst[i + 3] = a;
+                    acc.CopyTo(dst, (y * w + x) * 4);
                 }
             });
     }
@@ -1247,14 +1688,6 @@ public static class CpuPipeline
         var ux = fx * fx * (3f - 2f * fx);
         var uy = fy * fy * (3f - 2f * fy);
         return (h00 * (1 - ux) + h10 * ux) * (1 - uy) + (h01 * (1 - ux) + h11 * ux) * uy;
-    }
-
-    /// <summary>顆粒格雜訊：以量化後的格座標做雜湊，預覽與匯出的顆粒分布相同。</summary>
-    private static float GrainCell(int x, int y, float cell, uint seed)
-    {
-        var cx = (int)MathF.Floor(x / cell);
-        var cy = (int)MathF.Floor(y / cell);
-        return SeedHash.ToUnitFloat(SeedHash.Pcg(seed + (uint)cx * 4001u + (uint)cy * 7919u));
     }
 
     private static void ApplySpot(float[] buf, int w, int h, float cx, float cy, float r, float amount)

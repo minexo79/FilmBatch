@@ -1,7 +1,9 @@
 using System.Numerics;
 using System.Runtime.InteropServices;
+using FilmBatch.Core.Film;
 using FilmBatch.Core.Random;
 using FilmBatch.Engine.Imaging;
+using FilmBatch.Engine.Imaging.Raw;
 using FilmBatch.Gpu.Device;
 using FilmBatch.Gpu.Resources;
 using FilmBatch.Gpu.ShaderSystem;
@@ -11,7 +13,6 @@ namespace FilmBatch.Engine.Rendering;
 public sealed record EffectRendererOptions
 {
     public string? TexturesFolder { get; init; }
-    public string? RecipesFolder { get; init; }
     public ulong MemoryBudgetBytes { get; init; }
     /// <summary>每次編碼/讀回的列帶大小上限（位元組）；0 = 預設 64 MB，仍受裝置緩衝區上限約束。</summary>
     public ulong MaxBandBytes { get; init; }
@@ -21,23 +22,46 @@ public sealed record EffectRendererOptions
 internal sealed class GpuEffectPipeline : IDisposable
 {
     private readonly GpuDevice _gpu;
+    private readonly ShaderLibrary _shaders;
     private readonly ulong _budget, _bandCap;
     private readonly List<ComputeKernel> _kernels = [];
     private readonly List<GpuBuffer> _uniforms = [];
-    private readonly Dictionary<int, GpuBuffer> _gaussians = [];
+    private readonly Dictionary<(int Radius, float Sigma), GpuBuffer> _gaussians = [];
+    // 內附 LUT 的紋理（FilmLookLibrary 對同一 key 回傳同一個 FilmLut；FilmLut 未覆寫 Equals，預設比較即參考相等）
+    private readonly Dictionary<FilmLut, GpuTexture> _luts = [];
     private readonly LinkedList<CachedSource> _sources = new();
     private readonly GpuTexture[] _work = new GpuTexture[4];
     private GpuBuffer? _output, _readback, _band;
     private uint _width, _height, _bandRows;
     private int _uniformIndex;
+    private readonly RawDisplayGpu _rawDisplay;
+    private readonly ComputeKernel _rawWhiteBalance, _rawSemantic;
+    private GpuTexture? _maskTexture;
+    private RawMaskAlpha? _maskAlpha;
+
+    private GpuTexture? PrepareMask(SourceImage source, ModuleParams p, CancellationToken token)
+    {
+        var alpha = RawSemanticAdjustments.Prepare(source, p, token);
+        if (alpha is null) return null;
+        if (ReferenceEquals(alpha, _maskAlpha)) return _maskTexture;
+        _maskTexture?.Dispose();
+        _maskTexture = null; _maskAlpha = null;
+        var texture = _gpu.CreateTexture((uint)alpha.Width, (uint)alpha.Height, GpuTextureFormat.R32Float,
+            GpuTextureUsage.Sampled | GpuTextureUsage.CopyDst, "raw semantic alpha");
+        try { _gpu.WriteTexture<float>(texture, alpha.Data); }
+        catch { texture.Dispose(); throw; }
+        _maskTexture = texture; _maskAlpha = alpha;
+        return texture;
+    }
     private readonly ComputeKernel _decode, _encode8, _encode16, _display, _spike, _blur, _box,
-        _basicLinear, _lens, _multi, _double, _bokeh, _zoom, _motion, _vignette,
-        _halExtract, _halAdd, _leak, _film, _droBase, _droApply, _filmBlend, _plate,
+        _crop, _basicLinear, _photoAdjust, _lens, _multi, _double, _bokeh, _zoom, _motion, _vignette,
+        _halExtract, _halAdd, _leak, _look, _plate,
         _basicDisplay, _tone, _detail, _dirt, _grain, _texture;
 
     public GpuEffectPipeline(GpuDevice gpu, ShaderLibrary shaders, EffectRendererOptions? options = null)
     {
         _gpu = gpu;
+        _shaders = shaders;
         _budget = options is { MemoryBudgetBytes: > 0 } ? options.MemoryBudgetBytes : 768UL * 1024 * 1024;
         _bandCap = options is { MaxBandBytes: > 0 } ? options.MaxBandBytes : 64UL * 1024 * 1024;
         var tex = BindingSpec.TextureFloat;
@@ -49,6 +73,9 @@ internal sealed class GpuEffectPipeline : IDisposable
             _kernels.Add(kernel);
             return kernel;
         }
+        _rawDisplay = new RawDisplayGpu(gpu, shaders);
+        _rawWhiteBalance = K("io/raw_white_balance", tex, storage, uniform);
+        _rawSemantic = K("io/raw_semantic_adjust", tex, tex, storage, uniform);
         _decode = K("io/decode_rgba16", BindingSpec.TextureUint, storage);
         _encode8 = K("io/encode_bgra8", tex, BindingSpec.Storage, uniform);
         _encode16 = K("io/encode_rgba16", tex, BindingSpec.Storage, uniform);
@@ -56,7 +83,9 @@ internal sealed class GpuEffectPipeline : IDisposable
         _spike = K("spike/adjust", tex, storage, uniform);
         _blur = K("common/gaussian", tex, storage, uniform, BindingSpec.StorageRead);
         _box = K("geometry/box_blur", tex, storage);
+        _crop = K("geometry/crop", tex, storage, uniform);
         _basicLinear = K("linear/basic_linear", tex, storage, uniform);
+        _photoAdjust = K("linear/photo_adjustments", tex, storage, uniform);
         _lens = K("geometry/lens_distortion", tex, tex, storage, uniform);
         _multi = K("geometry/multi_lens", tex, storage, uniform);
         _double = K("optical/double_exposure", tex, tex, storage, uniform);
@@ -67,16 +96,13 @@ internal sealed class GpuEffectPipeline : IDisposable
         _halExtract = K("optical/halation_extract", tex, storage, uniform);
         _halAdd = K("optical/halation_add", tex, tex, storage, uniform);
         _leak = K("optical/light_leak", tex, storage, uniform);
-        _film = K("film/film_pixel", tex, storage, uniform);
-        _droBase = K("film/dro_base", tex, storage, uniform);
-        _droApply = K("film/film_dro_sharpen", tex, tex, storage, uniform);
-        _filmBlend = K("film/blend", tex, tex, storage, uniform);
+        _look = K("film/look", tex, tex, storage, uniform);
         _plate = K("film/photo_plate", tex, storage, uniform);
         _basicDisplay = K("linear/basic_display", tex, tex, storage, uniform);
         _tone = K("film/tone", tex, storage, uniform);
         _detail = K("detail/detail_apply", tex, tex, storage, uniform);
         _dirt = K("surface/dirt_scratches", tex, storage, uniform);
-        _grain = K("surface/grain", tex, storage, uniform);
+        _grain = K("surface/grain", tex, tex, storage, uniform);
         _texture = K("surface/texture_overlay", tex, tex, storage, uniform);
     }
 
@@ -84,8 +110,10 @@ internal sealed class GpuEffectPipeline : IDisposable
     public bool CanRender(SourceImage source, ModuleParams? p = null)
     {
         if (!FitsDevice(source, p)) return false;
-        // Four work textures + linear source + banded output/readback; include external assets.
-        var bytes = WorkspaceBytes((uint)source.Width, (uint)source.Height) + CachedSource.BytesFor(source.Width, source.Height);
+        // Four work textures (output size) + linear source + banded output/readback; include external assets.
+        var (w, h) = OutputSize(source, p);
+        var bytes = WorkspaceBytes(w, h) + CachedSource.BytesFor(source.Width, source.Height);
+        if (p?.RawMaskOn == true) bytes += (ulong)source.Width * (ulong)source.Height * 4;
         if (p?.DoubleAsset is { } doubleAsset) bytes += AssetBytes(doubleAsset);
         if (p?.LeakAsset is { } leakAsset) bytes += AssetBytes(leakAsset);
         if (p?.DirtAsset is { } dirtAsset) bytes += AssetBytes(dirtAsset);
@@ -97,11 +125,16 @@ internal sealed class GpuEffectPipeline : IDisposable
     {
         var limit = _gpu.AdapterInfo.MaxTextureDimension2D;
         bool Fits(SourceImage image) => (uint)image.Width <= limit && (uint)image.Height <= limit;
-        return Fits(source)
+        var (w, h) = OutputSize(source, p);
+        return Fits(source) && w <= limit && h <= limit
             && (p?.DoubleAsset is null || Fits(p.DoubleAsset.Image))
             && (p?.LeakAsset is null || Fits(p.LeakAsset.Image))
             && (p?.DirtAsset is null || Fits(p.DirtAsset.Image));
     }
+
+    /// <summary>算圖結果（工作紋理）的尺寸：裁切後的畫框；沒有參數時同來源。</summary>
+    private static (uint Width, uint Height) OutputSize(SourceImage source, ModuleParams? p) =>
+        p is null ? ((uint)source.Width, (uint)source.Height) : ((uint)p.OutWidth, (uint)p.OutHeight);
 
     private static ulong AssetBytes(EffectImage image) => CachedSource.BytesFor(image.Image.Width, image.Image.Height);
 
@@ -109,20 +142,13 @@ internal sealed class GpuEffectPipeline : IDisposable
         (ulong)width * height * 64 + 2 * (ulong)BandRows(width, height) * width * 8;
 
     /// <summary>
-    /// 匯出前的 GPU 配置：清空預覽快取，並在 OutOfMemory scope 內配置工作區與來源/素材紋理。
-    /// 回傳 null 表示成功；否則為顯示記憶體不足的原因（已釋放配置，呼叫端應改用 CPU）。
+    /// 匯出在同一個 OutOfMemory scope 中配置並算圖，包含效果 LUT、Gaussian 與 uniform。
+    /// 回傳 null 表示成功；OOM 時釋放資源並回傳原因；其他 GPU 錯誤直接傳播。
     /// </summary>
-    public string? Reserve(SourceImage source, ModuleParams p)
+    public string? RenderForExport<T>(SourceImage source, ModuleParams p, T[] destination, CancellationToken token) where T : unmanaged
     {
         ClearSources();
-        var error = _gpu.TryAllocate(() =>
-        {
-            EnsureWorkspace(source);
-            Acquire(source);
-            if (p.DoubleAsset is not null) Acquire(p.DoubleAsset.Image);
-            if (p.LeakAsset is not null) Acquire(p.LeakAsset.Image);
-            if (p.DirtAsset is not null) Acquire(p.DirtAsset.Image);
-        });
+        var error = _gpu.TryAllocate(() => Render(source, p, destination, token));
         if (error is not null) ReleaseAll();
         return error;
     }
@@ -131,34 +157,45 @@ internal sealed class GpuEffectPipeline : IDisposable
     public void ReleaseAll()
     {
         ClearSources();
+        _rawDisplay.ReleaseWorking();
+        _maskTexture?.Dispose(); _maskTexture = null; _maskAlpha = null;
         foreach (var texture in _work) texture?.Dispose();
         Array.Clear(_work);
         _output?.Dispose(); _readback?.Dispose();
         _output = _readback = null;
         _width = _height = _bandRows = 0;
+        foreach (var buffer in _uniforms) buffer.Dispose();
+        _uniforms.Clear(); _uniformIndex = 0;
+        foreach (var buffer in _gaussians.Values) buffer.Dispose();
+        _gaussians.Clear();
+        foreach (var texture in _luts.Values) texture.Dispose();
+        _luts.Clear();
+        _band?.Dispose(); _band = null;
     }
 
     public void Render<T>(SourceImage source, ModuleParams p, T[] destination, CancellationToken token) where T : unmanaged
     {
         token.ThrowIfCancellationRequested();
-        EnsureWorkspace(source);
+        // 來源上傳 / 解碼紋理維持原尺寸；工作紋理以輸出（裁切後）尺寸配置
+        EnsureWorkspace((uint)p.OutWidth, (uint)p.OutHeight);
         var input = Acquire(source);
+        var mask = PrepareMask(source, p, token);
         var second = p.DoubleAsset is null ? null : Acquire(p.DoubleAsset.Image);
         var leak = p.LeakAsset is null ? null : Acquire(p.LeakAsset.Image);
         var dirt = p.DirtAsset is null ? null : Acquire(p.DirtAsset.Image);
         _uniformIndex = 0;
-        var commands = _gpu.BeginCommands();
-        var current = Process(commands, input, second, leak, dirt, p, token);
+        using var commands = _gpu.BeginCommands();
+        var current = Process(commands, input, second, leak, dirt, mask, source, p, token);
         Finish(commands, current, destination, token);
         TrimSources();
     }
 
     public void RenderSpike(SourceImage source, SpikeParams p, byte[] destination)
     {
-        EnsureWorkspace(source);
+        EnsureWorkspace((uint)source.Width, (uint)source.Height);
         var input = Acquire(source);
         _uniformIndex = 0;
-        var commands = _gpu.BeginCommands();
+        using var commands = _gpu.BeginCommands();
         var current = Next(input);
         Dispatch(commands, _spike, [input, current, Uniform(new Vector4(p.Exposure, p.Brightness, p.Saturation, 0))]);
         var radius = p.BlurRadiusPixels(source.ShortSide);
@@ -170,7 +207,7 @@ internal sealed class GpuEffectPipeline : IDisposable
     }
 
     private GpuTexture Process(GpuCommandList commands, GpuTexture current, GpuTexture? second,
-        GpuTexture? leak, GpuTexture? dirt, ModuleParams p, CancellationToken token)
+        GpuTexture? leak, GpuTexture? dirt, GpuTexture? mask, SourceImage source, ModuleParams p, CancellationToken token)
     {
         var shortSide = Math.Min(_width, _height);
         GpuTexture Apply<T>(ComputeKernel kernel, T values, GpuTexture? extra = null, GpuTexture? reserve = null) where T : unmanaged
@@ -187,8 +224,27 @@ internal sealed class GpuEffectPipeline : IDisposable
             var blurred = Blur(commands, current, Math.Max(1, (int)MathF.Round(shortSide * radiusScale)), reserve);
             return Apply(_detail, new Vector4(amount, 0, 0, 0), blurred, reserve);
         }
+        // 裁切：來源尺寸的線性紋理 → 輸出尺寸的工作紋理（關閉時不多一個 pass）
+        if (p.Crop.On)
+        {
+            var m = p.CropT.OutToSource;
+            current = Apply(_crop, new CropUniforms((float)m.M00, (float)m.M01, (float)m.M02, current.Width,
+                (float)m.M10, (float)m.M11, (float)m.M12, current.Height));
+        }
+        if (source.Scene is not null)
+        {
+            if (p.RawWhiteBalanceMatrix is { } wb)
+            {
+                var m = RawFinishParams.WorkingWhiteBalance(wb).ToF32();
+                current = Apply(_rawWhiteBalance, new MatrixUniforms(
+                    new(m[0], m[1], m[2], 0), new(m[3], m[4], m[5], 0), new(m[6], m[7], m[8], 0)));
+            }
+            if (mask is not null)
+                current = Apply(_rawSemantic, RawSemanticAdjustments.Uniforms(source, p), mask);
+        }
         if (p.BasicOn && (p.Exposure != 0 || p.Temperature != 0 || p.Tint != 0))
             current = Apply(_basicLinear, new Vector4(p.Exposure, p.Temperature / 100, p.Tint / 100, 0));
+        if (p.SkinOn || p.ZoneOn) current = Apply(_photoAdjust, PhotoAdjustments.Uniforms(p));
         if (p.LensOn)
         {
             var soft = current;
@@ -241,25 +297,16 @@ internal sealed class GpuEffectPipeline : IDisposable
                     p.LeakSize / 100, p.LeakHue, p.LeakIrregularity / 100, p.LeakCount, p.SeedLightLeak,
                     _width / (float)_height, shortSide, 0, 0))
                 : Apply(_texture, OverlayUniforms(p, leak, true), leak);
-        if (p.FilmOn && p.Film.Mix.X > 0)
-        {
-            var original = p.Film.Mix.X < 1 ? current : null;
-            current = Apply(_film, p.Film, reserve: original);
-            if (p.Film.Spatial.X != 0 || p.Film.Spatial.Y != 0)
-            {
-                var basis = Apply(_droBase, p.Film, reserve: original);
-                current = Apply(_droApply, p.Film, basis, original);
-            }
-            if (p.Film.Spatial.Z != 0) current = Sharpen(.003f, p.Film.Spatial.Z, original);
-            if (original is not null) current = Apply(_filmBlend, p.Film, original);
-        }
+        if (p.FilmOn && p.FilmLut is not null && p.FilmStrength > 0)
+            current = Apply(_look, p.FilmLook, LutTexture(p.FilmLut));
         if (p.PlateOn && p.PlateStrength > 0)
             current = Apply(_plate, new PlateUniforms(p.PlateType, p.PlateStrength / 100, p.PlateOrtho / 100,
                 p.PlateTintHue, p.PlateTintAmount / 100, p.PlateEdgeErosion / 100, p.PlateStains / 100,
                 p.PlateUneven / 100, p.SeedPhotoPlate, _width / (float)_height, 0, 0));
         token.ThrowIfCancellationRequested();
         var display = Next(current);
-        Dispatch(commands, _display, [current, display]);
+        if (source.Scene is { } scene) _rawDisplay.Dispatch(commands, current, display, scene.Tone);
+        else Dispatch(commands, _display, [current, display]);
         current = display;
         if (p.BasicOn)
         {
@@ -277,9 +324,19 @@ internal sealed class GpuEffectPipeline : IDisposable
                 ? Apply(_dirt, new DirtUniforms(0, p.DirtDust / 100, p.DirtScratches / 100, p.DirtHairs / 100,
                     p.Polarity, p.DirtStrength / 100, p.DirtScale / 100, p.SeedDirt, shortSide, 0, 0, 0))
                 : Apply(_texture, OverlayUniforms(p, dirt, false), dirt);
-        if (p.GrainOn && p.GrainAmount > 0)
-            current = Apply(_grain, new GrainUniforms(p.GrainAmount / 100, p.GrainSize / 100,
-                p.GrainRoughness / 100, p.GrainColor / 100, p.SeedGrain, shortSide, 0, 0));
+        if (p.GrainOn && (p.GrainAmount > 0 || p.GrainSoftness > 0))
+        {
+            var d = CpuPipeline.DeriveGrain(p, (int)_width, (int)_height);
+            var soft = CpuPipeline.GrainSoftBlur(d.Geom.RefShort, p.GrainSoftness / 100, d.Geom.PixelScale);
+            var blurred = soft is { } b ? Blur(commands, current, b.Radius, sigma: b.Sigma) : current;
+            current = Apply(_grain, new GrainUniforms(
+                new Vector4(p.GrainAmount / 100, p.GrainColor / 100, soft is null ? 0 : p.GrainSoftness / 100, d.CorrGain),
+                new Vector4(d.SigmaOpt, d.CellOpt, Math.Clamp(p.GrainRadiusSpread, 0, 1), d.CorrScale),
+                new Vector4(d.Geom.A00, d.Geom.A01, d.Geom.B0, 0),
+                new Vector4(d.Geom.A10, d.Geom.A11, d.Geom.B1, d.R0),
+                p.SeedGrain, (uint)p.GrainModel, (uint)p.GrainSamples, (uint)d.RoughQ,
+                new Vector4(p.GrainShadows / 100, p.GrainMidtones / 100, p.GrainHighlights / 100, d.Geom.PixelScale)), blurred);
+        }
         return current;
     }
 
@@ -294,20 +351,31 @@ internal sealed class GpuEffectPipeline : IDisposable
             leak ? p.SeedLightLeak : p.SeedDirt, leak ? 1 : 0);
     }
 
-    private GpuTexture Blur(GpuCommandList commands, GpuTexture input, int radius, GpuTexture? reserve = null)
+    private GpuTexture Blur(GpuCommandList commands, GpuTexture input, int radius, GpuTexture? reserve = null, float? sigma = null)
     {
-        if (!_gaussians.TryGetValue(radius, out var weights))
+        var key = (radius, sigma ?? MathF.Max(.5f, radius / 3f));
+        if (!_gaussians.TryGetValue(key, out var weights))
         {
-            var values = GaussianWeights.Get(radius, MathF.Max(.5f, radius / 3f));
+            var values = GaussianWeights.Get(key.Item1, key.Item2);
             weights = _gpu.CreateBuffer((ulong)values.Length * 4, GpuBufferUsage.Storage | GpuBufferUsage.CopyDst, "gaussian weights");
             _gpu.WriteBuffer<float>(weights, values);
-            _gaussians.Add(radius, weights);
+            _gaussians.Add(key, weights);
         }
         var temp = Next(input, reserve);
         var result = Next(input, temp, reserve);
         Dispatch(commands, _blur, [input, temp, Uniform(new BlurUniforms(1, 0, radius, 0)), weights]);
         Dispatch(commands, _blur, [temp, result, Uniform(new BlurUniforms(0, 1, radius, 0)), weights]);
         return result;
+    }
+
+    private GpuTexture LutTexture(FilmLut lut)
+    {
+        if (_luts.TryGetValue(lut, out var texture)) return texture;
+        var n = (uint)lut.Size;
+        texture = _gpu.CreateTexture(n * n, n, GpuTextureFormat.Rgba32Float, GpuTextureUsage.CopyDst | GpuTextureUsage.Sampled, "film lut");
+        _gpu.WriteTexture<float>(texture, lut.ToTextureRgba());
+        _luts.Add(lut, texture);
+        return texture;
     }
 
     private GpuTexture Next(GpuTexture first, GpuTexture? second = null, GpuTexture? third = null)
@@ -349,7 +417,7 @@ internal sealed class GpuEffectPipeline : IDisposable
         {
             token.ThrowIfCancellationRequested();
             var rows = Math.Min(_bandRows, _height - row);
-            var list = pending ?? _gpu.BeginCommands();
+            using var list = pending ?? _gpu.BeginCommands();
             pending = null;
             _gpu.WriteBuffer(_band, new BandUniforms(row, rows, 0, 0));
             list.Dispatch2D(encode, [current, _output!, _band], _width, rows);
@@ -372,12 +440,12 @@ internal sealed class GpuEffectPipeline : IDisposable
         return (uint)Math.Clamp(rows, 1UL, height);
     }
 
-    private void EnsureWorkspace(SourceImage source)
+    private void EnsureWorkspace(uint width, uint height)
     {
-        if (_width == source.Width && _height == source.Height) return;
+        if (_width == width && _height == height) return;
         foreach (var texture in _work) texture?.Dispose();
         _output?.Dispose(); _readback?.Dispose();
-        _width = (uint)source.Width; _height = (uint)source.Height;
+        _width = width; _height = height;
         _bandRows = BandRows(_width, _height);
         for (var i = 0; i < _work.Length; i++)
             _work[i] = _gpu.CreateTexture(_width, _height, GpuTextureFormat.Rgba32Float, GpuTextureUsage.Sampled | GpuTextureUsage.Storage, "effect work");
@@ -396,14 +464,31 @@ internal sealed class GpuEffectPipeline : IDisposable
                 return node.Value.Linear;
             }
         var uploaded = new CachedSource(_gpu, source);
-        // 16-bit 上傳紋理只用於解碼；解碼後立即釋放，快取只保留線性紋理
-        using (var upload = _gpu.CreateTexture((uint)source.Width, (uint)source.Height, GpuTextureFormat.Rgba16Uint,
-            GpuTextureUsage.CopyDst | GpuTextureUsage.Sampled, "source upload"))
+        try
         {
-            _gpu.WriteTexture<ushort>(upload, source.Rgba16);
-            var commands = _gpu.BeginCommands();
-            commands.Dispatch2D(_decode, [upload, uploaded.Linear], (uint)source.Width, (uint)source.Height);
-            commands.Submit();
+            if (source.Scene is not null)
+            {
+                // Only the source color-space conversion runs on CPU; all editing and finishing stays on GPU.
+                var working = CpuPipeline.DecodeLinear(source);
+                _gpu.WriteTexture<float>(uploaded.Linear, working);
+            }
+            else
+            {
+            // 16-bit 上傳紋理只用於解碼；解碼後立即釋放，快取只保留線性紋理
+            using (var upload = _gpu.CreateTexture((uint)source.Width, (uint)source.Height, GpuTextureFormat.Rgba16Uint,
+                GpuTextureUsage.CopyDst | GpuTextureUsage.Sampled, "source upload"))
+            {
+                _gpu.WriteTexture<ushort>(upload, source.Rgba16);
+                using var commands = _gpu.BeginCommands();
+                commands.Dispatch2D(_decode, [upload, uploaded.Linear], (uint)source.Width, (uint)source.Height);
+                commands.Submit();
+            }
+            }
+        }
+        catch
+        {
+            uploaded.Dispose();
+            throw;
         }
         _sources.AddFirst(uploaded);
         return uploaded.Linear;
@@ -445,22 +530,28 @@ internal sealed class GpuEffectPipeline : IDisposable
         public CachedSource(GpuDevice gpu, SourceImage source)
         {
             Source = source;
-            Linear = gpu.CreateTexture((uint)source.Width, (uint)source.Height, GpuTextureFormat.Rgba32Float, GpuTextureUsage.Sampled | GpuTextureUsage.Storage, "source linear");
+            Linear = gpu.CreateTexture((uint)source.Width, (uint)source.Height, GpuTextureFormat.Rgba32Float, GpuTextureUsage.Sampled | GpuTextureUsage.Storage | GpuTextureUsage.CopyDst, "source linear");
         }
         public void Dispose() => Linear.Dispose();
     }
 
     public void Dispose()
     {
+        _rawDisplay.Dispose();
+        _maskTexture?.Dispose();
         foreach (var source in _sources) source.Dispose();
         foreach (var texture in _work) texture?.Dispose();
         foreach (var buffer in _uniforms) buffer.Dispose();
         foreach (var buffer in _gaussians.Values) buffer.Dispose();
+        foreach (var texture in _luts.Values) texture.Dispose();
         foreach (var kernel in _kernels) kernel.Dispose();
         _output?.Dispose(); _readback?.Dispose(); _band?.Dispose();
     }
 
+    [StructLayout(LayoutKind.Sequential)] private readonly record struct MatrixUniforms(Vector4 Row0, Vector4 Row1, Vector4 Row2);
     [StructLayout(LayoutKind.Sequential)] private readonly record struct BandUniforms(uint Row, uint Rows, uint Pad0, uint Pad1);
+    /// <summary>geometry/crop.wgsl：OutToSource 仿射（列主序）＋ 來源尺寸，32 位元組。</summary>
+    [StructLayout(LayoutKind.Sequential)] private readonly record struct CropUniforms(float M00, float M01, float M02, float SrcW, float M10, float M11, float M12, float SrcH);
     [StructLayout(LayoutKind.Sequential)] private readonly record struct BlurUniforms(int X, int Y, int Radius, float Pad);
     [StructLayout(LayoutKind.Sequential)] private readonly record struct LensUniforms(float Amount, float Chromatic, float Soften, float Crop, float Aspect, float ShortSide, float Pad0, float Pad1);
     [StructLayout(LayoutKind.Sequential)] private readonly record struct DoubleUniforms(int Source, int Blend, int Mirror, float Opacity, float X, float Y, float Scale, float Rotation, float Exposure, float Pad0, float Pad1, float Pad2);
@@ -474,7 +565,9 @@ internal sealed class GpuEffectPipeline : IDisposable
     [StructLayout(LayoutKind.Sequential)] private readonly record struct BasicUniforms(float Brightness, float Contrast, float Highlights, float Shadows, float Saturation, float Structure, float ShortSide, float Pad);
     [StructLayout(LayoutKind.Sequential)] private readonly record struct ToneUniforms(float ShadowHue, float ShadowAmount, float HighlightHue, float HighlightAmount, float Balance, float Pad0, float Pad1, float Pad2);
     [StructLayout(LayoutKind.Sequential)] private readonly record struct DirtUniforms(int Mode, float Dust, float Scratches, float Hairs, int Polarity, float Strength, float Scale, uint Seed, float ShortSide, uint Pad0, uint Pad1, uint Pad2);
-    [StructLayout(LayoutKind.Sequential)] private readonly record struct GrainUniforms(float Amount, float Size, float Roughness, float Color, uint Seed, float ShortSide, uint Pad0, uint Pad1);
+
+    /// <summary>surface/grain.wgsl：A 為效果參數、B 為光學模型常數、MapX/MapY 為輸出→來源參考仿射（w 欄放 r0）、Tone 為亮度帶權重＋像素足跡；96 位元組。</summary>
+    [StructLayout(LayoutKind.Sequential)] private readonly record struct GrainUniforms(Vector4 A, Vector4 B, Vector4 MapX, Vector4 MapY, uint Seed, uint Model, uint Samples, uint RoughQ, Vector4 Tone);
     [StructLayout(LayoutKind.Sequential)] private readonly record struct TextureUniforms(float Scale, float Amount, float Cosine, float Sine, float Hue, float Irregularity, float Density, float ShortSide, int Count, int Polarity, uint Seed, int Leak);
     [StructLayout(LayoutKind.Sequential)] private readonly record struct MultiUniforms(int Layout, float Divider, Vector2 Pad, Vector4 Cell0, Vector4 Tint0, Vector4 Cell1, Vector4 Tint1, Vector4 Cell2, Vector4 Tint2, Vector4 Cell3, Vector4 Tint3)
     {

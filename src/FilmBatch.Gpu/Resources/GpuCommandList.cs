@@ -10,6 +10,7 @@ public sealed class GpuCommandList : IDisposable
 {
     private readonly GpuDevice _gpu;
     private readonly CommandEncoder _encoder;
+    private bool _submitted;
 
     internal GpuCommandList(GpuDevice gpu)
     {
@@ -37,13 +38,28 @@ public sealed class GpuCommandList : IDisposable
         }
         var desc = new BindGroupDescriptor { Layout = kernel.BindGroupLayout, Entries = entries };
         var group = _gpu.Device.CreateBindGroup(in desc) ?? throw new GpuException(GpuText.Format("Gpu.BindGroupFailed", kernel.Label));
-        _gpu.ThrowIfError(GpuText.Format("Gpu.Context.CreateBindGroup", kernel.Label));
+        try
+        {
+            _gpu.ThrowIfError(GpuText.Format("Gpu.Context.CreateBindGroup", kernel.Label));
 
-        var pass = _encoder.BeginComputePass();
-        pass.SetPipeline(kernel.Pipeline);
-        pass.SetBindGroup(0, group);
-        pass.DispatchWorkgroups(groupsX, groupsY, groupsZ);
-        pass.End();
+            var pass = _encoder.BeginComputePass();
+            try
+            {
+                pass.SetPipeline(kernel.Pipeline);
+                pass.SetBindGroup(0, group);
+                pass.DispatchWorkgroups(groupsX, groupsY, groupsZ);
+            }
+            finally
+            {
+                // End 會讓綁定的 pooled pass handle 歸還並 Release。
+                pass.End();
+            }
+        }
+        finally
+        {
+            // Encoder 會自行持有指令所需的原生參照，不需將 managed group 留到 GC。
+            if (_gpu.AdapterInfo.Backend == GpuBackend.Dx12) NativeLifetime.Release(group);
+        }
     }
 
     /// <summary>以 16×16 workgroup 覆蓋整張影像。</summary>
@@ -58,9 +74,24 @@ public sealed class GpuCommandList : IDisposable
         var cmd = _encoder.Finish();
         _gpu.ThrowIfError(GpuText.Get("Gpu.Context.FinishCommands"));
         _gpu.Queue.Submit(cmd);
+        _submitted = true;
         var (status, message) = _gpu.Device.PopErrorScopeSync(10_000_000_000);
         if (!string.IsNullOrEmpty(message)) throw new GpuException(GpuText.Format("Gpu.CommandError", status, message));
     }
 
-    public void Dispose() { }
+    /// <summary>平衡建構時的 validation error scope；未 Submit 就丟棄時也要 pop，否則 scope 會殘留在裝置堆疊上。</summary>
+    public void Dispose()
+    {
+        if (_submitted) return;
+        _submitted = true;
+        try
+        {
+            var (status, message) = _gpu.Device.PopErrorScopeSync(10_000_000_000);
+            if (!string.IsNullOrEmpty(message)) GpuDevice.Log?.Invoke($"abandoned command list: {status} {message}");
+        }
+        catch (WebGPUException error) when (_gpu.IsLost)
+        {
+            GpuDevice.Log?.Invoke($"abandoned command scope after device loss: {error.Message}");
+        }
+    }
 }

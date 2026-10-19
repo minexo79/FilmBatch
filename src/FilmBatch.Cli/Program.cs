@@ -1,7 +1,7 @@
+using FilmBatch.Cli;
 using System.CommandLine;
 using FilmBatch.Core;
 using FilmBatch.Core.Commands;
-using FilmBatch.Core.Film;
 using FilmBatch.Core.Presets;
 using FilmBatch.Core.Projects;
 using FilmBatch.Engine.Exporting;
@@ -10,7 +10,7 @@ using FilmBatch.Engine.Rendering;
 using FilmBatch.Gpu.Device;
 
 // filmbatch 命令列：與 GUI 共用 Core / Engine（計畫書第 10 章）。
-// export / recipes 子命令使用已持久化的 Project.Open + PresetLibrary.Load；
+// export 子命令使用已持久化的 Project.Open + PresetLibrary.Load；
 // CLI 只讀取快照匯出，絕不靜默更新預設快照。
 
 var backendOption = new Option<GpuBackend>("--backend") { Description = "GPU 後端：Auto、Dx12、Vulkan、Metal", DefaultValueFactory = _ => GpuBackend.Auto };
@@ -50,18 +50,21 @@ samples.SetAction(r =>
 
 var exportFolder = new Argument<string>("folder") { Description = "照片資料夾（已含 .filmbatch/project.json 或即時掃描）" };
 var outOption = new Option<string?>("--out") { Description = "輸出資料夾（預設 <照片資料夾>/export/）" };
-var formatOption = new Option<string>("--format") { Description = "jpg | tiff | png（預設 jpg）", DefaultValueFactory = _ => "jpg" };
+var formatOption = new Option<string>("--format") { Description = "jpg | tiff | png | dng（預設 jpg；DNG 保留已套用效果的線性資料）", DefaultValueFactory = _ => "jpg" };
 var qualityOption = new Option<int>("--quality") { Description = "JPEG 品質 1–100（預設 95）", DefaultValueFactory = _ => 95 };
 var longEdgeOption = new Option<int>("--long-edge") { Description = "長邊像素；0 = 原尺寸（預設 0）", DefaultValueFactory = _ => 0 };
 var presetOption = new Option<string?>("--preset") { Description = "只匯出使用此預設的照片（名稱或 Id）" };
 var onlyUnassignedOption = new Option<bool>("--only-unassigned") { Description = "只匯出未指定預設（使用預設預設）的照片" };
 var presetsFolderOption = new Option<string?>("--presets-folder") { Description = "預設庫資料夾（預設使用者 presets）" };
+var embeddedLensOption = new Option<bool>("--embedded-lens") { Description = "啟用 RAW 內嵌鏡頭校正（只影響本次匯出）" };
+var cameraLocalToneOption = new Option<bool>("--camera-local-tone") { Description = "啟用 DNG 相機局部色調（只影響本次匯出）" };
 
 var export = new Command("export", "批次匯出（與 GUI 共用匯出器）")
 {
     exportFolder, outOption, formatOption, qualityOption, longEdgeOption,
     presetOption, onlyUnassignedOption, presetsFolderOption,
     backendOption, softwareOption, lowPowerOption,
+    embeddedLensOption, cameraLocalToneOption,
 };
 export.SetAction(async (r, ct) =>
 {
@@ -79,7 +82,8 @@ export.SetAction(async (r, ct) =>
             "jpg" or "jpeg" => ExportFormat.Jpeg,
             "tiff" or "tif" => ExportFormat.Tiff16,
             "png" => ExportFormat.Png16,
-            var f => throw new InvalidDataException($"未知格式：{f}（可用 jpg、tiff、png）。"),
+            "dng" => ExportFormat.Dng,
+            var f => throw new InvalidDataException($"未知格式：{f}（可用 jpg、tiff、png、dng）。"),
         };
     }
     catch (InvalidDataException ex)
@@ -97,6 +101,8 @@ export.SetAction(async (r, ct) =>
         Quality = quality,
         Size = longEdge > 0 ? ExportSize.LongEdge : ExportSize.Original,
         LongEdgePx = longEdge,
+        EmbeddedLensCorrections = r.GetValue(embeddedLensOption) ? true : null,
+        CameraLocalTone = r.GetValue(cameraLocalToneOption) ? true : null,
     };
     try
     {
@@ -188,91 +194,6 @@ export.SetAction(async (r, ct) =>
     return 0;
 });
 
-// ── recipes（Recipes slice 的 Core/Film API；CLI 只做轉接與 exit code）──
-
-var recipes = new Command("recipes", "底片配方（Recipe Lab 移植）");
-var recipesList = new Command("list", "列出內建與自訂配方");
-var recipesCustomFolder = new Option<string?>("--custom-folder") { Description = "自訂配方資料夾（預設使用者 recipes）" };
-recipesList.Add(recipesCustomFolder);
-recipesList.SetAction(r =>
-{
-    FilmRecipeLibrary library;
-    try
-    {
-        library = FilmRecipeLibrary.Create(r.GetValue(recipesCustomFolder) ?? AppPaths.Recipes);
-    }
-    catch (Exception ex)
-    {
-        Console.Error.WriteLine($"讀取配方失敗：{ex.Message}");
-        return 1;
-    }
-    foreach (var brand in FilmRecipeLibrary.BrandsInOrder)
-        foreach (var recipe in library.Builtin.Where(x => x.Brand == brand))
-            Console.WriteLine($"{recipe.Key} | {recipe.Brand} | {recipe.Name}");
-    if (library.Custom.Count > 0)
-        foreach (var entry in library.Custom.OrderBy(e => e.Recipe.Name, StringComparer.Ordinal))
-            Console.WriteLine($"{entry.Recipe.Key} | 自訂 | {entry.Recipe.Name}");
-    foreach (var skipped in library.Skipped) Console.Error.WriteLine($"略過：{skipped}");
-    return 0;
-});
-
-var recipesImportSrc = new Argument<string>("src") { Description = "配方檔（.YML）或資料夾" };
-var recipesImportDest = new Option<string?>("--dest") { Description = "目標自訂配方資料夾（預設使用者 recipes）" };
-var recipesImport = new Command("import", "匯入自訂配方（格式 1）") { recipesImportSrc, recipesImportDest };
-recipesImport.SetAction(r =>
-{
-    var src = r.GetValue(recipesImportSrc)!;
-    var dest = r.GetValue(recipesImportDest) ?? AppPaths.Recipes;
-    try
-    {
-        Directory.CreateDirectory(dest);
-        var taken = Directory.GetFiles(dest).Select(Path.GetFileName).OfType<string>().ToList();
-        if (File.Exists(src))
-        {
-            var text = File.ReadAllText(src);
-            var parsed = CustomRecipeFile.Parse(text, Path.GetFileName(src));
-            if (!parsed.Success || parsed.Recipe is null)
-            {
-                Console.Error.WriteLine($"{Path.GetFileName(src)}: {parsed.Error}");
-                return 1;
-            }
-            var file = CustomRecipeFile.FileNameFor(parsed.Recipe.Name, taken);
-            File.Copy(src, Path.Combine(dest, file), overwrite: false);
-            Console.WriteLine($"{parsed.Recipe.Key} -> {file}");
-            return 0;
-        }
-        if (!Directory.Exists(src))
-        {
-            Console.Error.WriteLine($"找不到：{src}");
-            return 1;
-        }
-        var loaded = CustomRecipeFile.LoadFolder(src);
-        var copied = 0;
-        foreach (var entry in loaded.Entries)
-        {
-            var file = CustomRecipeFile.FileNameFor(entry.Recipe.Name, taken);
-            taken.Add(file);
-            File.Copy(entry.FilePath, Path.Combine(dest, file), overwrite: false);
-            Console.WriteLine($"{entry.Recipe.Key} -> {file}");
-            copied++;
-        }
-        foreach (var skipped in loaded.Skipped) Console.Error.WriteLine($"略過：{skipped}");
-        if (copied == 0)
-        {
-            Console.Error.WriteLine("沒有可匯入的有效配方。");
-            return 1;
-        }
-        return 0;
-    }
-    catch (Exception ex)
-    {
-        Console.Error.WriteLine($"匯入失敗：{ex.Message}");
-        return 1;
-    }
-});
-recipes.Add(recipesList);
-recipes.Add(recipesImport);
-
 static Func<IPreviewRenderer> CreateExportFactory(GpuDeviceOptions deviceOptions)
 {
     try
@@ -289,5 +210,5 @@ static Func<IPreviewRenderer> CreateExportFactory(GpuDeviceOptions deviceOptions
     }
 }
 
-var root = new RootCommand("FilmBatch 命令列") { gpuInfo, spike, samples, export, recipes };
+var root = new RootCommand("FilmBatch 命令列") { gpuInfo, spike, samples, export, RawCommands.Create() };
 return root.Parse(args).Invoke();

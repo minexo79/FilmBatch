@@ -66,6 +66,9 @@
       <SolidColorBrush x:Key="FB.LinkBrush" Color="#6AAAF5" />
       <SolidColorBrush x:Key="FB.DisabledTextBrush" Color="#666666" />
       <SolidColorBrush x:Key="FB.DisabledAccentBrush" Color="#4A4A4A" />
+      <!-- 畫布工具：裁切框外的半透明遮罩、框內格線（灰階 R = G = B） -->
+      <SolidColorBrush x:Key="FB.CanvasScrimBrush" Color="#A0000000" />
+      <SolidColorBrush x:Key="FB.CropGuideBrush" Color="#90FFFFFF" />
 
       <!-- 滑桿 -->
       <SolidColorBrush x:Key="FB.SliderTrackBrush" Color="#4A4A4A" />

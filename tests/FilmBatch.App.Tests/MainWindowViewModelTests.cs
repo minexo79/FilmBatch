@@ -47,7 +47,8 @@ public class MainWindowViewModelTests
         using var vm = TestEnv.CreateViewModel();
         await TestEnv.OpenSamplesAsync(vm);
         var file = vm.FocusFile!;
-        var exposure = vm.Inspector.Modules[0].Params.OfType<ViewModels.SliderParamViewModel>().First(p => p.FlatKey == "basic.exposure");
+        var basic = vm.Inspector.Modules.First(m => m.Key == "basic");
+        var exposure = basic.Params.OfType<ViewModels.SliderParamViewModel>().First(p => p.FlatKey == "basic.exposure");
 
         exposure.BeginEdit();
         exposure.Value = 0.5;
@@ -55,7 +56,7 @@ public class MainWindowViewModelTests
         exposure.EndEdit();
 
         Assert.True(exposure.IsOverridden);
-        Assert.Equal(1, vm.Inspector.Modules[0].OverrideCount);
+        Assert.Equal(1, basic.OverrideCount);
         Assert.True(vm.Filmstrip.Items.First(t => t.FileName == file).HasOverrides);
 
         vm.UndoCommand.Execute(null); // 拖曳中的兩次修改合併為一筆
@@ -172,6 +173,42 @@ public class MainWindowViewModelTests
         Assert.Single(vm.Filmstrip.Items);
         vm.Filmstrip.Filter = ViewModels.FilmstripFilter.All;
         Assert.Equal(4, vm.Filmstrip.Items.Count);
+    }
+
+    [AvaloniaFact]
+    public async Task FileKindFilter_SplitsRawAndNonRaw_AndCombinesWithFilter()
+    {
+        using var vm = TestEnv.CreateViewModel();
+        var folder = Path.Combine(FilmBatch.Core.AppPaths.Root, "file-kind");
+        Directory.CreateDirectory(folder);
+        File.WriteAllBytes(Path.Combine(folder, "photo.DNG"), FilmBatch.Raw.DngWriter.WriteRenderedDng(16, 12,
+            Enumerable.Repeat(0.18f, 16 * 12 * 3).ToArray(), FilmBatch.Raw.Color.ColorSpaces.Srgb,
+            new FilmBatch.Raw.Meta.Metadata { Make = "FilmBatch", Model = "File kind" }));
+        foreach (var (path, i) in Directory.EnumerateFiles(TestEnv.Samples, "*.tif").Take(2).Select((p, i) => (p, i)))
+            File.Copy(path, Path.Combine(folder, $"plain{i}.tif"));
+        var task = vm.OpenFolderAsync(folder);
+        TestEnv.PumpUntil(() => task.IsCompleted);
+        await task;
+        Assert.Equal(3, vm.Filmstrip.Items.Count);
+
+        vm.Filmstrip.FileKind = ViewModels.FilmstripFileKind.RawOnly;
+        Assert.Equal(["photo.DNG"], vm.Filmstrip.Items.Select(t => t.FileName));
+        Assert.Equal(ViewModels.FilmstripFileKind.RawOnly, vm.Filmstrip.SelectedFileKindOption.Value);
+
+        vm.Filmstrip.FileKind = ViewModels.FilmstripFileKind.NonRaw;
+        Assert.Equal(2, vm.Filmstrip.Items.Count);
+        Assert.All(vm.Filmstrip.Items, t => Assert.EndsWith(".tif", t.FileName));
+
+        vm.Filmstrip.SelectOnly("plain0.tif");
+        vm.Inspector.SetValue("basic.exposure", 0.4, null);
+        vm.Filmstrip.Filter = ViewModels.FilmstripFilter.OverridesOnly;
+        Assert.Equal(["plain0.tif"], vm.Filmstrip.Items.Select(t => t.FileName));
+        vm.Filmstrip.FileKind = ViewModels.FilmstripFileKind.RawOnly;
+        Assert.Empty(vm.Filmstrip.Items);
+
+        vm.Filmstrip.Filter = ViewModels.FilmstripFilter.All;
+        vm.Filmstrip.FileKind = ViewModels.FilmstripFileKind.All;
+        Assert.Equal(3, vm.Filmstrip.Items.Count);
     }
 
     [AvaloniaFact]

@@ -2,7 +2,7 @@
 
 本文件寫給第一次修改 FilmBatch 的開發者：先看懂整體分層與一次編輯的資料流，再查閱各模組的職責、關鍵型別與注意事項。最後的「修改食譜」列出常見改動該動哪些檔案。
 
-設計背景見 [plan.md](plan.md) 第 5、11 章；本頁以目前程式碼為準。
+設計背景見 [plan.md](plan.md) 第 5、11 章；本頁以目前程式碼為準。依任務找文件見[文件地圖](README.md)，執行檢查見[驗證入口](../VERIFY.md)，決策原因與替代方案見[提交歷史](history.md)。
 
 ## 目錄
 
@@ -14,7 +14,7 @@
    - 4.2 [Core．專案與照片設定（Projects）](#42-core專案與照片設定projects)
    - 4.3 [Core．復原堆疊（Commands）](#43-core復原堆疊commands)
    - 4.4 [Core．預設庫（Presets）](#44-core預設庫presets)
-   - 4.5 [Core．底片配方（Film）](#45-core底片配方film)
+   - 4.5 [Core．底片風格（Film）](#45-core底片風格film)
    - 4.6 [Engine．算圖管線（Rendering）](#46-engine算圖管線rendering)
    - 4.7 [Engine．算圖排程（Scheduling）](#47-engine算圖排程scheduling)
    - 4.8 [Engine．影像讀取與批次匯出（Imaging / Exporting）](#48-engine影像讀取與批次匯出imaging--exporting)
@@ -31,14 +31,15 @@
 
 | 名詞 | 意思 | 程式碼 |
 |---|---|---|
-| 模組（module） | 一個效果，例如暗角、顆粒。共 16 個，每個有 `enabled` 開關 | `ModuleSchema` |
+| 模組（module） | 一個來源或效果區塊。`ModuleCatalog` 目前包含 RAW 來源、裁切與 16 個效果，共 18 個，各有 `enabled` 開關 | `ModuleSchema` |
 | 參數（param） | 模組內的一個欄位，例如 `amount` | `ParamDef` |
 | 扁平 key | `模組.參數` 形式的唯一名稱，例如 `vignette.amount`。整個程式都用它定位參數 | `ModuleSchema.FlatKey` |
 | 設定（Settings） | 扁平 key → 值 的**不可變**字典 | `Settings` |
 | 預設（preset） | 存在預設庫的一組設定（YAML），可指定給多張照片 | `Preset` |
 | 覆寫（overrides） | 某張照片與其預設**不同**的欄位 | `PhotoEntry.Overrides` |
 | 最終參數（resolved） | 系統預設 ⊕ 預設 ⊕ 覆寫，實際拿去算圖的值 | `ProjectService.SettingsFor` |
-| 配方（recipe） | Recipe Lab 的底片色彩設定，屬於 `film` 模組 | `FilmRecipe` |
+| 底片（look） | `film` 模組選用的一卷底片，即一個內附 3D LUT（`film.look` 存其 key） | `FilmLook`、`FilmLut` |
+| 色相帶（hue band） | 底片風格的八個分色相修正區段，各有色相／飽和／明度 | `HueBands` |
 | 算圖器（renderer） | 把「影像 + 設定」算成結果的物件，有 GPU 與 CPU 兩種 | `IPreviewRenderer` |
 | 世代（generation / epoch） | 遞增的編號，用來丟棄過期的算圖結果 | `PreviewService`、`RenderScheduler` |
 
@@ -56,15 +57,18 @@ flowchart TB
     Cli --> Core
     Engine["FilmBatch.Engine<br/>算圖管線、排程、影像 IO、匯出"] --> Gpu
     Engine --> Core
+    Engine --> Raw
     Gpu["FilmBatch.Gpu<br/>WebGPU 裝置、資源、WGSL shader"]
-    Core["FilmBatch.Core<br/>參數 schema、專案、預設、配方、復原"]
+    Core["FilmBatch.Core<br/>參數 schema、專案、預設、底片 LUT、復原"]
+    Raw["FilmBatch.Raw<br/>RAW 解碼、顯影、相機色彩（移植自 LightCraft）"]
 ```
 
 | 專案 | 一句話職責 | 可以引用 | **不可以**引用 |
 |---|---|---|---|
-| `FilmBatch.Core` | 資料模型與規則：參數、專案、預設、配方、復原 | 只有 .NET 與 YAML 函式庫 | Avalonia、GPU、Magick.NET |
+| `FilmBatch.Core` | 資料模型與規則：參數、專案、預設、底片 LUT、復原 | 只有 .NET 與 YAML 函式庫 | Avalonia、GPU、Magick.NET |
 | `FilmBatch.Gpu` | WebGPU 的薄封裝與嵌入的 WGSL | WebGPUSharp | 其他 FilmBatch 專案、Avalonia |
-| `FilmBatch.Engine` | 把設定變成影像：算圖、排程、讀檔、匯出 | Core、Gpu、Magick.NET | Avalonia |
+| `FilmBatch.Raw` | RAW 容器與壓縮解碼、去馬賽克、相機色彩資料（移植自 LightCraft，見 [tools/raw-oracle](../tools/raw-oracle/README.md)） | managed 相依僅 .NET；JPEG XL 另需隨附的原生閉包 | 其他 FilmBatch 專案、Magick.NET、Avalonia、GPU |
+| `FilmBatch.Engine` | 把設定變成影像：算圖、排程、讀檔、匯出 | Core、Gpu、Raw、Magick.NET | Avalonia |
 | `FilmBatch.App` | 桌面介面 | Core、Engine | 直接呼叫 Gpu（一律經 Engine） |
 | `FilmBatch.Cli` | 命令列批次匯出 | Core、Engine | Avalonia |
 
@@ -116,7 +120,7 @@ sequenceDiagram
     RS->>R: Render(source, settings)
     R-->>RS: RenderResult（BGRA8）
     RS-->>PS: PreviewRendered（GPU 執行緒）
-    PS-->>M: post 回 UI 執行緒<br/>過期的 generation 直接丟棄
+    PS-->>M: post 回 UI 執行緒<br/>核對來源世代與交付順序；同來源可送達已完成影格
     M->>M: Preview.SetResult → 畫面更新
     V->>I: 放開滑桿 → EndEdit()
     I->>CS: CloseMerge()<br/>這次拖曳合併為一筆復原紀錄
@@ -126,7 +130,7 @@ sequenceDiagram
 
 1. **UI 不直接改資料**：任何修改都經 `ProjectService` 包成命令，才能復原。
 2. **資料改了就發事件**：`Project.EntriesChanged` 是「照片設定變了」的唯一通知來源，預覽、縮圖、面板都由它觸發更新。
-3. **算圖請求可以隨便送**：排程器只保留最新的預覽請求，舊結果以世代編號丟棄，拖曳中狂送請求不會塞車。
+3. **算圖請求可以隨便送**：排程器只保留最新的待算預覽；同來源已完成的影格仍依序交付，避免持續拖曳時一直丟棄結果。換照片／來源、取消或重建算圖器後，不採用舊影格。
 
 ---
 
@@ -136,13 +140,13 @@ sequenceDiagram
 
 ### 4.1 Core．參數 schema（Params）
 
-**職責**：定義 16 個效果模組有哪些參數、型別、範圍與預設值。這是整個程式的**單一資料來源**：介面面板、存檔、貼上、鏡像、範圍檢查都從這裡自動產生。
+**職責**：定義 RAW 來源、裁切與效果模組的參數、型別、範圍與預設值。這是整個程式的**單一資料來源**：介面面板、存檔、貼上、鏡像、範圍檢查都從這裡自動產生。
 
 | 型別 | 檔案 | 說明 |
 |---|---|---|
-| `ModuleCatalog` | `Params/ModuleCatalog.cs` | 所有模組的清單，**陣列順序就是面板顯示順序與處理順序**。也提供 `Defaults`（系統預設值）、`Param(flatKey)`、`Module(key)` 查詢 |
+| `ModuleCatalog` | `Params/ModuleCatalog.cs` | 模組順序為 RAW 來源 → 裁切 → 基本調整與後續效果；RAW 解碼先於效果，白平衡／局部調整與顯示收尾在算圖時執行。面板依分頁／分組顯示；以 `Defaults`、`Param(flatKey)`、`Module(key)` 查詢，不依賴固定數量或陣列索引 |
 | `ModuleSchema` | `Params/ModuleSchema.cs` | 一個模組：`Key`、`Label`、所屬分組 `ModuleGroup`、選擇性貼上分類 `PasteCategory`、參數清單 |
-| `ParamDef` | `Params/ParamDef.cs` | 一個參數。以工廠方法建立：`Float`、`Int`、`Bool`、`Choice`、`Path`、`Seed`、`Position`、`Offset` |
+| `ParamDef` | `Params/ParamDef.cs` | 一個參數。工廠方法包括 `Float`、`Int`、`Bool`、`Choice`、`Path`、`Directory`、`Text`、`Curve`、`Seed`、`Position`、`Offset` |
 | `ParamValue` | `Params/ParamValue.cs` | 參數值（數字 / 布林 / 文字），以 `AsNumber`、`AsBool`、`AsText` 讀取 |
 | `Settings` | `Params/Settings.cs` | 扁平 key → `ParamValue` 的不可變字典。`Overlay` 用於三層合併，`With` / `Without` 回傳新物件 |
 
@@ -153,6 +157,7 @@ sequenceDiagram
 - `Position` / `Offset` 參數以 0–1 正規化座標儲存，換尺寸照片仍合理；帶有 `center_x`、`center_y` 的模組會自動在預覽上出現控制點（`ModuleSchema.HasCanvasPoint`）。
 - `Seed` 參數預設不會被貼上，每張照片依檔名產生自己的種子（`Core/Random/SeedHash.cs`）。
 - `Label` 是繁中後備文字；實際顯示名稱由 App 的資源檔決定（見 4.10 多國語系）。
+- 自由識別字用 `Text`，不要借用 `Path` 或固定 `Choice`：`ProjectService.SetValue` 會把絕對路徑改成專案相對路徑，`Choice.Coerce` 會把未知值改回預設。語意遮罩的 `Name`／`InstanceId` 必須原樣保存；只有真正的檔案／目錄參數才走路徑處理。
 
 ### 4.2 Core．專案與照片設定（Projects）
 
@@ -200,6 +205,8 @@ flowchart LR
 
 **陷阱**：新增一種可復原的操作時，`Execute` 與 `Undo` 都要能重複執行（重做時會再呼叫 `Execute`）。
 
+複合操作要走一次 `ProjectService.SetValues`：例如裁切的一組欄位、語意遮罩的名稱＋實例，undo 一次應還原整組。`InspectorViewModel.SetValues` 提供這個專案契約；`IParamHost` 的預設實作只是逐 key 轉送，不保證其他 host 也有原子復原語意。
+
 ### 4.4 Core．預設庫（Presets）
 
 **職責**：全域、跨專案的預設，存成使用者資料夾中的 YAML 檔。
@@ -213,18 +220,24 @@ flowchart LR
 
 **陷阱**：`PresetLibrary` 先寫入磁碟成功，才更新記憶體中的清單並發事件；損毀的 YAML 會記在 `LoadErrors`，不會被空白資料覆蓋。
 
-### 4.5 Core．底片配方（Film）
+### 4.5 Core．底片風格（Film）
 
-**職責**：Recipe Lab 77 組底片配方、Sony 成像風格係數，以及與相機互通的自訂配方檔。
+**職責**：底片顏色模擬的資料：36 卷內附底片（RawTherapee Film Simulation Collection 的 Hald CLUT 轉成的 3D LUT，CC BY-SA 4.0）、八色相帶定義與內建色相修正預設，以及舊參數的相容處理。演算法、來源與授權見 [film-looks.md](film-looks.md)。
 
 | 型別 / 檔案 | 說明 |
 |---|---|
-| `Film/recipelab.json` | 從 Recipe Lab v1.7.0 搬移的 77 組配方原始資料（嵌入資源） |
-| `Film/creative_styles.json` | Sony 創意風格的色彩係數，由 `tools/film-calibration` 校正產生 |
-| `FilmRecipeLibrary` | 內建 + 自訂配方的查詢；`ToSettings` 把配方轉成 `film.*` 參數；`MatchesRecipe` 判斷是否被手動改過（介面上的 EDITED 標記） |
-| `CustomRecipeFile` | 讀寫 Recipe Lab「格式 1」的 `.YML` 自訂配方，略過不合法的檔案並回報原因 |
+| `FilmLut` | 3D LUT 資料（`Size`、`Data`，Hald 像素順序）；`Sample` 四面體內插、`Resample` 改邊長、`FromHald`、`ToTextureRgba` 轉成 GPU 紋理排列 |
+| `FilmLutFile` | `.fblut` 二進位格式讀寫（magic、int32 邊長、16-bit unorm） |
+| `FilmLookLibrary` | 底片清單（以 `JsonDocument` 讀嵌入的 `looks.json`）、`GroupsInOrder`、`DefaultKey`（`kodak-portra-400`）；`TryLut(key)` 第一次使用時載入並快取，未知 key 回傳 null |
+| `HueBands`／`HuePresets` | 八個色相帶的 key、中心角（`CentersDegrees`，與 `film/look.wgsl` 同值）、24 個參數 schema（`Params`、`FlatKeys`）；內建色相修正預設與 `Find`（判斷目前值是否為某預設，否則為「自訂」） |
+| `Film/Looks/` | `looks.json`（36 卷清單，順序即介面順序）、36 個 33³ `.fblut`、`LICENSE.txt`（CC BY-SA 4.0 聲明），皆為嵌入資源 `FilmBatch.Looks/*` |
+| `Params/RetiredParams` | 舊 Recipe Lab 模組的 13 個 `film.*` key；`SettingsJsonConverter` 與 `PresetFile` 讀檔時靜默丟棄 |
 
-**陷阱**：配方欄位、範圍與品牌順序有測試鎖定（`FilmRecipeTests`）；更新配方資料請照 [film-provenance.md](film-provenance.md) 的流程，不要手改 JSON。
+**陷阱**
+
+- `looks.json` 的 `key` 會存進專案與預設，發佈後不可改名；新增底片照 [film-looks.md](film-looks.md#5-新增或更換底片) 的流程以 `tools/film-luts` 產生 `.fblut`，不要手改 LUT。
+- 卷數、分組與每卷都有 33³ LUT 由 `FilmLookTests` 鎖定；`film.look` 的選項由 `FilmLookLibrary.All` 產生（`RetiredParamsTests` 檢查兩者一致）。
+- 色相帶中心角改動時，C#（`HueBands.CentersDegrees`）與 WGSL 要一起改。
 
 ### 4.6 Engine．算圖管線（Rendering）
 
@@ -245,20 +258,25 @@ flowchart LR
 |---|---|---|
 | `IPreviewRenderer` | `IPreviewRenderer.cs` | 算圖器介面：`Render`（預覽，8-bit BGRA）、`Render16`（匯出，16-bit RGBA）、`DeviceName`、`IsSoftware` |
 | `ModuleParams` | `ModuleParams.cs` | 把 `Settings` 解析成一個個欄位（`VignetteOn`、`VigAmount`…），並計算各模組的種子。**CPU 與 GPU 共用同一份解析結果**，保證兩端讀到相同的值 |
-| `CpuPipeline` | `CpuPipeline.cs` | CPU 完整管線，`Process` 方法裡依序呼叫每個模組，是閱讀處理順序最好的入口 |
+| `CpuPipeline` | `CpuPipeline.cs` | CPU 完整管線，`Process` 依序執行模組；RGBA 算術、模糊累積與量化使用 `Vector128`，sRGB 曲線與 gamma 保留純量 `MathF.Pow` |
 | `GpuEffectPipeline` | `GpuEffectPipeline.cs` | GPU 管線。建構子以 `K("optical/vignette", …)` 載入每支 shader；`Process` 依序派送 pass；檔案底部是各 shader 的 uniform 結構（例如 `VignetteUniforms`） |
 | `GpuSpikeRenderer` | `GpuSpikeRenderer.cs` | **正式的 GPU 算圖器**（名稱沿用自 M0 技術驗證）。超過 GPU 紋理上限或顯示記憶體不足時，自動改走 CPU 並在 `DeviceName` 標示原因 |
 | `CpuFakeRenderer` | `CpuFakeRenderer.cs` | **正式的 CPU 算圖器**（名稱同樣是歷史遺留），內部呼叫 `CpuPipeline`；無 GPU 或使用者強制軟體模式時使用 |
-| `FilmProcessing`、`FilmParameters` | 同目錄 | 底片色彩的 CPU 實作與傳給 shader 的參數結構（與 `film/common.wgsl` 對齊） |
+| `FilmLookProcessing` | `FilmLookProcessing.cs` | 底片風格的 CPU 參考實作：LUT → 八色相帶（OKLCh）→ 暖色 → 褪色 → 依效果比例混合；`BandWeight` 為色相帶權重 |
+| `FilmLookUniforms` | `FilmLookUniforms.cs` | 傳給 `film/look.wgsl` 的 uniform（`Mix`、`Flags`、`Band0`…`Band7`，與 WGSL `struct LookParams` 對齊） |
+| `PhotoAdjustments` | `PhotoAdjustments.cs` | BasicLinear 後的羽化膚色與單調 Zone 亮度曲線；CPU 逐像素與有界分析共用純量數學，GPU 對應 `linear/photo_adjustments.wgsl` |
+| `Oklab` | `Oklab.cs` | 線性 sRGB ↔ OKLab 轉換（與 `look.wgsl` 的 `to_oklab`／`from_oklab` 同係數） |
 | `EffectAssets` | `EffectAssets.cs` | 解析外部素材：雙重曝光的第二張照片、漏光與灰塵的材質檔。材質庫為空時改用程序化效果 |
 
 **處理順序**（`CpuPipeline.Process` 與 `GpuEffectPipeline.Process` 相同）
 
+RAW 來源保持未夾取的浮點線性 Rec.2020，`Rgba16` 只在原圖比較／直方圖等顯示用途首次取用時編碼。兩套算圖管線先轉到未夾取的線性 sRGB 工作域，在裁切後套用相機白平衡與語意遮罩，再執行既有效果；顯示段前轉回 Rec.2020，依原順序完成相機色調、高光去飽和與壓縮，再轉顯示 sRGB。高光壓縮的通道最大值不能與色域轉換交換順序。一般影像維持原有 sRGB 路徑；藝術 LUT 仍有自身的有界輸入限制。
+
 | 階段 | 色彩空間 | 模組 |
 |---|---|---|
-| ① 幾何 | 線性光 | 基本調整（曝光、色溫、色調）→ 鏡頭變形 → 多格分鏡 |
+| ① 幾何 | 線性光 | 基本調整（曝光、色溫、色調）→ 局部膚色 → Zone 曲線（僅場景來源）→ 鏡頭變形 → 多格分鏡 |
 | ② 光學 | 線性光 | 雙重曝光 → 散景 → 縮放旋轉模糊 → 動態模糊 → 暗角 → 光暈 → 漏光 |
-| ③ 底片 | 線性光 | 底片色彩 → 古典版材 |
+| ③ 底片 | 線性光 | 底片風格 → 古典版材 |
 | — | 線性 → sRGB | `linear_to_display` |
 | ④ 顯示 | sRGB | 基本調整（亮度、對比、亮部陰影、飽和、細節）→ 色調分離 → 清晰與銳化 |
 | ⑤ 表面 | sRGB | 灰塵與刮痕 → 顆粒 |
@@ -270,6 +288,7 @@ flowchart LR
 - C# 的 uniform record（`[StructLayout(LayoutKind.Sequential)]`）欄位順序、型別、對齊必須與 WGSL 的 `struct Params` 完全一致，通常以 `_pad` 補齊到 16 位元組的倍數。
 - GPU 只有 4 張工作紋理輪流使用（`Next(...)` 會避開正在讀的紋理）；新增需要多張中間結果的 pass 時要用 `reserve` 參數保護。
 - 半徑、大小類參數以**短邊比例**計算，預覽代理圖與原尺寸匯出的外觀才會一致。
+- 顆粒例外地以來源參考平面的短邊決定粒徑：`SourceImage.ReferenceWidth/Height` 穿過代理圖，輸出像素經裁切逆仿射回到該平面；三種模型共用座標、seed、明暗響應與像素足跡濾波。光學圓盤數截斷於每格 8，最大 λ=1.6 時截斷尾機率低於 0.0046%；不是精確片種或化學模擬。
 
 ### 4.7 Engine．算圖排程（Scheduling）
 
@@ -281,10 +300,12 @@ flowchart LR
 | 預覽優先於縮圖 | 迴圈每輪先看預覽，沒有才取一張縮圖 |
 | 同一張縮圖只算最新設定 | `RequestThumbnail` 會先移除同 key 的舊請求 |
 | 偏好設定切換 GPU 後端 | `ResetRenderer` 推進 `Epoch`、清空佇列，在 GPU 執行緒上重建算圖器 |
-| 算圖失敗 | 先重建裝置重試一次（處理驅動程式重置），仍失敗才發 `RenderFailed` |
+| 算圖失敗 | 先重建裝置重試一次，仍失敗以 `RenderFailure` 回報原始例外與要求來源；無法建立算圖器也須回報逐筆要求的失敗終態 |
 | GPU 建立失敗 | 改用 fallback（CPU 算圖器）並發 `Notice` |
 
-App 端由 `App/Services/PreviewService.cs` 包裝：負責 `generation` 比對、把事件 post 回 UI 執行緒、順便計算直方圖。
+App 端由 `App/Services/PreviewService.cs` 包裝：核對來源世代、遞增的交付順序與算圖器 `Epoch`，把事件 post 回 UI 執行緒，並計算直方圖。同一來源的參數調整允許先顯示已完成影格，再接續最新結果；取消、來源更換與裝置重建會封鎖先前交付。
+
+失敗事件的 `PreviewGeneration` 只有預覽要求有值；縮圖及 `$init` 初始化診斷為空。預覽失敗只結束自己的世代，不消耗較新的預覽，也不替照片縮圖記失敗；背景失敗不得清掉等待中的前景影格。縮圖重算失敗時可以保留舊點陣圖，但仍須完成該筆交付等待，讓下一張繼續；初始化錯誤不能讓已取出的縮圖要求無聲消失。
 
 **陷阱**：`RenderScheduler` 的事件**在 GPU 執行緒上觸發**。在 Engine 以外訂閱時，不要直接更新 UI。
 
@@ -292,24 +313,42 @@ App 端由 `App/Services/PreviewService.cs` 包裝：負責 `generation` 比對�
 
 | 型別 | 說明 |
 |---|---|
-| `Imaging/ImageLoader` | 以 Magick.NET 解碼，來源 ICC 轉成 sRGB、套用方向，產生 16-bit RGBA 的 `SourceImage`；可指定長邊產生預覽代理圖 |
-| `Imaging/SourceImage` | 記憶體中的影像：寬、高、`Rgba16` 像素、`FilePath`（種子由檔名計算） |
+| `Imaging/ImageLoader` | 以 Magick.NET 解碼，來源 ICC 轉成 sRGB、套用方向，產生 16-bit RGBA 的 `SourceImage`；可指定長邊產生預覽代理圖。RAW（與含感光資料的 TIFF）先交給 `RawSourceLoader` |
+| `Imaging/Raw/RawSourceLoader` | RAW 解碼、起始外觀、分箱／去馬賽克、高光重建與色彩處理，產生浮點 Rec.2020 場景來源；有 gain table 的 DNG 不額外擬合全域 JPEG tone。CPU／GPU 共用晚期 RAW 收尾，來源載入不提前量化成 SDR |
+| `Imaging/SourceImage` | 一般影像保存 `Rgba16`；RAW 保存場景像素、相機色調／白平衡、共用幾何與語意遮罩。`Downscale` 在場景域縮放，保留原始已定向的 `ReferenceWidth/Height`；算圖不改寫來源 |
 | `Imaging/ImageHistogram` | 直方圖與裁切比例 |
 | `Imaging/SampleImages` | 產生「開啟範例照片」用的測試圖 |
+| `Imaging/PhotoAnalysis`／`ZonePlacement` | 至多 4096 點的工作線性 RGB 穩健取樣、相對參考色、候選白平衡正向擬合與 Zone 算術；重用有界取樣緩衝區，不建立全圖遮罩／顯示副本。WB 候選先於 semantic／Basic／局部調整套用，再聚合與計算殘差 |
 | `Exporting/BatchExporter` | 匯出主流程：`BuildJobs` 為每張照片建立不可變快照 → `RunAsync` 在背景依序讀檔、`Render16`、縮放、編碼、寫入 EXIF / ICC → 寫 `export_log.json` |
 | `Exporting/ExportModels` | `ExportOptions`（格式、品質、尺寸、目的地、檔名範本）、`ExportJob` |
 | `Exporting/ExportFileNames` | 檔名範本（例如 `{name}_{preset}`、`{index}`）展開，並移除各平台的非法字元 |
-| `Exporting/TiffMetadata` | Magick.NET 無法寫 TIFF EXIF，這裡自行補寫 EXIF 目錄 |
+| `Exporting/TiffMetadata` | Magick.NET 無法寫 TIFF EXIF，這裡自行補寫 EXIF 目錄；RAW 來源的 EXIF／GPS 也由此從原檔（CR3 為 CMT1／CMT2／CMT4 區塊）正規化 |
+
+RAW 預覽擬合會先依 JPEG 的 ICC／EXIF／容器宣告決定色彩，只線性化一次，在線性光下縮放後轉到 Rec.2020。截斷代理像素以 NaN 排除；鄰域對比採 Rust `f32::min/max` 的略過 NaN 語意，避免連帶排除截斷像素周圍的有效樣本。X-Trans 穩健平均則沿用 Rust `total_cmp` 的負數與正負零排序。
+
+RAW 中繼資料的標頭辨識與感光解碼一致：RW2 的 `0x0055`、ORF 的 `0x4f52`／`0x5352` 都使用 classic TIFF IFD 佈局，保留其 Make／Model 與 EXIF 子目錄，不誤報為損毀的 TIFF。
+
+一般 TIFF 大於 RAW 可緩衝大小時，略過 RAW 探測，仍由 Magick.NET 載入；RAW 中繼資料損毀不阻止像素匯出，但必須在 `export_log.json` 記錄 `MetadataWarning`。RAW 移植的明確排除項目與 JPEG／ICC 偏差見 [參考輸出說明](../tools/raw-oracle/README.md#比較範圍與已知偏差)。
+
+**讀檔與色彩陷阱**
+
+- 不要在判斷一般 TIFF 之前整檔 `File.ReadAllBytes`；大型一般 TIFF 可由 Magick.NET／串流中繼資料路徑處理，不代表 managed 全檔 RAW 解碼也支援任意大小。檔頭決定的尺寸／樣本數須先以 checked／寬整數驗證，再套用 `RawLimits.MaxSamples`（`1 << 30`）及各分支上限；語意遮罩另限 16 個 IFD、每張 `1 << 25` 個樣本。上限不是保證有足夠記憶體。
+- 損毀 RAW 的內容錯誤依 `RawException.Kind` 分類，不應洩漏索引／整數溢位例外；檔案存取錯誤與資源不足仍需保留原本原因。二維樣本以 `[height, width]`／`[y, x]` 對應，不能用正方形 fixture 掩蓋寬高顛倒。
+- CR3 的 CMT1／CMT2／CMT4 可各自使用不同 byte order；正規化各目錄，不把根目錄的大小端直接套到 EXIF／GPS 子區塊。
+- 嵌入預覽的色彩宣告與像素轉換是兩件事。不要先令 Magick.NET `ColorSpace = RGB`，再套一次 sRGB EOTF；歷史重現中，8-bit 灰階 128 的線性值由約 0.216 變成約 0.038。ICC／EXIF／容器的來源判定與「只線性化一次」須一起驗證，不能只檢查色彩空間標籤。
+
+上述規則由早期 RAW 修復筆記回收；現行支援範圍以程式碼及[語料比較限制](../tools/raw-oracle/README.md#比較範圍與已知偏差)為準，舊筆記的 exclusions 不是目前功能清單。
 
 **匯出的安全規則**（改匯出程式碼前務必知道）
 
 - 匯出開始時先建立參數快照，匯出期間使用者繼續編輯不會影響已排入的照片。
 - 拒絕覆寫來源檔與既有輸出；先寫暫存檔，完成才搬到正式檔名，取消或失敗不留下半成品。
 - EXIF 解析失敗不會讓整張匯出失敗；JPEG EXIF 超過 APP1 上限（65,533 位元組）時先移除 MakerNote，仍超限才只保留方向、尺寸與 sRGB 宣告。這些縮減逐張記錄在 `export_log.json` 的 `MetadataWarning`。
+- 輸出是已轉正的 sRGB 影像：重建尺寸、方向與 Interop `R98`／`0100`，不要沿用來源 Adobe RGB 的 `R03` 或失效指標。Photoshop `ImageSourceData`（37724）等原圖圖層不屬於新算出的影像，不能一併搬入。
 
 ### 4.9 Gpu．WebGPU 薄封裝與 Shader
 
-**職責**：把 WebGPUSharp（Dawn）包成少數幾個簡單型別，Engine 只透過它們使用 GPU。選型理由見 [adr/0001-webgpu-binding.md](adr/0001-webgpu-binding.md)。
+**職責**：把 WebGPUSharp（Dawn）包成少數幾個簡單型別，Engine 只透過它們使用 GPU。初始選型見 [ADR 0001](adr/0001-webgpu-binding.md)；CPU SIMD、RAW 顯示收尾與 Halide AOT 取捨見 [ADR 0003](adr/0003-gpu-stack-decision.md)。
 
 | 型別 | 檔案 | 說明 |
 |---|---|---|
@@ -360,24 +399,51 @@ flowchart TB
     MW["MainWindowViewModel<br/>中樞：專案、選取、復原、命令"]
     MW --> PL["PresetLibraryViewModel<br/>預設庫分頁"]
     MW --> FS["FilmstripViewModel<br/>縮圖列、篩選、標記"]
-    MW --> IN["InspectorViewModel<br/>照片資訊與模組分頁"]
+    MW --> IN["InspectorViewModel<br/>照片基本參數分頁"]
     MW --> PV["PreviewViewModel<br/>預覽、縮放、原圖對比、直方圖"]
     MW --> SB["SidebarViewModel<br/>側邊欄分頁切換"]
     MW --> TO["ToastViewModel<br/>非阻斷提示"]
     SB --> EX["ExportViewModel<br/>照片匯出分頁"]
-    IN --> MS["ModuleSectionViewModel × 16"]
+    IN --> MS["ModuleSectionViewModel<br/>依 ModuleCatalog 產生"]
     MS --> PA["ParamViewModel<br/>Slider / Choice / Toggle / Text"]
-    IN --> FR["FilmRecipeViewModel<br/>底片配方選單"]
+    IN --> FL["FilmLookViewModel<br/>底片與色相修正縮圖格"]
 ```
 
 | 型別 | 說明 |
 |---|---|
 | `MainWindowViewModel` | 建立所有子 ViewModel 與服務；開啟資料夾（`OpenFolderAsync`）、選取改變（`OnSelectionChanged`）、`RequestPreview`、複製貼上、指定預設、復原重做。**多數功能從這裡追起** |
-| `InspectorViewModel` | 實作 `IParamHost`：參數 ViewModel 的修改都經它的 `SetValue` / `ResetParam` / `EndEdit` 送到 `ProjectService`；`Refresh()` 從焦點照片重新載入所有參數 |
+| `InspectorViewModel` | 實作 `IParamHost`：修改經 `SetValue` / `SetValues` / `ResetParam` / `EndEdit` 送到 `ProjectService`；`Refresh()` 從焦點照片重新載入所有參數 |
 | `ModuleSectionViewModel` | 一個模組區塊：開關、折疊、覆寫數、`⋯` 選單 |
 | `ParamViewModel` 系列 | `ParamViewModel.Create` 依 `ParamKind` 產生對應子類別，`InspectorView.axaml` 依型別套用 `DataTemplate`，所以**新增參數不需要寫 XAML** |
 | `FilmstripViewModel` | 縮圖清單、多選、篩選、縮圖背景載入、覆寫 / 預設更新標記 |
-| `PreviewViewModel` | 預覽影像、縮放、分割對比、控制點、直方圖資料、右下角拍攝資訊（EXIF 跟著每次解碼的來源重讀，重開資料夾不沿用舊資訊） |
+| `PreviewViewModel` | 預覽影像、縮放、兩個畫布共用的平移位置、分割對比、控制點、直方圖資料、右下角拍攝資訊（EXIF 跟著每次解碼的來源重讀，重開資料夾不沿用舊資訊） |
+| `FilmLookViewModel` | film 模組的底片縮圖格、色相修正預設縮圖格與色相帶編輯器（`Controls/FilmLookControl.axaml`）。縮圖由 `FilmLookThumbnails` 以焦點照片算出，只在模組展開時計算，鍵前綴 `film-look/`，與縮圖列共用低優先佇列 |
+| `Tools/PhotoToolsViewModel`／`PhotoRegionTool` | 基本參數頂端的照片工具；裁切逆仿射區域取樣、WB／膚色提案、同專案相對參考色與 Zone 錨點。背景只求解，UI 更新及一次 `SetValues` 接受都在 UI 執行緒 |
+
+#### 編輯生命週期
+
+- 裁切的 Cancel／Esc 放棄未套用的修改並結束工具，留在裁切分頁顯示「編輯裁切」；來源尚未解碼時，Esc 也會取消延後的進入請求。套用或取消後，同照片的 RAW／偏好設定重載、重新選取不會重新開啟工具；明確進入或換照片才建立新的裁切編輯。
+- 開啟資料夾先驗證目標專案，再以舊 `Service`／焦點照片／復原堆疊套用舊裁切，最後才切換專案。若提交了裁切，同一個 UI 工作內重新讀取目標，避免重開同一資料夾或別名時採用提交前的設定與磁碟版本；不改寫原始照片。
+- 畫布失去指標擷取、視窗失焦、工具／控制點移除或畫布卸載時，都結束拖曳並恢復繪圖品質；控制點的復原合併區間也一併結束。可見的分割比較線優先接收拖曳，不交給裁切工具；命中與拖曳均透過 `CanvasMapping.ToImage` 逆向換算，拉直旋轉後也不會誤改裁切。
+- 平移位置由共用的 `PreviewViewModel.Pan` 保存，Tab／全螢幕切換畫布時不歸零；符合視窗則明確置中。原生 `WindowState` 與 `IsFullScreen` 雙向同步，退出全螢幕還原進入前的面板隱藏狀態；視窗失焦會解除按住空白鍵的原圖比較。
+- 匯出的選項驗證錯誤與上一批執行錯誤分開保存：有效選項可直接重試，上一批逐檔錯誤仍保留到下次開始。重試不會自動覆寫先前成功產生的檔案，既有輸出保護不變。
+- 預設管理的 Esc 透過 `IsCancel` 關閉視窗，包含焦點位於文字欄位時；關閉後沿用原本的套用流程。偏好設定仍維持關閉時套用；背景載入 CPU 目標是唯一即時套用並保存的效能選項，不重建 GPU。
+- RAW 原廠處理只在焦點來源已解碼為 RAW（`SourceImage.RawInfo` 存在）時顯示，仍遵守「隱藏未啟用模組」；一般影像即使帶有已保存的 RAW 設定也不顯示此面板、不刪除設定。來源解碼完成或失敗時重新整理面板；照片基本參數預設依 `basic` key 展開基本調整，不依賴模組目錄的位置。
+- 底片風格與色相修正縮圖在送出前核對來源的 `RawOptions` 與焦點照片設定；RAW 尚在重新顯影時沿用等待來源的排程，不以舊來源產生新設定的縮圖。匹配來源就緒後自動重算，包含在底片分頁復原／重做 RAW 選項的情況。
+- RAW 的 `wb_mode=as-shot|custom`、自訂 2500–9900 K／色偏與 `mask_*` 只重算畫面，不重新解碼。控制項、JSON 專案、YAML 預設及直接建立的算圖輸入共用自訂色溫範圍；舊自訂值正規化至邊界，不改寫來源的拍攝白平衡中繼資料，也不改相對的 `basic.temperature`。遮罩精確保存 `Name`＋`InstanceId`；缺失或同名不明確時顯示不可用，不改成全圖作用。全尺寸算圖保留原有16-bit alpha與單像素細節，不先降成固定大小；上游 developed matte 會量化為8-bit，不能泛稱任意16-bit軟邊逐碼相同。
+- `embedded_lens`、`camera_local_tone`、`lens_database` 與模組啟用狀態屬於來源快取鍵。外部 Lensfun-format XML 只在缺少已驗證內嵌校正時匹配，拒絕 DTD／外部實體且限制檔案大小；不隨程式散布資料庫。校正的光學中心與半徑取預設裁切，再轉成 ActiveArea 的既有 opcode 慣例；warp、gain table 與語意遮罩共用輸出→有效 RAW 的逆映射。未設定／無匹配不加校正；明確設定但不存在或不可讀的資料庫回報錯誤，不靜默假裝已校正。
+- 解碼失敗／取消的快取項目不重用；外部檔案或資料夾修復後可用相同選項重新要求來源。過期解碼失敗必須同時核對來源選項，不能清除 undo 已還原的畫面。
+- 照片工具以服務、照片、來源及設定世代綁定提案；背景結果另核對請求序號。進入取樣視圖先取消已排隊的一般預覽，收到新影格才允許點選；接受前只疊加暫存設定。Esc（包含文字焦點）、失焦、收合、來源／設定變更、裁切替換與主 ViewModel 處置都不能套用過期提案。
+- `Zoom <= 0` 的 Fit 置中由 `PreviewCanvas.ZoomProperty` 的 class handler 清除 Pan，不只放在 `PreviewViewModel`。Gallery 等沒有綁定同一個 ViewModel 的獨立畫布也需要這個契約；一般畫布切換則仍保留共用 Pan。
+
+#### 大量照片載入與背景 CPU
+
+- `OpenFolderAsync` 在背景列舉檔名，先顯示掃描狀態；安裝有效專案後才開始縮圖工作。主視窗持續顯示完成張數／總數、失敗數與耗時；成功送達點陣圖或處理失敗才計入終態，不以佇列長度冒充進度。
+- `FilmstripViewModel` 使用一個有界工作泵，依「目前照片 → 可見範圍 → 明確重算要求 → 資料夾順序」取下一張；等待算圖交付後才繼續，不為每張照片建立等待中的解碼工作。可見範圍取自虛擬清單的實現索引；未顯示的照片最終仍會載入。
+- `ImageCache` 分開前景預覽與單槽背景解碼的入場控制；同鍵共享解碼，不讓單一呼叫端取消毒化共享結果。預覽 LRU 以路徑、尺寸與 RAW 選項為鍵，所有選項合計保留最多八筆，復原可重用先前來源；逐出時取消尚未開始的解碼。
+- 背景 CPU 目標可在背景工作浮出面板或「GPU 與效能」偏好設定即時調整並保存，範圍 10–100%、預設 70%；100% 停用額外等待。採程序 CPU 時間 ÷（經過時間 × 邏輯核心數），在背景工作間合作式讓出時間；不是單核心百分比，也不是系統整體或單次 RAW／原生解碼的硬性上限。前景預覽與匯出不受此節流控制，不更動全域執行緒池或 RAW 演算法。
+- 取消只停止自動背景掃描／縮圖，保留目前專案、照片、編輯與已完成縮圖；後續明確的編輯仍可更新相關縮圖，不會悄悄恢復整批掃描。資料夾換代會取消舊排隊與配速等待，舊成功／錯誤均不得污染新專案。已開始的同步解碼不能硬殺，但回傳後會核對換代；取消不算壞檔。
+
 
 #### 服務與控制項
 
@@ -395,6 +461,8 @@ flowchart TB
 | `Dialogs/` | 偏好設定、預設管理、選擇性貼上、關於；`DialogService` 實作 `IDialogService`，測試時可替換 |
 | `Gallery/` | 以 `--gallery` 啟動的元件展示視窗，檢查各元件在各種狀態下的外觀 |
 
+直方圖的平滑只在 `Controls/HistogramView.cs` 的顯示高度上套用五格 `[1,4,6,4,1]/16` 濾波，不改 `ImageHistogram` 的原始 bins 或黑白裁切比例。每次資料更新建立新的 `StreamGeometry`，只在相同資料的重繪間快取；重新 `Open()` 舊 geometry 會累加 figures。空資料與卸載必須清掉舊圖，避免把歷史曲線當成目前統計。
+
 #### 主題
 
 - `Themes/Colors.axaml`：所有顏色 token（`FB.*Brush`）。介面灰階必須 R = G = B，強調色只有一個藍色。新顏色請加 token，不要在 View 裡寫色碼。
@@ -411,7 +479,7 @@ flowchart TB
 
 ### 4.11 Cli．命令列工具
 
-`src/FilmBatch.Cli/Program.cs` 以 System.CommandLine 定義指令：`export`（套用已保存的專案設定批次匯出）、`recipes list` / `recipes import`、`gpu-info`、`spike`（GPU 基準測試）。它與 GUI 共用 Core 與 Engine，因此匯出結果與 GUI 一致。用法見 [building.md](building.md#命令列工具cli)。
+`src/FilmBatch.Cli/Program.cs` 以 System.CommandLine 定義 `export`（套用已保存的專案設定）、`samples`（產生測試照片）、`gpu-info`、`spike`（GPU 基準測試）及 `raw convert`／`raw masks`。CLI 與 GUI 共用 Core／Engine；`export --format dng` 是算圖後的 DNG，`raw convert` 則保留感光樣本並補足來源色彩描述，兩者不能混為一談。用法見 [building.md](building.md#命令列工具cli)，隔離驗證見 [VERIFY.md](../VERIFY.md)。
 
 ---
 
@@ -459,6 +527,13 @@ flowchart TB
 2. 在 `IDialogService` 加方法，並在 `DialogService` 中以 `ShowDialog` 實作。
 3. ViewModel 只呼叫 `IDialogService`，測試時可以假物件替換。
 
+### 5.6 新增一卷底片
+
+1. 在 `Core/Film/Looks/looks.json` 加一筆（`key`、`name`、`group`、HaldCLUT.zip 內的 `source`）；陣列順序即介面順序。
+2. 執行 `dotnet run --project tools/film-luts -- src/FilmBatch.Core/Film/Looks/looks.json src/FilmBatch.Core/Film/Looks` 產生 `<key>.fblut`（需要網路，只以 HTTP Range 抓列出的 PNG）。
+3. 執行 `FilmLookTests`（卷數有改時更新測試中的數字）。
+4. 更新 [film-looks.md](film-looks.md) 的底片表；新分組還要在資源檔加分組名稱。不需要改 CPU／GPU 程式碼。
+
 ---
 
 ## 6. 測試對照
@@ -468,7 +543,10 @@ flowchart TB
 | 三層合併、貼上、重設 | `tests/FilmBatch.Core.Tests/PhotoOperationsTests.cs`、`ProjectServiceTests.cs` |
 | 專案與預設存檔 | `PersistenceTests.cs` |
 | 效果演算法、CPU / GPU 一致性 | `EffectPipelineTests.cs`、`GpuSpikeTests.cs` |
-| 底片配方與校正 | `FilmRecipeTests.cs`、`FilmCalibrationTests.cs` |
+| 底片 LUT、底片清單、色相預設 | `FilmLutTests.cs`、`FilmLookTests.cs` |
+| 舊參數丟棄、film schema | `RetiredParamsTests.cs` |
+| 底片風格算圖、色相帶、CPU / GPU 一致性 | `EffectPipelineTests.cs`（`FilmLook_*`、`HueBandWeights_*`、`Gpu_MatchesCpu_OnFilmLook`） |
+| 底片縮圖格與色相帶編輯器 | `tests/FilmBatch.App.Tests/FilmLookViewModelTests.cs` |
 | 排程與裝置重建 | `RenderSchedulerTests.cs`、`RenderSchedulerReconfigureTests.cs` |
 | 匯出與中繼資料 | `BatchExporterTests.cs`、`TiffMetadataTests.cs` |
 | ViewModel 與介面互動 | `tests/FilmBatch.App.Tests/`（Avalonia.Headless，不需顯示器） |
@@ -485,7 +563,6 @@ flowchart TB
 | 偏好設定 | `<使用者資料夾>/settings.json` |
 | Dock 版面 | `<使用者資料夾>/layout.json` |
 | 預設庫 | `<使用者資料夾>/presets/*.yaml` |
-| 自訂底片配方 | `<使用者資料夾>/recipes/` |
 | 材質庫 | `<使用者資料夾>/textures/` |
 | 記錄檔 | `<使用者資料夾>/logs/` |
 | 專案（每個照片資料夾一份） | `<照片資料夾>/.filmbatch/project.json` |
@@ -497,4 +574,5 @@ flowchart TB
 
 - [building.md](building.md)：建置、測試、CI 與發佈
 - [adr/0001-webgpu-binding.md](adr/0001-webgpu-binding.md)：WebGPU 綁定選型
-- [film-provenance.md](film-provenance.md)、[film-calibration.md](film-calibration.md)：配方來源與色彩校正
+- [adr/0002-ai-denoise.md](adr/0002-ai-denoise.md)：AI 降噪（提議中）
+- [film-looks.md](film-looks.md)：底片風格的 LUT 來源與授權、演算法、色相帶與新增底片流程

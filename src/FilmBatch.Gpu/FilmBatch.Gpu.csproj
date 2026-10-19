@@ -7,6 +7,9 @@
     <PackageReference Include="WebGPUSharp" />
   </ItemGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="FilmBatch.Core.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <EmbeddedResource Include="Shaders\**\*.wgsl" LogicalName="FilmBatch.Shaders/%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>

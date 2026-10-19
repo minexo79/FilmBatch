@@ -1,6 +1,8 @@
+using FilmBatch.Core.Film;
 using FilmBatch.Core.Params;
 using FilmBatch.Core.Random;
 using FilmBatch.Engine.Imaging;
+using FilmBatch.Raw.Color;
 
 namespace FilmBatch.Engine.Rendering;
 
@@ -10,9 +12,26 @@ namespace FilmBatch.Engine.Rendering;
 /// </summary>
 public sealed class ModuleParams
 {
+    // crop（管線最前面；之後所有模組都以裁切後的畫框 OutWidth × OutHeight 計算）
+    public CropParams Crop;
+    public CropTransform CropT;
+    public int OutWidth => CropT.OutWidth;
+    public int OutHeight => CropT.OutHeight;
+    public int SourceWidth, SourceHeight, ReferenceWidth, ReferenceHeight;
     // basic
     public bool BasicOn;
     public float Exposure, Temperature, Tint, Brightness, Contrast, Highlights, Shadows, Saturation, Structure;
+    // RAW：場景線性來源的白平衡與語意遮罩；舊 basic.temperature/tint 仍是相對效果。
+    public bool RawProcessingOn, RawCustomWhiteBalance;
+    public float RawTemperature, RawTint;
+    internal Mat3? RawWhiteBalanceMatrix;
+    public bool RawMaskOn, RawMaskInvert;
+    public string RawMaskName = "", RawMaskInstance = "";
+    public float RawMaskStrength, RawMaskExposure, RawMaskTemperature, RawMaskTint, RawMaskContrast, RawMaskSaturation;
+    // Developed-source local correction and monotonic scene-linear tonal placement.
+    public bool SkinOn, ZoneOn;
+    public float SkinCx, SkinCy, SkinRadiusX, SkinRadiusY, SkinFeather, SkinStrength, SkinTemperature, SkinTint;
+    public float SkinRefRed, SkinRefGreen, SkinRefBlue, ZoneSlope, ZoneOffset;
     // lens_distortion
     public bool LensOn, AutoCrop;
     public float LensAmount, Chromatic, EdgeSoften;
@@ -47,11 +66,13 @@ public sealed class ModuleParams
     public string LeakTexture = "";
     public float LeakAmount, LeakAngle, LeakSize, LeakHue, LeakIrregularity;
     public int LeakCount;
-    // film
+    // film（底片風格：LUT ＋ 色相帶；FilmLut 為 null 時不套用）
     public bool FilmOn;
-    public string FilmRecipe = "", FilmStyle = "", FilmWhiteBalance = "", FilmEffect = "", FilmEffectOption = "", FilmDro = "";
-    public float FilmStrength, FilmSaturation, FilmContrast, FilmSharpness, FilmAmberBlue, FilmGreenMagenta;
-    public float FilmExposure, FilmWbReference;
+    public string FilmLookKey = "";
+    public float FilmStrength, FilmWarmth, FilmFade;
+    public float[] FilmHue = new float[24];
+    public FilmLut? FilmLut;
+    internal FilmLookUniforms FilmLook;
     // photo_plate
     public bool PlateOn;
     public int PlateType;
@@ -68,12 +89,13 @@ public sealed class ModuleParams
     public float DirtDust, DirtScratches, DirtHairs, DirtStrength, DirtScale;
     // grain
     public bool GrainOn;
-    public float GrainAmount, GrainSize, GrainRoughness, GrainColor;
+    public float GrainAmount, GrainSize, GrainRoughness, GrainColor, GrainSoftness;
+    public int GrainModel, GrainSamples;
+    public float GrainShadows, GrainMidtones, GrainHighlights, GrainAperture, GrainRadiusSpread;
     // seeds
     public uint SeedMultiLens, SeedLightLeak, SeedPhotoPlate, SeedDirt, SeedGrain;
 
     internal EffectImage? DoubleAsset, LeakAsset, DirtAsset;
-    internal FilmParameters Film;
 
 
     public static ModuleParams From(SourceImage source, Settings s)
@@ -96,8 +118,18 @@ public sealed class ModuleParams
             throw new InvalidDataException($"Unknown choice for {key}: {value}");
         }
 
+        var rawTemperature = ModuleCatalog.Param("raw.temperature")!;
         var m = new ModuleParams
         {
+            // crop
+            SourceWidth = source.Width, SourceHeight = source.Height,
+            ReferenceWidth = source.ReferenceWidth, ReferenceHeight = source.ReferenceHeight,
+            Crop = new CropParams(
+                B(s, "crop.enabled", false),
+                N(s, "crop.rect_cx", 0.5f), N(s, "crop.rect_cy", 0.5f),
+                N(s, "crop.rect_w", 1), N(s, "crop.rect_h", 1),
+                N(s, "crop.angle", 0), I(s, "crop.quarter", 0),
+                B(s, "crop.flip_h", false), B(s, "crop.flip_v", false)),
             // basic
             BasicOn = B(s, "basic.enabled", true),
             Exposure = N(s, "basic.exposure", 0),
@@ -109,6 +141,29 @@ public sealed class ModuleParams
             Shadows = N(s, "basic.shadows", 0),
             Saturation = N(s, "basic.saturation", 0),
             Structure = N(s, "basic.structure", 0),
+            // RAW 來源專用；模組停用不會把來源改回已量化的 SDR。
+            RawProcessingOn = source.Scene is not null && B(s, "raw.enabled", false),
+            RawCustomWhiteBalance = T(s, "raw.wb_mode", "as-shot") == "custom",
+            RawTemperature = Math.Clamp(N(s, "raw.temperature", 6500), (float)rawTemperature.Min, (float)rawTemperature.Max),
+            RawTint = N(s, "raw.tint", 0),
+            RawMaskOn = source.Scene is not null && B(s, "raw.enabled", false) && B(s, "raw.mask_enabled", false),
+            RawMaskName = T(s, "raw.mask_name", ""),
+            RawMaskInstance = T(s, "raw.mask_instance", ""),
+            RawMaskInvert = B(s, "raw.mask_invert", false),
+            RawMaskStrength = Math.Clamp(N(s, "raw.mask_amount", 100), 0, 100) / 100f,
+            RawMaskExposure = N(s, "raw.mask_exposure", 0),
+            RawMaskTemperature = N(s, "raw.mask_temperature", 0),
+            RawMaskTint = N(s, "raw.mask_tint", 0),
+            RawMaskContrast = N(s, "raw.mask_contrast", 0),
+            RawMaskSaturation = N(s, "raw.mask_saturation", 0),
+            SkinOn = B(s, "skin.enabled", false) && N(s, "skin.amount", 100) > 0,
+            SkinCx = N(s, "skin.region_cx", 0.5f), SkinCy = N(s, "skin.region_cy", 0.5f),
+            SkinRadiusX = N(s, "skin.radius_x", 0.15f), SkinRadiusY = N(s, "skin.radius_y", 0.15f),
+            SkinFeather = N(s, "skin.feather", 50) / 100f, SkinStrength = N(s, "skin.amount", 100) / 100f,
+            SkinTemperature = N(s, "skin.temperature", 0), SkinTint = N(s, "skin.tint", 0),
+            SkinRefRed = N(s, "skin.ref_red", 1), SkinRefGreen = N(s, "skin.ref_green", 1), SkinRefBlue = N(s, "skin.ref_blue", 1),
+            ZoneOn = source.Scene is not null && B(s, "zone.enabled", false),
+            ZoneSlope = N(s, "zone.slope", 1), ZoneOffset = N(s, "zone.offset", 0),
             // lens_distortion
             LensOn = B(s, "lens_distortion.enabled", false),
             LensAmount = N(s, "lens_distortion.amount", 0),
@@ -187,22 +242,13 @@ public sealed class ModuleParams
             LeakHue = N(s, "light_leak.hue", 25),
             LeakIrregularity = N(s, "light_leak.irregularity", 50),
             LeakCount = I(s, "light_leak.count", 1),
-            // film（Recipes slice 的新 schema；本結構不解析配方庫，inline 欄位即完整）
+            // film：底片風格（docs/film-looks.md）
             FilmOn = B(s, "film.enabled", false),
-            FilmRecipe = T(s, "film.recipe", "factory-st"),
+            FilmLookKey = T(s, "film.look", FilmLookLibrary.DefaultKey),
             FilmStrength = N(s, "film.strength", 100),
-            FilmStyle = T(s, "film.style", "standard"),
-            FilmSaturation = N(s, "film.saturation", 0),
-            FilmContrast = N(s, "film.contrast", 0),
-            FilmSharpness = N(s, "film.sharpness", 0),
-            FilmWhiteBalance = T(s, "film.white_balance", "auto"),
-            FilmAmberBlue = N(s, "film.amber_blue", 0),
-            FilmGreenMagenta = N(s, "film.green_magenta", 0),
-            FilmEffect = T(s, "film.effect", "off"),
-            FilmEffectOption = T(s, "film.effect_option", ""),
-            FilmExposure = N(s, "film.exposure", 0),
-            FilmDro = T(s, "film.dro", "auto"),
-            FilmWbReference = N(s, "film.wb_reference", 5500),
+            FilmWarmth = N(s, "film.warmth", 0),
+            FilmFade = N(s, "film.fade", 0),
+            FilmHue = [.. HueBands.FlatKeys.Select(key => N(s, key, 0))],
             // photo_plate
             PlateOn = B(s, "photo_plate.enabled", false),
             PlateType = C("photo_plate.plate_type"),
@@ -239,6 +285,11 @@ public sealed class ModuleParams
             GrainSize = N(s, "grain.size", 30),
             GrainRoughness = N(s, "grain.roughness", 50),
             GrainColor = N(s, "grain.color", 30),
+            GrainSoftness = N(s, "grain.softness", 30),
+            GrainModel = C("grain.model"),
+            GrainShadows = N(s, "grain.shadows", 100), GrainMidtones = N(s, "grain.midtones", 100),
+            GrainHighlights = N(s, "grain.highlights", 0), GrainAperture = N(s, "grain.aperture", 0.65f),
+            GrainRadiusSpread = N(s, "grain.radius_spread", 0.35f), GrainSamples = Math.Clamp(I(s, "grain.samples", 8), 4, 32),
             // seeds（照片種子 ⊕ 模組種子參數；Downscale 後檔名不變）
             SeedMultiLens = SeedHash.Combine(photoSeed, (uint)N(s, "multi_lens.seed", 0)),
             SeedLightLeak = SeedHash.Combine(photoSeed, (uint)N(s, "light_leak.seed", 0)),
@@ -247,60 +298,24 @@ public sealed class ModuleParams
             SeedGrain = SeedHash.Combine(photoSeed, (uint)N(s, "grain.seed", 0)),
         };
 
-        m.Film = FilmParameters.From(m, source.ShortSide);
+        m.CropT = CropGeometry.Compute(source.Width, source.Height, m.Crop);
+        m.FilmLut = m.FilmOn ? FilmLookLibrary.TryLut(m.FilmLookKey) : null;
+        m.FilmLook = FilmLookUniforms.From(m);
+        m.RawWhiteBalanceMatrix = m.RawProcessingOn && m.RawCustomWhiteBalance
+            ? source.WhiteBalance?.MatrixFor(m.RawTemperature, m.RawTint)
+            : null;
         return m;
-    }
-
-
-    public static int FilmStyleIndex(string key) => key switch
-    {
-        "standard" => 0, "vivid" => 1, "neutral" => 2, "portrait" => 3, "landscape" => 4,
-        "mono" => 5, "clear" => 6, "deep" => 7, "light" => 8, "sunset" => 9,
-        "night" => 10, "red-leaves" => 11, "sepia" => 12,
-        _ => 0,
-    };
-
-    public static int FilmEffectIndex(string key) => key switch
-    {
-        "off" => 0, "retro-photo" => 1, "soft-high-key" => 2, "rough-mono" => 3,
-        _ => 0, // v1 未實作的效果 → 該階段恆等（不丟擲）
-    };
-
-    /// <summary>soft-high-key 子選項：blue/pink/green；其他效果的子選項以不同編碼處理。</summary>
-    public static int EffectOptionIndex(string effect, string option)
-    {
-        return effect switch
-        {
-            "soft-high-key" => option switch { "blue" => 0, "pink" => 1, "green" => 2, _ => 0 },
-            "toy-camera" => option switch { "normal" => 0, "cool" => 1, "warm" => 2, "green" => 3, "magenta" => 4, _ => 0 },
-            "part-color" => option switch { "red" => 0, "green" => 1, "blue" => 2, "yellow" => 3, _ => 0 },
-            "posterization" => option switch { "posterization-color" => 0, "posterization-bw" => 1, _ => 0 },
-            _ => 0,
-        };
-    }
-
-    public static int DroIndex(string dro) => dro switch
-    {
-        "off" => 0, "1" => 1, "2" => 2, "3" => 3, "4" => 4, "5" => 5, _ => 6, // auto
-    };
-
-    /// <summary>解析指定的白平衡色溫（auto/keep 回傳 null）。</summary>
-    public static int? WhiteBalanceKelvin(string wb)
-    {
-        if (wb is "auto" or "keep" or "" or null) return null;
-        if (wb.EndsWith('K') && int.TryParse(wb[..^1], out var k) && k is >= 2500 and <= 9900) return k;
-        return null;
     }
 
 
     /// <summary>是否需要任何 spatial（非逐像素）pass——供尺寸/記憶體規劃與分塊 apron 估算。</summary>
     public bool HasSpatialPasses =>
-        (BasicOn && Structure != 0)
+        Crop.On
+        || (BasicOn && Structure != 0)
         || LensOn || MultiOn || DoubleOn
         || (BokehOn && BokehBlur > 0)
         || (ZoomRotateOn && (Zoom != 0 || Rotate != 0))
         || (MotionOn && MotionLength > 0)
         || (HalationOn && HalAmount > 0)
-        || (FilmOn && FilmSharpness != 0)
         || (DetailOn && (Clarity != 0 || Sharpen != 0));
 }

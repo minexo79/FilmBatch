@@ -13,11 +13,14 @@
                  ToolTip.Tip="{l:Tr Tip.ResetParam}" ToolTip.ShowDelay="800" />
       <Ellipse Classes="override-dot" IsVisible="{Binding IsOverridden}" />
     </StackPanel>
-    <NumericUpDown Grid.Row="0" Grid.Column="1" Classes="inline-value" Value="{Binding NumericValue, Mode=TwoWay}" FormatString="{Binding FormatString}"
+    <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Spacing="4">
+    <NumericUpDown Classes="inline-value" Value="{Binding NumericValue, Mode=TwoWay}" FormatString="{Binding FormatString}"
                    Minimum="{Binding Minimum, Converter={x:Static c:ParamRow.ToDecimal}}"
                    Maximum="{Binding Maximum, Converter={x:Static c:ParamRow.ToDecimal}}"
                    Increment="{Binding Step, Converter={x:Static c:ParamRow.ToDecimal}}"
                    VerticalAlignment="Center" />
+    <TextBlock Text="{Binding Unit}" VerticalAlignment="Center" Classes="secondary small" />
+    </StackPanel>
     <c:ParamSlider Grid.Row="1" Grid.ColumnSpan="2" Name="Slider" Height="20" MinHeight="0" VerticalAlignment="Center"
                    Minimum="{Binding Minimum}" Maximum="{Binding Maximum}"
                    SmallChange="{Binding Step}" TickFrequency="{Binding Step}"

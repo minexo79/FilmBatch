@@ -40,21 +40,21 @@ public partial class LocalizationTests
         resources.GetResourceSet(culture, createIfNotExists: true, tryParents: false)!
             .Cast<DictionaryEntry>().ToDictionary(e => (string)e.Key, e => (string)e.Value!);
 
-    /// <summary>Core（配方解析）與 Gpu（裝置錯誤）的資源檔：英文涵蓋每個 key 且不含中文。</summary>
+    /// <summary>Core 與 Gpu（裝置錯誤）的資源檔：英文涵蓋每個 key 且不含中文。Core 目前沒有資源字串（訊息走 <c>CoreText.T</c>）。</summary>
     [Fact]
     public void LibraryResources_CoverEveryKey_WithoutChinese()
     {
+        Assert.NotEmpty(Entries(Gpu.Localization.GpuText.ResourceManager, CultureInfo.InvariantCulture));
         foreach (var resources in new[] { Core.CoreText.ResourceManager, Gpu.Localization.GpuText.ResourceManager })
         {
             var zh = Entries(resources, CultureInfo.InvariantCulture);
             var en = Entries(resources, CultureInfo.GetCultureInfo("en"));
-            Assert.NotEmpty(zh);
             Assert.Empty(zh.Keys.Except(en.Keys));
             Assert.Empty(en.Where(e => Cjk().IsMatch(e.Value)).Select(e => e.Key));
         }
     }
 
-    /// <summary>切換介面語言時，Core 的配方錯誤與 Gpu 的錯誤訊息跟著切換。</summary>
+    /// <summary>切換介面語言時，Core 的訊息與 Gpu 的錯誤訊息跟著切換。</summary>
     [AvaloniaFact]
     public void SwitchingLanguage_UpdatesLibraryMessages()
     {
@@ -62,14 +62,11 @@ public partial class LocalizationTests
         try
         {
             Loc.Instance.Culture = CultureInfo.GetCultureInfo("en");
-            var en = Core.Film.CustomRecipeFile.Parse("saturation: +9", "BAD.YML").Error!;
-            Assert.Equal("saturation: +9 is not allowed", en);
+            Assert.Equal("Untitled", Core.CoreText.T("未命名", "Untitled"));
             Assert.Equal("No usable GPU adapter was found.", Gpu.Localization.GpuText.Get("Gpu.NoAdapter"));
 
             Loc.Instance.Culture = CultureInfo.GetCultureInfo("zh-TW");
-            var zh = Core.Film.CustomRecipeFile.Parse("saturation: +9", "BAD.YML").Error!;
-            Assert.Contains("saturation", zh);
-            Assert.Matches(Cjk(), zh);
+            Assert.Equal("未命名", Core.CoreText.T("未命名", "Untitled"));
             Assert.Matches(Cjk(), Gpu.Localization.GpuText.Get("Gpu.NoAdapter"));
         }
         finally
@@ -160,7 +157,7 @@ public partial class LocalizationTests
         var window = new MainWindow(vm) { Width = 1440, Height = 900 };
         window.Show();
         await TestEnv.OpenSamplesAsync(vm);
-        vm.Inspector.Modules.First(m => m.Key == "film").IsExpanded = true;
+        vm.FilmEffects.Modules.First(m => m.Key == "film").IsExpanded = true;
         TestEnv.PumpUntil(() => !vm.Preview.IsBusy);
         // 尚未開啟資料夾的視窗：中間的「開啟照片資料夾」提示
         using var emptyVm = TestEnv.CreateViewModel();
@@ -175,11 +172,15 @@ public partial class LocalizationTests
                 vm.Preview.EmptyText, vm.GpuName, vm.Filmstrip.CountText, vm.Preview.ZoomText, vm.Preview.HistogramClipping, vm.SelectionText, vm.BackgroundText,
                 vm.Inspector.OverrideText, vm.Sidebar.Export.Summary, vm.Sidebar.Export.StatusText,
             };
-            texts.AddRange(vm.Inspector.Groups.Select(g => g.Label));
-            texts.AddRange(vm.Inspector.Modules.Select(m => m.Label));
-            texts.AddRange(vm.Inspector.Modules.SelectMany(m => m.Params).Select(p => p.Label));
-            texts.AddRange(vm.Inspector.Modules.SelectMany(m => m.Params).OfType<ChoiceParamViewModel>().SelectMany(p => p.Options).Select(o => o.Label));
+            foreach (var panel in new[] { vm.Inspector, vm.FilmEffects })
+            {
+                texts.AddRange(panel.Groups.Select(g => g.Label));
+                texts.AddRange(panel.Modules.Select(m => m.Label));
+                texts.AddRange(panel.Modules.SelectMany(m => m.Params).Select(p => p.Label));
+                texts.AddRange(panel.Modules.SelectMany(m => m.Params).OfType<ChoiceParamViewModel>().SelectMany(p => p.Options).Select(o => o.Label));
+            }
             texts.AddRange(vm.Filmstrip.FilterOptions.Select(o => o.Label));
+            texts.AddRange(vm.Filmstrip.FileKindOptions.Select(o => o.Label));
             texts.AddRange(vm.Sidebar.Export.Scopes.Select(o => o.Label));
             texts.AddRange(vm.Presets.Categories.SelectMany(c => c.Presets).Select(p => p.Summary));
             Assert.DoesNotContain(texts, t => t is not null && Cjk().IsMatch(t));

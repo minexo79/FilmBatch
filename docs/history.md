@@ -1,0 +1,41 @@
+# 決策與提交歷史
+
+這是精選決策索引，不是複製完整 Git log。歷史來源為本機可達的提交、既有 ADR／計畫，以及 2026-10-15–18 的工作階段交接筆記（工作階段 ID：`01a13e01-f2e0-70e8-b6ac-ab2f176cd24c`）；回收處置見[稽核記錄](superpowers/plans/2026-10-18-governed-verification-and-knowledge.md#recovery-inventory)。不需要該工作階段或其暫存檔才能閱讀本頁。
+
+- 記錄的來源邊界：`6e3291a5cbe33d267ec33b9d42054efde9bd82f3`。
+- commit 主旨證明「當時要改什麼」，不證明測試成功、review 獨立性、遠端推送或目前封裝正確。
+- 「現行契約／檢查」指向目前可讀的文件與測試；本次實際執行結果只記在[有日期的證據](superpowers/plans/2026-10-18-governed-verification-and-knowledge.md#current-observations)，不從 commit 標題補造結果。
+- 短 ID 在本機解析；可用 `git show <ID>` 看原始變更，以 `git log --graph --oneline --all` 看完整分支。後續改動以新列或取代註記補入，不重寫舊決策為「一直如此」。
+
+## 精選演進
+
+| 日期／決策 | 真實提交與原主旨 | 理由、取代關係與現行契約／檢查 |
+|---|---|---|
+| 2026-10-15：完成桌面工作流 | `cfe7f7c` — `feat: complete film editing and macOS delivery workflows` | 將可用介面、編輯與封裝串起來，而非只交付編譯成功。後續原生部署、RAW、底片與生命週期有各自修正，不能把此里程碑當最終實作。[建置與原生 smoke](building.md)、[VERIFY V3](../VERIFY.md#v3)。 |
+| 2026-10-15：中繼資料與匯出復原 | `6b9ca2a` — `fix: normalize sRGB metadata and exclude source image layers`；`90e92da` — `fix: preserve rendered exports when source EXIF is malformed`；`5203033` — `fix: bound JPEG EXIF without silent capture metadata loss` | 不沿用來源圖層／Adobe RGB 的 Interop，也不因 EXIF 壞掉丟失已算出的像素。超過 JPEG APP1 預算先移除 MakerNote，仍過大才使用最小輸出 EXIF，逐張留下警告；不是無條件保留全部私有標籤。[匯出契約](architecture.md#48-engine影像讀取與批次匯出imaging--exporting)、`TiffMetadataTests`／`BatchExporterTests`。 |
+| 2026-10-16：直方圖只改呈現 | `af296ce` — `fix: smooth histogram display without changing statistics` | 平滑顯示高度，不改 bins／裁切統計；重開舊 `StreamGeometry` 曾累加歷史 figures，因此資料更新時重建、重繪間才快取。[顯示契約](architecture.md#410-app介面層)、`ImageHistogramTests`／`HistogramTests`；舊跨平台封裝結果不自動延伸至目前版本。 |
+| 2026-10-16：語系與原生選單 | `c877c1c` — `Complete English localization and default to English`；`b86d622` — `Fix macOS native menus on language switch` | 資源檔與介面語言一起切換；Mac 原生選單根物件保持穩定，只重建子項。[多國語系與服務](architecture.md#410-app介面層)、`LocalizationTests`、V3 的選單／語言檢查。 |
+| 2026-10-16：AI 降噪提案 | `00b2443` — `Add ADR 0002 proposing AI denoise` | 這是提案，不是 ONNX／CoreML／DirectML 已交付的證據。當時沒有 RAW 的前提已被後續 RAW 管線取代；恢復工作前須重新評估資料域、權重授權與品質／部署。[ADR 0002](adr/0002-ai-denoise.md)保留原始選項與未實測估算。 |
+| 2026-10-17：RAW 解碼與能力補齊 | `f4cd262` — `feat(raw): port multi-vendor decoding and camera development`；`3a44538` — `feat(raw): macOS port + lossy-JPEG/deflate/NEF fixes and hardened EXIF append` | 早期「不做鏡頭／gain table／語意遮罩／稀疏檔頭／JXL／DNG 寫出」是當時範圍，不是永久限制。後續已整合，但各格式與比較偏差仍要明列。[raw-oracle](../tools/raw-oracle/README.md)釘選原本的 `f34c7a8a` 語料；整合實驗另釘 `4f0b110b`，不暗中重產既有 oracle。 |
+| 2026-10-17：改用底片 LUT | `4e9d232` — `Bundle 36 RawTherapee film LUTs (CC BY-SA 4.0) with conversion tool`；`6c50f3a` — `Remove Recipe Lab film recipes, Sony coefficients and calibration tool`；`031c010` — `Add Nik-style film look thumbnail grid and hue band editor` | 以 LUT／色相帶模型取代 Recipe Lab／Sony 係數；舊校正工具與其建議不應再成為操作入口。`RetiredParams` 處理舊設定，不另維護第二套引擎。[現行底片文件](film-looks.md)、[LUT 工具](../tools/film-luts/README.md)、`FilmLutTests`／`FilmLookTests`／`RetiredParamsTests`。 |
+| 2026-10-17–18：裁切與曲線／遮罩分支 | `bea0f91` — `Add tone curve core, curve param kind and basic curve editor`；`0c5e0e5` — `Remove mask code (CPU and GPU) for now`；`703ff49` — `Merge dev-cutandmask into feature/raw-port` | 核心型別曾整合、一般遮罩程式後來移除，裁切保留。不能把完整計畫當全部已交付，也不能聲稱所有曲線核心從未實作。RAW 語意遮罩是後續另一個來源契約。[原計畫與現況註記](cut-and-mask/plan.md)、[生命週期](architecture.md#410-app介面層)。 |
+| 2026-10-17：停止 Intel Mac 封裝 | `c1e17fe` — `build: drop osx-x64 (Intel Mac) per dev-cutandmask direction`；`c6852ff` — `docs+build: relocate smoke-display note and drop x64 dawn builds` | 過去 Rosetta／x64 驗證是歷史，不代表仍有 Intel Mac 發行目標。保留 Apple Silicon 與 Windows x64；降低 Mac 部署下限需重建原生庫，不改 Mach-O 宣告來假裝相容。[macOS 發佈](building.md#macos)。Dawn 的 `4178cb7` 是上游 pin，不是這裡的 FilmBatch commit。 |
+| 2026-10-18：SIMD 與可攜精度 | `03761e1` — `perf(engine): vectorize CPU effects and add RAW GPU finishing`；`0edba50` — `fix(gpu): make RAW finishing precision independent of fused fma` | 以 SIMD 改善既有 CPU 參考路徑，不以 `Exp(Log(x)*k)` 近似犧牲結果。D3D12 的非融合 `fma` 曾使 RAW 誤差超標，後續以顯式補償算術保留精度，不放寬容差。獨立 finisher 部分再由 `cfe4cf9` 移除；精度理由仍適用。[ADR 0003](adr/0003-gpu-stack-decision.md)、`RawGpuDisplayTests`／V2。 |
+| 2026-10-18：編輯生命週期 | `e5788ed` — `fix(preview): end interrupted gestures and preserve shared viewport`；`bc5a3ac` — `fix(crop): preserve project ownership and honor cancellation`；`c3ed472` — `fix(export): allow retries while retaining batch errors`；`b87ce49` — `fix(window): restore fullscreen state and release held modes`；`ace9f8f` — `docs: describe editor lifecycle guarantees and verification limits` | 保留舊專案 ownership 後才切換、取消延後裁切、結束中斷手勢、分開上一批失敗與當前選項有效性。關閉即套用的偏好設定／預設管理不是 rollback Cancel；套用裁切後留在分頁且工具停用也是預期狀態。[現行契約](architecture.md#410-app介面層)、[回歸與 Cocoa 邊界](building.md#編輯生命週期回歸)。 |
+| 2026-10-18：RAW UI 與來源一致 | `cc23364` — `fix(raw-ui): synchronize controls and thumbnails with decoded sources`；`7504087` — `feat(raw-ui): expose Kelvin, semantic masks and Lensfun controls` | 依解碼後來源顯示 RAW 面板，等待 matching `RawOptions` 後才生成縮圖；識別字用 `Text`，遮罩名稱＋實例原子寫入。缺失遮罩保留設定但不改成全圖；過期解碼失敗不能清掉 undo 還原的畫面。[參數與復原](architecture.md#41-core參數-schemaparams)、`RawControlsTests`／`RawInspectorTests`／`RawSourceLifecycleTests`。 |
+| 2026-10-18：DNG 起始色彩與中繼資料 | `088a5d2` — `feat(raw): preserve starting colour and capture metadata in DNG conversions` | 在來源有可用描述時補足矩陣／profile，保留感光樣本、幾何與標準拍攝欄位；不能把原始 JPEG 擬合的逐像素亮度／chroma 曲線宣稱為標準 DNG 可完整保存。[DNG 比較限制](../tools/raw-oracle/README.md#比較範圍與已知偏差)、`RawDngConversionTests`；同模型對照與轉前／後外觀差異分別記錄。 |
+| 2026-10-18：場景線性編輯 | `8c3c0b4` — `feat(raw): integrate scene-linear CPU and GPU edits with shared geometry` | RAW 場景不先壓成 SDR；白平衡、局部調整與幾何作用後才顯示收尾。非線性高光壓縮必須回到 Rec.2020 基底，CPU／GPU 彼此一致不代表色彩正確。語意 alpha 在全尺寸取樣，不用固定 4096 平面抹掉單像素細節。[算圖契約](architecture.md#46-engine算圖管線rendering)、`RawSceneIntegrationTests`／`RawSemanticRenderingTests`。 |
+| 2026-10-18：隨附 JPEG XL 閉包 | `c9cd74d` — `build(raw): bundle pinned JPEG XL runtimes for Mac and Windows` | 固定 ABI 與來源／授權，不靠 Homebrew／PATH 掩蓋缺庫；SDK 的 RID negotiation 曾把主機 Mac dylib 選進 Windows 發佈，故 Engine／Raw 明確保留 RID。App 與 CLI 各自檢查實際封裝根目錄。[建置限制](building.md#macos)、[manifest](../src/FilmBatch.Raw/Native/Jxl/provenance.json)、`PortableJxlTests`／`JpegXlTests`。Windows 載入仍須實際執行。 |
+| 2026-10-18：修正非置中預設裁切 | `07eff8b` — `fix(raw): map Lensfun calibration to off-centre default crops` | 置中 fixture 會漏掉光學中心錯誤。Lensfun 的中心／半徑屬 `DefaultCrop`，執行時轉成完整 `ActiveArea` opcode 單位；warp 與 vignette 必須共用映射。[鏡頭契約](architecture.md#410-app介面層)、`LensProfileTests` 的非置中裁切案例；保留原本全畫框行為與精度。 |
+| 2026-10-18：只保留正式 RAW 收尾 | `cfe4cf9` — `refactor(raw): retire standalone GPU finishing path`；`6e3291a` — `docs(raw): close delayed-review acceptance and package evidence` | 刪除 `FinishRaw`／`raw_display_finish.wgsl` 的平行路徑與專用讀回，回歸改走產品實際的 `Render16`，不放寬原精度。舊 API 與 4096 alpha cap 不應再作修改範本。[RAW parity 記錄](superpowers/plans/2026-10-18-raw-pipeline-parity.md)、`RawGpuDisplayTests`，目前證據見本次稽核。 |
+| 2026-10-18：大量照片與即時白平衡 | `eac234b` — `feat(loading): prioritize photos with live CPU pacing and responsive RAW white balance` | 以有界泵及獨立前景入場取代逐照片等待；先送目前照片／可見縮圖，完成以點陣圖或失敗交付計數。CPU 70% 是可即時調整的合作式目標，不是硬性上限。相同來源已完成影格可持續顯示；失敗需攜帶預覽世代，不能消耗其他要求或堵塞後續縮圖。自訂 Kelvin 收斂至 2500–9900 K，不改拍攝白平衡或相對暖色。[載入契約](architecture.md#大量照片載入與背景-cpu)、[回歸](building.md#大量照片載入與即時預覽回歸)、[本次具條件的觀察](superpowers/plans/2026-10-18-progressive-photo-loading.md)。 |
+
+## 合併不是線性重寫
+
+`703ff49` 有兩個 parent：`03761e1`（RAW／SIMD）與 `de62003`（dev-cutandmask／LUT／裁切）。因此底片模型替換與 RAW 實作來自不同分支，不能把 log 顯示的相鄰日期當成單一分支的先後依賴。更早的曲線／遮罩整合 `9e33f85` 與後續移除 `0c5e0e5` 也都保留在可達歷史中；「曾合併」不等於「目前仍啟用」。
+
+## 如何新增歷史列
+
+只記對未來修改有用的決定：真實 commit／日期、可核對的理由或重現、被拒絕方案、目前契約／檢查、後續取代。沒有當時證據時明寫「只確認提交意圖」；數值必須保留平台、輸入與來源版本，不把舊測試 totals 複製成新版本的驗收結果。
+
+不保存原始對話、推理逐字稿、機器絕對路徑或憑證；不把某次「可 commit／push」的批准延續為今天的權限。

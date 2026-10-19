@@ -1,7 +1,7 @@
 #!/bin/bash
 # build/build-dawn.sh — 以 macOS 部署目標 14.0 重建 WebGPUSharp 0.5.7 使用的 Dawn。
 #
-# 背景：NuGet WebGPUSharp 0.5.7 內附的 webgpu_dawn.dylib（osx-arm64 與 osx-x64）
+# 背景：NuGet WebGPUSharp 0.5.7 內附的 webgpu_dawn.dylib（osx-arm64）
 # 與 https://github.com/EmilSV/webgpu-dawn-build 的 dawn-m152-4178cb7 版位元組一致
 # （sha256 皆已量測確認，見 artifacts/dawn/PROVENANCE.txt），其 Dawn commit 為
 # 4178cb7e771b700743bc489037390777b98be39d，建置時未設 MACOSX_DEPLOYMENT_TARGET，
@@ -15,9 +15,8 @@
 # 建置後會以 nm 比對 NuGet 版與重建版的 _wgpu* 匯出符號，新檔必須是 superset 才接受。
 # Mach-O 載入命令一律由編譯器產生，不做任何二進位 minos 修補。
 #
-# 用法：  build/build-dawn.sh [arm64|x86_64|all]   （無參數 = 兩者都建）
+# 用法：  build/build-dawn.sh [arm64]              （僅建 Apple Silicon；osx-x64 已停止支援）
 # 產物：  artifacts/dawn/osx-arm64/webgpu_dawn.dylib
-#         artifacts/dawn/osx-x64/webgpu_dawn.dylib
 #         artifacts/dawn/PROVENANCE.txt（由磁碟實際產物量測產生，非事先宣稱）
 # 環境：  DAWN_MINOS（預設 14.0；低於 14.0 直接拒絕）
 #         DAWN_WORKDIR（預設 /tmp/filmbatch-dawn-build；原始碼與建置暫存，產物才進 artifacts/）
@@ -27,7 +26,7 @@
 #         系統內建 nm / vtool / lipo / shasum；先 dotnet restore
 #         （取 NuGet 內附 Dawn 作 ABI 比對基準）；建置期需連線
 #         dawn.googlesource.com（原始碼與第三方依賴）；WORKDIR 所在磁碟至少
-#         8 GB 可用；x86_64 跨架構建置需 Rosetta。
+#         8 GB 可用。
 set -euo pipefail
 
 DAWN_COMMIT="4178cb7e771b700743bc489037390777b98be39d"   # dawn-m152-4178cb7，WebGPUSharp 0.5.7 同源
@@ -39,24 +38,20 @@ OUT_DIR="$REPO_ROOT/artifacts/dawn"
 fail() { echo "build-dawn.sh：$1" >&2; exit 1; }
 
 usage() {
-    echo "用法：build/build-dawn.sh [arm64|x86_64|all]   （無參數 = 兩者都建）"
+    echo "用法：build/build-dawn.sh [arm64]   （無參數 = arm64；osx-x64 已停止支援）"
     echo "環境：DAWN_MINOS（預設 14.0，不可低於 14.0）、DAWN_WORKDIR、DAWN_JOBS、DAWN_CLEAN=1"
 }
 
-# 引數：無參數即兩個架構都建；all 同義；其餘逐一辨認，非法即錯。
+# 引數：無參數即建 arm64；osx-x64 已停止支援，其餘逐一辨認，非法即錯。
 WANT_ARM64=0
-WANT_X64=0
 if [[ $# -eq 0 ]]; then
     WANT_ARM64=1
-    WANT_X64=1
 else
     for a in "$@"; do
         case "$a" in
             -h|--help) usage; exit 0 ;;
-            all) WANT_ARM64=1; WANT_X64=1 ;;
-            arm64|aarch64) WANT_ARM64=1 ;;
-            x86_64|x64) WANT_X64=1 ;;
-            *) fail "不支援的架構：$a（用法：build/build-dawn.sh [arm64|x86_64|all]）" ;;
+            all|arm64|aarch64) WANT_ARM64=1 ;;
+            *) fail "不支援的架構：$a（僅支援 arm64；osx-x64 已停止支援）" ;;
         esac
     done
 fi
@@ -101,8 +96,7 @@ fi
 
 NUGET_DAWN="$HOME/.nuget/packages/webgpusharp/$WEBGPUSHARP_VERSION/runtimes"
 BUNDLED_ARM64="$NUGET_DAWN/osx-arm64/native/webgpu_dawn.dylib"
-BUNDLED_X64="$NUGET_DAWN/osx-x64/native/webgpu_dawn.dylib"
-[[ -f "$BUNDLED_ARM64" && -f "$BUNDLED_X64" ]] || fail "找不到 NuGet 內附的 Dawn（請先 dotnet restore FilmBatch.sln）：$BUNDLED_ARM64"
+[[ -f "$BUNDLED_ARM64" ]] || fail "找不到 NuGet 內附的 Dawn（請先 dotnet restore FilmBatch.sln）：$BUNDLED_ARM64"
 
 echo "== 取得 Dawn 原始碼（commit ${DAWN_COMMIT}，macOS deployment target ${MINOS}）"
 if [[ -e "$WORKDIR/dawn" && ! -d "$WORKDIR/dawn/.git" ]]; then
@@ -125,7 +119,6 @@ build_one() {
     local arch="$1" cmake_arch rid bundled build_dir cache
     case "$arch" in
         arm64)  cmake_arch="arm64";  rid="osx-arm64"; bundled="$BUNDLED_ARM64" ;;
-        x86_64) cmake_arch="x86_64"; rid="osx-x64";   bundled="$BUNDLED_X64" ;;
     esac
     build_dir="$WORKDIR/build-$rid"
 
@@ -202,11 +195,10 @@ write_provenance() {
         echo "上游 tag    : EmilSV/webgpu-dawn-build dawn-m152-4178cb7"
         echo "同源證據    : WebGPUSharp $WEBGPUSHARP_VERSION NuGet 內附 dylib 與上游 release 資產 sha256 一致（建置時量測）："
         echo "                osx-arm64 內附 $(shasum -a 256 "$BUNDLED_ARM64" | cut -d' ' -f1)"
-        echo "                osx-x64   內附 $(shasum -a 256 "$BUNDLED_X64" | cut -d' ' -f1)"
         echo "建置參數    : 與上游 build_dawn.ps1 macOS 分支相同，外加 CMAKE_OSX_DEPLOYMENT_TARGET=$MINOS"
         echo "建置機器    : $(sw_vers -productName 2>/dev/null || printf 'macOS') $(sw_vers -productVersion 2>/dev/null || printf 'unknown') ($(uname -m))，SDK $(xcrun --show-sdk-version 2>/dev/null || printf 'unknown')"
         local f
-        for rid in osx-arm64 osx-x64; do
+        for rid in osx-arm64; do
             f="$OUT_DIR/$rid/webgpu_dawn.dylib"
             if [[ -f "$f" ]]; then
                 echo "$rid  : minos $(vtool -show-build "$f" | awk '/minos/{print $2; exit}')"
@@ -224,6 +216,5 @@ write_provenance() {
 }
 
 if [[ "$WANT_ARM64" == "1" ]]; then build_one arm64; fi
-if [[ "$WANT_X64" == "1" ]]; then build_one x86_64; fi
 write_provenance
 echo "== 完成。build/Build.cs 會自動採用 artifacts/dawn/<rid>/webgpu_dawn.dylib"

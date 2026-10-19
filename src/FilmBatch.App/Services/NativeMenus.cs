@@ -81,6 +81,7 @@ public static class NativeMenus
 
         var view = new NativeMenu();
         view.Items.Add(Item(Loc.Get("Cmd.SplitCompare"), vm.ToggleSplitCommand));
+        view.Items.Add(Item(Loc.Get("Cmd.Crop"), vm.ToggleCropCommand));
         view.Items.Add(Item(Loc.Get("Cmd.ZoomFit"), vm.ZoomFitCommand, Meta(Key.D0)));
         view.Items.Add(Item(Loc.Get("Cmd.Zoom100"), vm.Zoom100Command, Meta(Key.D1)));
         view.Items.Add(new NativeMenuItemSeparator());

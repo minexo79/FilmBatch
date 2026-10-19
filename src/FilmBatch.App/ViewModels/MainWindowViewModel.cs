@@ -1,9 +1,12 @@
+using System.Diagnostics;
+using Avalonia.Threading;
 using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FilmBatch.App.Localization;
 using FilmBatch.App.Services;
 using FilmBatch.App.ViewModels.Dialogs;
+using FilmBatch.App.ViewModels.Tools;
 using FilmBatch.Core;
 using FilmBatch.Core.Commands;
 using FilmBatch.Core.Params;
@@ -26,6 +29,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private bool _disposed;
     private long _openGeneration;
     private long _previewLoadGeneration;
+    private CancellationTokenSource? _previewWait;
+    private readonly Stopwatch _folderLoadWatch = new();
+    private readonly DispatcherTimer _loadingTimer;
+    private bool _loadingCancelled;
+    private bool _hasLoadProgress;
+    private string? _loadingError;
 
     public AppSettings Settings { get; }
     public IDialogService Dialogs { get; }
@@ -37,9 +46,27 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     public PresetLibraryViewModel Presets { get; }
     public FilmstripViewModel Filmstrip { get; }
+    /// <summary>「照片基本參數」分頁：照片資訊 + 基本調整、幾何、光學群組。</summary>
     public InspectorViewModel Inspector { get; }
+
+    /// <summary>「底片效果」分頁：底片、表面群組（含底片風格縮圖格）。</summary>
+    public InspectorViewModel FilmEffects { get; }
+
+    /// <summary>film 模組的底片風格縮圖格與色相帶編輯器（在「底片效果」分頁）。</summary>
+    public FilmLookViewModel FilmLook => FilmEffects.FilmLook!;
+
     public SidebarViewModel Sidebar { get; }
     public PreviewViewModel Preview { get; }
+
+    /// <summary>「裁切」分頁的裁切工具（只作用於焦點照片）。</summary>
+    public CropToolViewModel CropTool { get; }
+
+    /// <summary>「照片基本參數」分頁的照片工具面板（WB／膚色／Zone 取樣與提案）。</summary>
+    public PhotoToolsViewModel PhotoTools { get; internal set; }
+
+    /// <summary>焦點照片的最終參數（三層合併）；沒有照片時為系統預設。</summary>
+    public Settings FocusedResolved =>
+        Service is not null && FocusFile is not null ? Service.SettingsFor(FocusFile) : ModuleCatalog.Defaults;
     public ToastViewModel Toast { get; }
 
     public ProjectService? Service { get; private set; }
@@ -66,6 +93,16 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private string _backgroundText = Loc.Get("Status.Idle");
 
     [ObservableProperty]
+    private bool _isScanningFolder;
+
+    [ObservableProperty]
+    private int _backgroundCpuPercent;
+
+    public bool IsLoadingPhotos => IsScanningFolder || Filmstrip.IsLoadingThumbnails;
+    public double LoadingProgress => Filmstrip.TotalThumbnails == 0 ? 0
+        : 100.0 * Filmstrip.CompletedThumbnails / Filmstrip.TotalThumbnails;
+
+    [ObservableProperty]
     private string _lastRenderText = "";
 
     [ObservableProperty]
@@ -89,14 +126,26 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         Library = PresetLibrary.Load();
         RendererFactory = rendererFactory;
         Images = new ImageCache(settings.PreviewLongEdge);
+        _backgroundCpuPercent = settings.BackgroundCpuPercent;
+        Images.SetBackgroundCpuPercent(_backgroundCpuPercent);
         Renderer = new PreviewService(rendererFactory, post, fallback: () => PreviewService.CreateCpuRenderer(settings));
 
         Toast = new ToastViewModel(Stack);
         Preview = new PreviewViewModel(this);
         Presets = new PresetLibraryViewModel(this);
         Filmstrip = new FilmstripViewModel(this);
-        Inspector = new InspectorViewModel(this);
-        Sidebar = new SidebarViewModel(Presets, Inspector, new ExportViewModel(this), Preview);
+        Filmstrip.LoadingProgressChanged += () => _post(UpdateBackgroundText);
+        _loadingTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(250), DispatcherPriority.Background,
+            (_, _) => UpdateBackgroundText());
+        _loadingTimer.Stop();
+        Inspector = new InspectorViewModel(this, new HashSet<ModuleGroup> { ModuleGroup.Basic, ModuleGroup.Optical });
+        FilmEffects = new InspectorViewModel(this, new HashSet<ModuleGroup> { ModuleGroup.Geometry, ModuleGroup.Film, ModuleGroup.Surface }, showsPhotoInfo: false);
+        CropTool = new CropToolViewModel(CommitCrop,
+            () => Preview.Source is { } s ? (s.Width, s.Height) : (0, 0),
+            () => Service is not null && FocusFile is not null && Preview.Source is not null ? Service.SettingsFor(FocusFile) : null);
+        CropTool.PropertyChanged += OnCropToolChanged;
+        PhotoTools = new PhotoToolsViewModel(this);
+        Sidebar = new SidebarViewModel(Presets, Inspector, FilmEffects, new ExportViewModel(this), Preview, CropTool);
         Sidebar.Export.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(ExportViewModel.IsExporting))
@@ -133,6 +182,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         Renderer.PreviewReady += (r, histogram, originalHistogram) =>
         {
             Preview.SetResult(r, histogram, originalHistogram);
+            PhotoTools.OnPreviewRendered();
             LastRenderText = $"{r.Elapsed.TotalMilliseconds:F1} ms";
             UpdateBackgroundText();
         };
@@ -142,11 +192,19 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             UpdateBackgroundText();
         };
         Renderer.ThumbnailReady += Presets.Hover.OnThumbnailReady;
-        Renderer.Failed += Presets.Hover.OnThumbnailFailed;
-        Renderer.Failed += (file, message) =>
+        Renderer.ThumbnailReady += FilmLook.Thumbnails.OnThumbnailReady;
+        Renderer.Failed += failure =>
         {
-            Filmstrip.SetError(file, message);
-            if (file == FocusFile || file == "$init") Preview.IsBusy = false;
+            var file = failure.Key;
+            var message = failure.Error.Message;
+            if (failure.PreviewGeneration is null && file != "$init")
+            {
+                Filmstrip.SetError(file, message);
+                Presets.Hover.OnThumbnailFailed(file, message);
+                FilmLook.Thumbnails.OnThumbnailFailed(file, message);
+            }
+            if (file == "$init" || (failure.PreviewGeneration is not null && file == FocusFile && !Renderer.IsBusy))
+                Preview.IsBusy = false;
             Toast.Show(Loc.Format("Toast.RenderFailed", message));
         };
         Renderer.Start();
@@ -174,44 +232,83 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     public async Task OpenFolderAsync(string folder)
     {
         var generation = ++_openGeneration;
-        // Load first: a corrupt/unreadable target must leave the current project and preview intact.
-        var project = await Task.Run(() => Project.Open(folder, SamplePresets.Neutral));
-        if (_disposed || generation != _openGeneration) return;
-        Renderer.CancelThumbnails();
-        Presets.Hover.InvalidateCache();
-        Images.Clear();
-        if (Service is not null) Service.Project.EntriesChanged -= OnEntriesChanged;
-
-        Stack.Clear();
-        Service = new ProjectService(project, Library, Stack);
-        project.EntriesChanged += OnEntriesChanged;
-        Folder = project.Folder;
-        Settings.LastFolder = project.Folder;
-        OnPropertyChanged(nameof(HasProject));
-        OnPropertyChanged(nameof(WindowTitle));
-        AppLog.Info($"開啟資料夾：{folder}（{project.FileNames.Count} 張）");
-
-        Filmstrip.Load(project);
-        if (project.FileNames.Count == 0)
+        _loadingCancelled = false;
+        _loadingError = null;
+        _hasLoadProgress = true;
+        IsScanningFolder = true;
+        _folderLoadWatch.Restart();
+        UpdateBackgroundText();
+        try
         {
-            Toast.Show(Loc.Get("Toast.NoSupportedPhotos"));
-            OnSelectionChanged([], null);
+            // Validate the target before replacing the current project or committing its crop.
+            var project = await Task.Run(() => Project.Open(folder, SamplePresets.Neutral));
+            if (_disposed || generation != _openGeneration) return;
+            // Crop still belongs to the old Service, focus and undo stack at this point.
+            if (CropTool.IsActive)
+            {
+                var changed = CropTool.HasChanges;
+                CropTool.Apply();
+                // A same-folder/alias target must include the crop just committed to disk.
+                if (changed) project = Project.Open(folder, SamplePresets.Neutral);
+            }
+            Renderer.CancelThumbnails();
+            Presets.Hover.InvalidateCache();
+            FilmLook.InvalidateThumbnails();
+            Images.Clear();
+            if (Service is not null) Service.Project.EntriesChanged -= OnEntriesChanged;
+
+            Stack.Clear();
+            Service = new ProjectService(project, Library, Stack);
+            project.EntriesChanged += OnEntriesChanged;
+            Folder = project.Folder;
+            Settings.LastFolder = project.Folder;
+            OnPropertyChanged(nameof(HasProject));
+            OnPropertyChanged(nameof(WindowTitle));
+            AppLog.Info($"開啟資料夾：{folder}（{project.FileNames.Count} 張）");
+
+            Filmstrip.Load(project);
+            IsScanningFolder = false;
+            UpdateBackgroundText();
+            if (project.FileNames.Count == 0)
+            {
+                Toast.Show(Loc.Get("Toast.NoSupportedPhotos"));
+                OnSelectionChanged([], null);
+            }
+            NotifyCommands();
+            await ResolvePresetUpdatesAsync();
         }
-        NotifyCommands();
-        await ResolvePresetUpdatesAsync();
+        catch (Exception ex)
+        {
+            if (_disposed || generation != _openGeneration) return;
+            IsScanningFolder = false;
+            _loadingError = ex.Message;
+            UpdateBackgroundText();
+            throw;
+        }
     }
 
     // ───────────── 選取 ─────────────
 
     public void OnSelectionChanged(IReadOnlyList<string> selection, string? focus)
     {
-        if (FocusFile != (focus ?? selection.LastOrDefault())) Preview.Clear();
+        var newFocus = focus ?? selection.LastOrDefault();
+        if (FocusFile != newFocus)
+        {
+            // 換照片前把未套用的裁切寫回原本的焦點照片；若還在「裁切」分頁，
+            // 記住要對新照片進入裁切——新來源可能尚未解碼，Begin 會延後到載入完成。
+            // 照片工具：作廢提案與進行中的取樣（同專案的參考色保留），關閉取樣視圖。
+            PhotoTools.InvalidateForPhotoChange();
+            if (CropTool.IsActive) CropTool.Apply();
+            Preview.Clear();
+            if (Sidebar.IsCrop) CropTool.Begin();
+        }
         Selection = selection;
-        FocusFile = focus ?? selection.LastOrDefault();
+        FocusFile = newFocus;
+        CropTool.FocusedOnly = selection.Count > 1;
         Presets.Hover.OnFocusChanged();
         SelectionText = Service is null ? Loc.Get("Status.NoProject") : Loc.Format("Status.Selected", selection.Count);
         OnPropertyChanged(nameof(HasSelection));
-        Inspector.Refresh();
+        RefreshModulePanels();
         if (Sidebar.IsExport) Sidebar.Export.Refresh();
         _ = LoadPreviewAsync();
         NotifyCommands();
@@ -220,6 +317,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private async Task LoadPreviewAsync()
     {
         var generation = ++_previewLoadGeneration;
+        _previewWait?.Cancel();
+        _previewWait?.Dispose();
+        _previewWait = new CancellationTokenSource();
+        var cancellationToken = _previewWait.Token;
         Renderer.CancelPreview();
         var file = FocusFile;
         var service = Service;
@@ -229,28 +330,107 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             return;
         }
         Preview.UpdateOverlay(Selection.Count);
+        Preview.IsBusy = true;
+        var rawOptions = RawLoadOptions.FromSettings(service.SettingsFor(file));
         try
         {
-            var source = await Images.GetPreviewAsync(service.Project.PathOf(file));
+            var source = await Images.GetPreviewAsync(service.Project.PathOf(file), rawOptions, cancellationToken);
             if (_disposed || Service != service || file != FocusFile || generation != _previewLoadGeneration) return;
+            if (source.RawOptions != RawLoadOptions.FromSettings(service.SettingsFor(file)))
+            {
+                _ = LoadPreviewAsync();
+                return;
+            }
             Preview.SetOriginal(source);
+            Inspector.Refresh();
+            PhotoTools.UpdateContext(service, file, source, service.SettingsFor(file));
+            if (Sidebar.IsCrop) CropTool.ResumeBegin();
             RequestPreview();
         }
+        catch (OperationCanceledException) { }
         catch (Exception ex)
         {
-            if (_disposed || Service != service || file != FocusFile || generation != _previewLoadGeneration) return;
+            if (_disposed || Service != service || file != FocusFile || generation != _previewLoadGeneration
+                || rawOptions != RawLoadOptions.FromSettings(service.SettingsFor(file))) return;
             AppLog.Error($"讀取失敗：{file}", ex);
             Filmstrip.SetError(file, ex.Message);
             Preview.Clear();
+            Inspector.Refresh();
         }
     }
 
     /// <summary>以目前參數重算預覽（拖曳中每次修改都會呼叫；排程器只保留最新請求）。</summary>
     public void RequestPreview()
     {
-        if (Service is null || FocusFile is null || Preview.Source is null) return;
-        Renderer.RequestPreview(FocusFile, Preview.Source, Service.SettingsFor(FocusFile));
+        if (_disposed || Service is null || FocusFile is null || Preview.Source is null) return;
+        var settings = Service.SettingsFor(FocusFile);
+        if (Preview.Source.FilePath != Service.Project.PathOf(FocusFile)
+            || Preview.Source.RawOptions != RawLoadOptions.FromSettings(settings))
+        {
+            _ = LoadPreviewAsync();
+            return;
+        }
+        // 照片工具取樣視圖：在一般裁切暫停之外再暫停創意幾何／效果，疊上目前的 transient 提案。
+        if (PhotoTools.PreviewOverlay is { } overlay) settings = settings.Overlay(overlay);
+        // 裁切工具啟用時暫停裁切，顯示全幅（保留 90° 旋轉與翻轉，裁切框畫在定向後的影像上）；不寫入照片設定
+        if (CropTool.IsActive) settings = settings.Overlay(FullFrame(CropTool.Working));
+        _previewOrientation = CropTool.IsActive ? (CropTool.Working.Quarter, CropTool.Working.FlipH, CropTool.Working.FlipV) : null;
+        // 原圖對比也套用同一個裁切 / 方向：只比較調整（與 Lightroom 相同）
+        Preview.SetCompareCrop(CropGeometry.FromSettings(settings));
+        Renderer.RequestPreview(FocusFile, Preview.Source, settings);
         Preview.IsBusy = true;
+    }
+
+    private (int Quarter, bool FlipH, bool FlipV)? _previewOrientation;
+    private bool _committingCrop;
+
+    /// <summary>全幅、不拉直，只保留方向（90° 旋轉、翻轉）；沒有方向變化時直接關閉裁切。</summary>
+    private static Settings FullFrame(CropParams c) => Core.Params.Settings.Empty
+        .With("crop.enabled", c.Quarter != 0 || c.FlipH || c.FlipV)
+        .With("crop.rect_cx", 0.5).With("crop.rect_cy", 0.5).With("crop.rect_w", 1.0).With("crop.rect_h", 1.0)
+        .With("crop.angle", 0.0).With("crop.quarter", (double)c.Quarter)
+        .With("crop.flip_h", c.FlipH).With("crop.flip_v", c.FlipV);
+
+    private void OnCropToolChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        switch (e.PropertyName)
+        {
+            case nameof(CropToolViewModel.IsActive):
+                Preview.ActiveTool = CropTool.IsActive ? CropTool.CanvasTool : null;
+                PhotoTools.OnToolReplaced();
+                RequestPreview();
+                break;
+            // 拖曳裁切框只重畫畫布；只有方向改變（轉 90°、翻轉）才需要重算全幅預覽
+            case nameof(CropToolViewModel.Working) when CropTool.IsActive
+                && _previewOrientation != (CropTool.Working.Quarter, CropTool.Working.FlipH, CropTool.Working.FlipV):
+                RequestPreview();
+                break;
+        }
+    }
+
+    /// <summary>套用裁切：一筆復原紀錄，只寫入焦點照片（多選時以 toast 提示）。</summary>
+    private void CommitCrop(Settings values)
+    {
+        if (Service is null || FocusFile is null) return;
+        _committingCrop = true;
+        try
+        {
+            if (Service.SetValues([FocusFile], values, Loc.Get("Tool.Crop")) && Selection.Count > 1)
+                Toast.Show(Loc.Get("Toast.CropFocusedOnly"), canUndo: true);
+        }
+        finally { _committingCrop = false; }
+    }
+
+    /// <summary>R：進入裁切分頁；已在裁切分頁時套用並回到上一個分頁。</summary>
+    [RelayCommand]
+    private void ToggleCrop()
+    {
+        if (Sidebar.Active != SidePanel.Crop)
+        {
+            IsFullScreen = false;
+            PanelsHidden = false;
+        }
+        Sidebar.ToggleCrop();
     }
 
     public void RequestThumbnail(string file, SourceImage source)
@@ -265,8 +445,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         Filmstrip.UpdateMarkers(files);
         if (FocusFile is not null && files.Contains(FocusFile))
         {
+            // 外部裁切變更（復原、貼上等）才重載工具；RAW／其他效果變更保留未套用的裁切。
+            if (CropTool.IsActive && !_committingCrop && Service is not null) CropTool.Reload(Service.SettingsFor(FocusFile));
+            // 提案與非同步取樣綁服務＋檔案＋來源＋設定；外部設定改變（undo／貼上）使提案作廢
+            if (Service is { } service) PhotoTools.InvalidateForSettingsChange(service.SettingsFor(FocusFile));
             Presets.Hover.InvalidateForPhoto(FocusFile);
-            Inspector.Refresh();
+            RefreshModulePanels();
             RequestPreview();
         }
         // 背景重算縮圖（低優先）
@@ -285,7 +469,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         var all = Service.Project.FileNames;
         Filmstrip.UpdateMarkers(all);
         foreach (var f in all) Filmstrip.RequestThumbnail(f);
-        Inspector.Refresh();
+        RefreshModulePanels();
         RequestPreview();
     }
 
@@ -316,8 +500,54 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     private void UpdateBackgroundText()
     {
-        var pending = Renderer.PendingThumbnails;
-        BackgroundText = pending > 0 ? Loc.Format("Status.Background", Loc.Format("Status.Thumbnails", pending)) : Loc.Get("Status.Idle");
+        if (_disposed) return;
+        var loading = IsLoadingPhotos;
+        if (loading)
+            _loadingTimer.Start();
+        else
+        {
+            _loadingTimer.Stop();
+            _folderLoadWatch.Stop();
+        }
+        var elapsed = _folderLoadWatch.Elapsed.ToString(@"hh\:mm\:ss");
+        var done = Filmstrip.CompletedThumbnails;
+        var total = Filmstrip.TotalThumbnails;
+        var failed = Filmstrip.FailedThumbnails;
+        BackgroundText = IsScanningFolder ? Loc.Format("Status.ScanningPhotos", elapsed)
+            : _loadingError is not null ? Loc.Format("Status.LoadFailed", _loadingError)
+            : loading ? Loc.Format("Status.LoadingPhotos", done, total, failed, elapsed)
+            : _loadingCancelled ? Loc.Format("Status.LoadCancelled", done, total, failed, elapsed)
+            : Renderer.PendingThumbnails > 0 ? Loc.Format("Status.Background", Loc.Format("Status.Thumbnails", Renderer.PendingThumbnails))
+            : _hasLoadProgress ? Loc.Format("Status.LoadComplete", done, total, failed, elapsed)
+            : Loc.Get("Status.Idle");
+        OnPropertyChanged(nameof(IsLoadingPhotos));
+        OnPropertyChanged(nameof(LoadingProgress));
+        CancelPhotoLoadingCommand.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>停止掃描結果的採用及背景縮圖；保留目前照片、專案與所有編輯。</summary>
+    [RelayCommand(CanExecute = nameof(IsLoadingPhotos))]
+    private void CancelPhotoLoading()
+    {
+        ++_openGeneration;
+        IsScanningFolder = false;
+        _loadingCancelled = true;
+        Filmstrip.CancelLoading();
+        Images.CancelBackground();
+        UpdateBackgroundText();
+    }
+
+    partial void OnBackgroundCpuPercentChanged(int value)
+    {
+        var bounded = Math.Clamp(value, 10, 100);
+        if (value != bounded)
+        {
+            BackgroundCpuPercent = bounded;
+            return;
+        }
+        Settings.BackgroundCpuPercent = bounded;
+        Images.SetBackgroundCpuPercent(bounded);
+        Settings.Save();
     }
 
     // ───────────── 編輯 ─────────────
@@ -547,8 +777,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         RendererFactory = PreviewService.GpuFactory(Settings);
         Renderer.Reconfigure(RendererFactory,
             Settings.ForceSoftwareGpu ? null : () => PreviewService.CreateCpuRenderer(Settings));
+        Filmstrip.RefreshThumbnails();
         Images.SetPreviewLongEdge(Settings.PreviewLongEdge);
         Presets.Hover.InvalidateCache();
+        FilmLook.InvalidateThumbnails();
         RequestPreview();
         _ = LoadPreviewAsync();
         if (Service is { } service)
@@ -558,7 +790,16 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     public void ApplyHideDisabledModules(bool hide)
     {
         Settings.HideDisabledModules = hide;
+        Inspector.NotifyHideDisabledModulesChanged();
+        FilmEffects.NotifyHideDisabledModulesChanged();
+        RefreshModulePanels();
+    }
+
+    /// <summary>重新載入兩個模組分頁（照片基本參數、底片效果）。</summary>
+    private void RefreshModulePanels()
+    {
         Inspector.Refresh();
+        FilmEffects.Refresh();
     }
 
     private void NotifyCommands()
@@ -579,8 +820,15 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        if (_disposed) return;
         _disposed = true;
+        PhotoTools.InvalidateForPhotoChange();
         ++_openGeneration;
+        _loadingTimer.Stop();
+        _previewWait?.Cancel();
+        _previewWait?.Dispose();
+        Filmstrip.CancelLoading();
+        Images.Dispose();
         if (Service is not null) Service.Project.EntriesChanged -= OnEntriesChanged;
         Sidebar.Export.Dispose();
         Presets.DisposeHover();

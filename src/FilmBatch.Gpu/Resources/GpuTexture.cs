@@ -37,6 +37,8 @@ public sealed class GpuTexture : IDisposable
 {
     internal readonly Texture Handle;
     internal readonly TextureView View;
+    private readonly bool _releaseHandle;
+    private bool _disposed;
 
     public uint Width { get; }
     public uint Height { get; }
@@ -44,6 +46,7 @@ public sealed class GpuTexture : IDisposable
 
     internal GpuTexture(GpuDevice gpu, uint width, uint height, GpuTextureFormat format, GpuTextureUsage usage, string? label)
     {
+        _releaseHandle = gpu.AdapterInfo.Backend == GpuBackend.Dx12;
         Width = width;
         Height = height;
         Format = format;
@@ -58,10 +61,28 @@ public sealed class GpuTexture : IDisposable
             SampleCount = 1,
         };
         Handle = gpu.Device.CreateTexture(in desc) ?? throw new GpuException(GpuText.Format("Gpu.TextureFailed", label));
-        gpu.ThrowIfError(GpuText.Format("Gpu.Context.CreateTexture", label));
-        View = Handle.CreateView() ?? throw new GpuException(GpuText.Format("Gpu.TextureViewFailed", label));
+        try
+        {
+            gpu.ThrowIfError(GpuText.Format("Gpu.Context.CreateTexture", label));
+            View = Handle.CreateView() ?? throw new GpuException(GpuText.Format("Gpu.TextureViewFailed", label));
+        }
+        catch
+        {
+            Dispose();
+            throw;
+        }
     }
 
     /// <summary>立即釋放顯示記憶體（不等 GC）。</summary>
-    public void Dispose() => Handle.Destroy();
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        Handle.Destroy();
+        if (_releaseHandle)
+        {
+            NativeLifetime.Release(View);
+            NativeLifetime.Release(Handle);
+        }
+    }
 }
