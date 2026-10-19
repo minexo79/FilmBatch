@@ -2,8 +2,8 @@
 
 - 日期：2026-10-19
 - 狀態：已採納開發方向；正式 UI 尚未選定，iPad／iPhone 支援尚未驗證。
-- 授權：使用者要求先保留共用程式碼與技術、iPad 優先、iPhone 後續；先記錄決策並實作技術進入點與難題實驗，分組 commit 文件與實驗，不 push。正式 UI 留待下一輪決定。
-- 執行記錄：[技術實驗計畫](../superpowers/plans/2026-10-19-apple-mobile-technical-entry.md)。
+- 授權：先記錄共用技術決策並分組提交實驗、不 push；後續授權補齊工具鏈、開發隔離 Avalonia prototype 與 pure iOS／官方 Simulator 測試。最新要求：其他 prototypes 無論測試結果皆本機 commit；Simulator 測試實際成功後才獨立 commit；全部通過後繼續共用主要邏輯的 iOS 介面與功能移植。不 push，實機驗證仍延後。
+- 執行記錄：[初始技術實驗](../superpowers/plans/2026-10-19-apple-mobile-technical-entry.md)、[Simulator／prototype 與目前工具鏈 gate](../superpowers/plans/2026-10-19-ios-simulator-prototype.md)。
 
 ## 決定
 
@@ -19,19 +19,21 @@
 |---|---|
 | 桌面 host 僅處理 `IClassicDesktopStyleApplicationLifetime`，主視窗有 Dock、1280×800 最小尺寸及桌面互動假設 | 需要新的行動啟動點；不能把現有主視窗直接當成 iPad UX |
 | `WebGPUSharp 0.5.7`、`Magick.NET-Q16-HDRI-AnyCPU 14.17.2` 的固定 NuGet 套件沒有 iOS native assets | UI 能以 Metal 繪製，不代表 FilmBatch 的運算或解碼原生庫已可載入 |
-| `Microsoft.ML.OnnxRuntime 1.24.4` 有 iOS xcframework／MSBuild 原生整合 | 可保留 ONNX 模型與 C# 呼叫方向，但仍須驗證傳遞參照、Release link、CoreML provider 及實機張量輸出 |
+| `Microsoft.ML.OnnxRuntime 1.25.0` 有 iOS xcframework／MSBuild 原生整合；1.24.4 的 iOS managed asset 缺失已實際造成缺庫 | 升級並重新連結後，iOS 27.1 Simulator 的原生數值、取消結果丟棄與 session 重用通過；CoreML placement 及實機張量仍須另驗證 |
 | 48MP 的單份 FP32 RGB 為 549.3 MiB，三份約 1.61 GiB，另有 RGBA16 約 366.2 MiB | 這只是緩衝區算式，不是峰值 RSS；換 SwiftUI 不會自動消除整張影像與推論 activation 的成本 |
-| 目前檢查到的工具鏈只有 CommandLineTools，沒有已安裝的 .NET iOS workload／可用 iphoneos SDK | 能先做 macOS 共用程式與 Apple API 實驗；不得宣稱已完成 iPad build／實機效能 |
+| 初次只有 CommandLineTools；後續已安裝 Xcode 27.1、官方 runtimes，另隔離安裝 iOS SDK 27.0.10722 | 使用者改選直接測試 27.1；官方 SDK 仍要求 Xcode 27.0，僅明確實驗命令使用版本驗證開關，不修改 SDK 或專案預設；實際成功與限制另記 |
 
 ## 本輪的驗證邊界
 
 1. **Core／RAW**：直接執行既有參數、復原、儲存及 RAW 解碼／發展 API；保留來源檔案雜湊與影像尺寸／有限值等不變量。產生的線性 DNG 清楚標示為 fixture，不冒稱相機 Bayer RAW。
 2. **Apple image IO**：同一份 C# P/Invoke 在 macOS 與 iOS host 使用 ImageIO/CoreGraphics，實測 16-bit、奇數列寬、ICC 與中繼資料 round trip。它是候選替代路徑，並非已取代 Magick.NET 或證實全格式等價。
-3. **ONNX**：固定 `1.24.4`，以有獨立數值預期的測試圖驗證真正 native 執行與取消；可另指定實際 ONNX 權重。只有實際模型執行才能支持模型可用的說法；簡單測試圖不能證明 CoreML 已承接整張網路。
+3. **ONNX**：固定 `1.25.0`，以有獨立數值預期的測試圖驗證真正 native 執行與取消；可另指定實際 ONNX 權重。只有實際模型執行才能支持模型可用的說法；簡單測試圖不能證明 CoreML 已承接整張網路。升級時須重建原生執行檔，避免 managed／native 混用舊版本。
 4. **GPU／原生套件**：透過既有 `FilmBatch.Gpu` 建立裝置、送出運算並讀回數值；缺少 iOS 原生庫必須明確阻擋，而非回退 CPU 後宣稱 GPU 成功。
 5. **記憶體與建置**：報告實際輸入、緩衝區大小、耗時與可取得的程序／受控記憶體資訊；分開標示 managed compile、AOT/link、模擬器及實機證據。大圖實驗不等於量測到 iPad 記憶體上限。
 
 報告區分 `pass`、`fail`、`blocked`、`skipped`；缺 SDK、缺原生庫或未執行實機，不得計為通過。所有實驗只寫指定輸出目錄，不修改原始照片、既有使用者設定或模型。
+
+隔離 Avalonia prototype 延伸本決定，但不是正式 UI 定案：重用同一 `ProbeRunner`，不引用桌面產品 App／Dock。兩個 iOS Release app 已在 Xcode 27.1 實驗工具鏈建置成功，UIKit 與 Avalonia 均已於官方 iOS 27.1 Simulator 執行，產生 Core／RAW、RGB16 ImageIO、ONNX 的真實成功報告；GPU 保留缺少 iOS Dawn 的阻擋。兩個 app 的手動取消／重跑及 Avalonia 真實預覽通過，但完整六個 UI 案例目前 4 pass／2 fail：兩個背景案例的實際切換前置條件失敗。因此不提交 Simulator 測試，也不啟動以全通過為條件的主要功能移植。[本輪結果](../superpowers/plans/2026-10-19-ios-simulator-prototype.md#已實測結果2026-10-19)保留失敗與下一步，不由可啟動或 Mac 成功推定 Simulator／實機均已支援。
 
 ## 下一輪才決定的事項
 
