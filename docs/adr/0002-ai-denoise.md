@@ -1,151 +1,71 @@
-# ADR 0002：AI 降噪
+# ADR 0002：來源階段 AI 降噪
 
-- 狀態：**提議中**（2026-10-16，尚未實作，本文的效能數字皆為估算，需 spike 實測）
-- 範圍：`src/FilmBatch.Engine`（新增來源階段）、`src/FilmBatch.Core/Params`（新增 `denoise` 模組）、發佈封裝
+- 狀態：**已採用並完成可用平台驗證**（2026-10-19）。實際結果與未覆蓋平台記錄於[實作計畫](../superpowers/plans/2026-10-19-ai-denoising.md)。
+- 範圍：Engine 來源階段、Core `denoise` 參數、App／CLI／匯出及原生相依庫。
+- 本決策取代 2026-10-16 的 sRGB／DRUNet／傳統濾鏡後備提案；當時「尚無 RAW 管線」的前提已失效。歷史版本由 Git 保留，不再把估算值當產品效能。
 
-> **2026-10-18 現況註記**：本提案仍未實作。下方「沒有 RAW 管線」是 2026-10-16 的設計前提；目前已具備[場景線性 RAW 管線](../architecture.md#48-engine影像讀取與批次匯出imaging--exporting)。重新啟動此提案時，須重新比較資料域、模型／權重授權、品質與部署，不能直接把當時的 sRGB／ONNX 選型當成已採用的方案。原提案保留作為決策歷史。
->
-> 最新的來源與授權比較見 [AI 降噪 Survey](../ai-denoise-survey.md)。調查優先評估線性 Rec.2020 RawNIND 與一般 RGB NAFNet，並記錄 Bayer 模型的 CoreML FP16 限制；兩者均未採用，也未完成實際權重檔與本機推論驗證。下方「決策」仍是原始提案，不因本次 Survey 轉為現行實作。
+## 決策與理由
 
-## 背景
+使用 ONNX Runtime 1.24.4 執行兩個固定身分的 FP32 攝影模型。依**來源資料域**自動選擇，不提供可將 RAW 誤送進顯示 RGB 模型的選項。
 
-使用者希望有類似 Lightroom「AI 降噪」的功能，並能調整降噪等級。曾評估 [stefanpenner/ai-denoise](https://github.com/stefanpenner/ai-denoise) 能否直接整合。
+| 來源資料 | 模型 | 固定輸入 | 上下文／有效核心 | 輸出契約 |
+|---|---|---|---|---|
+| 已現像、未夾取的線性 Rec.2020 RAW | RawNIND Linear | `[1,3,512,512]` FP32 | 每側 64 px／384 px | 同一線性域；整張影像計算一次有正負號的平均值增益比，保留有限高光與負值 |
+| 一般 16-bit sRGB RGBA | NAFNet-SIDD width32 | `[1,3,768,768]` FP32 | 每側 64 px／640 px | 正規化顯示 sRGB；不套用 RAW 增益比 |
 
-Lightroom AI 降噪的做法是：在**解馬賽克之前的 RAW（Bayer）資料**上跑卷積神經網路，同時完成解馬賽克與降噪，輸出新的 DNG；介面只有一個「量」滑桿。
+只使用 RawNIND 的三通道 linear 權重，不採用會同時解馬賽克的 Bayer 權重。現有 RAW 解碼、相機白平衡模型、色彩與幾何中繼資料仍是權威來源。這不是 Lightroom 的感光樣本域聯合解馬賽克，也不宣稱同等品質。
 
-2026-10-16 提案時的前提（非目前功能清單）：
+不引入 Python、不複製 GPL 訓練／匯出工具、不另寫一套 WGSL 神經網路。沒有模型、雜湊錯誤或推論錯誤均回報失敗；不改用傳統濾鏡，也不將原圖回傳並聲稱降噪成功。加速器初始化不成功時，Auto 才可明確標示原因並改用真實 CPU 推論。
 
-- 只讀 JPEG／TIFF／PNG（`Project.SupportedExtensions`），以 Magick.NET 解碼成 16-bit sRGB RGBA，**沒有 RAW 管線**。
-- 預覽使用 1600px 代理圖，GPU 拖曳更新約 2 ms（見 [ADR 0001](0001-webgpu-binding.md)）；匯出另建算圖器處理全解析度。
-- 每個效果都有 CPU 與 GPU 兩份實作，並以測試鎖定兩者結果一致。
-
-## 決策
-
-1. **不整合 ai-denoise。** 只把它當作評測方法的參考。
-2. **在 sRGB 域做 AI 降噪**，作為效果管線**之前**的「來源階段」：解碼 → 降噪 → 現有 ①～⑤ 階段。降噪後的影像會快取起來，效果滑桿拖曳時不重跑推論。
-3. **推論執行環境採用 ONNX Runtime**。Windows 使用 DirectML 執行提供者，macOS 使用 CoreML 執行提供者，兩者都不可用時改用 CPU。模型由 PyTorch 匯出成 ONNX（fp16）。
-4. **首選模型 DRUNet**，因為它支援可調的雜訊等級輸入。NAFNet-SIDD-width32 是較快的備案，SCUNet 是畫質候選。最終以 spike 結果決定（見下方「驗收標準」）。
-5. **傳統降噪作為後備**：沒有可用的推論裝置，或使用者選擇「快速」模式時，改用 Magick.NET 的 `WaveletDenoise(threshold, softness)`。
-
-## 為何不用 ai-denoise
-
-| 項目 | ai-denoise | FilmBatch 的需求 |
-|---|---|---|
-| 性質 | 評測框架：Go 協調器，每個後端各自一個 Python venv，輸出 16-bit 線性 TIFF 並計算 PSNR | 可隨 .NET 程式發佈的推論函式庫 |
-| 資料域 | 後端（ELD、PMN、Sony NMiOH、RawRefinery）都處理**解馬賽克前**的 RAW Bayer 資料；README 明確把 RGB 降噪器（DnCNN、RIDNet）列為不在範圍內 | 輸入是已解馬賽克、已套色調曲線的 sRGB JPEG／TIFF |
-| 權重 | 03～05 號後端不附權重，要從 Google Drive 手動下載 | 需要可重複、可驗證的發佈流程 |
-| 強度參數 | 沒有統一的強度或雜訊等級介面 | 使用者要能調整降噪等級 |
-
-要採用 RAW 域的模型，FilmBatch 得先自建完整的 RAW 管線：解碼、黑白電位、白平衡、解馬賽克、相機色彩矩陣與色調映射。這等於另一個產品，不在本 ADR 範圍內；之後若加入 RAW 支援，再另立 ADR 重新評估 ELD、PMN 等 RAW 模型。
-
-## 候選模型
-
-| 模型 | 程式碼授權 | 訓練資料 | 雜訊等級輸入 | 規模（論文值，待以匯出檔確認） | 評價 |
-|---|---|---|---|---|---|
-| **DRUNet**（[cszn/DPIR](https://github.com/cszn/DPIR)、[cszn/KAIR](https://github.com/cszn/KAIR)） | MIT | 合成高斯雜訊（BSD400、Waterloo、DIV2K、Flickr2K） | **有**：多一個常數通道 σ/255 與影像串接（`in_nc = n_channels + 1`） | 約 32.6M 參數；4 層 U-Net，通道 64/128/256/512 | **首選**。σ 直接對應「降噪等級」。缺點：用合成高斯雜訊訓練，對 JPEG 壓縮後、空間相關的真實雜訊可能不夠好 |
-| NAFNet-SIDD-width32（[megvii-research/NAFNet](https://github.com/megvii-research/NAFNet)） | MIT（內含 BasicSR 為 Apache-2.0） | SIDD 真實手機 sRGB 雜訊 | 無 | 約 29M 參數、約 16 GMACs（256×256） | **速度備案**。真實雜訊效果好、運算量約為 DRUNet 的 1/6；強度只能靠與原圖混合 |
-| SCUNet real（[cszn/SCUNet](https://github.com/cszn/SCUNet)） | Apache-2.0 | 合成的真實雜訊退化模型 | 真實影像版本無（只有高斯版本有） | 待確認 | **畫質候選**。有 PSNR 版與 GAN 版；GAN 版可能產生假細節，不適合 |
-
-### 授權注意事項
-
-- 上述**程式碼**授權（MIT／Apache-2.0）都與 FilmBatch 的 MIT 授權相容。
-- **權重檔沒有另外標示授權**，而訓練資料集（DIV2K、SIDD）多半限學術用途。FilmBatch 是非商業的開源專案，風險較低，但隨程式發佈權重前仍應：
-  1. 在 `THIRD-PARTY-NOTICES.txt` 列出模型、程式碼授權、論文與權重來源；
-  2. 在說明文件寫明權重的訓練資料來源與限制；
-  3. 若日後有商業發佈的計畫，需重新評估或自行訓練。
-- ONNX Runtime 為 MIT 授權；DirectML 可再發佈。
-
-## 架構
+## 資料流
 
 ```mermaid
 flowchart LR
-    Load["ImageLoader<br/>16-bit sRGB"] --> Cache{"降噪快取<br/>命中？"}
-    Cache -- 是 --> Src["SourceImage（已降噪）"]
-    Cache -- 否 --> Infer["DenoiseService<br/>ONNX Runtime 分塊推論"] --> Store["寫入快取"] --> Src
-    Src --> Pipe["現有效果管線 ①～⑤<br/>（CPU／GPU）"]
-    Pipe --> Mix["降噪混合<br/>（亮度／色彩分開，即時）"]
+    Decode["解碼來源與原始中繼資料"] --> Full["需要時重讀相同 RAW 選項的全解析度"]
+    Full --> Neural["固定模型、分塊推論與全圖增益"]
+    Neural --> Cache["目前照片的神經網路結果快取"]
+    Original["未處理的來源"] --> Mix["強度、亮度與色彩混合"]
+    Cache --> Mix
+    Mix --> Preview["縮小成預覽來源"]
+    Mix --> Export["保留全解析度來源"]
+    Preview --> Effects["既有 CPU 或 GPU 效果、裁切、白平衡與顆粒"]
+    Export --> Effects
 ```
 
-說明：圖中「降噪混合」在概念上是效果管線的第一步，實際要放在 ① 之前，且只在 `denoise` 模組啟用時執行。
+- 降噪與混合都在裁切、藝術效果與底片顆粒之前。全解析度先降噪，預覽才縮小；不發布未標示的代理圖近似結果。
+- 關閉、強度為零或兩種有效混合量皆為零時，直接回傳相同來源參考，不讀模型、不配置影像緩衝。
+- `denoise.amount`、`denoise.luminance`、`denoise.color` 都是後推論混合量，並不是估計感光 ISO 或模型雜訊參數。改變它們、曝光或底片效果，不應重跑同張照片的神經網路。
+- Alpha 不交給模型推論；RAW 仍保留浮點場景資料、tone／WB／geometry／語意遮罩及原始參考尺寸。原圖比較不被降噪結果覆寫；照片工具則分析實際準備後的來源。
+- 神經網路快取只保留目前完整來源的結果；模型 session 數量有界。快取識別涵蓋來源、檔案版本、參考尺寸、RAW 讀檔選項、模型身分與模型目錄，不包含藝術參數。取消或失敗不寫入成功快取。
+- `RenderResult` 與 `SourceImage` 攜帶 `DenoiseReport`；`export_log.json` 記錄實際模型 SHA-256、provider、推論時間、tile 數與快取命中，而不只記錄效果 GPU 名稱。
 
-### 元件
+## 原生執行與取消
 
-| 元件 | 位置 | 職責 |
+macOS 使用標準 `Microsoft.ML.OnnxRuntime` 套件；Windows 目標使用同版本 `.DirectML` 套件，不能同時引入兩套原生 runtime。套件依**目標 RID**而非只有建置主機選擇，避免在 Mac 交叉發佈 Windows 時漏掉 DirectML。
+
+Auto 在 macOS 嘗試 CoreML MLProgram，在 Windows 嘗試 DirectML；CPU 是真實推論後備。報告使用 `CoreML + CPU`／`DirectML + CPU`，不保證所有節點位於 GPU 或 ANE。CoreML 使用固定輸入形狀、關閉 GPU 低精度累加，編譯快取位於可寫的使用者模型目錄，而非 `.app` 內。DirectML 使用 sequential execution 並停用 memory pattern。CPU session 使用有界執行緒，不把背景 CPU 目標說成硬性上限。
+
+每次 native run 各有自己的 `RunOptions` 與取消註冊。取消時設 `Terminate=true`，**run 回來後仍必須檢查 token**：實測 CoreML 的融合圖可能正常返回，而非拋出 native 例外；不能依例外判斷是否可以發布或快取。此時目前一塊圖的運算可能先完成，再於 tile 邊界丟棄結果；不承諾作業系統層的即時中斷。
+
+換來源、重建與關閉會取消舊工作；前景請求可中斷背景縮圖。相同來源的一般滑桿仍依完成順序交付，避免持續拖曳造成飢餓。明確取消 AI 預覽也會取消同來源待處理／稍後送達的縮圖，直到新的前景請求重新啟動，不修改照片設定。模型錯誤與取消不應當成 GPU 遺失而重建重試。
+
+## 模型取得、身分與授權
+
+權重是可選的使用者資料，不放進應用程式，也不在 render 時連線。App 模型面板與 CLI 的明確下載／匯入才會安裝，先顯示作者與授權；先驗證套件及 ONNX 的固定 SHA-256，再原子啟用。預設位置是 `AppPaths.Root/models/denoise/`。
+
+來源封裝是 [darktable-ai `nightly-5.7.0`](https://github.com/darktable-org/darktable-ai/releases/tag/nightly-5.7.0)；資料契約查閱版本 [`f1a46e2`](https://github.com/darktable-org/darktable-ai/tree/f1a46e2d3feebc917a94f14705d128316fcf8114)。兩個實際下載的檔案均已核對發布雜湊，再抽出指定 ONNX；完整固定身分亦由 `DenoiseModelCatalog` 保存。
+
+| 身分 | 套件 SHA-256 | ONNX SHA-256 |
 |---|---|---|
-| `denoise` 模組 | `Core/Params/ModuleCatalog.cs` | 放在陣列最前面（處理順序第一）。參數見下節 |
-| `DenoiseService` | `Engine/Denoising/`（新增） | 載入 ONNX 模型、選擇執行提供者、分塊推論（例如 512×512、重疊 32px、邊緣羽化接合），只在自己的背景執行緒執行 |
-| 降噪快取 | `AppPaths` 新增 `Cache/denoise` | 鍵 = 來源檔內容雜湊（`System.IO.Hashing`）＋模型 ID＋σ＋解析度。記憶體保留目前照片，磁碟保留 16-bit 結果並設容量上限 |
-| 混合 shader | `Gpu/Shaders/v1/`（新增）與 `CpuPipeline` | 以 YCbCr 分別混合「原圖」與「降噪圖」的亮度和色彩，維持 CPU／GPU 一致性測試 |
+| `rawnind-linear` | `1a0db3dc4a4db13ce5eee7aa2fed097914be28a3f628dc6071dc6aa8d16377bc` | `df957efadcc152c007d5d3b0917bdff9e41c0d4a0efe56584ef30b36393cd181` |
+| `nafnet-sidd` | `027961b3e6d1d4d2ba2d7a412688c0542e6a6e2cf7ec2f8e16030cf0a311fb0a` | `8b437280db2f9f0ef5c733fa0fec70fc10012a62d19dac24a25b80ec8c529230` |
 
-### 給使用者的參數
+- **RawNIND 權重：採用 CC-BY-4.0 選項。** 原作者在 [LightCraft #1760](https://github.com/storytold/lightcraft/issues/1760) 明確說明權重可選 GPL-3 或 CC-BY-4.0，並要求標示作者。署名：RawNIND by Benoit Brummer；論文為 *Joint Denoising, Demosaicing, and Compression: A Recommended Paradigm for Learning-Based Image Workflows*，Benoit Brummer and Christophe De Vleeschouwer。這不是將 GPL 工具鏈重新標成 MIT，也不適用到不同的舊 NIND 權重。
+- **NAFNet-SIDD 權重：MIT。** [選定模型文件](https://github.com/darktable-org/darktable-ai/blob/f1a46e2d3feebc917a94f14705d128316fcf8114/models/denoise-nafnet/README.md) 明列模型與訓練資料 MIT；[NAFNet 原始授權](https://github.com/megvii-research/NAFNet/blob/2b4af71ebe098a92a75910c233a3965a3e93ede4/LICENSE) 區分 NAFNet 的 MIT 與 BasicSR 的 Apache-2.0。FilmBatch 不引入這些 Python 程式。
+- **ONNX Runtime：MIT，Microsoft Corporation。** 原生相依庫隨 self-contained App／CLI 發佈。完整再散布聲明見 [`THIRD-PARTY-NOTICES.txt`](../../THIRD-PARTY-NOTICES.txt)。
 
-| 參數 | 範圍 | 作用 | 改動時的成本 |
-|---|---|---|---|
-| `enabled` | 開／關 | 關閉時完全跳過，輸出與輸入逐位元相同（符合 identity 規則） | — |
-| `strength`（降噪等級） | 0～100 | DRUNet：對應 σ（例如 0～50，曲線待調）。NAFNet：無法調 σ，改為混合比例 | **需重跑推論**：去抖動後送背景工作，完成前預覽先顯示舊結果 |
-| `luminance`（亮度降噪） | 0～100 | 亮度通道上「原圖 ↔ 降噪圖」的混合比例 | 即時（shader） |
-| `color`（色彩降噪） | 0～100 | 色度通道的混合比例；色彩雜訊通常可以壓得比亮度更重 | 即時（shader） |
-| `detail`（細節保留，可選） | 0～100 | 以原圖的高頻成分加回一部分 | 即時（shader） |
+## 操作與驗證邊界
 
-`ParamDef` 需要新增一個標記（例如 `RequiresSourceRecompute`），讓 UI 與 `RenderScheduler` 知道這個參數要觸發重算來源，而不是直接重繪。
+一般操作與 CLI 指令見[建置文件](../building.md#本機-ai-降噪)。已實際驗證固定 CPU／CoreML 模型、HDR／alpha、實拍裁切品質、預覽／匯出同源、原生介面、取消／換照片、undo／保存及 Apple Silicon self-contained 執行。完整回歸、原生介面及可執行檔 smoke 結果與證據索引見[驗收紀錄](../superpowers/plans/2026-10-19-ai-denoising.md#observed-acceptance-evidence--2026-10-19)；Windows 只完成交叉封裝，不代表 DirectML 實機通過。
 
-與現有模組的關係：降噪必須在**顆粒之前**。先去除數位雜訊、再加上底片顆粒，正好是 FilmBatch 的使用情境。
-
-### 預覽與匯出的一致性（重點風險）
-
-1600px 代理圖是從原圖縮小而來，縮小時會平均掉大部分雜訊（縮小 k 倍時，白雜訊大約降為 1/k）。如果直接對代理圖降噪，預覽看到的效果會和全解析度匯出不同。
-
-方案（spike 時擇一驗證）：
-
-- **A（建議）**：啟用時在背景對**全解析度**影像推論並快取，預覽再從結果縮小；結果出來前先顯示對代理圖推論、σ 依縮放比例調低的近似結果。
-- B：預覽只顯示 1:1 裁切區域的推論結果（類似 Lightroom 的預覽框）。
-
-### 批次匯出
-
-匯出時每張照片的推論成本遠大於效果管線：以下方估算，100 張 24MP 照片在 RTX 3060 上約需 10～30 分鐘。匯出需要：
-
-- 優先使用快取（預覽時已算過的照片可直接取用）；
-- 推論一次一張，不與效果管線同時佔用 GPU，避免 Dawn 與 ONNX Runtime 爭用顯示記憶體；
-- 在進度列分別顯示「降噪」與「算圖」階段。
-
-## 效能估算（未實測）
-
-估算方法：以網路結構推算每像素運算量，再假設 GPU 能發揮理論 FP32 算力的 30～50%。使用 fp16 加速時可能快 2 倍以上。
-
-| 模型 | 每像素運算量（估） | 1600×1067（1.7MP） | 6000×4000（24MP） |
-|---|---|---|---|
-| DRUNet · RTX 3060 Laptop | 約 1.4M MACs | 約 1～2 秒 | 約 15～25 秒 |
-| DRUNet · Iris Xe | 〃 | 約 5～10 秒 | 約 1～2 分鐘 |
-| DRUNet · CPU | 〃 | 數十秒 | 數分鐘以上，**不實用** |
-| NAFNet-w32 · RTX 3060 Laptop | 約 0.25M MACs | 約 0.2～0.4 秒 | 約 3～5 秒 |
-| Magick.NET WaveletDenoise · CPU | — | 次秒級（待量） | 數秒（待量） |
-
-Apple M3 可能可以使用 Neural Engine（CoreML），數字需實測。
-
-記憶體：分塊推論時中間張量的大小取決於塊大小而非整張圖。512×512 塊的第一層 64 通道 fp16 特徵約 32MB，整體峰值預估在 1GB 以內。
-
-## 發佈影響
-
-| 項目 | 估計大小 |
-|---|---|
-| ONNX Runtime 原生函式庫（含 DirectML／CoreML） | 每個平台約 20～40MB |
-| DRUNet fp16 權重 | 約 65MB |
-| NAFNet-w32 fp16 權重 | 約 58MB |
-
-建議不把模型包進主程式的 zip：首次啟用降噪時從 GitHub Release 下載，並以固定的 SHA-256 驗證；離線環境另外提供「模型套件」zip。下載前須先詢問使用者。
-
-## 風險與待決事項
-
-1. **DirectML 的維護狀態**：Microsoft 已把重心移到 Windows ML。spike 時需確認 `Microsoft.ML.OnnxRuntime.DirectML` 的長期支援，或改用 Windows ML／ONNX Runtime 的 WebGPU 執行提供者。
-2. **DRUNet 對真實雜訊的效果**：它以合成高斯雜訊訓練，手機或高 ISO JPEG 的雜訊在空間上有相關性，可能殘留色斑。若效果不夠好，改用 NAFNet 或 SCUNet，強度改為只靠混合。
-3. **預設是否包含降噪**：雜訊大小取決於每張照片的 ISO，降噪設定也許不該隨預設同步。可能需要新的 `PasteCategory.Detail`，並決定是否從預設中排除。
-4. **沒有 GPU 的電腦**：CPU 推論太慢，只提供 WaveletDenoise，並在介面上清楚標示。
-5. **CI**：推論測試需要模型檔與（最好）GPU；在沒有模型時應自動略過，比照現有 GPU 測試。
-
-## 驗收標準（spike）
-
-- 以 ONNX Runtime 執行 DRUNet 與 NAFNet-w32，在 RTX 3060、Iris Xe、Apple M3 上量測 1.7MP 與 24MP 的推論時間，補上「效能估算」表的實測值。
-- 準備 10～20 張真實高 ISO 的 JPEG／TIFF 照片，與 WaveletDenoise 做目視比較（可參考 ai-denoise 的拼貼比較方式）。
-- 確認分塊接合沒有可見的接縫。
-- 驗證預覽方案 A 的近似結果與全解析度結果在視覺上足夠接近。
-- 達標後把狀態改為「已採用」，並補上實際選定的模型與參數對應曲線。
+固定小型 ONNX 圖可用於離線、可重現的邊界回歸，不代表真實攝影品質。實際權重與實拍 smoke 的證據留於忽略的 `dist/ai-denoise-evidence/`，不是程式執行的依賴。NIND 配對若經 inverse-sRGB 轉為線性域，必須明說那不是原始感光樣本，也不是獨立留出的 RAW benchmark。Windows 的交叉建置不等於 DirectML 實機驗證；OS 鎖定時的原生畫面與控制項操作不等於已驗證真實 OS 焦點切換。

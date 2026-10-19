@@ -55,6 +55,7 @@ dotnet test FilmBatch.sln -c Release --logger trx --results-directory "$work/tes
 | 大量照片載入、前景／可見縮圖優先、即時 CPU 與預覽交付 | `BulkLoadingTests`、`CacheAdmissionTests`、`FilmstripLoadingTests`、`BackgroundLoadingPreferencesTests`、`PreviewDeliveryTests` | [載入與背景 CPU](docs/architecture.md#大量照片載入與背景-cpu)、[回歸與桌面檢查](docs/building.md#大量照片載入與即時預覽回歸) |
 | 底片 LUT、色相帶、舊設定移除 | `FilmLutTests`、`FilmLookTests`、`RetiredParamsTests` | [底片契約與來源](docs/film-looks.md) |
 | 顆粒座標／足跡、局部膚色、白平衡提案與 Zone | `GrainModelTests`、`SurveyRenderingTests`、`PhotoAdjustmentTests`、`PhotoAnalysisTests`、`PhotoToolsTests` | [現行操作與限制](docs/grain-white-balance-survey.md#目前實作與操作)、[實作及原生驗收](docs/superpowers/plans/2026-10-19-grain-neutral-zone.md) |
+| AI 分塊／混合、模型完整性、快取、取消與 UI 狀態 | `DenoisingTests`、`DenoiseViewModelTests`、`RenderSchedulerTests`；真實權重另走原生實拍 smoke | [AI 資料域與授權](docs/adr/0002-ai-denoise.md)、[端到端驗收](docs/superpowers/plans/2026-10-19-ai-denoising.md) |
 | JPEG XL ABI、樣本與錯誤路徑 | `PortableJxlTests`、`JpegXlTests` | [發佈閉包](docs/building.md#macos)、[native manifest](src/FilmBatch.Raw/Native/Jxl/provenance.json) |
 
 需要縮小範圍時，用 `--filter FullyQualifiedName~類別名稱`；先確認實際執行了預期測試，不能把沒有匹配 case 的 exit 當 pass。外部語料取得與釘選參考輸出見 [raw-oracle](tools/raw-oracle/README.md)。

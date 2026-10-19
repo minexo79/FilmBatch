@@ -14,7 +14,7 @@
 | 排查大量資料夾載入、縮圖進度或 CPU 佔用 | [載入與背景 CPU](architecture.md#大量照片載入與背景-cpu) | [載入／即時預覽回歸](building.md#大量照片載入與即時預覽回歸) → [本次需求與觀察](superpowers/plans/2026-10-18-progressive-photo-loading.md) |
 | 調整底片色彩或新增 LUT | [底片風格](film-looks.md) | [LUT 轉換工具](../tools/film-luts/README.md) → [授權聲明](../THIRD-PARTY-NOTICES.txt) |
 | 排查 GPU 精度或效能 | [算圖管線](architecture.md#46-engine算圖管線rendering) | [GPU／SIMD 選型與量測](adr/0003-gpu-stack-decision.md) → [Shader 驗證](building.md#shader-驗證) |
-| 評估 AI 降噪、模型授權與部署 | [AI 降噪 Survey](ai-denoise-survey.md) | [歷史 ADR 0002](adr/0002-ai-denoise.md)；區分 RAW／線性 RGB／顯示 RGB、程式碼與權重授權，不把候選當作已採用功能 |
+| 使用 AI 降噪、安裝模型或排查推論 | [AI 降噪決策與資料域](adr/0002-ai-denoise.md) | [CLI／安裝操作](building.md#本機-ai-降噪) → [驗證計畫與結果](superpowers/plans/2026-10-19-ai-denoising.md)；比較其他方案時查[來源 Survey](ai-denoise-survey.md) |
 | 評估顆粒、白平衡、膚色輔助或 Zone 測光 | [顆粒、中性點白平衡與 Zone Survey](grain-white-balance-survey.md) | 區分已觀察現況、工程提案與未知；顆粒晚期輸出、中性 patch、膚色獨立、Zone 只調曝光階調，不把候選當作已採用功能 |
 | 修改匯出或 EXIF | [匯出安全規則](architecture.md#48-engine影像讀取與批次匯出imaging--exporting) | [CLI](building.md#命令列工具cli)；區分算圖後的 DNG 與保留感光樣本的 `raw convert` |
 | 建置 Mac／Windows 發佈檔 | [發佈](building.md#發佈) | [簽章與公證](building.md#簽章與公證)；原生相依庫、目標 RID 與本機執行結果分開驗證 |
@@ -29,8 +29,8 @@
 | [VERIFY.md](../VERIFY.md) | 執行入口與失敗分類，不是主機強制的政策或鎖定 oracle |
 | [history.md](history.md) | 精選真實提交、理由與取代關係；Git 保留完整歷史 |
 | [ADR 0001](adr/0001-webgpu-binding.md)、[ADR 0003](adr/0003-gpu-stack-decision.md) | GPU 選型、量測與後續修正；依文中的日期、狀態與邊界解讀 |
-| [ADR 0002](adr/0002-ai-denoise.md) | AI 降噪仍是提案；當時「沒有 RAW」的前提已過期，模型與部署未獲本次驗證 |
-| [AI 降噪 Survey](ai-denoise-survey.md) | 2026-10-18 的來源調查、commit pin、模型與權重授權差異；未下載權重或執行推論，不是實作／效能承諾 |
+| [ADR 0002](adr/0002-ai-denoise.md) | 現行 RawNIND／NAFNet 選型、原生推論、取消、快取、模型雜湊與授權；整合驗收狀態以連結的計畫為準 |
+| [AI 降噪 Survey](ai-denoise-survey.md) | 2026-10-18 的來源調查與 2026-10-19 的採用註記；歷史調查邊界不代表目前仍無推論 |
 | [顆粒、白平衡與 Zone Survey](grain-white-balance-survey.md) | 2026-10-18／19 的顆粒模型、中性點 WB、膚色輔助與 Zone III／V／VIII 調查；只執行現有 CPU 顆粒觀察，未實作候選、未做盲評或效能校準 |
 | [裁切／遮罩／曲線計畫](cut-and-mask/plan.md) | 歷史分階段設計；裁切已整合，曲線核心不等於完整曲線功能，一般形狀遮罩不等於 RAW 語意遮罩 |
 | [底片替換計畫](superpowers/plans/2026-10-17-film-color-simulation.md) | 底片 LUT 切換的實作歷史；現況與工具入口在 `film-looks.md`，不復活已刪除的 Recipe Lab 校正工具 |

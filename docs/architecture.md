@@ -262,6 +262,7 @@ flowchart LR
 | `GpuEffectPipeline` | `GpuEffectPipeline.cs` | GPU 管線。建構子以 `K("optical/vignette", …)` 載入每支 shader；`Process` 依序派送 pass；檔案底部是各 shader 的 uniform 結構（例如 `VignetteUniforms`） |
 | `GpuSpikeRenderer` | `GpuSpikeRenderer.cs` | **正式的 GPU 算圖器**（名稱沿用自 M0 技術驗證）。超過 GPU 紋理上限或顯示記憶體不足時，自動改走 CPU 並在 `DeviceName` 標示原因 |
 | `CpuFakeRenderer` | `CpuFakeRenderer.cs` | **正式的 CPU 算圖器**（名稱同樣是歷史遺留），內部呼叫 `CpuPipeline`；無 GPU 或使用者強制軟體模式時使用 |
+| `DenoiseProcessor` | `Denoising/` | CPU／GPU 共用的效果前來源階段；自動選擇 RawNIND 線性或 NAFNet 顯示 RGB 模型，全解析度先推論，再混合與縮小預覽；模型／快取／取消契約見 [ADR 0002](adr/0002-ai-denoise.md) |
 | `FilmLookProcessing` | `FilmLookProcessing.cs` | 底片風格的 CPU 參考實作：LUT → 八色相帶（OKLCh）→ 暖色 → 褪色 → 依效果比例混合；`BandWeight` 為色相帶權重 |
 | `FilmLookUniforms` | `FilmLookUniforms.cs` | 傳給 `film/look.wgsl` 的 uniform（`Mix`、`Flags`、`Band0`…`Band7`，與 WGSL `struct LookParams` 對齊） |
 | `PhotoAdjustments` | `PhotoAdjustments.cs` | BasicLinear 後的羽化膚色與單調 Zone 亮度曲線；CPU 逐像素與有界分析共用純量數學，GPU 對應 `linear/photo_adjustments.wgsl` |
@@ -274,6 +275,7 @@ RAW 來源保持未夾取的浮點線性 Rec.2020，`Rgba16` 只在原圖比較�
 
 | 階段 | 色彩空間 | 模組 |
 |---|---|---|
+| ⓪ 來源（選用） | RAW 線性 Rec.2020／一般顯示 sRGB | 固定模型分塊 AI 降噪 → 亮度／色彩混合 → 需要時縮小；兩個 renderer 共用同一實作，不重複一份神經網路 shader |
 | ① 幾何 | 線性光 | 基本調整（曝光、色溫、色調）→ 局部膚色 → Zone 曲線（僅場景來源）→ 鏡頭變形 → 多格分鏡 |
 | ② 光學 | 線性光 | 雙重曝光 → 散景 → 縮放旋轉模糊 → 動態模糊 → 暗角 → 光暈 → 漏光 |
 | ③ 底片 | 線性光 | 底片風格 → 古典版材 |
@@ -574,5 +576,5 @@ flowchart TB
 
 - [building.md](building.md)：建置、測試、CI 與發佈
 - [adr/0001-webgpu-binding.md](adr/0001-webgpu-binding.md)：WebGPU 綁定選型
-- [adr/0002-ai-denoise.md](adr/0002-ai-denoise.md)：AI 降噪（提議中）
+- [adr/0002-ai-denoise.md](adr/0002-ai-denoise.md)：本機 AI 降噪、模型身分、資料域、快取與原生執行決策
 - [film-looks.md](film-looks.md)：底片風格的 LUT 來源與授權、演算法、色相帶與新增底片流程

@@ -328,9 +328,31 @@ filmbatch-cli raw masks "/path/input.dng"
 - `--presets-folder` 指定獨立預設庫。
 - RAW 的預覽與匯出均從浮點場景來源執行白平衡、局部遮罩與既有效果，再完成顯示收尾；解碼與 demosaic 由 CPU 執行，Metal 路徑不把 CPU 算好的圖冒充 GPU。超過裝置尺寸／記憶體限制時明確改用 CPU。
 - 每筆 RAW `export_log.json` 的 `Renderer` 會附上 `RAW GPU` 或 `RAW CPU`，降級時保留原因；一般影像維持原有裝置標示。精度、量測與 Halide AOT 取捨見 [ADR 0003](adr/0003-gpu-stack-decision.md)。
+- AI 降噪另記於每筆匯出紀錄的 `Denoise`：模型身分與 SHA-256、實際推論 provider、推論時間、tile 數及快取命中。效果 renderer 的 GPU 名稱不代表神經網路全部在同一裝置執行。
 - RAW 面板提供 As Shot／自訂 2500–9900 K＋色偏與實際內嵌語意遮罩；沒有對應遮罩的照片保留設定但不全圖套用。外部 Lensfun-format 目錄可從面板瀏覽指定，儲存為專案相對路徑；也可使用 `FILMBATCH_LENSFUN_DIR`。不會下載資料庫。
 - Lensfun 校正以 RAW 的預設裁切區（`DefaultCrop`）建立光學中心與半徑，再換算至完整感光區（`ActiveArea`）座標；非置中裁切的變形與暗角共用相同映射。
 - `raw convert` 補上可用的相機色彩矩陣、hue/saturation table 與 tone，保留感光樣本、幾何及標準拍攝中繼資料；沒有可用色彩描述或目的檔已存在時拒絕寫入。標準 DNG profile 無法完整表示檔案內 JPEG 擬合外觀的逐像素亮度還原／chroma 曲線，不能宣稱轉前與轉後逐像素相同；相同色彩模型的對照與此限制分開記錄。
+
+### 本機 AI 降噪
+
+基本參數的 AI 降噪預設關閉。先在模型面板閱讀署名／授權，再明確下載，或匯入官方 `.dtmodel` 套件／符合固定雜湊的 ONNX。RAW 場景來源自動使用 RawNIND Linear，一般 RGB 使用 NAFNet-SIDD；缺少／損毀模型時回報錯誤，不會在算圖時自動下載，也不以傳統濾鏡或原圖冒充成功。
+
+```bash
+filmbatch-cli denoise-models status
+filmbatch-cli denoise-models install all
+filmbatch-cli denoise-models import rawnind-linear "/path/rawdenoise-nind.dtmodel"
+filmbatch-cli denoise-models import nafnet-sidd "/path/denoise-nafnet.dtmodel"
+filmbatch-cli export "/path/to/photos" --out "/path/to/output" --format tiff --denoise 75
+```
+
+`--denoise 0–100` 只覆蓋本次匯出的啟用與強度，省略則沿用專案；不修改專案或預設。介面的總強度、亮度與色彩皆為推論結果與原圖的混合量，不是感光 ISO、模型雜訊 σ 或細節重建保證。相同來源的混合量與藝術效果調整使用神經網路快取；先全解析度降噪，再縮小預覽，初次處理大圖可能明顯較久。
+
+下載／匯入與照片設定分開；切換到需要不同模型的來源域時，舊安裝作業會取消，不能把 RGB 模型的完成狀態套到 RAW。明確取消預覽不會關閉照片的降噪設定；匯出中的工作請使用匯出面板自己的取消動作。
+
+macOS Auto 嘗試 CoreML，Windows Auto 嘗試 DirectML；初始化失敗才明確標示並改用 CPU。`--software` 控制既有效果算圖器，不代表強制 AI provider 也改為 CPU。provider 報告含 CPU 混合執行的可能性，不承諾全部節點使用 GPU／ANE。CoreML 的融合圖可能先完成當前 tile 才處理取消，完成後仍丟棄已取消結果；取消／換照片不能發布舊結果。權重、署名及選型見 [ADR 0002](adr/0002-ai-denoise.md)。
+
+本次 Apple Silicon 原生降噪介面及 self-contained GUI smoke 各 25 項通過；已實際執行隨附 CLI 的模型下載／匯入及兩個來源域的 16-bit PNG 匯出，保留 ICC 與來源雜湊。Windows 完成交叉封裝及 DirectML 原生庫／授權閉包檢查，未執行 Windows 推論。實拍畫質、測試數量及證據索引見[AI 降噪驗收紀錄](superpowers/plans/2026-10-19-ai-denoising.md#observed-acceptance-evidence--2026-10-19)；不宣稱 Lightroom 同等品質或所有相機均已驗證。
+
 
 ## 資料位置
 
@@ -338,5 +360,6 @@ filmbatch-cli raw masks "/path/input.dng"
 |---|---|
 | 設定、版面、預設與記錄檔 | Windows：`%APPDATA%\FilmBatch\`；macOS：`~/Library/Application Support/FilmBatch/` |
 | 每個照片資料夾的專案與匯出紀錄 | `<照片資料夾>/.filmbatch/` |
+| AI 模型與 CoreML 編譯快取 | 上列使用者資料根目錄的 `models/denoise/`；不寫進 `.app`，不隨應用程式封裝權重 |
 
 macOS 的快捷鍵使用 ⌘（例如 ⌘O、⌘Z、⌘⇧Z），並使用原生選單列：應用程式選單提供「關於」與「偏好設定」（⌘,），切換介面語言時選單列即時更新。
