@@ -118,7 +118,7 @@
   <data name="Dialog.AssignTitle" xml:space="preserve"><value>Assign Preset</value></data>
   <data name="Menu.Window" xml:space="preserve"><value>_Window</value></data>
   <data name="Menu.Version" xml:space="preserve"><value>Version</value></data>
-  <data name="Menu.AboutText" xml:space="preserve"><value>Batch film-effect processor</value></data>
+  <data name="Menu.AboutText" xml:space="preserve"><value>A batch film-look processing tool.</value></data>
   <data name="Cmd.CloseWindow" xml:space="preserve"><value>Close Window</value></data>
   <data name="Cmd.Minimize" xml:space="preserve"><value>Minimize</value></data>
   <data name="Cmd.About" xml:space="preserve"><value>About FilmBatch</value></data>

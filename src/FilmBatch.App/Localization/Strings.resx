@@ -118,7 +118,7 @@
   <data name="Dialog.AssignTitle" xml:space="preserve"><value>指定預設</value></data>
   <data name="Menu.Window" xml:space="preserve"><value>視窗(_W)</value></data>
   <data name="Menu.Version" xml:space="preserve"><value>版本</value></data>
-  <data name="Menu.AboutText" xml:space="preserve"><value>批次底片效果處理工具</value></data>
+  <data name="Menu.AboutText" xml:space="preserve"><value>一款可批次處理底片效果的編輯工具</value></data>
   <data name="Cmd.CloseWindow" xml:space="preserve"><value>關閉視窗</value></data>
   <data name="Cmd.Minimize" xml:space="preserve"><value>最小化</value></data>
   <data name="Cmd.About" xml:space="preserve"><value>關於 FilmBatch</value></data>
