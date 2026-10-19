@@ -64,6 +64,7 @@ macOS 的相同行動 View、Apple codec 回歸及桌面 solution 測試，均�
 |---|---|---|
 | 桌面 solution 回歸 | 1,327 passed／0 failed／320 skipped | RAW 618、Core 522、App 187；略過項目包含外部 RAW corpus／oracle 及平台條件，不代表已驗證 |
 | Mac 的共用行動編輯介面 | 37 checks 通過 | 寬窄版、參數展開、實際控制項編輯／復原、預設、裁切、重開、Canon CR2、匯出與來源不變 |
+| Mac 桌面主 App 解鎖補跑 | 25 checks 通過 | 實際主視窗、Apple M3／Metal shader 編譯與讀回、編輯／復原、重開、真正 16-bit 匯出／ICC／來源不變、macOS 選單、Dock 與元件展示 |
 | iOS Simulator Release | 4 個案例分別通過 | Files 多選匯入／編輯／復原／貼上／真正軟體鍵盤建立預設／裁切／儲存重開／四格式匯出；Photos 選取匯入；Files 輸出副本；實際 48MP 工作的手動及背景取消 |
 | 原生匯出獨立檢查 | 30 checks 通過 | Pillow／imagecodecs／tifffile 核對來源雜湊、所選照片、裁切尺寸、JPEG／PNG16／TIFF16／線性 DNG、16-bit 低位元、ICC、EXIF 與方向 |
 | 原生 Files provider 副本 | 11 個檔案逐一雜湊相同 | 保留專案子目錄、既有批次及終態訊息；取消工作無殘留輸出，來源檔雜湊不變 |
@@ -73,7 +74,7 @@ macOS 的相同行動 View、Apple codec 回歸及桌面 solution 測試，均�
 
 Apple 系統輸出的 sRGB ICC 可被獨立 LittleCMS 解析並用於色彩轉換，但 libpng 仍會對此 stock profile 顯示 `known incorrect sRGB profile` 警告；本輪保留此警告，沒有抑制它或新增舊式 `zTXt` ICC 副本。原生輸出保留標準 ICC 與單一 canonical EXIF；這個已觀察的相容性警告不是全平台色彩等價承諾。
 
-完成上述驗證後，額外重跑桌面主 App 的 `--smoke` 遇到主機再次鎖定：`CGSSessionScreenIsLocked=1`、`activeDisplays=0`，Avalonia.Native 啟動 RenderTimer 回傳 `-6661`。這次主 App 重跑列為環境 `blocked`，不算通過；不以改用假的計時器、Headless 或抑制例外替代。先前成功的 Mac 共用行動介面與 iOS Release 證據保留各自範圍，桌面主 App 的這次可見啟動須於解鎖後另驗。
+桌面主 App 的 `--smoke` 先前曾因主機鎖定（`CGSSessionScreenIsLocked=1`、`activeDisplays=0`）而在 Avalonia.Native 啟動 RenderTimer 時回傳 `-6661`；該次仍保留為環境 `blocked` 的歷史記錄。使用者解鎖後，已用實際桌面主 App 補跑並取得 `SMOKE PASS`，解除這項未完成驗證；沒有修改產品、抑制例外、替換計時器或改用 Headless。補跑證據為 `dist/ios-main-evidence/desktop-source-final-unlocked-smoke.txt` 與同名 `.json`。這項結果不擴張 iOS 實機、GPU、工具鏈或色彩相容性的支援承諾。
 
 
 
