@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-ios</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <SupportedOSPlatformVersion>18.0</SupportedOSPlatformVersion>
+    <ApplicationId>org.filmbatch.editor</ApplicationId>
+    <ApplicationTitle>FilmBatch</ApplicationTitle>
+    <ApplicationVersion>1</ApplicationVersion>
+    <ApplicationDisplayVersion>0.3</ApplicationDisplayVersion>
+    <TrimMode>full</TrimMode>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\FilmBatch.Mobile\FilmBatch.Mobile.csproj" />
+    <PackageReference Include="Avalonia.iOS" />
+    <!-- In-view modal controls bind to canonical shared ViewModels at runtime. -->
+    <TrimmerRootAssembly Include="FilmBatch.App.Shared" />
+    <TrimmerRootAssembly Include="FilmBatch.Mobile" />
+  </ItemGroup>
+  <!-- The iOS 27 registrar's DynamicDependency signatures cannot resolve Avalonia's
+       explicit UIKit interface members (IL2037). Preserve this assembly as in the
+       independently exercised Simulator prototype; keep other assemblies linked. -->
+  <Target Name="CopyAvaloniaIOSForLinker" AfterTargets="PrepareForILLink">
+    <ItemGroup>
+      <ManagedAssemblyToLink Update="@(ManagedAssemblyToLink)" Condition="'%(FileName)' == 'Avalonia.iOS'">
+        <TrimMode>copy</TrimMode>
+        <IsTrimmable>true</IsTrimmable>
+      </ManagedAssemblyToLink>
+    </ItemGroup>
+  </Target>
+</Project>

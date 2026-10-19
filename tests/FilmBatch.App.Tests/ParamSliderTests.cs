@@ -57,4 +57,25 @@ public class ParamSliderTests
         Assert.Equal(1, completed);
         Assert.True(slider.Value > 50);
     }
+
+    [AvaloniaFact]
+    public void TouchDrag_ChangesValueAndCommitsOneEdit()
+    {
+        var (window, slider, _) = Create();
+        int started = 0, completed = 0;
+        slider.EditStarted += (_, _) => started++;
+        slider.EditCompleted += (_, _) => completed++;
+        try
+        {
+            var start = slider.TranslatePoint(new Point(100, 14), window)!.Value;
+            var end = slider.TranslatePoint(new Point(160, 14), window)!.Value;
+            using var touch = window.TouchBegin(start);
+            window.TouchMove(touch, end);
+            window.TouchEnd(touch, end);
+            Assert.InRange(slider.Value, 75, 85);
+            Assert.Equal(1, started);
+            Assert.Equal(1, completed);
+        }
+        finally { window.Close(); }
+    }
 }

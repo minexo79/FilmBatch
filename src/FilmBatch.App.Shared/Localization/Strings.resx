@@ -1,0 +1,439 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="App.Title" xml:space="preserve"><value>FilmBatch</value></data>
+  <data name="Menu.File" xml:space="preserve"><value>檔案(_F)</value></data>
+  <data name="Menu.Edit" xml:space="preserve"><value>編輯(_E)</value></data>
+  <data name="Menu.View" xml:space="preserve"><value>檢視(_V)</value></data>
+  <data name="Menu.Presets" xml:space="preserve"><value>預設(_P)</value></data>
+  <data name="Menu.Help" xml:space="preserve"><value>說明(_H)</value></data>
+  <data name="Cmd.OpenFolder" xml:space="preserve"><value>開啟資料夾…</value></data>
+  <data name="Cmd.OpenSamples" xml:space="preserve"><value>開啟範例資料夾</value></data>
+  <data name="Cmd.Export" xml:space="preserve"><value>匯出…</value></data>
+  <data name="Cmd.QuickExport" xml:space="preserve"><value>快速匯出選取照片</value></data>
+  <data name="Cmd.ResetSelected" xml:space="preserve"><value>重設選取照片</value></data>
+  <data name="Histogram.Title" xml:space="preserve"><value>直方圖 · RGB / 亮度</value></data>
+  <data name="Histogram.Clipping" xml:space="preserve"><value>暗部裁切 {0:P1}　亮部裁切 {1:P1}</value></data>
+  <data name="Cmd.Preferences" xml:space="preserve"><value>偏好設定…</value></data>
+  <data name="Cmd.Exit" xml:space="preserve"><value>結束</value></data>
+  <data name="Cmd.Undo" xml:space="preserve"><value>復原</value></data>
+  <data name="Cmd.Redo" xml:space="preserve"><value>重做</value></data>
+  <data name="Cmd.Copy" xml:space="preserve"><value>複製設定</value></data>
+  <data name="Cmd.Paste" xml:space="preserve"><value>貼上</value></data>
+  <data name="Cmd.PastePresetOnly" xml:space="preserve"><value>只貼預設</value></data>
+  <data name="Cmd.PasteSpecial" xml:space="preserve"><value>選擇性貼上…</value></data>
+  <data name="Cmd.SelectAll" xml:space="preserve"><value>全選</value></data>
+  <data name="Cmd.Compare" xml:space="preserve"><value>原圖對比（按住空白鍵）</value></data>
+  <data name="Cmd.SplitCompare" xml:space="preserve"><value>左右分割對比</value></data>
+  <data name="Cmd.ZoomFit" xml:space="preserve"><value>符合視窗</value></data>
+  <data name="Cmd.Zoom100" xml:space="preserve"><value>100%</value></data>
+  <data name="Cmd.TogglePanels" xml:space="preserve"><value>隱藏／顯示面板</value></data>
+  <data name="Cmd.FullScreen" xml:space="preserve"><value>全螢幕預覽</value></data>
+  <data name="Cmd.ResetLayout" xml:space="preserve"><value>重設版面</value></data>
+  <data name="Cmd.Gallery" xml:space="preserve"><value>元件展示視窗</value></data>
+  <data name="Cmd.ManagePresets" xml:space="preserve"><value>管理預設…</value></data>
+  <data name="Cmd.CreatePreset" xml:space="preserve"><value>以目前照片建立預設…</value></data>
+  <data name="Cmd.Language" xml:space="preserve"><value>語言</value></data>
+  <data name="Panel.Presets" xml:space="preserve"><value>預設庫</value></data>
+  <data name="Panel.Preview" xml:space="preserve"><value>預覽</value></data>
+  <data name="Panel.Inspector" xml:space="preserve"><value>照片基本參數</value></data>
+  <data name="Panel.Filmstrip" xml:space="preserve"><value>縮圖列</value></data>
+  <data name="Panel.Export" xml:space="preserve"><value>照片匯出</value></data>
+  <data name="Panel.Crop" xml:space="preserve"><value>裁切</value></data>
+  <data name="Panel.FilmEffects" xml:space="preserve"><value>底片效果</value></data>
+  <data name="Panel.Crop.Tip" xml:space="preserve"><value>裁切（R）</value></data>
+  <data name="Cmd.Crop" xml:space="preserve"><value>裁切工具</value></data>
+  <data name="Tool.Crop" xml:space="preserve"><value>裁切</value></data>
+  <data name="Tool.Crop.Apply" xml:space="preserve"><value>套用</value></data>
+  <data name="Tool.Crop.Cancel" xml:space="preserve"><value>取消</value></data>
+  <data name="Tool.Crop.Edit" xml:space="preserve"><value>編輯裁切</value></data>
+  <data name="Tool.Crop.Aspect" xml:space="preserve"><value>比例</value></data>
+  <data name="Tool.Crop.SwapOrientation" xml:space="preserve"><value>切換直式 / 橫式（X）</value></data>
+  <data name="Tool.Crop.Straighten" xml:space="preserve"><value>拉直</value></data>
+  <data name="Tool.Crop.Orientation" xml:space="preserve"><value>旋轉與翻轉</value></data>
+  <data name="Tool.Crop.RotateLeft" xml:space="preserve"><value>向左旋轉 90°（[）</value></data>
+  <data name="Tool.Crop.RotateRight" xml:space="preserve"><value>向右旋轉 90°（]）</value></data>
+  <data name="Tool.Crop.FlipH" xml:space="preserve"><value>水平翻轉</value></data>
+  <data name="Tool.Crop.FlipV" xml:space="preserve"><value>垂直翻轉</value></data>
+  <data name="Tool.Crop.Reset" xml:space="preserve"><value>重設裁切</value></data>
+  <data name="Tool.Crop.FocusedOnly" xml:space="preserve"><value>裁切只套用到目前照片</value></data>
+  <data name="Tool.Crop.Shortcuts" xml:space="preserve"><value>拖曳框內移動、拖曳把手調整大小（Alt 以中心縮放）、拖曳框外旋轉。Enter 或點兩下框內套用，Esc 取消，R 套用並回到上一個分頁。</value></data>
+  <data name="Toast.CropFocusedOnly" xml:space="preserve"><value>裁切只套用到目前照片</value></data>
+  <data name="Inspector.NoPhoto" xml:space="preserve"><value>尚未選取照片</value></data>
+  <data name="Inspector.Preset" xml:space="preserve"><value>預設</value></data>
+  <data name="Inspector.ResetPhoto" xml:space="preserve"><value>重設此張</value></data>
+  <data name="Inspector.CreatePreset" xml:space="preserve"><value>以此張建立預設</value></data>
+  <data name="Inspector.UpdatePreset" xml:space="preserve"><value>更新回預設</value></data>
+  <data name="Inspector.HideDisabled" xml:space="preserve"><value>隱藏未啟用模組</value></data>
+  <data name="Inspector.ResetModule" xml:space="preserve"><value>重設此模組</value></data>
+  <data name="Inspector.CopyModule" xml:space="preserve"><value>只複製此模組</value></data>
+  <data name="Filmstrip.All" xml:space="preserve"><value>全部</value></data>
+  <data name="Filmstrip.OverridesOnly" xml:space="preserve"><value>只顯示有覆寫</value></data>
+  <data name="Filmstrip.Unassigned" xml:space="preserve"><value>未指定預設</value></data>
+  <data name="Filmstrip.ByPreset" xml:space="preserve"><value>依預設</value></data>
+  <data name="Filmstrip.AllFiles" xml:space="preserve"><value>所有檔案</value></data>
+  <data name="Filmstrip.RawOnly" xml:space="preserve"><value>只顯示 RAW</value></data>
+  <data name="Filmstrip.NonRaw" xml:space="preserve"><value>只顯示非 RAW</value></data>
+  <data name="Presets.Apply" xml:space="preserve"><value>套用到選取照片</value></data>
+  <data name="Presets.Rename" xml:space="preserve"><value>重新命名…</value></data>
+  <data name="Presets.Color" xml:space="preserve"><value>更改色彩標籤</value></data>
+  <data name="Presets.Duplicate" xml:space="preserve"><value>複製</value></data>
+  <data name="Presets.Delete" xml:space="preserve"><value>刪除</value></data>
+  <data name="Presets.Reveal" xml:space="preserve"><value>在檔案總管中顯示</value></data>
+  <data name="Presets.Pin" xml:space="preserve"><value>釘選（數字鍵 1–9）</value></data>
+  <data name="Presets.Manage" xml:space="preserve"><value>管理…</value></data>
+  <data name="Status.NoProject" xml:space="preserve"><value>尚未開啟資料夾</value></data>
+  <data name="Status.Selected" xml:space="preserve"><value>已選取 {0} 張</value></data>
+  <data name="Status.Background" xml:space="preserve"><value>背景工作：{0}</value></data>
+  <data name="Status.Idle" xml:space="preserve"><value>就緒</value></data>
+  <data name="Status.SoftwareGpu" xml:space="preserve"><value>（軟體介面卡，效能受影響）</value></data>
+  <data name="Status.ScanningPhotos" xml:space="preserve"><value>掃描照片資料夾…・{0}</value></data>
+  <data name="Status.LoadingPhotos" xml:space="preserve"><value>載入縮圖 {0}/{1}・失敗 {2}・{3}</value></data>
+  <data name="Status.LoadComplete" xml:space="preserve"><value>縮圖完成 {0}/{1}・失敗 {2}・{3}</value></data>
+  <data name="Status.LoadCancelled" xml:space="preserve"><value>已停止載入 {0}/{1}・失敗 {2}・{3}</value></data>
+  <data name="Status.LoadFailed" xml:space="preserve"><value>開啟失敗：{0}</value></data>
+  <data name="Status.CancelLoading" xml:space="preserve"><value>停止背景載入</value></data>
+  <data name="Preview.MultiOverlay" xml:space="preserve"><value>已選取 {0} 張，調整將套用到全部</value></data>
+  <data name="Preview.Empty" xml:space="preserve"><value>開啟照片資料夾以開始（{0}）</value></data>
+  <data name="Toast.Undo" xml:space="preserve"><value>復原</value></data>
+  <data name="Dialog.OK" xml:space="preserve"><value>確定</value></data>
+  <data name="Dialog.Cancel" xml:space="preserve"><value>取消</value></data>
+  <data name="Dialog.Close" xml:space="preserve"><value>關閉</value></data>
+  <data name="Dialog.SelectAll" xml:space="preserve"><value>全選</value></data>
+  <data name="Dialog.SelectNone" xml:space="preserve"><value>全不選</value></data>
+  <data name="Dialog.ColorOnly" xml:space="preserve"><value>只選色彩類</value></data>
+  <data name="Dialog.IncludeSeeds" xml:space="preserve"><value>包含隨機種子</value></data>
+  <data name="Dialog.MirrorPositions" xml:space="preserve"><value>貼上時鏡像位置</value></data>
+  <data name="Dialog.Paste" xml:space="preserve"><value>貼上</value></data>
+  <data name="Dialog.SelectivePaste" xml:space="preserve"><value>選擇性貼上</value></data>
+  <data name="Dialog.Export" xml:space="preserve"><value>匯出</value></data>
+  <data name="Dialog.PresetManager" xml:space="preserve"><value>預設管理</value></data>
+  <data name="Dialog.Preferences" xml:space="preserve"><value>偏好設定</value></data>
+  <data name="Dialog.KeepOverrides" xml:space="preserve"><value>保留覆寫</value></data>
+  <data name="Dialog.ClearOverrides" xml:space="preserve"><value>清除覆寫</value></data>
+  <data name="Dialog.Remember" xml:space="preserve"><value>記住我的選擇</value></data>
+  <data name="Dialog.AssignTitle" xml:space="preserve"><value>指定預設</value></data>
+  <data name="Menu.Window" xml:space="preserve"><value>視窗(_W)</value></data>
+  <data name="Menu.Version" xml:space="preserve"><value>版本</value></data>
+  <data name="Menu.AboutText" xml:space="preserve"><value>批次底片效果處理工具</value></data>
+  <data name="Cmd.CloseWindow" xml:space="preserve"><value>關閉視窗</value></data>
+  <data name="Cmd.Minimize" xml:space="preserve"><value>最小化</value></data>
+  <data name="Cmd.About" xml:space="preserve"><value>關於 FilmBatch</value></data>
+  <data name="Cmd.OpenGitHub" xml:space="preserve"><value>GitHub 專案頁面</value></data>
+  <data name="Cmd.ReportIssue" xml:space="preserve"><value>回報問題</value></data>
+  <data name="About.VersionInfo" xml:space="preserve"><value>版本資訊</value></data>
+  <data name="About.Runtime" xml:space="preserve"><value>執行環境</value></data>
+  <data name="About.OS" xml:space="preserve"><value>作業系統</value></data>
+  <data name="About.Packages" xml:space="preserve"><value>第三方套件</value></data>
+  <data name="About.Package" xml:space="preserve"><value>套件</value></data>
+  <data name="About.License" xml:space="preserve"><value>授權</value></data>
+  <data name="About.Native" xml:space="preserve"><value>原生函式庫</value></data>
+  <data name="About.CopyInfo" xml:space="preserve"><value>複製版本資訊</value></data>
+  <data name="About.NoticeHint" xml:space="preserve"><value>完整的授權聲明見安裝目錄中的 THIRD-PARTY-NOTICES.txt。</value></data>
+  <data name="Pref.Section.General" xml:space="preserve"><value>一般</value></data>
+  <data name="Pref.Section.Preview" xml:space="preserve"><value>預覽</value></data>
+  <data name="Pref.Section.Gpu" xml:space="preserve"><value>GPU 與效能</value></data>
+  <data name="Pref.Section.Folders" xml:space="preserve"><value>資料夾</value></data>
+  <data name="Pref.Language.Desc" xml:space="preserve"><value>介面顯示的語言，切換後立即套用</value></data>
+  <data name="Pref.Background" xml:space="preserve"><value>預覽背景</value></data>
+  <data name="Pref.Background.Desc" xml:space="preserve"><value>預覽畫布的底色，不影響匯出結果</value></data>
+  <data name="Pref.ProxySize" xml:space="preserve"><value>預覽代理圖尺寸</value></data>
+  <data name="Pref.ProxySize.Desc" xml:space="preserve"><value>預覽算圖使用的長邊像素；越大越清晰，也越耗資源</value></data>
+  <data name="Pref.CurrentGpu" xml:space="preserve"><value>目前使用的 GPU</value></data>
+  <data name="Pref.Adapters" xml:space="preserve"><value>可用的介面卡</value></data>
+  <data name="Pref.Backend" xml:space="preserve"><value>GPU 後端</value></data>
+  <data name="Pref.Backend.Desc" xml:space="preserve"><value>算圖使用的圖形 API；遇到驅動程式問題時可切換</value></data>
+  <data name="Pref.ForceSoftware" xml:space="preserve"><value>強制使用軟體介面卡</value></data>
+  <data name="Pref.ForceSoftware.Desc" xml:space="preserve"><value>不使用硬體 GPU，速度較慢，用於排除問題</value></data>
+  <data name="Pref.GpuMemory" xml:space="preserve"><value>GPU 記憶體上限</value></data>
+  <data name="Pref.GpuMemory.Desc" xml:space="preserve"><value>紋理與快取可使用的顯示記憶體</value></data>
+  <data name="Pref.BackgroundCpu" xml:space="preserve"><value>背景載入 CPU 目標</value></data>
+  <data name="Pref.BackgroundCpu.Desc" xml:space="preserve"><value>即時調整縮圖背景工作的速度，預設 70%；100% 不主動節流。以全部邏輯核心的程序 CPU 用量為基準，在工作之間讓出時間；不是硬性上限，單張 RAW／原生解碼可能短暫超出。互動預覽與匯出不受此目標限制。</value></data>
+  <data name="Pref.Textures" xml:space="preserve"><value>材質庫資料夾</value></data>
+  <data name="Pref.Textures.Desc" xml:space="preserve"><value>漏光、灰塵與刮痕、古典版材使用的材質；沒有材質時改用程序化效果</value></data>
+  <data name="Pref.Browse" xml:space="preserve"><value>瀏覽…</value></data>
+  <data name="Pref.ApplyNote" xml:space="preserve"><value>背景載入 CPU 目標即時生效；其餘運算設定於關閉時套用，變更 GPU 設定會在背景重建算圖器。</value></data>
+  <data name="Filmstrip.OpenHint" xml:space="preserve"><value>在這裡按兩下以選擇照片資料夾</value></data>
+  <data name="Pref.Background.DarkGray" xml:space="preserve"><value>深灰 #161616（預設）</value></data>
+  <data name="Pref.Background.MidGray" xml:space="preserve"><value>中灰 #808080（判斷亮度用）</value></data>
+  <data name="Pref.Background.Black" xml:space="preserve"><value>純黑 #000000</value></data>
+  <data name="Pref.Backend.Auto" xml:space="preserve"><value>自動（{0}）</value></data>
+  <data name="Pref.AdaptersFailed" xml:space="preserve"><value>無法列舉：{0}</value></data>
+  <data name="Pref.AdaptersCpuOnly" xml:space="preserve"><value>CPU（此平台沒有 GPU 列舉）</value></data>
+  <data name="Export.Scope.Selected" xml:space="preserve"><value>選取的照片</value></data>
+  <data name="Export.Scope.All" xml:space="preserve"><value>全部</value></data>
+  <data name="Export.Scope.ByPreset" xml:space="preserve"><value>依預設</value></data>
+  <data name="Export.Size.Original" xml:space="preserve"><value>原尺寸</value></data>
+  <data name="Export.Size.LongEdge" xml:space="preserve"><value>指定長邊</value></data>
+  <data name="Export.Status.Ready" xml:space="preserve"><value>就緒</value></data>
+  <data name="Export.Summary" xml:space="preserve"><value>將匯出 {0} 張到 {1}</value></data>
+  <data name="Export.Error.NoPreset" xml:space="preserve"><value>請先選擇預設。</value></data>
+  <data name="Export.Error.NoPhotos" xml:space="preserve"><value>沒有符合的照片。</value></data>
+  <data name="Export.Error.NoFolder" xml:space="preserve"><value>尚未開啟照片資料夾。</value></data>
+  <data name="Export.Error.NoSelection" xml:space="preserve"><value>尚未選取照片。</value></data>
+  <data name="Export.Status.Preparing" xml:space="preserve"><value>準備匯出…</value></data>
+  <data name="Export.Status.Progress" xml:space="preserve"><value>匯出中 {0}/{1}：{2}</value></data>
+  <data name="Export.Status.ProgressFailed" xml:space="preserve"><value>匯出中 {0}/{1}（失敗 {2}）：{3}</value></data>
+  <data name="Export.Status.Cancelled" xml:space="preserve"><value>已取消</value></data>
+  <data name="Export.Status.Failed" xml:space="preserve"><value>失敗：{0}</value></data>
+  <data name="Export.Status.CancelledDone" xml:space="preserve"><value>已取消：完成 {0} 張</value></data>
+  <data name="Export.Status.Done" xml:space="preserve"><value>完成：成功 {0} 張</value></data>
+  <data name="Export.Status.DoneFailed" xml:space="preserve"><value>完成：成功 {0} 張、失敗 {1} 張</value></data>
+  <data name="Export.Field.Scope" xml:space="preserve"><value>範圍</value></data>
+  <data name="Common.ChoosePreset" xml:space="preserve"><value>選擇預設</value></data>
+  <data name="Export.Field.Format" xml:space="preserve"><value>格式</value></data>
+  <data name="Export.Field.Quality" xml:space="preserve"><value>品質</value></data>
+  <data name="Export.Field.Size" xml:space="preserve"><value>尺寸</value></data>
+  <data name="Export.Field.LongEdge" xml:space="preserve"><value>長邊（px）</value></data>
+  <data name="Export.Field.Destination" xml:space="preserve"><value>目的地</value></data>
+  <data name="Common.ChooseFolder" xml:space="preserve"><value>選擇資料夾</value></data>
+  <data name="Export.Field.FileName" xml:space="preserve"><value>檔名範本</value></data>
+  <data name="Export.FileNameHint" xml:space="preserve"><value>可用：{name} {preset} {index} {index:000}</value></data>
+  <data name="Export.Field.Metadata" xml:space="preserve"><value>中繼資料</value></data>
+  <data name="Export.MetadataNote" xml:space="preserve"><value>保留 EXIF（方向重設為 1），嵌入 sRGB ICC</value></data>
+  <data name="Tip.ToggleModule" xml:space="preserve"><value>啟用／停用此模組</value></data>
+  <data name="Presets.ImportYaml" xml:space="preserve"><value>匯入 YAML…</value></data>
+  <data name="Presets.ExportYaml" xml:space="preserve"><value>匯出 YAML…</value></data>
+  <data name="Presets.Col.Name" xml:space="preserve"><value>名稱</value></data>
+  <data name="Presets.Col.Category" xml:space="preserve"><value>分類</value></data>
+  <data name="Presets.Col.Color" xml:space="preserve"><value>色彩標籤</value></data>
+  <data name="Presets.Col.InUse" xml:space="preserve"><value>使用中</value></data>
+  <data name="Tip.IncludeSeeds" xml:space="preserve"><value>預設不複製：漏光、顆粒、灰塵等隨機效果每張照片保持各自的形狀</value></data>
+  <data name="Tip.MirrorPositions" xml:space="preserve"><value>位置類參數水平鏡像，方便橫直幅混用</value></data>
+  <data name="Tip.ResetParam" xml:space="preserve"><value>雙擊重設回預設值</value></data>
+  <data name="Tip.PresetUpdated" xml:space="preserve"><value>所用預設已更新，可同步</value></data>
+  <data name="Tip.HasOverrides" xml:space="preserve"><value>有單張覆寫</value></data>
+  <data name="Inspector.RelativePath" xml:space="preserve"><value>相對路徑</value></data>
+  <data name="Tip.LastRender" xml:space="preserve"><value>最近一次預覽算圖時間</value></data>
+  <data name="Tip.Compare" xml:space="preserve"><value>原圖對比：按住空白鍵；Y 切換左右分割</value></data>
+  <data name="Tip.ZoomFit" xml:space="preserve"><value>符合視窗（Ctrl+0）</value></data>
+  <data name="Tip.ZoomFit.Mac" xml:space="preserve"><value>符合視窗（⌘0）</value></data>
+  <data name="Status.BackgroundTasks" xml:space="preserve"><value>背景工作</value></data>
+  <data name="Presets.Rendering" xml:space="preserve"><value>算圖中…</value></data>
+  <data name="Tip.Undo" xml:space="preserve"><value>復原（Ctrl+Z）</value></data>
+  <data name="Tip.Undo.Mac" xml:space="preserve"><value>復原（⌘Z）</value></data>
+  <data name="Tip.Redo" xml:space="preserve"><value>重做（Ctrl+Shift+Z）</value></data>
+  <data name="Tip.Redo.Mac" xml:space="preserve"><value>重做（⌘⇧Z）</value></data>
+  <data name="Tip.Copy" xml:space="preserve"><value>複製設定（Ctrl+C）</value></data>
+  <data name="Tip.Copy.Mac" xml:space="preserve"><value>複製設定（⌘C）</value></data>
+  <data name="Tip.Paste" xml:space="preserve"><value>貼上（Ctrl+V）</value></data>
+  <data name="Tip.Paste.Mac" xml:space="preserve"><value>貼上（⌘V）</value></data>
+  <data name="Tip.PasteSpecial" xml:space="preserve"><value>選擇性貼上（Ctrl+Shift+V）</value></data>
+  <data name="Tip.PasteSpecial.Mac" xml:space="preserve"><value>選擇性貼上（⌘⇧V）</value></data>
+  <data name="Filmstrip.Count" xml:space="preserve"><value>{0} 張</value></data>
+  <data name="Filmstrip.CountFiltered" xml:space="preserve"><value>{0} / {1} 張</value></data>
+  <data name="Inspector.FileMulti" xml:space="preserve"><value>{0}（共 {1} 張）</value></data>
+  <data name="Inspector.PreviewSize" xml:space="preserve"><value>預覽 {0}×{1}</value></data>
+  <data name="Inspector.Overrides" xml:space="preserve"><value>已覆寫 {0} 項</value></data>
+  <data name="Inspector.NoOverrides" xml:space="preserve"><value>無覆寫</value></data>
+  <data name="Preview.FitScale" xml:space="preserve"><value>符合視窗（{0}）</value></data>
+  <data name="Toast.PresetLoadFailed" xml:space="preserve"><value>預設載入失敗：{0}</value></data>
+  <data name="Toast.PresetsLoadFailed" xml:space="preserve"><value>有 {0} 個預設無法載入：{1}</value></data>
+  <data name="Toast.RenderFailed" xml:space="preserve"><value>算圖失敗：{0}</value></data>
+  <data name="Toast.PreparingSamples" xml:space="preserve"><value>正在準備範例照片…</value></data>
+  <data name="Toast.NoSupportedPhotos" xml:space="preserve"><value>此資料夾沒有支援的照片（TIFF、JPEG、PNG）</value></data>
+  <data name="Dialog.PresetChanged" xml:space="preserve"><value>預設庫已更新</value></data>
+  <data name="Dialog.PresetChangedMessage" xml:space="preserve"><value>「{0}」與此專案儲存的版本不同。同步會更新使用它的照片；取消則保留原快照。</value></data>
+  <data name="Dialog.Sync" xml:space="preserve"><value>同步</value></data>
+  <data name="Toast.PresetSyncFailed" xml:space="preserve"><value>預設同步失敗：{0}</value></data>
+  <data name="Status.Thumbnails" xml:space="preserve"><value>縮圖 {0}</value></data>
+  <data name="Toast.CopiedPhoto" xml:space="preserve"><value>已複製「{0}」的設定</value></data>
+  <data name="Toast.CopiedModule" xml:space="preserve"><value>已複製「{0}」模組的設定</value></data>
+  <data name="Toast.Pasted" xml:space="preserve"><value>已貼上到 {0} 張照片</value></data>
+  <data name="Toast.Assigned" xml:space="preserve"><value>已將「{0}」指定給 {1} 張照片</value></data>
+  <data name="Toast.PresetCreated" xml:space="preserve"><value>已建立預設「{0}」</value></data>
+  <data name="Dialog.UpdatePresetMessage" xml:space="preserve"><value>把此張的 {0} 項調整更新回「{1}」？
+共有 {2} 張照片使用此預設，此操作無法復原。</value></data>
+  <data name="Dialog.Update" xml:space="preserve"><value>更新</value></data>
+  <data name="Toast.PresetUpdated" xml:space="preserve"><value>已更新預設「{0}」</value></data>
+  <data name="Presets.Summary" xml:space="preserve"><value>{0}
+分類：{1}
+啟用：{2}</value></data>
+  <data name="Common.ListSeparator" xml:space="preserve"><value>、</value></data>
+  <data name="Presets.CopyName" xml:space="preserve"><value>{0} 複本</value></data>
+  <data name="Presets.DeleteInUse" xml:space="preserve"><value>有 {0} 張照片使用「{1}」，刪除後將改用專案內快照。
+此操作無法復原。</value></data>
+  <data name="Presets.DeleteConfirm" xml:space="preserve"><value>刪除預設「{0}」？此操作無法復原。</value></data>
+  <data name="Presets.UsersText" xml:space="preserve"><value>{0} 張使用中</value></data>
+  <data name="Presets.ImportTitle" xml:space="preserve"><value>匯入預設 YAML</value></data>
+  <data name="Presets.ExportTitle" xml:space="preserve"><value>匯出預設 YAML</value></data>
+  <data name="Presets.ReplaceTitle" xml:space="preserve"><value>更新預設</value></data>
+  <data name="Presets.ReplaceMessage" xml:space="preserve"><value>取代預設「{0}」？原專案仍保留快照。</value></data>
+  <data name="Presets.Replace" xml:space="preserve"><value>取代</value></data>
+  <data name="Presets.Imported" xml:space="preserve"><value>已匯入預設「{0}」</value></data>
+  <data name="Toast.ImportFailed" xml:space="preserve"><value>匯入失敗：{0}</value></data>
+  <data name="Presets.BadExtension" xml:space="preserve"><value>預設檔副檔名必須是 .yaml 或 .yml。</value></data>
+  <data name="Presets.Exported" xml:space="preserve"><value>已匯出預設：{0}</value></data>
+  <data name="Toast.ExportFailed" xml:space="preserve"><value>匯出失敗：{0}</value></data>
+  <data name="Dialog.AssignMessage" xml:space="preserve"><value>有 {0} 張照片已有單張覆寫。
+保留覆寫：只更換預設，手動調整的欄位維持不變。
+清除覆寫：完全改用新預設。</value></data>
+  <data name="Dialog.ChoosePhotoFolder" xml:space="preserve"><value>選擇照片資料夾</value></data>
+  <data name="Toast.UnhandledError" xml:space="preserve"><value>發生錯誤：{0}（詳見 log）</value></data>
+  <data name="Toast.BackgroundError" xml:space="preserve"><value>背景工作發生錯誤：{0}</value></data>
+  <data name="Toast.SaveProjectFailed" xml:space="preserve"><value>無法儲存專案：{0}（已取消關閉）</value></data>
+  <data name="Preview.Original" xml:space="preserve"><value>原圖</value></data>
+  <data name="Preview.Effect" xml:space="preserve"><value>效果</value></data>
+  <data name="Gallery.WindowTitle" xml:space="preserve"><value>FilmBatch 元件展示視窗</value></data>
+  <data name="Gallery.Colors" xml:space="preserve"><value>配色 TOKEN（2.2.2）— 灰階必須為 R = G = B</value></data>
+  <data name="Gallery.Inputs" xml:space="preserve"><value>按鈕與輸入元件（一般／強調／停用；停留與按下請以滑鼠檢查）</value></data>
+  <data name="Gallery.Button" xml:space="preserve"><value>一般按鈕</value></data>
+  <data name="Gallery.AccentButton" xml:space="preserve"><value>強調按鈕</value></data>
+  <data name="Gallery.DisabledButton" xml:space="preserve"><value>停用按鈕</value></data>
+  <data name="Gallery.ToolButton" xml:space="preserve"><value>工具列按鈕</value></data>
+  <data name="Gallery.DisabledToolButton" xml:space="preserve"><value>停用的工具列按鈕</value></data>
+  <data name="Gallery.ToggledOn" xml:space="preserve"><value>已切換</value></data>
+  <data name="Gallery.ToggledOff" xml:space="preserve"><value>未切換</value></data>
+  <data name="Gallery.Disabled" xml:space="preserve"><value>停用</value></data>
+  <data name="Gallery.Placeholder" xml:space="preserve"><value>提示文字</value></data>
+  <data name="Gallery.Checked" xml:space="preserve"><value>勾選</value></data>
+  <data name="Gallery.Unchecked" xml:space="preserve"><value>未勾選</value></data>
+  <data name="Gallery.ParamRow" xml:space="preserve"><value>ParamRow：一般／被覆寫（● + 粗體）／停用</value></data>
+  <data name="Gallery.ParamSlider" xml:space="preserve"><value>ParamSlider：滑桿取得焦點後才接受滾輪；按住 Shift 微調。</value></data>
+  <data name="Gallery.ModuleSection" xml:space="preserve"><value>ModuleSection：啟用＋覆寫／停用（內容淡化但仍可調整）／折疊</value></data>
+  <data name="Gallery.Thumbnail" xml:space="preserve"><value>ThumbnailView：一般／有覆寫 ●／預設已更新 ⟳／讀檔失敗；多選（第 1、2 張選取中）</value></data>
+  <data name="Gallery.PresetItem" xml:space="preserve"><value>PresetItem（色彩標籤＋名稱＋釘選鍵）</value></data>
+  <data name="Gallery.ToastSample" xml:space="preserve"><value>已貼上到 12 張照片</value></data>
+  <data name="Gallery.StatusBar" xml:space="preserve"><value>狀態列（軟體介面卡警示）</value></data>
+  <data name="Gallery.PreviewCanvas" xml:space="preserve"><value>PreviewCanvas：左右分割、控制點（可拖曳）、多選疊字、算圖中指示</value></data>
+  <data name="Gallery.OverlaySample" xml:space="preserve"><value>已選取 3 張，調整將套用到全部</value></data>
+  <data name="Gallery.Thumb.Normal" xml:space="preserve"><value>一般</value></data>
+  <data name="Gallery.Thumb.Overrides" xml:space="preserve"><value>有覆寫</value></data>
+  <data name="Gallery.Thumb.Updated" xml:space="preserve"><value>預設已更新</value></data>
+  <data name="Gallery.Thumb.Both" xml:space="preserve"><value>覆寫＋已更新</value></data>
+  <data name="Gallery.Thumb.Failed" xml:space="preserve"><value>讀檔失敗</value></data>
+  <data name="Gallery.Thumb.FailedReason" xml:space="preserve"><value>無法解碼：檔案損毀</value></data>
+  <data name="Gallery.Chromatic" xml:space="preserve"><value>彩色</value></data>
+  <data name="Module.raw" xml:space="preserve"><value>RAW 原廠處理</value></data>
+  <data name="Param.raw.embedded_lens" xml:space="preserve"><value>內嵌鏡頭校正</value></data>
+  <data name="Param.raw.camera_local_tone" xml:space="preserve"><value>相機局部色調</value></data>
+  <!-- 底片風格（FilmLookControl） -->
+  <data name="Film.Look" xml:space="preserve"><value>底片</value></data>
+  <data name="Film.HueCorrection" xml:space="preserve"><value>色相修正</value></data>
+  <data name="Film.HueCustom" xml:space="preserve"><value>自訂</value></data>
+  <data name="Film.HueBands" xml:space="preserve"><value>自訂色相</value></data>
+  <data name="Film.LookApplied" xml:space="preserve"><value>已套用底片「{0}」</value></data>
+  <data name="Film.HueApplied" xml:space="preserve"><value>已套用色相修正「{0}」</value></data>
+  <data name="Film.Group.kodak" xml:space="preserve"><value>柯達</value></data>
+  <data name="Film.Group.fuji" xml:space="preserve"><value>富士</value></data>
+  <data name="Film.Group.agfa-lomo" xml:space="preserve"><value>愛克發與 Lomo</value></data>
+  <data name="Film.Group.polaroid" xml:space="preserve"><value>拍立得</value></data>
+  <data name="Film.Group.bw" xml:space="preserve"><value>黑白</value></data>
+  <data name="Film.Group.creative" xml:space="preserve"><value>創意</value></data>
+  <data name="Film.Band.red" xml:space="preserve"><value>紅</value></data>
+  <data name="Film.Band.orange" xml:space="preserve"><value>橙</value></data>
+  <data name="Film.Band.yellow" xml:space="preserve"><value>黃</value></data>
+  <data name="Film.Band.green" xml:space="preserve"><value>綠</value></data>
+  <data name="Film.Band.aqua" xml:space="preserve"><value>青</value></data>
+  <data name="Film.Band.blue" xml:space="preserve"><value>藍</value></data>
+  <data name="Film.Band.purple" xml:space="preserve"><value>紫</value></data>
+  <data name="Film.Band.magenta" xml:space="preserve"><value>洋紅</value></data>
+  <data name="Film.Hue.none" xml:space="preserve"><value>無</value></data>
+  <data name="Film.Hue.warm-skin" xml:space="preserve"><value>暖膚色</value></data>
+  <data name="Film.Hue.clear-sky" xml:space="preserve"><value>清澈藍天</value></data>
+  <data name="Film.Hue.lush-green" xml:space="preserve"><value>青翠綠意</value></data>
+  <data name="Film.Hue.golden" xml:space="preserve"><value>金黃秋色</value></data>
+  <data name="Film.Hue.teal-orange" xml:space="preserve"><value>冷暖對比</value></data>
+  <data name="Film.Hue.muted" xml:space="preserve"><value>低彩度</value></data>
+  <data name="Param.raw.lens_database" xml:space="preserve"><value>外部 Lensfun 資料夾</value></data>
+  <data name="Param.raw.wb_mode" xml:space="preserve"><value>白平衡</value></data>
+  <data name="Param.raw.temperature" xml:space="preserve"><value>色溫</value></data>
+  <data name="Param.raw.tint" xml:space="preserve"><value>色偏</value></data>
+  <data name="Param.raw.mask_enabled" xml:space="preserve"><value>語意遮罩調整</value></data>
+  <data name="Param.raw.mask_name" xml:space="preserve"><value>遮罩</value></data>
+  <data name="Param.raw.mask_instance" xml:space="preserve"><value>遮罩實例</value></data>
+  <data name="Param.raw.mask_invert" xml:space="preserve"><value>反轉遮罩</value></data>
+  <data name="Param.raw.mask_amount" xml:space="preserve"><value>遮罩強度</value></data>
+  <data name="Param.raw.mask_exposure" xml:space="preserve"><value>局部曝光</value></data>
+  <data name="Param.raw.mask_temperature" xml:space="preserve"><value>局部暖色（相對）</value></data>
+  <data name="Param.raw.mask_tint" xml:space="preserve"><value>局部色偏（相對）</value></data>
+  <data name="Param.raw.mask_contrast" xml:space="preserve"><value>局部對比</value></data>
+  <data name="Param.raw.mask_saturation" xml:space="preserve"><value>局部飽和度</value></data>
+  <data name="Choice.raw.wb_mode.as-shot" xml:space="preserve"><value>拍攝值</value></data>
+  <data name="Choice.raw.wb_mode.custom" xml:space="preserve"><value>自訂</value></data>
+  <data name="Raw.AsShot" xml:space="preserve"><value>拍攝值：{0} K</value></data>
+  <data name="Raw.AsShotTint" xml:space="preserve"><value>拍攝值：{0} K・色偏 {1:+0;-0;0}</value></data>
+  <data name="Raw.MaskNone" xml:space="preserve"><value>不使用</value></data>
+  <data name="Raw.MaskUnavailable" xml:space="preserve"><value>此照片無法使用已選遮罩：{0}</value></data>
+  <data name="Raw.NoMasks" xml:space="preserve"><value>此照片沒有內嵌語意遮罩</value></data>
+  <data name="Raw.MaskEdit" xml:space="preserve"><value>調整語意遮罩</value></data>
+  <data name="Raw.BrowseFolder" xml:space="preserve"><value>瀏覽資料夾…</value></data>
+  <data name="Module.skin" xml:space="preserve"><value>局部膚色輔助</value></data>
+  <data name="Module.zone" xml:space="preserve"><value>Zone 測光與階調</value></data>
+  <data name="Param.skin.region_cx" xml:space="preserve"><value>區域中心 X</value></data>
+  <data name="Param.skin.region_cy" xml:space="preserve"><value>區域中心 Y</value></data>
+  <data name="Param.skin.radius_x" xml:space="preserve"><value>區域半寬</value></data>
+  <data name="Param.skin.radius_y" xml:space="preserve"><value>區域半高</value></data>
+  <data name="Param.skin.feather" xml:space="preserve"><value>羽化</value></data>
+  <data name="Param.skin.amount" xml:space="preserve"><value>強度</value></data>
+  <data name="Param.skin.temperature" xml:space="preserve"><value>局部暖冷</value></data>
+  <data name="Param.skin.tint" xml:space="preserve"><value>局部綠洋紅</value></data>
+  <data name="Param.skin.ref_red" xml:space="preserve"><value>參考紅色增益</value></data>
+  <data name="Param.skin.ref_green" xml:space="preserve"><value>參考綠色增益</value></data>
+  <data name="Param.skin.ref_blue" xml:space="preserve"><value>參考藍色增益</value></data>
+  <data name="Param.zone.slope" xml:space="preserve"><value>曝光跨度</value></data>
+  <data name="Param.zone.offset" xml:space="preserve"><value>曝光位移</value></data>
+  <data name="Param.grain.model" xml:space="preserve"><value>模型</value></data>
+  <data name="Param.grain.shadows" xml:space="preserve"><value>暗部響應</value></data>
+  <data name="Param.grain.midtones" xml:space="preserve"><value>中間調響應</value></data>
+  <data name="Param.grain.highlights" xml:space="preserve"><value>高光響應</value></data>
+  <data name="Param.grain.aperture" xml:space="preserve"><value>觀測柔化</value></data>
+  <data name="Param.grain.radius_spread" xml:space="preserve"><value>粒徑分布</value></data>
+  <data name="Param.grain.samples" xml:space="preserve"><value>光學取樣數</value></data>
+  <data name="Choice.grain.model.clumps" xml:space="preserve"><value>柔邊團塊</value></data>
+  <data name="Choice.grain.model.correlated" xml:space="preserve"><value>連續相關顆粒</value></data>
+  <data name="Choice.grain.model.optical" xml:space="preserve"><value>光學圓盤</value></data>
+  <data name="PhotoTools.Title" xml:space="preserve"><value>照片工具</value></data>
+  <data name="PhotoTools.WbTitle" xml:space="preserve"><value>中性白平衡</value></data>
+  <data name="PhotoTools.SkinTitle" xml:space="preserve"><value>膚色調整</value></data>
+  <data name="PhotoTools.ZoneTitle" xml:space="preserve"><value>Zone 分區</value></data>
+  <data name="PhotoTools.PickWb" xml:space="preserve"><value>取樣中性區</value></data>
+  <data name="PhotoTools.PickSkin" xml:space="preserve"><value>取樣膚色區</value></data>
+  <data name="PhotoTools.PickZoneShadow" xml:space="preserve"><value>取樣暗部</value></data>
+  <data name="PhotoTools.PickZoneHighlight" xml:space="preserve"><value>取樣高光</value></data>
+  <data name="PhotoTools.AutoWb" xml:space="preserve"><value>自動白平衡</value></data>
+  <data name="PhotoTools.CaptureWbRef" xml:space="preserve"><value>擷取參考色</value></data>
+  <data name="PhotoTools.CaptureSkinRef" xml:space="preserve"><value>擷取膚色參考</value></data>
+  <data name="PhotoTools.ClearRef" xml:space="preserve"><value>清除參考</value></data>
+  <data name="PhotoTools.UseWbReference" xml:space="preserve"><value>使用參考色</value></data>
+  <data name="PhotoTools.UseSkinRef" xml:space="preserve"><value>以參考色為目標</value></data>
+  <data name="PhotoTools.Preview" xml:space="preserve"><value>預覽提案</value></data>
+  <data name="PhotoTools.ApplyWb" xml:space="preserve"><value>套用白平衡</value></data>
+  <data name="PhotoTools.ApplySkin" xml:space="preserve"><value>套用膚色</value></data>
+  <data name="PhotoTools.Cancel" xml:space="preserve"><value>取消</value></data>
+  <data name="PhotoTools.FitZone" xml:space="preserve"><value>擬合 Zone 曲線</value></data>
+  <data name="PhotoTools.SkinTemperature" xml:space="preserve"><value>溫暖度</value></data>
+  <data name="PhotoTools.SkinTint" xml:space="preserve"><value>色偏</value></data>
+  <data name="PhotoTools.SkinStrength" xml:space="preserve"><value>強度</value></data>
+  <data name="PhotoTools.SkinFeather" xml:space="preserve"><value>羽化</value></data>
+  <data name="PhotoTools.RefValue" xml:space="preserve"><value>參考 RGB {0:0.###} {1:0.###} {2:0.###}</value></data>
+  <data name="PhotoTools.SkinRegionSet" xml:space="preserve"><value>已選膚色區域 {0:0.##}×{1:0.##}</value></data>
+  <data name="PhotoTools.WbUnavailable" xml:space="preserve"><value>此照片無法推算白平衡</value></data>
+  <data name="PhotoTools.WbProposal" xml:space="preserve"><value>提案 {0}K・色偏 {1}｜信心 {2:0.##}｜殘差 {3:0.###}｜樣本 {4}（剔除 {5}）｜散度 {6:0.###}</value></data>
+  <data name="PhotoTools.ClipWarning" xml:space="preserve"><value>輸出已裁切：降低曝光後重新取樣</value></data>
+  <data name="PhotoTools.WbBoundary" xml:space="preserve"><value>提案抵達色溫或色偏範圍邊界</value></data>
+  <data name="PhotoTools.WbResidual" xml:space="preserve"><value>殘差偏高，可能不是中性區</value></data>
+  <data name="PhotoTools.WbLowConfidence" xml:space="preserve"><value>信心偏低</value></data>
+  <data name="PhotoTools.AutoNone" xml:space="preserve"><value>找不到候選白平衡</value></data>
+  <data name="PhotoTools.AutoCandidates" xml:space="preserve"><value>{0} 個候選白平衡</value></data>
+  <data name="PhotoTools.CandidateChosen" xml:space="preserve"><value>已選 {0}K・色偏 {1}｜信心 {2:0.##}｜殘差 {3:0.###}</value></data>
+  <data name="PhotoTools.RefUnavailable" xml:space="preserve"><value>無法擷取參考色</value></data>
+  <data name="PhotoTools.RefCaptured" xml:space="preserve"><value>已擷取參考 RGB {0:0.###} {1:0.###} {2:0.###}</value></data>
+  <data name="PhotoTools.SkinRefCaptured" xml:space="preserve"><value>已擷取膚色參考 RGB {0:0.###} {1:0.###} {2:0.###}</value></data>
+  <data name="PhotoTools.ZoneUnavailable" xml:space="preserve"><value>無法判定 Zone</value></data>
+  <data name="PhotoTools.ZoneSample" xml:space="preserve"><value>Zone {0}｜亮度 {1:0.###}｜樣本 {2}｜散度 {3:0.###}</value></data>
+  <data name="PhotoTools.ZonePlaced" xml:space="preserve"><value>已放到 Zone {0}</value></data>
+  <data name="PhotoTools.ZoneUnreachable" xml:space="preserve"><value>無法到達 Zone {0}：所需曝光 {1:0.##} 超出 {2:0.##}…{3:0.##} 範圍，未寫入</value></data>
+  <data name="PhotoTools.ZoneFitInvalid" xml:space="preserve"><value>錨點樣本無效，無法擬合</value></data>
+  <data name="PhotoTools.ZoneFitReversed" xml:space="preserve"><value>高光錨點必須比暗部亮</value></data>
+  <data name="PhotoTools.ZoneFitted" xml:space="preserve"><value>已擬合 zone 斜率 {0:0.###}、位移 {1:0.###}</value></data>
+  <data name="PhotoTools.WbNeedsRaw" xml:space="preserve"><value>此照片沒有 RAW 白平衡模型</value></data>
+  <data name="PhotoTools.WbEnableRaw" xml:space="preserve"><value>先在「RAW 原廠處理」啟用 RAW 處理</value></data>
+  <data name="PhotoTools.ZoneNeedsRaw" xml:space="preserve"><value>Zone 分區需要 RAW 場景線性來源</value></data>
+  <data name="PhotoTools.ZoneFitUnreachable" xml:space="preserve"><value>擬合結果斜率 {0:0.###}／位移 {1:0.###} 超出範圍（斜率 {2:0.##}…{3:0.##}、位移 {4:0.##}…{5:0.##}），未寫入</value></data>
+  <data name="PhotoTools.Confidence" xml:space="preserve"><value>信心</value></data>
+  <data name="PhotoTools.Residual" xml:space="preserve"><value>殘差</value></data>
+</root>

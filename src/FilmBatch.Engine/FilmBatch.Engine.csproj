@@ -4,14 +4,20 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <!-- 將 App／CLI 的 RID 傳到帶原生 JXL 內容的 Raw 參考。 -->
     <IsRidAgnostic>false</IsRidAgnostic>
+    <MSBuildDisableGetCopyToOutputDirectoryItemsOptimization>true</MSBuildDisableGetCopyToOutputDirectoryItemsOptimization>
+    <MSBuildDisableGetCopyToPublishDirectoryItemsOptimization>true</MSBuildDisableGetCopyToPublishDirectoryItemsOptimization>
+    <!-- iOS RID：ImageMagick 原生資產不在 iOS 應用套件閉包內，編譯期改選 Apple ImageIO 後端。 -->
+    <DefineConstants Condition="$(RuntimeIdentifier.StartsWith('ios'))">$(DefineConstants);FILMBATCH_APPLE_IMAGING</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\FilmBatch.Core\FilmBatch.Core.csproj" />
     <ProjectReference Include="..\FilmBatch.Gpu\FilmBatch.Gpu.csproj" />
     <ProjectReference Include="..\FilmBatch.Raw\FilmBatch.Raw.csproj" />
   </ItemGroup>
-  <ItemGroup>
+  <ItemGroup Condition="!$(RuntimeIdentifier.StartsWith('ios'))">
     <PackageReference Include="Magick.NET-Q16-HDRI-AnyCPU" />
+  </ItemGroup>
+  <ItemGroup>
     <InternalsVisibleTo Include="FilmBatch.Core.Tests" />
   </ItemGroup>
   <ItemGroup>

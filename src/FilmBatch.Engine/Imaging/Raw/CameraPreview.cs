@@ -2,7 +2,7 @@
 // Copyright (c) 2026 ArtCraft Team and the LightCraft contributors，MIT OR Apache-2.0；為 FilmBatch 改寫為 C#。
 //
 // 嵌入 JPEG 只提供對應關係，不提供輸出像素、不取代 RAW（檔頭註解亦見 camera_preview.rs）。
-// 預覽解碼用既有 Magick.NET：依 ICC／宣告色彩空間轉線性 Rec.2020；原生 RAW 解碼不用於此。
+// 預覽解碼走 <see cref="ImageBackend"/>：依 ICC／宣告色彩空間轉線性 Rec.2020；原生 RAW 解碼不用於此。
 using FilmBatch.Raw;
 using FilmBatch.Raw.Color;
 using FilmBatch.Raw.Opcodes;

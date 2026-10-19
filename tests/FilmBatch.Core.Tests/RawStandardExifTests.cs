@@ -30,7 +30,7 @@ public sealed class RawStandardExifTests
 
         var (developedWidth, developedHeight) = info.DevelopedSize();
         var profile = TiffMetadata.ReadRaw(path, (uint)developedWidth, (uint)developedHeight, info.Metadata);
-        var tiff = profile.ToByteArray()![6..];
+        var tiff = profile[6..];
         var exif = DirectoryValue(tiff, Root(tiff), Tags.ExifIfd);
 
         // Backfilled standard ISO: SHORT, first value 400.
@@ -84,16 +84,16 @@ public sealed class RawStandardExifTests
         };
         // Source EXIF: wrong-typed GainControl (LONG), embedded-NUL Model ASCII,
         // dangling MakerNote blob, GPS + UserComment, no standard capture fields.
-        var source = new ExifProfile(SourceExif(
+        var source = SourceExif(
             ifd0: [(Tags.Model, 2, Encoding.ASCII.GetBytes("DC-GH5\0X\0"))],
             exif: [(GainControl, 4, [2, 0, 0, 0]),
                    (Tags.MakerNote, 7, [1, 2, 3, 4, 5, 6, 7, 8]),
                    (Tags.UserComment, 7, [.. "ASCII\0\0\0comment"u8.ToArray()])],
             gps: [(Tags.GpsVersionId, 1, [2, 3, 0, 0]),
                   (Tags.GpsLatitudeRef, 2, "N\0"u8.ToArray()),
-                  (Tags.GpsLatitude, 5, RationalBytes([(25, 1), (2, 1), (30, 1)]))]));
+                  (Tags.GpsLatitude, 5, RationalBytes([(25, 1), (2, 1), (30, 1)]))]);
         var normalized = TiffMetadata.Normalize(source, 8, 6, decoded: decoded);
-        var tiff = normalized.ToByteArray()![6..];
+        var tiff = normalized[6..];
         var root = Root(tiff);
         var exif = DirectoryValue(tiff, root, Tags.ExifIfd);
         var gpsDir = DirectoryValue(tiff, root, Tags.GpsIfd);
@@ -160,12 +160,12 @@ public sealed class RawStandardExifTests
     public void Backfill_PreservesExistingStandardValues()
     {
         var decoded = new Metadata { Iso = 400, Make = "Decoded", Model = "Decoded", ExposureTime = 1.0 / 60 };
-        var source = new ExifProfile(SourceExif(
+        var source = SourceExif(
             ifd0: [(Tags.Make, 2, "Source\0"u8.ToArray()), (Tags.Model, 2, "M1\0"u8.ToArray())],
             exif: [(Tags.IsoSpeed, 3, [0xC8, 0x00]), (Tags.ExposureTime, 5, RationalBytes([(1, 30)]))],
-            gps: []));
+            gps: []);
         var normalized = TiffMetadata.Normalize(source, 4, 4, decoded: decoded);
-        var tiff = normalized.ToByteArray()![6..];
+        var tiff = normalized[6..];
         var exif = DirectoryValue(tiff, Root(tiff), Tags.ExifIfd);
         var iso = FindField(tiff, exif, Tags.IsoSpeed);
         Assert.Equal((ushort)200, BinaryPrimitives.ReadUInt16LittleEndian(tiff.AsSpan(iso + 8, 2)));
@@ -180,11 +180,9 @@ public sealed class RawStandardExifTests
         try
         {
             File.WriteAllBytes(path, MinimalRawFile(makerNote: [9, 9, 9, 9, 9, 9, 9, 9]));
-            // Assert on the profile's own TIFF bytes: ExifProfile.GetValue makes Magick.NET
-            // re-serialize the profile, rewriting PixelX/YDimension as SHORT (type 3) and
-            // triggering libtiff's "wrong data type" warning on the exported file.
+            // canonical EXIF 位元組（Exif\0\0＋TIFF 目錄）：直接對 TIFF bytes 斷言。
             var profile = TiffMetadata.ReadRaw(path, 2, 2);
-            var tiff = profile.ToByteArray()![6..];
+            var tiff = profile[6..];
             Assert.Equal("RawBrand", AsciiOf(tiff, Root(tiff), Tags.Make));
             Assert.Equal(-1, FindField(tiff, DirectoryValue(tiff, Root(tiff), Tags.ExifIfd), Tags.MakerNote));
             var exported = AppendToFreshTiff(profile);
@@ -201,12 +199,12 @@ public sealed class RawStandardExifTests
         try
         {
             using (var base_ = new MagickImage(MagickColors.Black, 4, 4)) { base_.Format = MagickFormat.Tiff; base_.Write(file); }
-            var profileA = TiffMetadata.Normalize(new ExifProfile(SourceExif(
-                ifd0: [], exif: [(Tags.IsoSpeed, 3, [100, 0]), (Tags.DateTimeOriginal, 2, "2020:01:01 00:00:00\0"u8.ToArray())], gps: [])), 4, 4);
-            var profileB = TiffMetadata.Normalize(new ExifProfile(SourceExif(
+            var profileA = TiffMetadata.Normalize(SourceExif(
+                ifd0: [], exif: [(Tags.IsoSpeed, 3, [100, 0]), (Tags.DateTimeOriginal, 2, "2020:01:01 00:00:00\0"u8.ToArray())], gps: []), 4, 4);
+            var profileB = TiffMetadata.Normalize(SourceExif(
                 ifd0: [],
                 exif: [(Tags.IsoSpeed, 3, [0x90, 0x01]), (Tags.DateTimeOriginal, 2, "2021:02:03 04:05:06\0"u8.ToArray())],
-                gps: [(Tags.GpsVersionId, 1, [2, 3, 0, 0]), (Tags.GpsLatitudeRef, 2, "N\0"u8.ToArray())])), 4, 4);
+                gps: [(Tags.GpsVersionId, 1, [2, 3, 0, 0]), (Tags.GpsLatitudeRef, 2, "N\0"u8.ToArray())]), 4, 4);
             TiffMetadata.Append(file, profileA);
             TiffMetadata.Append(file, profileB);
             using (var reread = new MagickImage(file))
@@ -227,15 +225,13 @@ public sealed class RawStandardExifTests
     }
 
     [Fact]
-    public void Append_Recanonicalizes_ProfileTouchedByGetValue()
+    public void Append_Recanonicalizes_DimensionBlock()
     {
-        // Regression: once any value is read, Magick.NET re-serializes the profile with
-        // its own writer (PixelX/YDimension as SHORT, lossy interop handling). Append
-        // re-canonicalizes through Normalize, so the appended file keeps LONG dimensions
-        // and reads without libtiff "wrong data type" warnings.
-        var profile = TiffMetadata.Normalize(new ExifProfile(SourceExif(
-            ifd0: [], exif: [(Tags.IsoSpeed, 3, [200, 0])], gps: [])), 4, 4);
-        Assert.NotNull(profile.GetValue(ExifTag.PixelXDimension));
+        // Append re-canonicalizes through Normalize: the appended file keeps LONG
+        // PixelX/YDimension and reads without libtiff "wrong data type" warnings.
+        var profile = TiffMetadata.Normalize(SourceExif(
+            ifd0: [], exif: [(Tags.IsoSpeed, 3, [200, 0])], gps: []), 4, 4);
+        Assert.NotEqual(-1, FindField(profile[6..], DirectoryValue(profile[6..], Root(profile[6..]), Tags.ExifIfd), Tags.PixelXDimension));
         var file = AppendToFreshTiff(profile);
         try
         {
@@ -281,7 +277,7 @@ public sealed class RawStandardExifTests
         return warnings;
     }
 
-    private static string AppendToFreshTiff(ExifProfile profile)
+    private static string AppendToFreshTiff(byte[] profile)
     {
         var path = Path.Combine(Path.GetTempPath(), "filmbatch-std-exif-" + Guid.NewGuid().ToString("N") + ".tif");
         using (var base_ = new MagickImage(MagickColors.Black, 4, 4)) { base_.Format = MagickFormat.Tiff; base_.Write(path); }

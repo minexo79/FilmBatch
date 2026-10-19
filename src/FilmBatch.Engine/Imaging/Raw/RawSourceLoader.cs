@@ -100,14 +100,13 @@ internal static class RawSourceLoader
         if (container is null) return null;
         try
         {
-            var profile = FilmBatch.Engine.Exporting.TiffMetadata.NormalizeCr3(container.Cmt, 0, 0);
-            var bytes = profile.ToByteArray();
-            if (bytes is null || bytes.Length <= 6) return null;
+            var bytes = FilmBatch.Engine.Exporting.TiffMetadata.NormalizeCr3(container.Cmt, 0, 0);
+            if (bytes.Length <= 6) return null;
             var tiff = new byte[bytes.Length - 6];
             Buffer.BlockCopy(bytes, 6, tiff, 0, tiff.Length);
             return new MemoryStream(tiff, writable: false);
         }
-        catch (Exception ex) when (ex is InvalidDataException or IOException or OverflowException or ImageMagick.MagickException)
+        catch (Exception ex) when (ex is InvalidDataException or IOException or OverflowException)
         {
             return null;
         }

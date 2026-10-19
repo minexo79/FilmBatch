@@ -15,6 +15,9 @@
     <ProjectReference Include="..\..\src\FilmBatch.Raw\FilmBatch.Raw.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <None Update="Fixtures\capture.heic" CopyToOutputDirectory="PreserveNewest" TargetPath="capture.heic" />
+  </ItemGroup>
+  <ItemGroup>
     <Using Include="Xunit" />
   </ItemGroup>
 </Project>
