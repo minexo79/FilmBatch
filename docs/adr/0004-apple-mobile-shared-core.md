@@ -2,7 +2,7 @@
 
 - 日期：2026-10-19
 - 狀態：已採納開發方向；正式 UI 尚未選定，iPad／iPhone 支援尚未驗證。
-- 授權：先記錄共用技術決策並分組提交實驗、不 push；後續授權補齊工具鏈、開發隔離 Avalonia prototype 與 pure iOS／官方 Simulator 測試。最新要求：其他 prototypes 無論測試結果皆本機 commit；Simulator 測試實際成功後才獨立 commit；全部通過後繼續共用主要邏輯的 iOS 介面與功能移植。不 push，實機驗證仍延後。
+- 授權：先記錄共用技術決策並分組提交實驗；後續補齊工具鏈、開發隔離 Avalonia prototype 與 pure iOS／官方 Simulator 測試。Simulator 測試實際成功後才獨立 commit；六案例全通過後，使用者明確授權本次 commit／push 並繼續共用主要邏輯的 iOS 介面與功能移植。實機驗證仍延後。
 - 執行記錄：[初始技術實驗](../superpowers/plans/2026-10-19-apple-mobile-technical-entry.md)、[Simulator／prototype 與目前工具鏈 gate](../superpowers/plans/2026-10-19-ios-simulator-prototype.md)。
 
 ## 決定
@@ -33,7 +33,7 @@
 
 報告區分 `pass`、`fail`、`blocked`、`skipped`；缺 SDK、缺原生庫或未執行實機，不得計為通過。所有實驗只寫指定輸出目錄，不修改原始照片、既有使用者設定或模型。
 
-隔離 Avalonia prototype 延伸本決定，但不是正式 UI 定案：重用同一 `ProbeRunner`，不引用桌面產品 App／Dock。兩個 iOS Release app 已在 Xcode 27.1 實驗工具鏈建置成功，UIKit 與 Avalonia 均已於官方 iOS 27.1 Simulator 執行，產生 Core／RAW、RGB16 ImageIO、ONNX 的真實成功報告；GPU 保留缺少 iOS Dawn 的阻擋。兩個 app 的手動取消／重跑及 Avalonia 真實預覽通過，但完整六個 UI 案例目前 4 pass／2 fail：兩個背景案例的實際切換前置條件失敗。因此不提交 Simulator 測試，也不啟動以全通過為條件的主要功能移植。[本輪結果](../superpowers/plans/2026-10-19-ios-simulator-prototype.md#已實測結果2026-10-19)保留失敗與下一步，不由可啟動或 Mac 成功推定 Simulator／實機均已支援。
+隔離 Avalonia prototype 延伸本決定，但不是正式 UI 定案：重用同一 `ProbeRunner`，不引用桌面產品 App／Dock。兩個 iOS Release app 已在 Xcode 27.1 實驗工具鏈建置成功，UIKit 與 Avalonia 均已於官方 iOS 27.1 Simulator 執行，產生 Core／RAW、RGB16 ImageIO、ONNX 的真實成功報告；GPU 保留缺少 iOS Dawn 的阻擋。後續開啟 Xcode 27 的 Device Hub，排除只有 CoreSimulator 而沒有可見視窗的問題；將背景驅動改成直接啟用 SpringBoard 後，完整六個 UI 案例 6 pass／0 fail／0 skip／0 expected failures，包含兩個 app 的真正背景取消與前景重跑、手動取消／重跑及 Avalonia 真實預覽。Simulator 測試依授權獨立提交 `d3a21b9`；使用者隨後授權推送並接續主要功能移植。[本輪結果](../superpowers/plans/2026-10-19-ios-simulator-prototype.md#已實測結果2026-10-19)保留先前失敗與修正後證據；Simulator UI 成功不推定正式 SDK 相容性、GPU 或實機支援。
 
 ## 下一輪才決定的事項
 

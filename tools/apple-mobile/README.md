@@ -116,6 +116,19 @@ dotnet run --project tools/apple-mobile/Simulator -c Release -- verify
 
 UIKit identifiers：`Probe.Run`、`Probe.Cancel`、`Probe.Status`、`Probe.Report`。Prototype identifiers：`Prototype.Run`、`Prototype.Cancel`、`Prototype.Status`、`Prototype.Report`、`Prototype.Preview`。兩個 iOS host 都接受真正的 workload launch arguments：`-probe-width`、`-probe-height`、`-probe-raw`、`-probe-model`、`-probe-provider`、`-probe-no-gpu`；XCTest 使用 48MP 工作建立取消視窗，產品來源沒有人工延遲。背景案例必須確認 app 真正進入 background，不能只送出 Home 事件就宣稱生命週期已驗證。
 
+### 可見的 Simulator 視窗
+
+本輪 Xcode 27 的 GUI 入口是 [Device Hub](https://developer.apple.com/documentation/xcode/device-hub)，不是舊的 `Simulator.app`。`simctl bootstatus` 成功只證明模擬裝置已啟動，不代表螢幕視窗已開啟：
+
+```bash
+open "/Applications/Xcode.app/Contents/Applications/DeviceHub.app"
+```
+
+在 Device Hub 選取這次建立的裝置，再點選 **View Screen**；可用 **Switch to compact window** 將裝置畫面獨立顯示。XCTest 會自行啟動測試 app；手動觀察時可從裝置主畫面開啟 FilmBatch Mobile Prototype。這條路不使用 System Events，也不更改隱私權限。操作說明見 [Apple 官方文件](https://developer.apple.com/documentation/xcode/interacting-with-your-app-in-device-hub)。
+
+Duo 有多個顯示面，`simctl io <udid> screenshot` 須指定 `--display=primary`，避免取得未使用的 integrated display。背景測試直接啟用 `com.apple.springboard` 後，仍須等待被測 app 進入 `runningBackground` 或 `runningBackgroundSuspended`，才驗證取消、空報告及前景重跑；送出 Home 按鍵／手勢本身不算通過。
+
+
 ### 工具鏈與 Xcode 27.1 實驗
 
 原本固定的 .NET iOS SDK `26.0.11017` 要求 Xcode 26.0；後續使用者明確改選 **Xcode 27.1／iOS 27.1**。原 SDK 與 repository `global.json` 保持不變，另建隔離 SDK，安裝官方 workload set `10.0.401.1`，取得 iOS SDK `27.0.10722`。
