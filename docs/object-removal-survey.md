@@ -1,8 +1,8 @@
 # AI 物件移除：模型、畫質與操作 Survey
 
 - 查核日期：2026-10-20。用途：**研究／比較與實作選型提案，不是已支援功能**。
-- 結論：把「選取」與「重建」分開；**目前不採用任何候選作為通用物件移除的產品預設，T1 維持 NO-GO**。MI-GAN 保留快速工程對照，EfficientSAM 僅作待人工修正的選取提案，Moebius 暫緩；沒有量測出「最佳畫質」模型。依據見[續驗決策](#10-續驗與採用決策)，VAE 不等價與未測場景微調候選見[來源續查](#11-權重來源與後續研究)。
-- 已做：來源／設計調查、反方審查、第 9 節前置實驗、第 10 節續驗，以及第 11 節官方 VAE tensor／CPU 元件比較與 checkpoint 來源續查。未做：40 場景人類盲評、Windows／iOS 移除推論、付費 API、私人照片上傳或產品功能實作。
+- 結論：把「選取」與「重建」分開；**目前不採用任何候選作為通用物件移除的產品預設，T1 維持 NO-GO**。MI-GAN 保留快速工程對照，EfficientSAM 僅作待人工修正的選取提案，Moebius 暫緩；沒有量測出「最佳畫質」模型。既有[續驗決策](#10-續驗與採用決策)、[來源續查](#11-權重來源與後續研究)及[場景微調／VAE 內容實驗](#12-場景微調vae-身分與原生續驗)仍成立；新增[多角色替代方案與實驗](#13-多角色替代方案與實驗)只採用研究對照，不改產品需求。
+- 已做：模型／權重來源調查、完整鏈續驗、VAE 內容比較，以及四個平行角色的替代方案調查、OpenCV 古典對照與 .NET RGB16 donor probe。未做：40 場景人類盲評、Windows／iOS 移除推論、付費 API、私人照片上傳或產品功能實作。**第 13 節記錄研究期間整個 `dist/` 消失及 v2 重新凍結資料的邊界；舊收據目前不可讀，不宣稱仍可原地重現。**
 - 配套：[ADR 0005](adr/0005-ai-object-removal.md) 記錄取捨；[操作與資料契約](object-removal-design.md) 固定 UX／色彩與保存邊界；[實作計畫](superpowers/plans/2026-10-20-ai-object-removal.md) 提供 T1–T5 與 OR-01–OR-14 對照。
 
 ## 1. 問題要拆對：選哪裡，與補什麼
@@ -24,7 +24,7 @@
 |---|---|---|---|
 | **MI-GAN-512 核心** | S02 的 MIT 程式碼及獨立 `LICENSE-WEIGHTS`；官方 README／exporter 區分核心與便利 pipeline | FP32 原生數值通過不代表移除成功；續驗大洞生成新彩色形狀，真實目標區域亦出現不相關形狀。只驗固定 512 輸入 | **保留快速工程對照，不採用為通用移除預設**；不把較小洞的少量結果改稱已合格的產品子功能 |
 | **LaMa／big-lama** | S03 程式碼 Apache-2.0；檢視的第一方位置仍未建立 exact checkpoint 權利，issue #368 無回覆 | FFT／exporter／精度與 fallback 仍是未實跑的 artifact 問題；不能由授權卡關推論畫質或工程失敗 | **暫停下載與採用**，取得具名權重的第一方條款或合格 owner 裁決後重議 |
-| **Moebius（ECCV 2026）** | S05 的程式碼及預訓練權重 Apache-2.0 明文與 S06 的 MIT metadata 差異保留；PixelHacker VAE 與官方 SDXL VAE 實測不等價，見第 11 節 | 續驗完整 .NET 模型鏈可執行，但固定噪聲後仍有 strict 數值失敗與高資源成本；已測 `pretrained` 不等於未測的 `ft_places2` | **暫緩工程主線及產品採用**；保留原失敗，場景微調只列獨立研究候選，不宣告整個家族通過或失敗 |
+| **Moebius（ECCV 2026）** | S05 的 code／weights Apache-2.0 明文與 S06 的 MIT metadata 差異保留；原始官方 VAE 不等價，S23 FP16-Fix 轉 FP16 後則與現有 payload 內容一致，見第 11／12 節 | 既有 .NET 完整鏈的 strict fail 與高成本保留；新 `ft_places2` 的同輸入參考仍有碎片／新白色形體，原生證據按 artifact／平台分開記錄 | **暫緩工程主線及產品採用**；不將單一 checkpoint 的反例外推整個家族，也不以來源內容比對取代畫質或散布 gate |
 | **ObjectClear（CVPR 2026）** | S07 的 NTU S-Lab 1.0 含非商業用途限制；完整 base／checkpoint 權利仍須分別追蹤 | 專門處理物件及其影響，適合作陰影／倒影評估參考；SDXL 類完整鏈的資源與原生轉換成本未測 | **品質研究參考，不列一般產品預設**；適用用途、下載或執行須先取得相應資格 |
 | **FLUX.1-Fill-dev** | S08：模型使用的 NC 條款與輸出的使用條款不同；開放程式碼不代表模型可自由商用 | 大型 denoiser 以外還有 VAE／文字元件與採樣成本；量化、offload 可能改變品質／速度。未在本機執行，不能宣稱只支援某類硬體 | **有條件品質參考，不內建或呼叫**；有合法執行權利且測得必要品質優勢時才重議 |
 | **MAT** | S04 的非商業／研究用途限制及 StyleGAN 系相依需分別審查 | 參考實作的自訂算子增加原生轉換成本；不把 CUDA 程式碼存在等同數學上不可轉換 | 不列初次短名單；授權或替代算子取得明確資格時才重議 |
@@ -167,10 +167,11 @@ Moebius repo 的 Apache-2.0 與模型卡 MIT 必須並列，採用時重新檢�
 | S16 | [Apple Photos Clean Up](https://support.apple.com/guide/photos/remove-distractions-and-imperfections-pht5c38b77c5/mac) | UX lens 的原廠文件摘要，協調者未另行直接複核；不判定 Apple 模型內部、可嵌入介面或未測支援能力 |
 | S17 | [Vertex AI 物件移除文件](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/image/edit-remove-objects) | 協調者直接讀公開文件；本輪未呼叫、未查帳務或區域可用性，文件樣例也須在實際採用時重驗，不能直接複製為部署配方 |
 | S18 | [Stability AI SDXL VAE 模型卡](https://huggingface.co/stabilityai/sdxl-vae/blob/6f5909a7e596173e25d4e97b07fd19cdf9611c76/README.md)；[固定 artifact 樹](https://huggingface.co/api/models/stabilityai/sdxl-vae/tree/6f5909a7e596173e25d4e97b07fd19cdf9611c76) | pin `6f5909a7e596173e25d4e97b07fd19cdf9611c76`；第一方卡標 MIT。本輪只取得一份 safetensors、驗證 LFS SHA-256 並做 tensor／CPU 元件比較，結果見第 11 節；不是現有 PixelHacker VAE 的來源證明或產品法律核准 |
-| S19 | [Moebius 場景微調 artifact](https://huggingface.co/api/models/hustvl/Moebius/tree/cd01f47fb648219d3fa605806c5ce00b713faa5e/ft_places2)；[論文 §4.1](https://arxiv.org/html/2606.19195v1#S4.SS1) 與 [OOD 表 7](https://arxiv.org/html/2606.19195v1#Sx1.T7) | 模型 repo 沿用 S06 pin；作者區分蒸餾與分領域微調，OOD 評估使用 Places2／CelebA-HQ 權重。僅讀 metadata／原文，未下載 `ft_places2`、未驗張量相容或畫質 |
+| S19 | [Moebius 場景微調 artifact](https://huggingface.co/api/models/hustvl/Moebius/tree/cd01f47fb648219d3fa605806c5ce00b713faa5e/ft_places2)；[論文 §4.1](https://arxiv.org/html/2606.19195v1#S4.SS1) 與 [OOD 表 7](https://arxiv.org/html/2606.19195v1#Sx1.T7) | 模型 repo 沿用 S06 pin；作者區分蒸餾與分領域微調。第 11 節先讀 metadata；第 12 節已取得精確 `ft_places2` 檔、嚴格載入並做同輸入參考比較，不把論文表格當本機畫質證據 |
 | S20 | [PowerPaint 程式碼 MIT](https://github.com/open-mmlab/PowerPaint/blob/5b4c3d52291709fcec2a1870d987da693fd3549c/LICENSE)；[v2.1 卡](https://huggingface.co/JunhaoZhuang/PowerPaint-v2-1/blob/5ae2be3ac38b162df209b7ad5de036d339081e33/README.md) 與 [元件樹](https://huggingface.co/api/models/JunhaoZhuang/PowerPaint-v2-1/tree/5ae2be3ac38b162df209b7ad5de036d339081e33?recursive=true) | 程式碼 pin `5b4c3d52291709fcec2a1870d987da693fd3549c`；模型 pin `5ae2be3ac38b162df209b7ad5de036d339081e33`。卡標 Apache-2.0，但 base／VAE／文字元件權利另審；沒有下載、原生轉換或資源量測 |
 | S21 | [BrushNet README](https://github.com/TencentARC/BrushNet/blob/0f9d9e54ca85c40a11a8f0504b4b5b2e7e8fd14d/README.md) 與 [Apache-2.0 條款](https://github.com/TencentARC/BrushNet/blob/0f9d9e54ca85c40a11a8f0504b4b5b2e7e8fd14d/LICENSE)；[具名 adapter 樹](https://huggingface.co/api/spaces/TencentARC/BrushNet/tree/0ae4b1d340aa8c60de67b117fcde71e4a2b06dbd/data/ckpt/segmentation_mask_brushnet_ckpt) | code pin `0f9d9e54ca85c40a11a8f0504b4b5b2e7e8fd14d`；Space pin `0ae4b1d340aa8c60de67b117fcde71e4a2b06dbd`。另需 SD base 等元件；本輪只讀來源及 metadata，未執行 |
 | S22 | [Qualcomm AOT-GAN 卡](https://huggingface.co/qualcomm/AOT-GAN/blob/da4d45719d75f84e67c4def8623641a481bc6779/README.md)；[LICENSE](https://huggingface.co/qualcomm/AOT-GAN/blob/da4d45719d75f84e67c4def8623641a481bc6779/LICENSE) 與 [release 指標](https://huggingface.co/qualcomm/AOT-GAN/blob/da4d45719d75f84e67c4def8623641a481bc6779/release_assets.json) | pin `da4d45719d75f84e67c4def8623641a481bc6779`，release `0.64.0`；卡標 MIT，但 LICENSE 僅轉指另一個 AttnGAN repo，未建立原 AOT checkpoint 的明確來源鏈。卡列 CelebAHQ／512／58 MB，不外推一般攝影品質或 ORT 1.25.0 相容 |
+| S23 | [SDXL-VAE-FP16-Fix 模型卡](https://huggingface.co/madebyollin/sdxl-vae-fp16-fix/blob/207b116dae70ace3637169f1ddd2434b91b3a8cd/README.md)；[固定 artifact 樹](https://huggingface.co/api/models/madebyollin/sdxl-vae-fp16-fix/tree/207b116dae70ace3637169f1ddd2434b91b3a8cd) | pin `207b116dae70ace3637169f1ddd2434b91b3a8cd`；卡標 MIT，作者描述基於 SDXL-VAE 0.9 微調並縮小權重／bias，保留些微輸出差異。第 12 節實測轉 FP16 後的參數內容一致，不代表歷史來源、推論等價或全鏈散布核准 |
 
 **來源調查的停止點**：已取得區分方法、候選、選取出口、授權風險與 FilmBatch 插入點所需的原始來源；之後經使用者另行授權執行第 9 節實驗。其餘問題需要指定 artifact、品質資料或 Human Review，不能靠增加論文引用解決。
 
@@ -321,6 +322,8 @@ CoreML-request 留下約 2.3 GiB cache；RSS 不包含外部服務程序。此�
 
 ## 11. 權重來源與後續研究
 
+本節是前一輪來源研究的紀錄；其「未下載／未測 `ft_places2`」及下一步建議，已由[第 12 節](#12-場景微調vae-身分與原生續驗)的後續實驗更新。舊 VAE／原生數值失敗仍原樣保留。
+
 ### 本輪範圍與決定
 
 使用者進一步授權「繼續研究，並提交文件並推送」。發布範圍僅限目前研究分支的 Survey、ADR、操作設計、實作計畫與文件索引；不合併 `master`，不納入模型、照片、參考 tensor 或實驗目錄。產品程式與 T1／T5 判準未變，T2–T5 仍未開始。下列來源查核與實驗均為 2026-10-20；新 checkpoint、設定、exporter 或授權版本需重新取得資格。
@@ -353,7 +356,7 @@ S06 的固定 HF repo 同時列 `pretrained`、`ft_places2`、`ft_celebahq`、`f
 | student artifact | bytes | SHA-256／狀態 |
 |---|---:|---|
 | `pretrained/diffusion_pytorch_model.bin` | 905,297,927 | `6c9ee08ce467af48767b74416646d82f8a0c1dcfb558c478e635cef0ca8b2ad2`；第 9／10 節已測 |
-| `ft_places2/diffusion_pytorch_model.bin` | 905,298,356 | `6525afb888e55f9b5c74fa0a5d19ca0762d720d6c716fb0f8422fbeb6868a09a`；只核對第一方 metadata，未下載／執行 |
+| `ft_places2/diffusion_pytorch_model.bin` | 905,298,356 | `6525afb888e55f9b5c74fa0a5d19ca0762d720d6c716fb0f8422fbeb6868a09a`；第 11 節當時只核對 metadata，後續下載／實測見第 12 節 |
 
 不能由兩檔大小接近或共用模型設定就宣稱 tensor keys／shape 或 runtime 100% 相容。現有反例適用已測 `pretrained`，不能移植為 `ft_places2` 的品質判決；反過來，微調名稱也不保證消除碎片、新物件或資源問題。原生 strict fail 與高成本仍是真實、未撤銷的證據。
 
@@ -383,3 +386,206 @@ TORCH_FORCE_WEIGHTS_ONLY_LOAD=1 dist/object-removal-feasibility-20261020/venv/bi
 ```
 
 原第 9／10 節的 artifact、失敗、參考與 profiler 保持不變。本輪只縮小來源與選型未知項，沒有宣告 T1 通過、產品整合完成或 Windows／iOS 支援。
+
+## 12. 場景微調、VAE 身分與原生續驗
+
+### 選擇與實驗邊界
+
+使用者接續要求「從最可行的方案開始實驗並考慮授權及可移植性」。選擇 S19 的 **Moebius `ft_places2` 對 `pretrained`**：已有真正的 student、VAE、參考與分 session 原生鏈，新增具名場景權重即可比較，不需先引入 PowerPaint／BrushNet 的另一套大型基底。這是最小新增相依面的研究路線，不是先宣告畫質或速度勝出。本輪未改產品程式、未 commit／push。
+
+固定第 10 節 NIND 同一場景的 ISO 200／6400 原檔、既有 RGB／mask 雜湊，使用 `iso200-subject-object`、`iso6400-subject-object`、`iso200-subject-contact-shadow`、`iso200-texture-large` 四案；最後一案遮罩約占 50.82%。作者參考新增四案 `ft_places2` 與三案 `pretrained`；舊 ISO 200 主體參考唯讀沿用，沒有重跑原失敗。條件仍為 512×512、seed 0、CFG 2.5、requested steps 20／strength 0.99、實際 19 步、noise offset 0.0357、posterior sampling 與原作者前後處理。四案是**單一場景的工程反例**，不是四個獨立場景，不取代 16 張開發集、24 張 T5 留出集或三位人類盲評。
+
+### 精確 student 與 VAE 內容
+
+| 本輪材料 | bytes | SHA-256 |
+|---|---:|---|
+| 場景 student `ft_places2/diffusion_pytorch_model.bin` | 905,298,356 | `6525afb888e55f9b5c74fa0a5d19ca0762d720d6c716fb0f8422fbeb6868a09a` |
+| 新 FP32 ONNX denoiser，opset 17 | 905,108,134 | `4d6a39aff749e2c93a6b8221ce8b89831f5c7953ac75520a5b85724c79894b29` |
+| S23 `diffusion_pytorch_model.safetensors`，僅作內容比較 | 334,643,238 | `1b909373b28f2137098b0fd9dbc6f97f8410854f31f84ddc9fa04b077b0ace2c` |
+
+student 兩檔均以顯式 `weights_only=True`、`TORCH_FORCE_WEIGHTS_ONLY_LOAD=1` 載入實際模型，`strict=True` 沒有 missing／unexpected keys。共用的 1,203 個 tensor key 無 shape／dtype 差異，但**沒有任何 tensor 全等**，包括 learned embedding；不是把相近檔案大小當作相容證據。四對作者參考的影像、遮罩、噪聲與 VAE 初始條件一致；輸出差異不能歸因於偷換 seed／VAE。
+
+S23 與第 11 節的 S18 官方原始 VAE 是**不同候選**，不能混稱「官方檔」。實測現有 PixelHacker `.bin` 的 FP16 payload，與 S23 FP32 權重**做一次 FP16 rounding 後逐位元一致**：
+
+| VAE 內容檢查 | 結果 |
+|---|---|
+| key／shape 與元素數 | 248／248 相同；各 83,653,863 個元素 |
+| S23 原始 FP32 與現有 FP16 提升值全等 | 0／248 tensor；有非零 rounding 距離 |
+| S23 轉 FP16 與現有 payload 的 bitwise equality | 248／248 tensor；0 個不同位元模式；無非有限值 |
+| 獨立複核 | JS 解析 safetensors header／串流 SHA-256；NumPy raw mmap／FP16 cast 後比較 `uint16`，不是重用 worker 的 `torch.equal` 判定 |
+
+這縮小了參數內容關係，**不證明誰從誰複製、歷史來源或訓練 lineage**。設定檔的 provenance 與部分缺省欄位仍不同；沒有以相同 scaling factor 推定功能等價。本輪沒有將 S23 原始 FP32 換進移除鏈，也沒有執行它的 encode／decode；參考與原生實驗仍使用既存 PixelHacker VAE。第 11 節 S18 的八組等價性 fail 與先前 ORT VAE 漂移均未撤銷。
+
+### 畫質反例與授權處置
+
+協調者直接檢視四對實際輸出，而非只採信 worker 的判語：
+
+| 固定案例 | 觀察與採用影響 |
+|---|---|
+| ISO 200 主體 | 兩版均大致移掉中央主體，但綠色孤立碎片與不自然延伸仍在；沒有看到值得推進產品的必要改善 |
+| ISO 6400 主體 | 場景版同樣保留綠色碎片／延伸；不能由另一 ISO 當作另一獨立場景 |
+| 主體加接觸陰影 | 擴大涵蓋範圍仍未解除碎片反例；不能將問題直接歸因為使用者少畫遮罩 |
+| 大面積牆面紋理 | 原圖只有牆面紋理，兩版均生成顯眼的白色羽瓣狀形體，並改變紋理；命中預先固定的「產生新顯眼結構」反例 |
+
+兩版像素確有差異，不是同一個結果檔；上述只是在固定案例／條件下未解除採用反例，不是宣布所有 Moebius 或 diffusion 方法都失敗，也不是人類品質排名。
+
+權利仍逐鏈分開：S05 README 明列 Moebius code／pretrained weights 的 Apache-2.0 與允許商用文字，S06 HF 卡的 MIT metadata 差異照錄；S23 卡的 MIT 與 SDXL-VAE 0.9 基底描述亦保留。**研究取得資格不等於產品散布核准**；owner／法律審查仍須處理實際採用檔、PixelHacker 標籤差異、基底與訓練資料 lineage、必要通知。內容 bitwise 相符不補出權利讓與證據。LaMa 仍未取得具名權重澄清，沒有下載；未增加其他完整模型鏈。
+
+### 新 artifact 的原生可移植性與成本
+
+在同一部 Apple M3／16 GiB，以既有 .NET 10／ONNX Runtime `1.25.0` 執行新圖，沒有增加產品 runtime。新 denoiser 直接消費本身 PyTorch 參考的第一步與中段輸入；固定 `abs(native-reference) <= 0.0002 + 0.002*abs(reference)`：
+
+| CPU 單步案例 | 最大絕對差 | 超界元素 | warm p50／p95，ms |
+|---|---:|---:|---:|
+| step 00，t=900 | 0.000003815 | 0／32,768 | 4,276.64／4,278.32 |
+| step 08，t=500 | 0.000004351 | 0／32,768 | 4,315.43／4,487.81 |
+
+兩案均 strict pass；各五次 warm，計時只含模型執行且開啟 profiling，不是 full-frame 或尾延遲保證。實際 profiler 為 CPU provider，不推定 CoreML／ANE。原生 `RunOptions.Terminate` 在兩案分別約 3.98／4.04 ms 返回，隨後同 session 可重用；只證明 raw native 取消／重用，**不證明產品 UI／cache 生命週期**。
+
+完整鏈從 image／mask／noise 重新計算兩次 VAE encode、19 次 denoiser／CFG／DDIM、VAE decode 與貼回；參考 latent 只作比較，沒有作為原生中間輸入：
+
+| 完整鏈 CPU 案例 | 鏈時間，s | 系統 max RSS，GiB | VAE encode 超界，原圖／遮罩圖 | pre-paste 超界 | 最終貼回超界 |
+|---|---:|---:|---:|---:|---:|
+| ISO 200 主體 | 99.74 | 6.797 | 0／1 | 39 | 998 |
+| ISO 6400 主體 | 102.15 | 6.795 | 0／0 | 1 | 1,044 |
+| 主體加接觸陰影 | 105.17 | 6.795 | 0／2 | 135 | 1,627 |
+| 大面積紋理 | 113.00 | 6.801 | 2／8 | 14 | 2,292 |
+
+**四案都完整執行，但四案 strict fail，不能將「跑得動」寫成可採用。** VAE／逐步數值漂移與近似 Pillow 貼回仍在；ISO 200 最終最大差約 2／255，不能統稱只剩一個 LSB。每案僅一次完整鏈計時，含嚴格比對、checkpoint I/O 與 profiling，不含影像 decode／PNG／產品 UI；RSS 取 `/usr/bin/time -l` 的完整 probe process，不使用此 Mac 上為零的 .NET peak 欄位，不是手機上限。
+
+NumPy 從實際原生 `.f32` 逐項重算 186 組比較，與 C# 的超界計數全部一致，其中 77 組比較 fail；**獨立核對成功不表示數值通過**。四對參考輸入逐位元一致，原照片及凍結輸入雜湊未變。每個 encode／denoiser／decode session 使用獨立 profiler 路徑並核對實際事件；不是圖節點百分比。模糊 matte 權重為零處保留輸入 bytes；這不是原二值遮罩之外嚴格零變動的宣稱。
+
+新 artifact 的 **CoreML 未跑**：CPU wave 後剩約 6.23 GiB，無法同時容納前次觀察約 2.3 GiB 的完整鏈 cache 並保持 5 GiB 停止線及餘裕；不是判定 CoreML 不支援。**Windows DirectML 與 iOS 均未跑**。Mac CPU 結果與先前不同 checkpoint 的 CoreML 結果不可合併成三平台已驗證。
+
+### 決定、失敗紀錄與重現
+
+**本輪實驗完成，產品採用仍 NO-GO。** 新場景權重有真實原生 CPU 單步資格，但沒有解除畫質反例或完整鏈 strict fail，成本也未提供產品採用理由。先停在這組 checkpoint／設定的小樣本前測，不把 T1 未執行項勾成完成，不進 T2–T5，也不以小洞子功能、古典 fallback 或放寬容差偷換通用移除需求。
+
+下一步不是再改 mask／seed 挑漂亮結果：只有具名且權利可追溯的另一候選，先在同一批反例消除顯眼新結構並顯示必要品質收益，才值得擴至原 T1 開發集，投入精確原生數值／貼回與 full-frame／平台工程。24 張 T5 留出集保持未動；改 checkpoint、VAE、exporter、ORT 或資料政策即重新取相應資格。產品 owner 決定是否繼續候選比較，散布／訓練 lineage 仍須相應人類審查；沒有藉本次研究自動新增大型模型或發布。
+
+證據位於忽略目錄 `dist/object-removal-places2-20261020/`：`frozen-inputs.json`、`student/result.json`、`student/checkpoint-comparison.json`、`student/onnx/cases.json`、`vae/result.json`、`vae/per_tensor.json`、`vae-numpy-verification.json`、`native-runs.json`、`native-summary.json`、`numeric-verification.json`、`visual-inspection.json` 與 `paired-contact.png`。實際 profiler、raw tensor、逐次命令／RSS／錯誤留在該目錄；不隨研究文件發布。
+
+保留的 harness 失敗亦未洗掉：VAE 任務的預期 SHA 少寫首字元，原 mismatch receipt 保留，協調者另由固定 HF LFS 與本機串流 hash 核對完整值；中段 timestep 初次索引斷言錯誤在執行交叉比對前修正；macOS `ru_maxrss` 的舊欄位單位誤標由明確 bytes／GiB 記錄解釋。新宿主亦讓 mask guard 僅反映 mask 比對，不再因較早 VAE fail 誤報 mask 不一致；原始 fail receipt 不修改。
+
+執行來源與 manifest 封存於 `verification-harnesses.tar.gz`，不包含模型、照片、raw tensor 或 cache；重現需保留既有 venv、上述模型／輸入與舊 VAE 圖，先解開至原忽略目錄。腳本保留本機路徑；搬機需重綁路徑，不能把這份重現指令當成跨平台驗收：
+
+```bash
+ROOT=dist/object-removal-places2-20261020
+PY=dist/object-removal-feasibility-20261020/venv/bin/python
+tar -xzf "$ROOT/verification-harnesses.tar.gz" -C "$ROOT"
+TORCH_FORCE_WEIGHTS_ONLY_LOAD=1 "$PY" "$ROOT/verify_vae_numpy.py"
+"$HOME/.dotnet/dotnet" build "$ROOT/native/native-runner/NativeRunner.csproj" -c Release --disable-build-servers -p:UseSharedCompilation=false
+"$HOME/.dotnet/dotnet" build "$ROOT/native/MoebiusChain/MoebiusChain.csproj" -c Release --disable-build-servers -p:UseSharedCompilation=false
+"$PY" "$ROOT/run_native.py"
+"$PY" "$ROOT/inspect_results.py"
+"$HOME/.bun/bin/bun" "$ROOT/verify_documents.mjs" "$PWD"
+```
+
+## 13. 多角色替代方案與實驗
+
+### 範圍、證據中斷與資料版本
+
+使用者要求繼續調查其他模型／方案，以多角色平行進行 evidence-based Socratic critical thinking，之後實驗並提交文件。本輪只更新五份研究文件並作本機隔離實驗；**不 push、不實作產品、不上傳照片、不呼叫付費服務，也不把 Clone／Telea 當作隱藏 AI fallback**。
+
+四個角色完成來源調查後，工作目錄出現外部變更：整個 `dist/` 已不存在，可用空間由約 6.2 GiB 變為 29 GiB；產品來源與五份文件仍在。前述模型、venv、原圖、收據及本輪 v1 材料因此不可讀。既有章節保留當時觀察，不追改失敗；**其原始 artifact 現已缺失，不能把歷史數字當作本輪可重新核對的輸出**。只從仍存的記憶體 metadata 恢復來源雜湊與 v1 清單，未復原或重跑舊模型。記錄見 `workspace-interruption.json`。
+
+重新建立的 **v2 是新資料，不是舊測試的重跑**：
+
+- 四個公開 NIND JPEG 縮圖：droid ISO 200／6400、磚牆、自行車，共 **3 個攝影場景**，另有 2 個確定性 RGB16 梯度／線條表面。
+- 共 16 個 512×512 案例：12 個有原圖參考的洞內重建、4 個沒有唯一乾淨背景參考的實際移除。所有演算法的洞內 conditioning 先歸零；原圖只供評估，donor 必須完全落在已知區。
+- 使用 Commons 明列的 960px 縮圖與新 crop／mask；首次原始磚牆檔請求 HTTP 429，未重試該請求。不能與第 9–12 節全解析度裁片直接比較，也不能用縮圖判定完整感光雜訊保存。
+- 攝影資料本身是 RGB8 JPEG；浮點或 RGB16 儲存不增加原始資訊。只有另製的程序化表面含真正非 8-bit 量化值；非均勻 alpha 也是合成測試，不是產品透明影像、RAW 或 HDR 驗收。
+- 作者 Trougnouf（Benoit Brummer）；頁面授權 CC-BY-4.0，與 EXIF 的 CC-BY-SA-4.0 差異並列保存。照片及衍生輸出不隨文件提交。輸入 SHA-256 在推論前凍結；24 張 T5 留出集未使用。
+
+### 平行角色與主張裁決
+
+實際啟動四個並行 scout 工作；沒有宣稱呼叫特定外部模型，也沒有把角色共識當成實測。原始建議中的過度主張由協調者核對第一手來源後裁決，修正意見不是第二份獨立實驗。
+
+| 角色 | 質疑與可回答的證據 | 採用與不同意之處 |
+|---|---|---|
+| `CompactLearnedLens`：小型學習式重建 | 小檔案、Apache 原始碼是否足以證明精確權重可用？需具名權重 grant、來源位元組對應及實際圖／照片結果 | 採用 AOT 的候選線索；不同意以原始碼授權＋HF 鏡像直接核准 checkpoint。ZITS 多檔大小未知，不刊登估算總和 |
+| `GenerativeRouteLens`：生成式與完整鏈 | one-step 或小型 LoRA 是否省去大型 base？檢查必需 artifact 的真實 bytes，而非只數 adapter | 採用 OSOR 新路線與逐元件條款；捨棄未證實的整鏈 GiB 總數、無法解析的 pin 與「所有路線授權失敗」說法 |
+| `ClassicalInteractiveLens`：古典與 donor | 不生成新物體，是否就等於照片自然？用相同 mask 實跑、保留紋理／結構反例及位元深度代價 | 採用顯式研究對照；捨棄未量測毫秒／記憶體保證、品質上下界與專利到期算術所導出的法律結論 |
+| `WorkflowEvidenceLens`：操作與評估 | 沒有通用本機模型，是否仍有誠實的手動／外部工作流？需真實 API 契約、使用者成本與資料外送邊界 | 保留工作流研究；把「零公開 SDK」改為本輪未建立整合證據，不把 staging 範例、模型宣傳或修圖結果保存當成產品已支援 |
+
+最強反對意見是：古典對照沒有回答「通用 AI 移除」需求。裁決接受此限制；它們只檢驗速度、格式、可保存合成與失敗形態，**不能解除 T1，也不能據此縮減原需求**。另一個重要反例是：高 PSNR 的平滑填補可能很不自然，合理但不同的背景也可能低 PSNR；真實移除不計算相對於被刪物體原圖的 PSNR。
+
+### 候選採用帳本
+
+以下 `adopted` 只指**本輪研究對照**；沒有產品模型或功能被採用。`deferred` 不表示所有裝置不支援，也不是法律意見。保留最初 700 MiB 新材料上限作本輪研究限制，不把它寫成永久產品上限；實際超額另見下方。
+
+| ID | 方案與第一手證據 | 狀態 | 理由與重新開啟條件 |
+|---|---|---|---|
+| A01 | OpenCV 4.10 Telea／Navier–Stokes，[來源／格式契約](https://raw.githubusercontent.com/opencv/opencv/71d3237a093b60a27601c20e9ee6c3e52154e8b1/modules/photo/src/inpaint.cpp)、[Apache-2.0](https://raw.githubusercontent.com/opencv/opencv/71d3237a093b60a27601c20e9ee6c3e52154e8b1/LICENSE) | adopted：顯式對照 | 已實跑；三通道只支援 RGB8，單通道另支援 uint16／float32。分平面與數值尺度不是無成本的等價替代；不引入產品 Python／OpenCV runtime |
+| A02 | 指定來源直接複製、[OpenCV Poisson cloning 契約](https://raw.githubusercontent.com/opencv/opencv/71d3237a093b60a27601c20e9ee6c3e52154e8b1/modules/photo/include/opencv2/photo.hpp) | adopted-partial：人工來源對照 | 固定 donor 位移、3 個小洞，另跑 .NET RGB16。Poisson API 是三通道 RGB8，不能宣稱原生 RGB16；人工 donor 不等於自動選取或通用重建 |
+| A03 | [AOT-GAN 原始程式](https://github.com/researchmm/AOT-GAN-for-Inpainting/blob/2cd1afd8fdfabb101c678f6062d14bc7d302509e/src/model/aotgan.py)、[官方釋出資料夾](https://drive.google.com/drive/folders/1bSOH-2nB3feFRyDEmiX81CEiWkghss3i)、[HF artifact 清單](https://huggingface.co/api/models/NimaBoscarino/aot-gan-places2/tree/efa10114468c163df0ba650d6af5681cec6ba154) | deferred：精確權重資格未閉合 | HF `pytorch_model.bin` 為 60,846,567 bytes，LFS SHA-256 `bccbee30d45e8682abfa803f2c7b1268a637d5b9d7f5fb0048765ffd542e8843`。已讀 generator 的卷積／dilation／resize／normalization，未匯出圖。原始碼 Apache-2.0 不補出鏡像的獨立權重 grant 或官方檔逐位元 lineage；本輪不下載 |
+| A04 | [ZITS 第一手 pipeline](https://github.com/DQiaole/ZITS_inpainting)、其連結的 ZITS++／LSM-HAWP／SSU／LaMa | deferred：多元件與精確材料未知 | 不是一個小型 structure token 就完成填補；需結構偵測／恢復、upsampling、texture restorer。完整 checkpoint bytes、權利、FFT 匯出與原生數值仍須逐件核對；不把 training CUDA 指令直接當推論不支援證據 |
+| A05 | [FcF 來源](https://github.com/SHI-Labs/FcF-Inpainting)、[含 NVIDIA 例外的 LICENSE](https://github.com/SHI-Labs/FcF-Inpainting/blob/main/LICENSE) | deferred：權重／相依／匯出資格 | 不能從 Apache badge 清除第三方條款，也不能因含 CUDA 元件就斷言沒有 CPU reference。未取得或執行 `.pkl`，完整大小、精確載入安全與 portable graph 未建立 |
+| A06 | [OSOR pin](https://github.com/Zhouqm-Git/osor/blob/d5b68e822996d61aae6ba612e5e9b5a14f576879/README.md)、[模型 pin／bytes](https://huggingface.co/api/models/QinmingZhou/OSOR/tree/9288156766b1df44e5f50fb697876a6f2fd8c062/osor-sdxlinpainting/weights) | deferred：完整 base／材料及契約 | SDXL Phase II 單檔即 3,112,296,806 bytes，另需 base。code MIT、SDXL checkpoint Open RAIL++-M、FLUX checkpoint NC 分開。作者宣稱 one-step／effect-aware，非本機品質證據；預設不 paste-back、alpha 可擴到原 mask 外，需先解決接受區域與保護背景契約 |
+| A07 | 第 11 節 S20 PowerPaint v2.1、S21 BrushNet 的具名 checkpoint 與 base | deferred：完整鏈材料 | 既有清單的 3,347,074,737-byte UNet、2,475,354,520-byte BrushNet 分支各自已大於本輪上限；不另編完整鏈總量。沒有新下載、推論或 Mac／Windows／iOS 能力結論 |
+| A08 | [原作者 PatchMatch 發布頁](https://gfx.cs.princeton.edu/pubs/Barnes_2009_PAR/)；exemplar／Criminisi 類 | study／deferred | 原作者包是 noncommercial research-only 的 MATLAB mex matching core，**不包含 synthesis application**。第三方 MIT wrapper 不自動清除整鏈權利。未作專利有效性、侵權或商用 clearance 判定；本輪不以簡化 donor copy 冒稱 PatchMatch |
+| A09 | [OpenCV contrib FSR／ShiftMap 契約](https://raw.githubusercontent.com/opencv/opencv_contrib/4.10.0/modules/xphoto/include/opencv2/xphoto/inpainting.hpp) | deferred：本輪未安裝 contrib | `xphoto` 的 non-zero mask 代表有效區，與 `cv::inpaint` 相反。未增加另一套套件或跑 FSR，沒有其品質／速度結論 |
+| A10 | 明確指定外部編輯器的 raster handoff；Apple Photos Clean Up | study：未建立嵌入／回傳閉包 | 本輪未建立公開 Clean Up 整合介面證據，非宣告所有 SDK 永遠不存在。外部編輯器的授權、遙測、mask／色彩與再匯入各有邊界；啟動程式不等於已完成可重開的非破壞編輯 |
+| A11 | [Adobe Fill Masked Areas 指南](https://developer.adobe.com/firefly-services/docs/photoshop/guides/using-fill-mask/)及 S17 Vertex API | deferred：無外送／付費授權 | Adobe 指南示範 cloud URL、credentials、非同步回應及 staging base；不推定 production endpoint、費用或 16-bit 契約。沒有請求生成、上傳圖片或把 mock payload 當整合完成 |
+
+### 本機實驗與可反證結果
+
+環境是 Apple M3／16 GiB、新建**隔離研究** Python 3.11.17、OpenCV `4.10.0.84`、NumPy `1.26.4`、Pillow `11.3.0`；OpenCV 使用單執行緒。沒有修改全域套件或產品相依。OpenCV tag `4.10.0` 由 GitHub annotated tag 解到 commit `71d3237a093b60a27601c20e9ee6c3e52154e8b1`；不沿用 advisory 的錯誤 SHA。
+
+先凍結 16 案 × 2 演算法 × 3 模式共 96 組，radius 3：RGB8、逐平面 float `[0,1]`、逐平面 float `[0,65535]` 後縮回。另有 3 個小洞各做硬複製、normal／mixed Poisson 共 9 組。donor 位移固定 `(-160,0)`，在看輸出前依幾何檢查沒有洞內或越界取樣，未依畫質挑選來源。
+
+初次 6 組 Poisson 對照的目的區歸零導致黑塊；這是 **harness 初始化反例，不是 Poisson 家族的品質判決**。保留原輸出，另以相同已知 donor 預填目的區，新增 6 組具不同名稱的 normal／mixed 結果，不借用被遮住的原始像素。總計 111 組保存輸出，其中 6 組舊初始化結果不計入可用演算法品質比較。
+
+| 研究模式 | 案例數 | 各案 warm p50 範圍，ms | 實測邊界 |
+|---|---:|---:|---|
+| Telea RGB8 | 16 | 3.90–31.20 | 含輸入／輸出轉換，不把完整原圖降為 RGB8 保存 |
+| Telea float `[0,1]` | 16 | 4.71–65.09 | 共有 1,777,868 個洞內色彩元素越界；保留 raw，再明示 clip，不能以有限值／PNG 成功稱其正確 |
+| Telea float `[0,65535]` | 16 | 4.63–65.19 | 沒有上述越界，但不因此等價於 RGB8 或適合物件移除 |
+| NS RGB8 | 16 | 3.44–35.69 | 只證明此組模式／輸入的實際成本 |
+| NS float `[0,1]` | 16 | 3.30–76.87 | 與 RGB8 路徑不能假定逐像素相同 |
+| NS float `[0,65535]` | 16 | 3.17–61.57 | 不外推 full-frame 或行動裝置 |
+| Python donor 硬複製 RGB16 | 3 | 0.91–0.96 | 有額外人工來源；不是自動填補 |
+| 修正初始化的 normal Poisson RGB8 | 3 | 5.05–5.22 | 含 source／destination 預填的明確研究契約 |
+| 修正初始化的 mixed Poisson RGB8 | 3 | 5.03–8.13 | 未解除來源錯位與接縫反例 |
+
+每案五個 warm 樣本；這是**各案 p50 的範圍**，不是整體 p50、冷載入或 p95 保證。PDE 計時含模式轉換與平面拆合；Poisson 計時為已準備 source／destination 的 cloning 呼叫與輸出轉換。均不含程序 import、檔案 I/O、RGB16 合成、PNG、產品 UI。初次整個 Python wave 的 `/usr/bin/time -l` max RSS 為 124.67 MiB，不能當每個演算法、每個候選或完整產品的峰值。
+
+協調者直接看過 `removal-contact.png`、`structure-contact.png`、`donor-contact.png`：
+
+- 大磚牆洞形成放射／拖曳狀色帶，磚縫沒有被合理重建；小洞與細線也可能留下接縫。沒有因不生成新物體就變成自然照片。
+- 中央 droid 被抹去後，出現牆面／地面的色彩延伸；自行車架區域仍有破碎輪框與背景痕跡。粗略 mask 與遮擋歧義保留，不冒稱語意選取精度測試。
+- `[0,1]` Telea 的灰／高振幅結果是範圍陷阱，不用 clipping 掩飾為成功。較高數值尺度避免這個反例，並不補回大洞語意。
+- donor 保留真實紋理卻可能錯位，程序化漸層出現顯眼色差；修正 Poisson 黑塊不等於自動找到正確來源。這些是小樣本觀察，不是三平台或所有古典方法的永久上限。
+
+已知答案的洞內重建也不能冒充移除排名：
+
+| NS RGB8 的已知答案案例 | 洞內 PSNR，dB | 可支持的判讀 |
+|---|---:|---|
+| 程序化平滑梯度小洞 | 41.23 | 此表面容易被邊界延伸近似 |
+| 磚牆大洞 | 11.54 | 同方法在有結構／紋理的大洞明顯失敗 |
+
+四個真實移除案例沒有這種 PSNR 分數；沒有進行人類盲評，也沒有與已遺失的舊模型輸出做假同場比較。
+
+### 保存、原生邊界、失敗與重現
+
+全部候選只在 mask 內量化／貼回，mask 外 RGB16 與全部目的 alpha 沿用原始 bytes。另用 OpenCV decoder 讀回 **111 個 RGBA16 PNG**，以凍結原始資料及 gzip raw tensor 重新核對：未發現洞內量化、mask 外 RGB 或 alpha 不一致，所有 raw 候選皆有限。反向控制將**整張**程序化 RGB16 經 RGB8 往返，確實改變 745,291 個洞外色彩元素；所以「保留原圖外部」不是空測試。
+
+另建置並執行真正 .NET 10 CLI，對相同 3 組 donor 做直接 RGB16 複製；建置 0 warnings／0 errors。逐組獨立 oracle 各比較 1,048,576 個 RGBA16 samples，皆零差異；越界 donor 被拒絕、無成功輸出。單次內部 copy 約 0.148–0.158 ms，程序 max RSS 約 57.97 MiB；這個計時排除初始化／驗證／I/O，**不能拿來直接對比上表 Python 呼叫成本**。僅證明這個 Mac probe，不證明 OpenCV 已接進 .NET、產品生命週期、Windows 或 iOS。
+
+研究儲存量也有失敗：初次 wave 後實測約 **833.43 MiB，超過事前 700 MiB 估算**，沒有宣稱全程守限。停止擴大模型研究，將本輪 candidate tensors 逐檔 gzip，解壓後核對 SHA-256 才移除自己的未壓縮副本；原始壞結果與 receipt 均保留。修正後資料約 637.67 MiB；5 GiB 可用空間停止線未被觸及。重現腳本仍需事先預留輸出／壓縮暫存，原始 runner 不是可靠的硬配額隔離器。
+
+目前證據只在忽略目錄 `dist/object-removal-alternatives-20261020/`：`panel-adjudication.json`、`workspace-interruption.json`、`photograph-acquisition-v2.json`、`inputs-v2.json`、`experiment-selection.json`、`execution-wave.json`、`results.json`、`poisson-correction.json`、`tensor-storage.json`、`verification.json` 與三份 contact PNG。原始腳本封存於 `verification-harnesses.tar.gz`，不包含 venv、照片或 candidate tensors；驗證依賴現存資料，不能只靠壓縮包重現舊章節：
+
+```bash
+ROOT=dist/object-removal-alternatives-20261020
+PY="$ROOT/venv/bin/python"
+# 在同一工作目錄恢復已封存的本輪驗證來源；不重跑舊模型失敗。
+tar -xzf "$ROOT/verification-harnesses.tar.gz" -C "$ROOT"
+"$PY" "$ROOT/verify_outputs.py"
+"$HOME/.bun/bin/bun" "$ROOT/verify_documents.mjs" "$PWD"
+```
+
+公開攝影來源：[NIND dataset](https://commons.wikimedia.org/wiki/Natural_Image_Noise_Dataset)、[droid ISO200](https://commons.wikimedia.org/wiki/File:NIND_droid_ISO200.jpg)、[droid ISO6400](https://commons.wikimedia.org/wiki/File:NIND_droid_ISO6400.jpg)、[磚牆](https://commons.wikimedia.org/wiki/File:NIND_wall_ISO200.jpg)、[自行車](https://commons.wikimedia.org/wiki/File:NIND_threebicycles_ISO200.jpg)、[CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)。crop、遮罩、合成 alpha、取代洞內容及修補皆屬本輪變更，不暗示作者背書。
+
+**決定：本輪 Survey／對照完成，產品通用移除與 T1 仍 NO-GO。** 沒有為了做出功能而暗換古典方案，也沒有將 source-level 可移植性推測當成模型通過。下一個學習式實驗先閉合具名權重／base 的用途資格與完整材料清單，再在預先固定的開發資料比較；若選 OSOR，還須明訂擴張接受區域的操作語意。有效改善後才進原 T1 品質／原生／平台資格；T2–T5 不因本輪對照自動啟動。
+

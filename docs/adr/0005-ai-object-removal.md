@@ -82,6 +82,8 @@
 
 前置 20 組執行與原始失敗保留於 [Survey 第 9 節](../object-removal-survey.md#9-本機可行性實驗)；[第 10 節續驗決策](../object-removal-survey.md#10-續驗與採用決策) 補上 34 組照片／選取 native strict pass、48 組高精度合成，以及 3 組真實 Moebius 完整模型鏈。**數值通過不代表移除品質通過**：MI-GAN 出現新的顯眼形狀，SAM 有負點／鄰近物越界反例；Moebius 固定噪聲後仍有數值漂移、近似貼回失敗與高資源成本。
 
-因此目前不選任何模型為通用移除產品預設；MI-GAN 留快速對照、SAM 只留待人工修正的提案研究，Moebius 暫緩。LaMa 不下載。[第 11 節來源續查](../object-removal-survey.md#11-權重來源與後續研究) 的 VAE tensor 與 8 組 CPU 元件比較已否定直接視為 FP16 等價檔；原 `.bin` 的精確來源仍未閉合。先前只測 `pretrained`，不替未下載的 `ft_places2` 作畫質裁決；建議先做有條件的同場景開發比較，不先引入 PowerPaint／BrushNet 完整鏈。權利來源與條款差異見 Survey，不由此 ADR 作法律意見。
+因此目前不選任何模型為通用移除產品預設；MI-GAN 留快速對照、SAM 只留待人工修正的提案研究，Moebius 暫緩。LaMa 不下載。[第 11 節來源續查](../object-removal-survey.md#11-權重來源與後續研究) 已否定將原始官方 SDXL VAE 直接視為等價檔；[第 12 節實驗](../object-removal-survey.md#12-場景微調vae-身分與原生續驗) 則確認現有 VAE payload 與 FP16-Fix 轉 FP16 後內容一致，但不補出歷史來源或散布權利。新取得的 `ft_places2` 在固定同輸入比較中仍有碎片與顯眼新結構，未見必要畫質改善；不因此增加 PowerPaint／BrushNet 完整鏈或放寬原生數值門檻。權利差異與各 artifact／平台證據見 Survey，不由此 ADR 作法律意見。
+
+[第 13 節替代方案調查](../object-removal-survey.md#13-多角色替代方案與實驗) 新增四角色平行來源查核、古典／人工 donor 對照及 Mac .NET RGB16 probe；**只採研究對照，不採產品模型**。AOT 精確權重 grant／lineage 未閉合，OSOR 等仍有完整 base／材料與契約限制；不以原始碼 license 推定全鏈權利。古典大洞與 donor 接縫反例未解除通用需求。研究期間整個 `dist/` 消失，舊 artifact 目前不可讀；新 v2 公開縮圖／mask 是不同資料，不能與舊結果假作同場比較，歷史失敗不追改。
 
 完整產品 alpha／UI／專案／undo／重開、40 場景／3 位人類盲評、full-frame 成本與 Windows／iOS 移除仍未驗收。T1 未通過，不開始 T2–T5，也不將小型瑕疵子功能偷換為原通用需求；若日後候選在既有 gate 通過再重議。修補 stage、接受像素保存、真實 provider 與平台 gate 保留，不新增 runtime 或放寬容差。

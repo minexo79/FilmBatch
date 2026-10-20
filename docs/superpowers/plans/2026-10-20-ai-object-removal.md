@@ -12,7 +12,7 @@
 
 ## 目前狀態與授權
 
-**隔離續驗與來源研究已完成，通用移除／T1 維持 NO-GO，T2–T5 未開始。** 文件基線為 `a8744a8`；使用者最新另行授權繼續研究及文件 commit／push，發布只限目前研究分支，不合併 `master`。本輪只有忽略目錄內的參考 probe 與五份研究文件，未改產品程式、未新增永久測試；產品實作、私人照片外送與付費呼叫仍不在授權內。採用反例見 [Survey 第 10 節](../../object-removal-survey.md#10-續驗與採用決策)，VAE／微調 checkpoint 與下一個研究方向見[第 11 節](../../object-removal-survey.md#11-權重來源與後續研究)。
+**通用移除／T1 維持 NO-GO，T2–T5 未開始。** 前次研究文件發布為 `5c8509c`；本輪使用者明確授權其他方案的多角色平行 Survey、實驗及文件提交，**未授權 push、產品實作、私人照片外送或付費呼叫**。只修改五份研究文件並在忽略目錄執行 probe，未新增產品程式或永久測試。[第 10 節](../../object-removal-survey.md#10-續驗與採用決策)、[第 11 節](../../object-removal-survey.md#11-權重來源與後續研究)、[第 12 節](../../object-removal-survey.md#12-場景微調vae-身分與原生續驗) 保留既有結果；[第 13 節](../../object-removal-survey.md#13-多角色替代方案與實驗) 補上候選採用帳本、顯式古典／donor 對照、RGB16／mask／alpha 檢查與 Mac 原生邊界。研究期間舊 `dist/` 消失，新 v2 重新凍結公開縮圖與 mask；不宣稱舊收據仍在或與舊模型作同場比較。研究對照不取代 T1 開發／T5 留出集，也不列成產品任務完成。
 
 ### Global Constraints
 
@@ -68,9 +68,9 @@ public RemovalProposal Generate(RetouchFrame frame, RemovalMask mask,
 
 **採用裁決：** MI-GAN 只留快速工程對照，不作通用移除預設；真實照片與大洞出現不相關／新形狀，數值通過不能代替品質。EfficientSAM 只留人工可修正的提案研究；Moebius 已測 `pretrained` 因數值／後處理、整鏈資源與 VAE 來源暫緩；LaMa 權重資格維持 blocked。沒有選出產品模型，不開始 T2–T5。
 
-**來源續查與重新開啟條件：** 官方 SDXL VAE 與現測 PixelHacker VAE 只有 4／248 tensor 在 FP16 轉換後相同，8 組 CPU 元件等價比較皆 fail，不直接換用。下一個有條件研究是 `ft_places2` 對 `pretrained` 的固定開發集比較，先完成 artifact／VAE／用途資格；微調檔未下載，相容與品質未測。24 張 T5 留出集不供調參。合法候選仍須完成數值定位／精確後處理、固定資料與 3 位人類評審及整鏈／平台資格，再重新決策。不要以 posterior mean、放寬誤差、近似 blur 或小圖結果取代 gate；fp64 敏感度診斷不自動改變參考標準。本機延遲／記憶體不外推 full-frame、UI 或 iOS；以下方框仍表示完整產品交付條件。
+**來源續查與重新開啟條件：** 官方原始 SDXL VAE 與 PixelHacker VAE 的 8 組元件比較 fail；FP16-Fix 轉 FP16 後內容相同不證明歷史來源／散布權利。`pretrained`／`ft_places2` 都已有前測，後者仍有畫質與完整鏈數值反例，不再列為「未下載／未測」。下一個學習式候選先閉合精確權重用途、完整 base／材料及 canonical 接受區域契約；AOT／OSOR 等的具體缺口與不同處置見第 13 節。原 T1 的固定資料、三位評審、精確原生後處理及整鏈／平台 gate 不變，24 張 T5 留出集不供調參。不要以 posterior mean、放寬誤差、近似 blur 或小圖結果取代 gate；以下方框仍表示完整產品交付條件。
 
-- [ ] 同場比較 **MI-GAN-512 浮點核心**、**LaMa／big-lama 的明確轉換版本**及 **Moebius 具名 student＋PixelHacker VAE＋採樣迴圈**。依可行性先跑 MI-GAN，不把工程基準的完成順序當畫質名次；Moebius 已測 `pretrained` 與未測 `ft_places2` 分開記錄，不能由架構／檔案大小推論張量相容。LaMa 權重權利、Moebius repo／模型卡標籤差異與 VAE 來源／條款先釐清；取得相應使用資格後才下載至指定模型／忽略證據目錄。保留位置、bytes、SHA-256、程式碼／權重／base／轉換器／依賴授權與日期。選取優先試 **EfficientSAM-Ti encoder＋decoder**，SAM 2.1 作比較候選。
+- [ ] 同場比較 **MI-GAN-512 浮點核心**、**LaMa／big-lama 的明確轉換版本**及 **Moebius 具名 student＋PixelHacker VAE＋採樣迴圈**。依可行性先跑 MI-GAN，不把工程基準的完成順序當畫質名次；Moebius 已測 `pretrained`／`ft_places2` 的前測與本項完整資格分開記錄，不能由架構／檔案大小或跨資料版本比較推論資格。LaMa 權重權利、Moebius repo／模型卡標籤差異與 VAE 來源／條款先釐清；取得相應使用資格後才下載至指定模型／忽略證據目錄。保留位置、bytes、SHA-256、程式碼／權重／base／轉換器／依賴授權與日期。選取優先試 **EfficientSAM-Ti encoder＋decoder**，SAM 2.1 作比較候選；其他研究候選不因列入 Survey 自動加入產品相依。
 - [ ] 以原作者參考輸出建立非對稱已知小圖＋真實照片檢查；先暴露 mask polarity、RGB/BGR、range、resize／padding、crop-back 或 exporter 不一致的失敗，再修前後處理。不要用模型輸出自己算出「預期」值。
 - [ ] MI-GAN 官方便利 pipeline 為 UINT8 進出；產品候選採 FP32 核心，保留 FilmBatch 的高精度合成。不直接把完整 16-bit 圖經 UINT8 wrapper。core 的固定尺寸／noise/filter 與 wrapper 的任意尺寸不能混為一談。
 - [ ] manifest 固定 `modelId`、checkpoint／ONNX SHA-256、exporter revision、opset、dtype／shape／輸入輸出名稱、色彩域、mask polarity、normalization、resize／padding、context margin、output mapping；**數值從實際 artifact 讀取並驗證**，不可由同家族名稱推測。
