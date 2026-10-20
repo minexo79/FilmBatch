@@ -246,7 +246,7 @@ dotnet run build/CheckShaders.cs
 
 ### 合併前 CI
 
-`.github/workflows/ci.yml` 與 `.circleci/config.yml` 共用還原相依套件、Release 建置、完整測試、隨附 JPEG XL ABI／樣本解碼、封裝及 GUI 冒煙測試命令；WGSL 均以固定的 naga-cli `30.0.1` 驗證產品的 `ShaderLibrary` 輸出。
+`.github/workflows/ci.yml` 與 `.circleci/ci.yml` 共用還原相依套件、Release 建置、完整測試、隨附 JPEG XL ABI／樣本解碼、封裝及 GUI 冒煙測試命令；WGSL 均以固定的 naga-cli `30.0.1` 驗證產品的 `ShaderLibrary` 輸出。`.circleci/config.yml` 僅負責先判斷 webhook 是否符合建置條件，再接續完整 CI。
 
 #### 平台與 SDK
 
@@ -286,32 +286,34 @@ CircleCI 的 workflow-level GitHub Checks 與上述 job 狀態不同，不能在
 
 #### CircleCI 觸發設定
 
-此儲存庫使用 GitHub，因此這裡的 Merge Request 指 **Pull Request（PR）**，不是 GitLab 的 `merge_request` 事件。CircleCI 先由專案 trigger 決定是否建立 pipeline，再由 YAML 決定是否執行 workflow；只改 `.circleci/config.yml` 不會訂閱新的 webhook。
+此儲存庫使用 GitHub，因此這裡的 Merge Request 指 **Pull Request（PR）**，不是 GitLab 的 `merge_request` 事件。保留既有 GitHub OAuth／webhook 整合，不要求改裝 GitHub App，也不新增個人 API token。
 
-**GitHub App pipeline**：在 **Project Settings → Project Setup**，由管理員確認同一個 pipeline definition 的下列 trigger，事件來源選本儲存庫：
+**實際故障與修正**：[pipeline 23](https://app.circleci.com/pipelines/gh/minexo79/FilmBatch/23/details) 收到了 [PR 15](https://github.com/minexo79/FilmBatch/pull/15) 的 webhook，來源是 `dev-ios-app`、目標是 `pre-merge`，revision 為 `3cb4516`；當時 CircleCI 的 compiled config 為空，沒有任何 workflow。舊條件依賴 GitHub App 專用的 `pipeline.event.github.pull_request.base.ref`，本機合成 App 事件的檢查不足以代表這個 webhook。修正後由 setup job 讀取實際 pipeline API，再向 GitHub 查詢 PR 目標，不再假設整合會注入 App 欄位。
 
-1. **PR opened or pushed to, default branch and tag pushes**：涵蓋 PR 建立（含草稿）、更新、重新開啟及預設分支推送；預設分支須為 `master`。PR 的目標可為 `master` 或 `pre-merge`；供應商預設選項包含的 tag 仍由 YAML 拒絕。
-2. **PR marked ready for review**：保留草稿轉為可審查時的 pre-merge 檢查。
-3. **Pushes to merge queues**：接收 merge queue 推送；YAML 僅放行 `gh-readonly-queue/master/`／`gh-readonly-queue/pre-merge/`。
-4. **All pushes**：若要接收非預設分支 `pre-merge` 合併後的 `push`，必須另外訂閱此事件；只有上述預設分支選項不夠。YAML 仍拒絕一般分支與 tag 的建置。此預設選項會與預設分支／queue 推送訂閱重疊，可能建立重複 pipeline，須在遠端確認，不能宣稱 YAML 已去重。
+流程與條件：
 
-移除無關的 tag-only、label／comment 及 schedule trigger，不要保留重複的 OAuth trigger。YAML 的 `ci` workflow 再依事件、PR 目標分支及 tag 做短路判斷，每次允許的執行仍包含 Windows、macOS、WGSL 三項實際檢查：
+1. `.circleci/config.yml` 使用 `setup: true`，僅執行小型 `admit-ci` job；它不建置 .NET、不啟動 macOS／Windows runner，也不編譯 shader。
+2. `build/ci-admission.py` 讀取本次 pipeline 的實際 trigger、branch、revision 與 tag。只有 `webhook` 可進入建置判斷；API／UI 手動、排程與 tag 均不啟動完整建置。
+3. `master`／`pre-merge` 的更新，以及 `gh-readonly-queue/master/`／`gh-readonly-queue/pre-merge/` 更新，直接放行。其餘來源必須有目前仍開啟的 PR，且 head branch、head SHA、目標儲存庫全部符合本次 pipeline，base 必須是 `master` 或 `pre-merge`。過期 revision、已關閉 PR、其他目標分支與無 PR 的一般推送都不放行。
+4. 透過 CircleCI 自動注入、每個 pipeline 僅可使用一次的 `CIRCLE_CONTINUATION_KEY`，接續 `.circleci/ci.yml`，並傳入預設為 false 的 `run_ci`。放行後仍執行原有 Windows、macOS、WGSL 三項工作與 `pre-merge` 聚合 gate；不放行時完整 CI workflow 不會排程。
 
-| 事件 | 建置 |
+| 事件 | 完整建置 |
 | --- | --- |
-| 推送至 `master`／`pre-merge`（包含 PR 合併後更新） | 執行 |
-| 目標為 `master`／`pre-merge` 的 PR `opened`、`synchronize`、`reopened`、`ready_for_review` | 執行 |
-| `gh-readonly-queue/master/`／`gh-readonly-queue/pre-merge/` 推送 | 執行 |
-| 一般分支推送、其他目標分支的 PR／merge queue | 不執行 |
-| PR `closed`、`labeled`；tag、schedule、UI／API 手動觸發 | 不執行 |
+| `master`／`pre-merge` 的 webhook 更新（包含 PR 合併後更新） | 執行 |
+| 其他來源的 webhook，且目前有符合 branch／SHA 的 PR 指向 `master`／`pre-merge` | 執行 |
+| 兩個目標分支的 merge queue webhook 更新 | 執行 |
+| 一般分支推送且無符合的 PR、其他目標、已關閉或過期 PR | 不執行 |
+| tag、排程、API／UI 手動觸發 | 不執行 |
 
-兩個目標分支的合併後建置使用 `push` 事件，因此直接推送至任一分支也會執行；若只允許透過 PR 合併更新，須由分支保護禁止直接推送，不能靠 commit 訊息猜測是否合併。重跑既有允許事件的工作仍沿用原事件，不是新建手動 pipeline。
+**已接受的取捨**：不符合條件的事件仍可能建立 pipeline 並消耗一次小型 admission job；這是保留既有 webhook 整合、又在執行期取得 PR 目標所需的成本，不能宣稱完全沒有 job 或 pipeline 紀錄。admission 命令沿用 `build/ci-timeout.py`，預算 120 秒；初始化與 checkout 不在此命令預算內。其餘命令預算與必要 gate 不變。
 
-**GitHub OAuth pipeline**：一般分支的 `push` 無法提供此規則需要的 PR 目標分支資料，因此不放行；需要 CircleCI 的 PR 生命週期檢查時，使用上述 GitHub App pipeline，或以 GitHub Actions 的 `pre-merge` 作為合併閘門。`gh/` 組織可以同時有 OAuth 與 App pipelines，不能只憑專案 URL 判斷。整合差異見[官方說明](https://circleci.com/docs/guides/integration/using-the-circleci-github-app-in-an-oauth-org/)。
+**公開 API 與失敗行為**：目前儲存庫與 pipeline metadata 可公開讀取，因此查詢不帶個人 API token。API 限流、連線失敗或無效回應會讓 admission 失敗，不會假裝已成功略過。continuation key 只送到 CircleCI continuation API，不寫入檔案或 log；POST 不重試，無法確定結果時回報 `OUTCOME_UNKNOWN`。若日後改成私有儲存庫或限制 API 存取，須先配置適當存取權，不能以失敗查詢當成放行依據。
 
-**遠端界線**：YAML 能阻止 workflow／job 執行，不能阻止 CircleCI 已訂閱的 webhook 建立空 pipeline 紀錄，也不能在雲端刪除 trigger。本輪只修改儲存庫設定，未取得既有 API token 或已登入的管理介面，沒有修改遠端 Project Setup。若要求其他事件連 pipeline 紀錄都不建立，必須同步調整遠端訂閱；不能將本機驗證當作雲端 trigger 已生效。
+**遠端設定**：在 **Project Settings → Project Setup** 保留現有 webhook trigger，不要再新增重複的 GitHub App trigger。若選「只建置開啟 PR、預設分支及 tag」，非預設的 `pre-merge` 合併後推送未必會觸發；需要涵蓋這類更新時使用 **All pushes**，由 admission 篩選完整建置。YAML 無法自行修改 webhook 訂閱或遠端設定；若要求被拒絕事件連 pipeline 紀錄都不建立，仍須管理員調整訂閱。
 
-GitHub App **不會觸發 fork PR**；如果需要接受外部 fork，應保留 GitHub Actions 的 `pre-merge` 作為必要閘門，不要把無法回報的 CircleCI job 狀態設為所有 PR 的必要條件。這是供應商整合限制，不表示 fork PR 已在 CircleCI 驗證。trigger 選項及事件值見 [CircleCI 官方說明](https://circleci.com/docs/github-trigger-event-options/)，GitHub merge queue 依[官方事件說明](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#merge_group)設定。
+**Dynamic config 前提**：須啟用 **Project Settings → Advanced → Enable dynamic config using setup workflows**；2023-12-01 之後建立的專案預設啟用，但若被關閉仍需管理員恢復。setup pipeline 六小時內只能 continuation 一次，不能重跑 setup workflow；應由下一次正常 webhook 建立新 pipeline。兩個目標分支的直接推送也會建置；若只允許 PR 合併更新，須另外設定分支保護。
+
+官方契約見 [dynamic configuration](https://circleci.com/docs/guides/orchestrate/dynamic-config/)、[pipeline values](https://circleci.com/docs/reference/variables/) 與 [OAuth／GitHub App 整合差異](https://circleci.com/docs/guides/integration/using-the-circleci-github-app-in-an-oauth-org/)。fork PR 能否建立 pipeline 仍由既有 webhook 設定決定，不在此宣稱已驗證 fork 執行。
 
 #### 逾時與遠端設定界線
 
