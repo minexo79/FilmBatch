@@ -6,7 +6,7 @@
 
 ## 決策與理由
 
-使用 ONNX Runtime 1.24.4 執行兩個固定身分的 FP32 攝影模型。依**來源資料域**自動選擇，不提供可將 RAW 誤送進顯示 RGB 模型的選項。
+使用 ONNX Runtime 執行兩個固定身分的 FP32 攝影模型；macOS／iOS 使用 `1.25.0`，Windows DirectML 保留 `1.24.4`。依**來源資料域**自動選擇，不提供可將 RAW 誤送進顯示 RGB 模型的選項。
 
 | 來源資料 | 模型 | 固定輸入 | 上下文／有效核心 | 輸出契約 |
 |---|---|---|---|---|
@@ -41,7 +41,9 @@ flowchart LR
 
 ## 原生執行與取消
 
-macOS 使用標準 `Microsoft.ML.OnnxRuntime` 套件；Windows 目標使用同版本 `.DirectML` 套件，不能同時引入兩套原生 runtime。套件依**目標 RID**而非只有建置主機選擇，避免在 Mac 交叉發佈 Windows 時漏掉 DirectML。
+macOS／iOS 使用標準 `Microsoft.ML.OnnxRuntime 1.25.0`；iOS app 必須直接參考套件，才能連結 xcframework 並選取使用 `__Internal` 的 managed asset，避免 `1.24.4` 的 iOS 綁定缺失。Windows 目標保留 `.DirectML 1.24.4` 與 `Microsoft.AI.DirectML 1.15.4`，不能同時引入兩套原生 runtime。套件依**目標 RID**而非只有建置主機選擇，避免在 Mac 交叉發佈 Windows 時漏掉 DirectML；各平台的建置與實際推論證據仍須分開。
+
+iOS 的原生 runtime 由 app 層的 xcframework 連結；Engine 與共用診斷專案須排除套件 `netstandard` props 對 AnyCPU 額外加入的 Windows 原生 DLL，並保留 ONNX 的授權／第三方聲明／隱私檔案。此排除只作用於 iOS RID，不影響 Windows DirectML 的實際封裝。
 
 Auto 在 macOS 嘗試 CoreML MLProgram，在 Windows 嘗試 DirectML；CPU 是真實推論後備。報告使用 `CoreML + CPU`／`DirectML + CPU`，不保證所有節點位於 GPU 或 ANE。CoreML 使用固定輸入形狀、關閉 GPU 低精度累加，編譯快取位於可寫的使用者模型目錄，而非 `.app` 內。DirectML 使用 sequential execution 並停用 memory pattern。CPU session 使用有界執行緒，不把背景 CPU 目標說成硬性上限。
 

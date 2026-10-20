@@ -11,6 +11,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\FilmBatch.Raw\FilmBatch.Raw.csproj" />
+    <ProjectReference Include="..\..\src\FilmBatch.Engine\FilmBatch.Engine.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />

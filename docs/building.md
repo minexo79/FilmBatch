@@ -8,7 +8,7 @@
 - 從原始碼建置需要 .NET 10 SDK（版本鎖定於 `global.json`）；發佈版已內附執行階段，不需另外安裝 .NET
 - Windows 使用 DX12 / Vulkan，macOS 使用 Metal；沒有可用 GPU 時自動改用 CPU 參考算圖器
 - macOS 封裝需在 Mac 執行，使用系統的 `sips`、`iconutil`、`codesign`、`ditto`
-- GUI 不啟用 trimming：Avalonia／Dock 的反射路徑需要完整組件；不以壓掉警告的方式宣稱修剪相容
+- 桌面 GUI 不啟用 trimming：Avalonia／Dock 的反射路徑需要完整組件；iOS 的裁剪設定與 Avalonia registrar 例外另見下節，不以壓掉警告宣稱相容
 
 ## 建置與執行
 
@@ -17,6 +17,105 @@ dotnet build FilmBatch.sln
 dotnet run --project src/FilmBatch.App
 dotnet run --project src/FilmBatch.App -- --gallery   # 元件展示視窗
 ```
+
+## iOS 行動版
+
+實際編輯器位於 `src/FilmBatch.Mobile.iOS`，不是 `tools/apple-mobile` 的診斷 app。`FilmBatch.App.Shared` 保留唯一的 ViewModel、編輯控制項、非視窗 View、語系與主題；桌面與行動版共用 Core／RAW／Engine，不另外實作參數、底片 LUT、復原或匯出管線。`FilmBatch.Mobile.Desktop` 可在 Mac 顯示相同的行動版介面，但不是 iOS 驗證。
+
+### 建置與啟動
+
+```bash
+# 桌面 solution 包含共用介面及行動版桌面 host，不需要 iOS workload。
+dotnet build FilmBatch.sln -c Release
+dotnet run --project src/FilmBatch.Mobile.Desktop -c Release -- --workspace /tmp/filmbatch-mobile-workspace
+
+# 必須使用與 Xcode 相容、已安裝 iOS workload 的 .NET SDK。
+dotnet build src/FilmBatch.Mobile.iOS -c Release -r iossimulator-arm64
+xcrun simctl install <udid> src/FilmBatch.Mobile.iOS/bin/Release/net10.0-ios/iossimulator-arm64/FilmBatch.Mobile.iOS.app
+xcrun simctl launch <udid> org.filmbatch.editor
+```
+
+iOS 專案刻意不加入桌面 solution／CI。Engine 依 iOS RID 在編譯時選用 ImageIO/CoreGraphics，排除不可用的 Magick.NET 原生閉包；桌面仍走原本後端。相依專案必須保留 RID 及 `PublishFolderType`，否則可能把 Mac 原生庫選進 app，或遺失套件授權檔。**不要同時對同一份工作目錄執行桌面與 iOS restore/build**：條件式 NuGet 相依共用各專案的 `obj/project.assets.json`，交錯 restore 會污染另一個目標的編譯參考；請序列執行或使用隔離工作目錄。
+
+目前 SkiaSharp `3.119.4` 的 .NET 10 iOS 組件以 `net10.0-ios26.2` 為目標；iOS workload 的目標平台版本也必須至少為 `26.2`。使用 `26.0` SDK 時，NuGet 會改選一般 `net10.0` 組件，缺少 iOS Skia 原生資產，即使建置成功仍會在 `SKImageInfo` 初始化時失敗。應修復建置工具鏈並檢查實際解析的組件與原生 framework，不以額外套件、CPU 繪圖替代品或壓掉例外掩蓋問題。
+
+本機的 Xcode 27.1／iOS 27.1 實驗使用隔離的 .NET iOS SDK `27.0.10722`；該 SDK 官方要求 Xcode 27.0。只有明確選擇此實驗組合時，才對單次命令加 `-p:ValidateXcodeVersion=false`。這不是正式相容性宣告，不修改 `global.json`、SDK 內部檔案或全機 Xcode selection。Xcode 27 的可見裝置介面為 Device Hub；啟動 CoreSimulator 並不等於已開啟裝置視窗。完整先前工具鏈與 prototype 證據見 [Simulator 記錄](superpowers/plans/2026-10-19-ios-simulator-prototype.md)。
+
+### 真機 IPA 與重簽側載
+
+必須使用完整的 iOS workload，包含對應主機的 `ios-arm64` cross-AOT 編譯器及 Mono runtime。以下命令在 repository 根目錄執行，使用獨立產物目錄，避免改寫桌面專案的 NuGet restore 結果：
+
+```bash
+dotnet publish src/FilmBatch.Mobile.iOS/FilmBatch.Mobile.iOS.csproj \
+  -c Release -r ios-arm64 \
+  --artifacts-path "$PWD/dist/ios-device-build" \
+  -o "$PWD/dist/ios-arm64" \
+  -p:EnableCodeSigning=false \
+  -p:CodesignRequireProvisioningProfile=false \
+  -p:BuildIpa=true \
+  -p:IpaPackagePath="$PWD/dist/FilmBatch-ios-arm64-unsigned.ipa"
+```
+
+輸出為 `dist/FilmBatch-ios-arm64-unsigned.ipa`。本輪產物為版本 `0.3`、build `1`，目標是 iPhone／iPad 的 `iPhoneOS`／`arm64`，最低 iOS／iPadOS `18.0`，不是 Simulator app。Release publish 已完成 Mono AOT／native link；封裝檢查確認 ZIP／CRC 正常、176 個 payload 檔案與建置輸出一致，主程式及兩個原生 framework 均為真機 ABI，沒有 Mac／Simulator 原生相依。
+
+**這是未簽章 IPA，不能直接安裝。** 請交由 Sideloadly／AltStore 重簽，或使用適當的 development profile 後再安裝；本輪未使用 Apple 開發者簽章身分或 provisioning profile，也未操作重簽工具。IPA 的 SHA-256 保留在同目錄的 `.ipa.sha256` 檔案，封裝檢查記錄位於忽略的 `dist/ios-device-evidence/`。實機安裝與功能、記憶體及穩定性測試尚未執行，依使用者決定留待後續進行；Simulator 的既有通過結果不代替真機驗證。
+
+### 操作與資料所有權
+
+- **Files／Photos**：選取多張一般影像或 RAW，串流／provider 暫存副本複製至 app 自有的新專案；不原地編輯外部原始檔。Photos 使用 PHPicker 的使用者選取結果，不要求整個照片圖庫權限。HEIC／HEIF 由 Apple 後端讀取。
+- **Projects**：重開 app 內的專案與已存編輯。工具列提供 Undo／Redo、複製貼上與重設；More 提供選擇性貼上、建立／管理預設、偏好設定與停止背景載入。
+- **資料夾用途**：開啟照片資料夾使用獨立的專案匯入流程；Lensfun 等目錄參數複製至 app 自有的 `Assets`，不在 Projects 中建立空白相片專案。
+- **編輯面板**：使用共用的照片基本參數、RAW 控制、底片效果、白平衡／膚色／Zone 工具、裁切與原圖比較。窄版將預覽與面板上下排列；寬版左右排列。行動版的照片資訊與參數一起捲動，避免低高度視窗把參數區壓成零高度；桌面仍固定照片資訊。模組標題使用標準切換按鈕，觸控與輔助工具共用展開狀態。預覽支援觸控平移與雙指縮放；縮圖以檔名提供無障礙名稱，不依賴滑鼠 tooltip。
+- **匯出**：共用批次工作建立 JPEG、PNG16、TIFF16 或算圖後的線性 DNG，保留逐張錯誤／取消結果。完成檔先存於 app 的 `Documents/FilmBatch/Exports`，可由 Files 存取，或用「另存輸出至 Files」複製至新批次資料夾；保留各專案的相對子目錄，同名檔不互相覆寫。DNG 不是未經處理的感光元件原檔。
+- **生命週期**：背景時取消 I/O、分析、待處理預覽／縮圖及匯出，保存有效編輯；回前景不清掉專案、選取或復原。同步解碼只能在安全檢查點停止，不承諾背景持續完成工作。
+- **預設與背景恢復**：桌面保留檔案即時監看；iOS 不呼叫不受支援的 `FileSystemWatcher`，app 內修改即時更新，外部修改於回前景時重新載入。背景取消的同步詢問不視為「保留舊預設」，環境取消的偏好設定／管理預設視窗不會自動套用未確認的修改。
+- **CPU 目標**：iOS 目前明確採用 CPU 攝影算圖；70% 為合作式背景軟目標，不是硬限制。Darwin process clock 提供實際程序 CPU 時間，避免呼叫 iOS 不支援的 `Process.TotalProcessorTime`。
+
+### 驗證邊界
+
+macOS 的相同行動 View、Apple codec 回歸及桌面 solution 測試，均不代替實際 iOS app 的 Files／Photos、編輯、輸出與背景／前景操作。iOS Dawn GPU、JPEG XL 原生解碼閉包、實機簽章／部署、iPad 效能／記憶體上限、HDR／EDR 及完整 AI 降噪的裝置驗收不在既有行動版證據涵蓋範圍；合併 AI 分支不會自動擴大這些主張。
+
+`AppleImageCodecTests`、`AppleImagingTests`、`TiffMetadataTests` 涵蓋 Apple 後端與中繼資料回歸；Apple 原生 cases 只在 macOS 執行。檢查 PNG 實際內嵌的 ICC 時，Magick.NET 的讀取設定須使用 `PngReadDefines.PreserveiCCP=true`：預設解碼器會把辨識出的 sRGB ICC 最佳化掉，`GetColorProfile()` 回傳空值不等於檔案沒有 `iCCP`。仍須以另一個解碼器核對 profile 內容，不修改產品去迎合讀取器的預設行為。
+
+### 本輪實測（2026-10-20）
+
+實際執行 `org.filmbatch.editor` 的 Release app，不以診斷 app 或 Mac 介面替代 iOS 驗收。原生案例分開執行，使用同一份最終來源與同一個 Simulator 執行檔；先前合併執行的啟動／選取器失敗保留為失敗記錄，不計入通過結果。
+
+| 驗證面向 | 已觀察結果 | 範圍 |
+|---|---|---|
+| 桌面 solution 回歸 | 1,327 passed／0 failed／320 skipped | RAW 618、Core 522、App 187；略過項目包含外部 RAW corpus／oracle 及平台條件，不代表已驗證 |
+| Mac 的共用行動編輯介面 | 37 checks 通過 | 寬窄版、參數展開、實際控制項編輯／復原、預設、裁切、重開、Canon CR2、匯出與來源不變 |
+| Mac 桌面主 App 解鎖補跑 | 25 checks 通過 | 實際主視窗、Apple M3／Metal shader 編譯與讀回、編輯／復原、重開、真正 16-bit 匯出／ICC／來源不變、macOS 選單、Dock 與元件展示 |
+| iOS Simulator Release | 4 個案例分別通過 | Files 多選匯入／編輯／復原／貼上／真正軟體鍵盤建立預設／裁切／儲存重開／四格式匯出；Photos 選取匯入；Files 輸出副本；實際 48MP 工作的手動及背景取消 |
+| 原生匯出獨立檢查 | 30 checks 通過 | Pillow／imagecodecs／tifffile 核對來源雜湊、所選照片、裁切尺寸、JPEG／PNG16／TIFF16／線性 DNG、16-bit 低位元、ICC、EXIF 與方向 |
+| 原生 Files provider 副本 | 11 個檔案逐一雜湊相同 | 保留專案子目錄、既有批次及終態訊息；取消工作無殘留輸出，來源檔雜湊不變 |
+| iOS Release 建置與簽章 | 0 warnings／0 errors；Simulator ad-hoc 驗證通過 | 包含 AOT／link；不是實機簽章、App Store 發佈或官方工具鏈相容性承諾 |
+
+本機證據保留於忽略的 `dist/ios-main-evidence/`：`source-manifest-release-final.json` 綁定來源；`native-release-isolated-main.xcresult`、`native-release-photos-button-confirm.xcresult`、`native-release-files-copies-final.xcresult` 與 `native-release-final-cancellation-inspection.json` 記錄原生操作；`native-release-output-inspection.json`、`native-release-provider-copies-inspection.json` 與 `mobile-view-source-final-runtime/result.json` 記錄獨立輸出及 Mac 操作。一次性 XCTest driver 不屬於產品或 CI；重跑須先在自有測試資料中準備檔案與 Photos 選取項目，不得操作使用者原始照片。
+
+Apple 系統輸出的 sRGB ICC 可被獨立 LittleCMS 解析並用於色彩轉換，但 libpng 仍會對此 stock profile 顯示 `known incorrect sRGB profile` 警告；本輪保留此警告，沒有抑制它或新增舊式 `zTXt` ICC 副本。原生輸出保留標準 ICC 與單一 canonical EXIF；這個已觀察的相容性警告不是全平台色彩等價承諾。
+
+桌面主 App 的 `--smoke` 先前曾因主機鎖定（`CGSSessionScreenIsLocked=1`、`activeDisplays=0`）而在 Avalonia.Native 啟動 RenderTimer 時回傳 `-6661`；該次仍保留為環境 `blocked` 的歷史記錄。使用者解鎖後，已用實際桌面主 App 補跑並取得 `SMOKE PASS`，解除這項未完成驗證；沒有修改產品、抑制例外、替換計時器或改用 Headless。補跑證據為 `dist/ios-main-evidence/desktop-source-final-unlocked-smoke.txt` 與同名 `.json`。這項結果不擴張 iOS 實機、GPU、工具鏈或色彩相容性的支援承諾。
+
+### AI／iOS 整合驗證（2026-10-20）
+
+將 iOS／CI 分支整合至 AI 降噪分支後，重新執行下列檢查；不沿用上節較早的 iOS Release 主流程結果作為本次合併的通過數量。
+
+| 檢查 | 本次結果 | 證據範圍 |
+|---|---|---|
+| 桌面 solution 回歸 | 1,374 passed／0 failed／320 skipped | RAW 626、Core 548、App 200；外部 corpus／oracle 及平台略過仍未驗證 |
+| 桌面主 App | 25 checks 通過 | 實際 Metal 算圖、編輯／復原／重開、16-bit 匯出、ICC、macOS 選單與 Dock |
+| 桌面降噪介面 | 25 checks 通過 | 兩個來源域、實際模型、混合滑桿、取消／錯誤與匯出；不冒稱 iOS 介面驗收 |
+| 實拍 CPU 降噪 | 兩個固定模型通過 | NIND paired crop；保留 HDR／alpha、取消後重用與全解析度先行；線性測試圖不是感光元件 RAW |
+| CLI 離線工作流程 | 兩個模型匯入及兩張 16-bit PNG 匯出通過 | RGB／線性 DNG fixture 均使用 CoreML＋CPU，獨立讀取 ICC／位元深度並核對來源雜湊；未自動下載權重 |
+| iOS Debug 原生建置 | 0 warnings／0 errors；簽章與原生閉包通過 | 隔離 SDK `27.0.10722`、Xcode／Simulator `27.1`；Skia framework、ONNX 連結與授權檔齊全，未帶入 Windows DLL |
+| iOS 原生選取器冒煙 | 2 passed／0 failed／0 skipped | 實際編輯器顯示、Files／Photos 選取器與取消後繼續操作；不把選取器開啟當成照片匯入或 AI 推論成功 |
+| CI admission | 11 tests 通過 | 既有 webhook admission／continuation 保留，worker jobs／commands／required gate 不變；本輪未 push 或觸發雲端工作 |
+
+本次來源與執行記錄保留於忽略的 `dist/ios-into-denoising-evidence/ledger.json`，包括曾失敗的 `26.0` SDK／Skia 資產選擇與修正後結果。原生冒煙的早期 AX snapshot／Photos 載入時序失敗也保留；最終改用單一元素查詢、逐螢幕擷取與實際 Photos／Collections 就緒條件後通過，沒有為測試修改產品。這不是新版真機 IPA，也沒有重做 iOS 完整 AI 工作流程、實機或 Windows DirectML 推論驗收。
+
+
+
 
 ## 測試
 
@@ -166,7 +265,7 @@ dotnet run build/CheckShaders.cs
 
 ### 合併前 CI
 
-`.github/workflows/ci.yml` 與 `.circleci/config.yml` 共用還原相依套件、Release 建置、完整測試、隨附 JPEG XL ABI／樣本解碼、封裝及 GUI 冒煙測試命令；WGSL 均以固定的 naga-cli `30.0.1` 驗證產品的 `ShaderLibrary` 輸出。
+`.github/workflows/ci.yml` 與 `.circleci/ci.yml` 共用還原相依套件、Release 建置、完整測試、隨附 JPEG XL ABI／樣本解碼、封裝及 GUI 冒煙測試命令；WGSL 均以固定的 naga-cli `30.0.1` 驗證產品的 `ShaderLibrary` 輸出。`.circleci/config.yml` 僅負責先判斷 webhook 是否符合建置條件，再接續完整 CI。
 
 #### 平台與 SDK
 
@@ -175,13 +274,10 @@ dotnet run build/CheckShaders.cs
 | Windows x64 桌面 | `windows-2022` | `windows-server-2022-gui:current` |
 | macOS Apple Silicon 桌面 | `macos-26` | Xcode `26.4.1`／macOS `26.3`、`m4pro.medium` |
 | WGSL 驗證 | `ubuntu-24.04` | `ubuntu-2404:current` |
-| 手動 Dawn 重建 | `macos-15` | Xcode `16.4.0`／macOS `15.3.2`、`m4pro.medium` |
 
 兩邊安裝 `global.json` 的 `sdk.version`；`rollForward` 僅控制執行時從已安裝 SDK 中選擇版本，不代表安裝最新 `10.0` 通道。CircleCI 的 Windows 工作使用 Git Bash 並明確啟用 `errexit`／`pipefail`。
 
-兩邊的 `dawn-build` 會先用 runner 的 Python 3 建立 `$HOME/.filmbatch-dawn-tools` venv，安裝固定的 `cmake==3.31.6`，並將其 `bin` 加入後續步驟的 PATH；不假設 Xcode 映像已附 CMake，也不透過 Homebrew 安裝或更新工具。這只補足 Dawn 的建置前置需求，仍需 Metal SDK、Python 3 及下載原始碼所需的網路與磁碟空間。
-
-映像對照於 2026-10-18 依 [CircleCI 支援表](https://circleci.com/docs/using-macos/)及官方 manifest（[26.4.1](https://circle-macos-docs.s3.amazonaws.com/image-manifest/v17723/manifest.txt)、[16.4.0](https://circle-macos-docs.s3.amazonaws.com/image-manifest/v15338/manifest.txt)）核對；Windows 依[官方執行環境說明](https://circleci.com/docs/using-windows/)。Xcode 版本不等於宿主 macOS 版本，例如 Xcode 26.0.1 的宿主是 macOS 15.6，不能滿足隨附 Dawn 的 macOS 26.0 最低需求。這些設定統一 OS 基線，不保證兩家託管映像的修補版本或所有預裝工具完全相同。
+映像對照於 2026-10-18 依 [CircleCI 支援表](https://circleci.com/docs/using-macos/)及官方 [26.4.1 manifest](https://circle-macos-docs.s3.amazonaws.com/image-manifest/v17723/manifest.txt)核對；Windows 依[官方執行環境說明](https://circleci.com/docs/using-windows/)。Xcode 版本不等於宿主 macOS 版本，例如 Xcode 26.0.1 的宿主是 macOS 15.6，不能滿足隨附 Dawn 的 macOS 26.0 最低需求。這些設定統一 OS 基線，不保證兩家託管映像的修補版本或所有預裝工具完全相同。
 
 #### Windows 硬體 GPU 與軟體渲染
 
@@ -199,42 +295,48 @@ Microsoft 的 [WARP 說明](https://learn.microsoft.com/en-us/windows/win32/dire
 
 #### 合併必要檢查
 
-- **GitHub Actions**：在 pull request、merge queue（`merge_group`）、推送至 `master` 及手動觸發時執行。`pre-merge` 使用 `always()` 檢查 `desktop`、`shaders` 的結果，只有全部成功才通過；失敗、取消或略過均不放行。在 `master` 的分支保護／ruleset 中將 **`pre-merge`** 設為必要檢查。
-- **CircleCI**：不設只有 `echo` 的 `pre-merge` 聚合工作。若以 CircleCI 作為合併閘門，須啟用 **Project Settings → Advanced Settings → VCS Status Updates**，並將以下三項 **job 狀態**全部設為必要檢查：
+- **GitHub Actions**：只在推送至 `master`／`pre-merge`、目標為這兩個分支的 PR（`opened`、`synchronize`、`reopened`、`ready_for_review`）及兩者的 merge queue（`merge_group.checks_requested`）時執行。沒有 `workflow_dispatch`、排程或 tag 觸發。名為 `pre-merge` 的聚合 job 與同名分支是不同概念：job 使用 `always()` 檢查 `desktop`、`shaders` 的結果，只有全部成功才通過；失敗、取消或略過均不放行。在兩個目標分支的分支保護／ruleset 中將 **`pre-merge`** 設為必要檢查。
+- **CircleCI**：保留 `pre-merge` 分支新增的聚合 gate，`requires` 下列三項實際檢查全部成功後才執行。啟用 **Project Settings → Advanced Settings → VCS Status Updates**，可將 **`ci/circleci: pre-merge`** 設為必要檢查；各前置工作的狀態仍可獨立檢視：
   - `ci/circleci: desktop-win-x64`
   - `ci/circleci: desktop-osx-arm64`
   - `ci/circleci: shaders`
 
-CircleCI 的 workflow-level GitHub Checks 與上述 job 狀態不同，不能在停用 VCS Status Updates 後仍要求不存在的 job 狀態；名稱及回報方式見[官方說明](https://circleci.com/docs/guides/integration/status-updates/)。原本的 `ci/circleci: pre-merge` 必要檢查應移除。三個工作彼此不因另一個失敗而中止，也不會因失敗的上游 `requires` 留下未啟動的假聚合工作。
+CircleCI 的 workflow-level GitHub Checks 與上述 job 狀態不同，不能在停用 VCS Status Updates 後仍要求不存在的 job 狀態；名稱及回報方式見[官方說明](https://circleci.com/docs/guides/integration/status-updates/)。聚合 gate 不取代測試，只回報三個前置工作已成功；上游失敗、取消或略過時，gate 不會排程，必要檢查不會取得成功狀態，可能維持等待。三個實際檢查彼此不因另一個失敗而中止，所有工作仍受同一個 `ci` workflow 的 master／pre-merge 觸發限制。
 
 #### CircleCI 觸發設定
 
-此儲存庫使用 GitHub，因此這裡的 Merge Request 指 **Pull Request（PR）**，不是 GitLab 的 `merge_request` 事件。CircleCI 先由專案 trigger 決定是否建立 pipeline，再由 YAML 決定是否執行 workflow；只改 `.circleci/config.yml` 不會訂閱新的 webhook。
+此儲存庫使用 GitHub，因此這裡的 Merge Request 指 **Pull Request（PR）**，不是 GitLab 的 `merge_request` 事件。保留既有 GitHub OAuth／webhook 整合，不要求改裝 GitHub App，也不新增個人 API token。
 
-**GitHub App pipeline**：在 **Project Settings → Project Setup**，為同一個 pipeline definition 設定下列 trigger，事件來源選本儲存庫：
+**實際故障與修正**：[pipeline 23](https://app.circleci.com/pipelines/gh/minexo79/FilmBatch/23/details) 收到了 [PR 15](https://github.com/minexo79/FilmBatch/pull/15) 的 webhook，來源是 `dev-ios-app`、目標是 `pre-merge`，revision 為 `3cb4516`；當時 CircleCI 的 compiled config 為空，沒有任何 workflow。舊條件依賴 GitHub App 專用的 `pipeline.event.github.pull_request.base.ref`，本機合成 App 事件的檢查不足以代表這個 webhook。修正後由 setup job 讀取實際 pipeline API，再向 GitHub 查詢 PR 目標，不再假設整合會注入 App 欄位。
 
-1. **PR opened or pushed to, default branch and tag pushes**：涵蓋 PR 建立（含草稿）、推送新 commit、重新開啟及預設分支推送；預設分支須為 `master`。
-2. **PR marked ready for review**：草稿轉為可審查時再執行檢查；只有第一項不代表會收到此事件。
-3. **Pushes to merge queues**：接收 `gh-readonly-queue/*` 分支推送。
+流程與條件：
 
-YAML 接受的事件如下；每次執行 `ci` 都包含 Windows、macOS、WGSL 三項實際檢查：
+1. `.circleci/config.yml` 使用 `setup: true`，僅執行小型 `admit-ci` job；它不建置 .NET、不啟動 macOS／Windows runner，也不編譯 shader。
+2. `build/ci-admission.py` 讀取本次 pipeline 的實際 trigger、branch、revision 與 tag。只有 `webhook` 可進入建置判斷；API／UI 手動、排程與 tag 均不啟動完整建置。
+3. `master`／`pre-merge` 的更新，以及 `gh-readonly-queue/master/`／`gh-readonly-queue/pre-merge/` 更新，直接放行。其餘來源必須有目前仍開啟的 PR，且 head branch、head SHA、目標儲存庫全部符合本次 pipeline，base 必須是 `master` 或 `pre-merge`。過期 revision、已關閉 PR、其他目標分支與無 PR 的一般推送都不放行。
+4. 透過 CircleCI 自動注入、每個 pipeline 僅可使用一次的 `CIRCLE_CONTINUATION_KEY`，接續 `.circleci/ci.yml`，並傳入預設為 false 的 `run_ci`。放行後仍執行原有 Windows、macOS、WGSL 三項工作與 `pre-merge` 聚合 gate；不放行時完整 CI workflow 不會排程。
 
-| 事件 | `ci` | `dawn-build` |
-| --- | --- | --- |
-| PR `opened`、`synchronize`、`reopened`、`ready_for_review` | 執行 | 不執行 |
-| 開啟 PR 的分支、預設分支或 merge queue 推送 | 執行 | 不執行 |
-| PR `closed`、`labeled`；自動 tag 推送 | 不執行 | 不執行 |
-| UI **Trigger Pipeline**／API 手動觸發（含手動 tag） | 執行 | 執行 |
+| 事件 | 完整建置 |
+| --- | --- |
+| `master`／`pre-merge` 的 webhook 更新（包含 PR 合併後更新） | 執行 |
+| 其他來源的 webhook，且目前有符合 branch／SHA 的 PR 指向 `master`／`pre-merge` | 執行 |
+| 兩個目標分支的 merge queue webhook 更新 | 執行 |
+| 一般分支推送且無符合的 PR、其他目標、已關閉或過期 PR | 不執行 |
+| tag、排程、API／UI 手動觸發 | 不執行 |
 
-不要以 **All pushes** 代替第一項：單純開啟 PR 並不是 push。開啟 PR 的分支推送及一般分支推送也都可能回報 `push`，不能只靠 YAML 的事件名稱分辨；分支與 PR 成員資格由 trigger 篩選，workflow 再篩選事件／tag。手動觸發不需 `run-dawn-build`；重跑既有 pipeline 保留原來的觸發事件，不等同建立新的手動 pipeline。
+**已接受的取捨**：不符合條件的事件仍可能建立 pipeline 並消耗一次小型 admission job；這是保留既有 webhook 整合、又在執行期取得 PR 目標所需的成本，不能宣稱完全沒有 job 或 pipeline 紀錄。admission 命令沿用 `build/ci-timeout.py`，預算 120 秒；初始化與 checkout 不在此命令預算內。其餘命令預算與必要 gate 不變。
 
-**GitHub OAuth pipeline**：在 **Project Setup** 選擇 **Pushes to open pull requests, default branch, and tags**，或在 **Advanced → Only build pull requests** 啟用對應設定。OAuth 的原生 GitHub trigger 主要處理 push，不能把它當成上述 GitHub App 的 PR 生命週期訂閱；需要明確訂閱 PR 建立及轉為可審查事件時，使用 GitHub App pipeline。`gh/` 組織可以同時有 OAuth 與 App pipelines，不能只憑專案 URL 判斷；避免兩者對同一事件重複建置。整合差異見[官方說明](https://circleci.com/docs/guides/integration/using-the-circleci-github-app-in-an-oauth-org/)，OAuth 設定見[開源專案指南](https://circleci.com/docs/guides/integration/oss/#only-build-pull-requests)。
+**公開 API 與失敗行為**：目前儲存庫與 pipeline metadata 可公開讀取，因此查詢不帶個人 API token。API 限流、連線失敗或無效回應會讓 admission 失敗，不會假裝已成功略過。continuation key 只送到 CircleCI continuation API，不寫入檔案或 log；POST 不重試，無法確定結果時回報 `OUTCOME_UNKNOWN`。若日後改成私有儲存庫或限制 API 存取，須先配置適當存取權，不能以失敗查詢當成放行依據。
 
-GitHub App **不會觸發 fork PR**；如果需要接受外部 fork，應保留 GitHub Actions 的 `pre-merge` 作為必要閘門，不要把無法回報的 CircleCI job 狀態設為所有 PR 的必要條件。這是供應商整合限制，不表示 fork PR 已在 CircleCI 驗證。trigger 選項及事件值見 [CircleCI 官方說明](https://circleci.com/docs/github-trigger-event-options/)，GitHub merge queue 依[官方事件說明](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#merge_group)設定。
+**遠端設定**：在 **Project Settings → Project Setup** 保留現有 webhook trigger，不要再新增重複的 GitHub App trigger。若選「只建置開啟 PR、預設分支及 tag」，非預設的 `pre-merge` 合併後推送未必會觸發；需要涵蓋這類更新時使用 **All pushes**，由 admission 篩選完整建置。YAML 無法自行修改 webhook 訂閱或遠端設定；若要求被拒絕事件連 pipeline 紀錄都不建立，仍須管理員調整訂閱。
+
+**Dynamic config 前提**：須啟用 **Project Settings → Advanced → Enable dynamic config using setup workflows**；2023-12-01 之後建立的專案預設啟用，但若被關閉仍需管理員恢復。setup pipeline 六小時內只能 continuation 一次，不能重跑 setup workflow；應由下一次正常 webhook 建立新 pipeline。兩個目標分支的直接推送也會建置；若只允許 PR 合併更新，須另外設定分支保護。
+
+官方契約見 [dynamic configuration](https://circleci.com/docs/guides/orchestrate/dynamic-config/)、[pipeline values](https://circleci.com/docs/reference/variables/) 與 [OAuth／GitHub App 整合差異](https://circleci.com/docs/guides/integration/using-the-circleci-github-app-in-an-oauth-org/)。fork PR 能否建立 pipeline 仍由既有 webhook 設定決定，不在此宣稱已驗證 fork 執行。
 
 #### 逾時與遠端設定界線
 
-GitHub Actions 的 `timeout-minutes` 是整個 job 上限。依本次選擇，CircleCI **不新增 API token**：`timed-run` 共用剩餘命令預算（桌面 30 分鐘、WGSL 15 分鐘、Dawn 360 分鐘），逾時回傳 124，必要時在 30 秒終止寬限後強制結束；初始化、checkout、產物上傳與 runner 等待不受此包裝器控制，CircleCI 方案的整個 job 上限亦可能較短。不能將兩者宣稱為相同的硬性 job deadline。命令透過環境變數傳入子 Bash，保留單引號、換行、`pipefail` 及原始失敗碼。優先使用現有 GNU timeout；沒有時改以 runner 的 Python 3 執行 `build/ci-timeout.py`，對命令 process group 先送 TERM、寬限後送 KILL，並回收直接子程序。啟動計時器可在 checkout 前執行，Python 腳本只在 checkout 後使用；不再為了 timeout 呼叫 Homebrew。
+GitHub Actions 的 `timeout-minutes` 是整個 job 上限。依本次選擇，CircleCI **不新增 API token**：`timed-run` 共用剩餘命令預算（桌面 30 分鐘、WGSL 15 分鐘），逾時回傳 124，必要時在 30 秒終止寬限後強制結束；初始化、checkout、產物上傳與 runner 等待不受此包裝器控制，CircleCI 方案的整個 job 上限亦可能較短。不能將兩者宣稱為相同的硬性 job deadline。命令透過環境變數傳入子 Bash，保留單引號、換行、`pipefail` 及原始失敗碼。優先使用現有 GNU timeout；沒有時改以 runner 的 Python 3 執行 `build/ci-timeout.py`，對命令 process group 先送 TERM、寬限後送 KILL，並回收直接子程序。啟動計時器可在 checkout 前執行，Python 腳本只在 checkout 後使用；不再為了 timeout 呼叫 Homebrew。
 
 計時器會在初始化階段確認 GNU timeout 或 `python3` 可用；兩者皆缺失時立即報錯，不把故障延後到還原／建置命令。
 
@@ -281,7 +383,7 @@ dotnet run build/Build.cs -- --rid osx-arm64 --smoke --zip
 
 需 Xcode Command Line Tools（含 Metal SDK）、CMake、Python 3。腳本產生 `artifacts/dawn/osx-arm64/webgpu_dawn.dylib` 與量測來源記錄 `PROVENANCE.txt`，核對架構、部署目標及 WebGPU 匯出符號。封裝器只整檔取代，不修改 Mach-O 載入命令；沒有重建檔時，仍使用最低版本 26.0 的 NuGet 版本。
 
-`artifacts/dawn/` 同樣不進版本庫。CI 的 `dawn-build` 只在手動觸發時產生重建檔，`desktop` 工作不會自動下載；fresh clone 沒有該產物時，不能以 `Info.plist` 的宣告代替原生相依庫的實際部署下限。
+`artifacts/dawn/` 同樣不進版本庫。CI 不再提供手動 `dawn-build` 入口；需要重建時，使用上方本機命令。`desktop` 工作不會自動下載重建檔；fresh clone 沒有該產物時，不能以 `Info.plist` 的宣告代替原生相依庫的實際部署下限。
 
 輸出：
 

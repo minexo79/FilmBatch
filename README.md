@@ -15,6 +15,9 @@
 - **照片取樣工具**：在基本參數頂端展開「照片工具」，圈選中性區求白平衡、擷取跨照片的相對參考色，或只調整羽化區域的膚色。RAW 可取樣 Zone 並放置到 III／V／VIII，或以暗部／高光雙錨點擬合階調。提案預覽不存檔，接受後可一次復原；取樣時暫停創意效果，取消後恢復。限制與操作見[顆粒、白平衡與 Zone](docs/grain-white-balance-survey.md#目前實作與操作)。
 - **命令列批次輸出**：`filmbatch-cli` 可在腳本中直接套用已保存的設定匯出。
 
+另有重用相同編輯邏輯的 **iOS 行動編輯器**：原生 Files／Photos 匯入、app 內專案、觸控編輯、預設、裁切、復原與批次匯出，已在官方 Simulator 的實際 Release app 操作驗證。目前使用 CPU 算圖；實機部署／效能、iOS GPU、JPEG XL 與另一分支的 AI 降噪未納入支援承諾。建置、資料所有權及實測邊界見 [iOS 行動版](docs/building.md#ios-行動版)。
+
+
 ## 快速開始
 
 需要 [.NET 10 SDK](https://dotnet.microsoft.com/download)。
@@ -38,7 +41,7 @@ UI 測試在無顯示器環境也能執行；沒有 GPU 時 GPU 測試自動略�
 
 **2. 調整介面**
 
-畫面以 MVVM 撰寫：版面在 `src/FilmBatch.App/Views/*.axaml`，邏輯在對應的 `ViewModels/`。色彩與控制項樣式集中在 `Themes/Colors.axaml`、`Themes/Controls.axaml`。以元件展示視窗檢查各種狀態：
+畫面以 MVVM 撰寫：共用版面與邏輯在 `src/FilmBatch.App.Shared/Views/`、`ViewModels/`，共用色彩與樣式在該專案的 `Themes/`。桌面視窗／Dock 留在 `FilmBatch.App`；行動版組合介面在 `FilmBatch.Mobile`。以元件展示視窗檢查各種狀態：
 
 ```bash
 dotnet run --project src/FilmBatch.App -- --gallery
@@ -55,7 +58,7 @@ dotnet run --project src/FilmBatch.App -- --gallery
 
 **4. 新增介面文字**
 
-字串放在 `src/FilmBatch.App/Localization/Strings.resx`（繁中）與 `Strings.en.resx`（英文），XAML 以 `{l:Tr Key}` 引用。
+字串放在 `src/FilmBatch.App.Shared/Localization/Strings.resx`（繁中）與 `Strings.en.resx`（英文），XAML 以 `{l:Tr Key}` 引用。
 
 **5. 打包發佈**
 
@@ -64,6 +67,8 @@ dotnet run build/Build.cs -- --rid win-x64 --zip
 ```
 
 macOS（Apple Silicon）改用 `osx-arm64`；不再提供 Intel Mac 建置。
+
+iOS 的共用編輯器、Simulator 建置與實機限制另見 [iOS 行動版](docs/building.md#ios-行動版)；不使用桌面打包腳本產生 iOS app。
 
 ## 文件
 

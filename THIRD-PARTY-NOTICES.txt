@@ -9,10 +9,12 @@ Dawn (WebGPU)               BSD-3-Clause https://dawn.googlesource.com/dawn
 Magick.NET / ImageMagick    Apache-2.0 / ImageMagick License  https://github.com/dlemstra/Magick.NET
 System.CommandLine          MIT          https://github.com/dotnet/command-line-api
 .NET Runtime                MIT          https://github.com/dotnet/runtime
-ONNX Runtime 1.24.4          MIT          https://github.com/microsoft/onnxruntime
+ONNX Runtime 1.25.0（macOS／iOS 與 tools/apple-mobile） MIT https://github.com/microsoft/onnxruntime
+  Copyright (c) Microsoft Corporation。原生套件來源 commit：7a71bc575b189cdedea7fa2c0f87389f870bd10e。
+ONNX Runtime 1.24.4（Windows DirectML） MIT https://github.com/microsoft/onnxruntime
   Copyright (c) Microsoft Corporation. Native runtime package source commit:
-  2d924974ef147392ced8409d36bd6d2e7fcc8a74. Its full LICENSE, ThirdPartyNotices.txt
-  and Privacy.md accompany App/CLI outputs in native-onnxruntime/.
+  2d924974ef147392ced8409d36bd6d2e7fcc8a74.
+  各平台套件的完整 LICENSE、ThirdPartyNotices.txt 及 Privacy.md 隨 App／CLI 輸出放在 native-onnxruntime/。
 Microsoft.AI.DirectML 1.15.4 (Windows only) Microsoft Software License Terms
   https://www.nuget.org/packages/Microsoft.AI.DirectML/1.15.4
   This is NOT covered by ONNX Runtime's MIT license. The original redistributable

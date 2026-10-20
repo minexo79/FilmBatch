@@ -11,6 +11,9 @@ public sealed class DialogService(Func<Window?> owner) : IDialogService
 {
     private Window Owner => owner() ?? throw new InvalidOperationException("主視窗尚未建立");
 
+    /// <inheritdoc/>
+    public Task<string?> PickPhotoFolderAsync(string? startFolder) => PickFolderAsync(startFolder);
+
     public async Task<string?> PickFolderAsync(string? startFolder)
     {
         var options = new FolderPickerOpenOptions { Title = Localization.Loc.Get("Dialog.ChoosePhotoFolder"), AllowMultiple = false };

@@ -17,7 +17,9 @@ public sealed class Project
         ".rw2", ".rwl", ".raw", ".orf", ".pef", ".srw", ".erf", ".mef", ".3fr", ".fff",
     ];
 
-    public static readonly string[] SupportedExtensions = [".tif", ".tiff", ".jpg", ".jpeg", ".png", .. RawExtensions];
+    public static readonly string[] SupportedExtensions = OperatingSystem.IsIOS()
+        ? [".tif", ".tiff", ".jpg", ".jpeg", ".png", ".heic", ".heif", .. RawExtensions]
+        : [".tif", ".tiff", ".jpg", ".jpeg", ".png", .. RawExtensions];
 
     /// <summary>依副檔名判斷是否為 RAW 檔（不讀檔頭）。</summary>
     public static bool IsRawFile(string path) =>

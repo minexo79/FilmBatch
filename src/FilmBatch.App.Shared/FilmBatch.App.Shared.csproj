@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>FilmBatch.App.Shared</AssemblyName>
+    <RootNamespace>FilmBatch.App</RootNamespace>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <!-- 將 App／行動版的 RID 傳到帶原生內容的 Engine／Raw 參考。 -->
+    <IsRidAgnostic>false</IsRidAgnostic>
+    <!-- Preserve native resource placement through the shared editor reference chain. -->
+    <MSBuildDisableGetCopyToOutputDirectoryItemsOptimization>true</MSBuildDisableGetCopyToOutputDirectoryItemsOptimization>
+    <MSBuildDisableGetCopyToPublishDirectoryItemsOptimization>true</MSBuildDisableGetCopyToPublishDirectoryItemsOptimization>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\FilmBatch.Core\FilmBatch.Core.csproj" />
+    <ProjectReference Include="..\FilmBatch.Engine\FilmBatch.Engine.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia" />
+    <PackageReference Include="Avalonia.Themes.Fluent" />
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+  </ItemGroup>
+  <!-- 介面字串：強型別資源類別 FilmBatch.App.Localization.Strings -->
+  <ItemGroup>
+    <EmbeddedResource Update="Localization\Strings.resx">
+      <StronglyTypedLanguage>CSharp</StronglyTypedLanguage>
+      <StronglyTypedNamespace>FilmBatch.App.Localization</StronglyTypedNamespace>
+      <StronglyTypedClassName>Strings</StronglyTypedClassName>
+      <StronglyTypedFileName>$(IntermediateOutputPath)Strings.Designer.cs</StronglyTypedFileName>
+    </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="FilmBatch.App.Tests" />
+    <InternalsVisibleTo Include="FilmBatch" />
+  </ItemGroup>
+</Project>

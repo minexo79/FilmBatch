@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-ios</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <SupportedOSPlatformVersion>18.0</SupportedOSPlatformVersion>
+    <!-- Full trim keeps YamlDotNet's unused reflection serializers trimmed away (partial
+         copies them and fails with IL2104); Avalonia.iOS is exempted per-assembly below. -->
+    <TrimMode>full</TrimMode>
+    <ApplicationId>org.filmbatch.mobile.prototype</ApplicationId>
+    <ApplicationTitle>FilmBatch Mobile Prototype</ApplicationTitle>
+    <ApplicationVersion>1</ApplicationVersion>
+    <ApplicationDisplayVersion>0.1</ApplicationDisplayVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Common\FilmBatch.Mobile.Prototype.csproj" />
+    <!-- The package's iOS targets require an app-level reference to link its xcframework. -->
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" />
+    <PackageReference Include="Avalonia.iOS" />
+  </ItemGroup>
+  <!-- The iOS 27 linker shims preserve every member of linked NSObject subclasses with
+       DynamicDependency attributes, but explicit interface implementations (dotted member
+       names such as UIKit.IUITextInput.SelectedTextRange on TextInputResponder) do not
+       survive the trimmer's member-signature lookup, failing the build with IL2037.
+       Copying Avalonia.iOS whole keeps all of its members and registrar exports while
+       the trimmer still analyzes it; the step only rewrites Link-action assemblies. -->
+  <Target Name="CopyAvaloniaIOSForLinker" AfterTargets="PrepareForILLink">
+    <ItemGroup>
+      <ManagedAssemblyToLink Update="@(ManagedAssemblyToLink)" Condition="'%(FileName)' == 'Avalonia.iOS'">
+        <TrimMode>copy</TrimMode>
+        <IsTrimmable>true</IsTrimmable>
+      </ManagedAssemblyToLink>
+    </ItemGroup>
+  </Target>
+</Project>

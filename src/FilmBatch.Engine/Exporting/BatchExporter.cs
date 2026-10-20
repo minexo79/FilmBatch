@@ -5,7 +5,6 @@ using FilmBatch.Engine.Imaging;
 using FilmBatch.Engine.Imaging.Raw;
 using FilmBatch.Engine.Denoising;
 using FilmBatch.Engine.Rendering;
-using ImageMagick;
 using FilmBatch.Raw;
 using FilmBatch.Raw.Color;
 using FilmBatch.Raw.Meta;
@@ -343,36 +342,7 @@ public static class BatchExporter
 
         var exif = CopyExifProfile(job.SourcePath, (uint)image.Width, (uint)image.Height, options.Format, image.RawInfo?.Metadata, out var metadataWarning);
         byte[]? dng = null;
-        using var picture = options.Format == ExportFormat.Dng ? null : new MagickImage();
-        if (picture is not null)
-        {
-            var settings = new PixelReadSettings((uint)image.Width, (uint)image.Height, StorageType.Short, PixelMapping.RGBA);
-            picture.ReadPixels(System.Runtime.InteropServices.MemoryMarshal.AsBytes(image.Rgba16.AsSpan()), settings);
-            picture.Depth = 16;
-            picture.SetProfile(exif);
-            picture.SetProfile(ColorProfiles.SRGB);
-            picture.Orientation = OrientationType.TopLeft;
-            switch (options.Format)
-            {
-                case ExportFormat.Jpeg:
-                    picture.Quality = (uint)options.Quality;
-                    picture.Format = MagickFormat.Jpeg;
-                    picture.Alpha(AlphaOption.Remove);
-                    picture.Depth = 8;
-                    break;
-                case ExportFormat.Tiff16:
-                    picture.Format = MagickFormat.Tiff;
-                    picture.Endian = Endian.LSB;
-                    picture.Settings.Compression = CompressionMethod.Zip;
-                    break;
-                case ExportFormat.Png16:
-                    picture.Format = MagickFormat.Png;
-                    picture.Settings.SetDefines(new ImageMagick.Formats.PngWriteDefines { PreserveiCCP = true });
-                    break;
-                default: throw new ArgumentOutOfRangeException(nameof(options.Format));
-            }
-        }
-        else
+        if (options.Format == ExportFormat.Dng)
         {
             var linear = new float[checked(image.Width * image.Height * 3)];
             var input = image.Rgba16;
@@ -382,8 +352,7 @@ public static class BatchExporter
                 linear[d + 1] = Transfer.SrgbToLinear(input[s + 1] / 65535f);
                 linear[d + 2] = Transfer.SrgbToLinear(input[s + 2] / 65535f);
             }
-            var metadataBytes = exif.ToByteArray()!;
-            var metadata = MetadataReader.FromTiff(TiffFile.Parse(metadataBytes.AsMemory(6)));
+            var metadata = MetadataReader.FromTiff(TiffFile.Parse(exif.AsMemory(6)));
             dng = DngWriter.WriteRenderedDng(image.Width, image.Height, linear, ColorSpaces.Srgb, metadata);
         }
 
@@ -392,13 +361,23 @@ public static class BatchExporter
         try
         {
             ct.ThrowIfCancellationRequested();
-            using (var stream = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            if (dng is not null)
             {
-                if (dng is not null) stream.Write(dng);
-                else picture!.Write(stream);
+                using (var stream = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                    stream.Write(dng);
+            }
+            else
+            {
+                ImageBackend.Encode(image, tmp, options.Format, options.Quality, exif);
             }
             if (options.Format is ExportFormat.Tiff16 or ExportFormat.Dng)
+#if FILMBATCH_APPLE_IMAGING
+                // ImageIO 的 TIFF 自帶 EXIF/GPS 須以 canonical 副本取代；DNG 同。
+                TiffMetadata.Append(tmp, exif, replaceExif: true);
+#else
+                // Magick 編碼器已就地寫入 canonical EXIF；只有 DNG 寫入器的自帶 EXIF 缺來源標準欄位須取代。
                 TiffMetadata.Append(tmp, exif, replaceExif: options.Format == ExportFormat.Dng);
+#endif
             ct.ThrowIfCancellationRequested();
             File.Move(tmp, outputPath, overwrite: false);
             return metadataWarning;
@@ -412,14 +391,14 @@ public static class BatchExporter
         }
     }
 
-    private static ExifProfile CopyExifProfile(string sourcePath, uint width, uint height, ExportFormat format,
+    /// <summary>canonical EXIF 位元組（<c>Exif\0\0</c>＋TIFF 目錄）：RAW 讀原檔目錄，一般影像由後端擷取再正規化。</summary>
+    private static byte[] CopyExifProfile(string sourcePath, uint width, uint height, ExportFormat format,
         Metadata? decoded, out string? metadataWarning)
     {
-        IExifProfile? source = null;
         metadataWarning = null;
         try
         {
-            ExifProfile normalized;
+            byte[] normalized;
             if (FilmBatch.Engine.Imaging.Raw.RawSourceLoader.IsRawExtension(sourcePath))
             {
                 // RAW 的 EXIF 失敗與其他來源一樣，外層統一記錄 "Source EXIF omitted: …" 並輸出全新 EXIF。
@@ -427,37 +406,25 @@ public static class BatchExporter
             }
             else
             {
-                using var probe = new MagickImage();
-                probe.Ping(sourcePath);
-                source = probe.GetExifProfile();
-                // Normalize raw directories rather than flattening through ExifProfile.Values:
-                // that model omits the interoperability directory.
-                if (source is not null)
-                    normalized = TiffMetadata.Normalize(source, width, height);
-                else if (probe.Format is MagickFormat.Tiff or MagickFormat.Tiff64)
-                    normalized = TiffMetadata.Read(sourcePath, width, height);
-                else
-                    normalized = TiffMetadata.Normalize((IExifProfile?)null, width, height);
+                var source = ImageBackend.ExtractExifBytes(sourcePath, width, height);
+                normalized = TiffMetadata.Normalize(source, width, height);
             }
             // Prefer losing a private MakerNote to silently losing the entire EXIF profile.
-            if (format == ExportFormat.Jpeg && normalized.ToByteArray()!.Length > 65533)
+            if (format == ExportFormat.Jpeg && normalized.Length > 65533)
             {
                 normalized = TiffMetadata.Normalize(normalized, width, height, omitMakerNote: true);
-                if (normalized.ToByteArray()!.Length > 65533)
+                if (normalized.Length > 65533)
                     throw new InvalidDataException("JPEG EXIF exceeds the 65533-byte APP1 limit even without MakerNote.");
                 metadataWarning = "JPEG EXIF exceeded the 65533-byte APP1 limit; MakerNote omitted.";
             }
             return normalized;
         }
-        catch (Exception ex) when (ex is MagickException or InvalidDataException or IOException or OverflowException)
+        catch (Exception ex) when (ex is InvalidDataException or IOException or OverflowException
+            || ex.GetType().Name == "MagickException")
         {
             // EXIF 損毀或不支援：輸出仍帶 ICC + 方向 1，不因中繼資料失敗整張
             metadataWarning = $"Source EXIF omitted: {ex.GetType().Name}: {ex.Message}";
-            return TiffMetadata.Normalize((IExifProfile?)null, width, height);
-        }
-        finally
-        {
-            (source as IDisposable)?.Dispose();
+            return TiffMetadata.Normalize((byte[]?)null, width, height);
         }
     }
 

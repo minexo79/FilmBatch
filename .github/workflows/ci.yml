@@ -1,14 +1,16 @@
 # macOS 封裝由 Mac runner 組裝並以 ad-hoc 簽章供測試；正式散佈另行執行（見 README 發佈說明）。
-# Dawn 重建（降低 macOS 最低系統版本）只在手動觸發時執行，產物供發佈使用（build/build-dawn.sh）。
+# CI 僅限 master／pre-merge 更新及目標為兩者的 PR／merge queue；不提供手動觸發。
 name: ci
 
 on:
   push:
-    branches: [master]
+    branches: [master, pre-merge]
   pull_request:
+    branches: [master, pre-merge]
+    types: [opened, synchronize, reopened, ready_for_review]
   merge_group:
     types: [checks_requested]
-  workflow_dispatch:
+    branches: [master, pre-merge]
 
 permissions:
   contents: read
@@ -23,7 +25,7 @@ jobs:
           - os: windows-2022
             rid: win-x64
           # WebGPUSharp 0.5.7 內附的 Dawn 原生函式庫宣告 minos 26.0；
-          # 較低 macOS 由 dawn-build 產物（artifacts/dawn/）涵蓋，矩陣 runner 仍反映內附 ABI 的真實需求。
+          # 較低 macOS 需以 build/build-dawn.sh 重建原生庫；矩陣 runner 仍反映內附 ABI 的真實需求。
           - os: macos-26
             rid: osx-arm64
     runs-on: ${{ matrix.os }}
@@ -100,27 +102,3 @@ jobs:
           test "$DESKTOP_RESULT" = success
           test "$SHADERS_RESULT" = success
 
-  # 可重現的 Dawn 重建：下載產物到本機 artifacts/dawn/ 後再執行 Build.cs。
-  # desktop 工作不會自動下載此產物；不改 Mach-O、不隱藏最低系統需求。
-  dawn-build:
-    if: github.event_name == 'workflow_dispatch'
-    runs-on: macos-15
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
-        with:
-          global-json-file: global.json
-      - name: Restore (needs NuGet 內附 Dawn 作 ABI 比對)
-        run: dotnet restore FilmBatch.sln
-      - name: Install CMake for Dawn (isolated)
-        run: |
-          python3 -m venv "$HOME/.filmbatch-dawn-tools"
-          "$HOME/.filmbatch-dawn-tools/bin/python" -m pip install --disable-pip-version-check --only-binary=:all: cmake==3.31.6
-          "$HOME/.filmbatch-dawn-tools/bin/cmake" --version
-          echo "$HOME/.filmbatch-dawn-tools/bin" >> "$GITHUB_PATH"
-      - name: Build Dawn for Apple Silicon
-        run: bash build/build-dawn.sh arm64
-      - uses: actions/upload-artifact@v4
-        with:
-          name: dawn-macos-minos14
-          path: artifacts/dawn/

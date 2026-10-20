@@ -1,0 +1,22 @@
+<!-- 桌面 Dock 專用：隱藏 IDE 式的工具標題列與文件分頁，面板看起來像固定欄位。
+     主要由 DockFactory 把 GripMode 設為 Hidden；這裡再保險一次。Dock 主題在 :pointerover 時會重新顯示標題列，
+     帶虛擬類別的樣式優先序較高，所以 :pointerover 也要明確覆寫。
+     注意：PART_Panel（1px 分隔線）在 :pointerover 時仍會被 Dock 主題顯示，因此另在 Colors.axaml
+     把 DockToolChromeDividerThickness 設為 0，避免滑鼠移入面板時內容被推動。 -->
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Style Selector="ToolChromeControl /template/ Border#PART_Border, ToolChromeControl /template/ Panel#PART_Panel,
+                   ToolChromeControl:pointerover /template/ Border#PART_Border, ToolChromeControl:pointerover /template/ Panel#PART_Panel">
+    <Setter Property="IsVisible" Value="False" />
+  </Style>
+  <Style Selector="DocumentControl /template/ DocumentTabStrip#PART_TabStrip">
+    <Setter Property="IsVisible" Value="False" />
+  </Style>
+  <Style Selector="DocumentControl /template/ Border#PART_Border">
+    <Setter Property="BorderThickness" Value="0" />
+  </Style>
+  <!-- 面板之間的間隙用畫布色，讓預覽與面板像浮在同一張深色底上 -->
+  <Style Selector="DockControl">
+    <Setter Property="Background" Value="{DynamicResource FB.CanvasBrush}" />
+  </Style>
+</Styles>

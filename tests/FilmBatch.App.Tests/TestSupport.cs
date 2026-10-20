@@ -32,6 +32,7 @@ public sealed class FakeDialogs : IDialogService
     public int KeepOverridesAsked { get; private set; }
     public string? PickFolderAnswer { get; set; }
 
+    public Task<string?> PickPhotoFolderAsync(string? startFolder) => Task.FromResult(PickFolderAnswer);
     public Task<string?> PickFolderAsync(string? startFolder) => Task.FromResult(PickFolderAnswer);
     public string? PickFileAnswer { get; set; }
     public string? SaveFileAnswer { get; set; }

@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-ios</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <SupportedOSPlatformVersion>18.0</SupportedOSPlatformVersion>
+    <!-- Trim unreachable dependency code, including YamlDotNet's unused reflection serializers. -->
+    <TrimMode>full</TrimMode>
+    <ApplicationId>org.filmbatch.mobile.probe</ApplicationId>
+    <ApplicationTitle>FilmBatch Technical Probe</ApplicationTitle>
+    <ApplicationVersion>1</ApplicationVersion>
+    <ApplicationDisplayVersion>0.1</ApplicationDisplayVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Shared/FilmBatch.Mobile.Probes.csproj" />
+    <!-- The package's iOS targets require an app-level reference to link its xcframework. -->
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" />
+  </ItemGroup>
+</Project>

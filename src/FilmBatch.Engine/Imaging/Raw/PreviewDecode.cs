@@ -2,7 +2,7 @@
 // crates/codecs/src/convert.rs（finish 線性化／線性光縮放／to_working、rgb_or_gray／cmyk 的 CMS 分支）、
 // jpeg.rs（decode_with_fallback 的 DCT 縮放觸發條件與雙後端分派）、space.rs（SourceSpace::to_space）與
 // exif.rs（adobe_rgb_hint）——JPEG 解碼改用 FilmBatch.Raw.Codecs.JpegPreview（zune-jpeg 埠／jpeg-decoder 埠，
-// 與上游逐位元一致）；LUT／CMYK 設定檔走真正 CMS（PreviewCms，LCMS 經 Magick.NET）。
+// 與上游逐位元一致）；LUT／CMYK 設定檔走真正 CMS（PreviewCms，後端由 ImageBackend 分派：LCMS 或 ColorSync）。
 // Copyright (c) 2026 ArtCraft Team and the LightCraft contributors，MIT OR Apache-2.0；為 FilmBatch 改寫為 C#。
 using FilmBatch.Raw;
 using FilmBatch.Raw.Color;

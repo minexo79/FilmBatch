@@ -51,9 +51,12 @@
 
 ```mermaid
 flowchart TB
-    App["FilmBatch.App<br/>Avalonia 12 GUI（MVVM）"] --> Engine
+    App["FilmBatch.App<br/>桌面視窗、Dock、原生選單"] --> Shared
+    Ios["FilmBatch.Mobile.iOS<br/>UIKit scene、Photos picker"] --> Mobile
+    Mobile["FilmBatch.Mobile<br/>自適應編輯器、Files、專案副本"] --> Shared
+    Shared["FilmBatch.App.Shared<br/>共用 ViewModel、控制項、非視窗 View、語系"] --> Engine
+    Shared --> Core
     Cli["FilmBatch.Cli<br/>filmbatch-cli"] --> Engine
-    App --> Core
     Cli --> Core
     Engine["FilmBatch.Engine<br/>算圖管線、排程、影像 IO、匯出"] --> Gpu
     Engine --> Core
@@ -68,8 +71,11 @@ flowchart TB
 | `FilmBatch.Core` | 資料模型與規則：參數、專案、預設、底片 LUT、復原 | 只有 .NET 與 YAML 函式庫 | Avalonia、GPU、Magick.NET |
 | `FilmBatch.Gpu` | WebGPU 的薄封裝與嵌入的 WGSL | WebGPUSharp | 其他 FilmBatch 專案、Avalonia |
 | `FilmBatch.Raw` | RAW 容器與壓縮解碼、去馬賽克、相機色彩資料（移植自 LightCraft，見 [tools/raw-oracle](../tools/raw-oracle/README.md)） | managed 相依僅 .NET；JPEG XL 另需隨附的原生閉包 | 其他 FilmBatch 專案、Magick.NET、Avalonia、GPU |
-| `FilmBatch.Engine` | 把設定變成影像：算圖、排程、讀檔、匯出 | Core、Gpu、Raw、Magick.NET | Avalonia |
-| `FilmBatch.App` | 桌面介面 | Core、Engine | 直接呼叫 Gpu（一律經 Engine） |
+| `FilmBatch.Engine` | 把設定變成影像：算圖、排程、讀檔、匯出 | Core、Gpu、Raw；桌面使用 Magick.NET，iOS RID 使用 Apple ImageIO | Avalonia |
+| `FilmBatch.App.Shared` | 桌面與行動版唯一的編輯 ViewModel、控制項、非視窗 View、語系與主題 | Core、Engine、Avalonia | 桌面 Window／Dock host、行動 host |
+| `FilmBatch.App` | 桌面視窗、Dock、選單、視窗式對話框與元件展示 | App.Shared、Core、Engine | 行動 host |
+| `FilmBatch.Mobile` | 寬窄自適應編輯器、擁有的專案／照片副本、行動式對話框 | App.Shared | 桌面 App／Dock |
+| `FilmBatch.Mobile.iOS` | iOS 啟動、scene 生命週期與使用者選取 Photos 匯入 | Mobile、Avalonia.iOS | 桌面 App／Magick.NET |
 | `FilmBatch.Cli` | 命令列批次匯出 | Core、Engine | Avalonia |
 
 相依方向由 `.csproj` 的 `ProjectReference` 強制，建置時就會擋下反向依賴。這帶來兩個好處：Engine 能在 CLI 與測試中直接使用；換掉 GPU 綁定只需動 `FilmBatch.Gpu`。
@@ -305,7 +311,7 @@ RAW 來源保持未夾取的浮點線性 Rec.2020，`Rgba16` 只在原圖比較�
 | 算圖失敗 | 先重建裝置重試一次，仍失敗以 `RenderFailure` 回報原始例外與要求來源；無法建立算圖器也須回報逐筆要求的失敗終態 |
 | GPU 建立失敗 | 改用 fallback（CPU 算圖器）並發 `Notice` |
 
-App 端由 `App/Services/PreviewService.cs` 包裝：核對來源世代、遞增的交付順序與算圖器 `Epoch`，把事件 post 回 UI 執行緒，並計算直方圖。同一來源的參數調整允許先顯示已完成影格，再接續最新結果；取消、來源更換與裝置重建會封鎖先前交付。
+App 端由 `FilmBatch.App.Shared/Services/PreviewService.cs` 包裝：核對來源世代、遞增的交付順序與算圖器 `Epoch`，把事件 post 回 UI 執行緒，並計算直方圖。同一來源的參數調整允許先顯示已完成影格，再接續最新結果；取消、來源更換與裝置重建會封鎖先前交付。
 
 失敗事件的 `PreviewGeneration` 只有預覽要求有值；縮圖及 `$init` 初始化診斷為空。預覽失敗只結束自己的世代，不消耗較新的預覽，也不替照片縮圖記失敗；背景失敗不得清掉等待中的前景影格。縮圖重算失敗時可以保留舊點陣圖，但仍須完成該筆交付等待，讓下一張繼續；初始化錯誤不能讓已取出的縮圖要求無聲消失。
 
@@ -315,7 +321,8 @@ App 端由 `App/Services/PreviewService.cs` 包裝：核對來源世代、遞增
 
 | 型別 | 說明 |
 |---|---|
-| `Imaging/ImageLoader` | 以 Magick.NET 解碼，來源 ICC 轉成 sRGB、套用方向，產生 16-bit RGBA 的 `SourceImage`；可指定長邊產生預覽代理圖。RAW（與含感光資料的 TIFF）先交給 `RawSourceLoader` |
+| `Imaging/ImageLoader` | RAW 縮圖（長邊 ≤240，且不需語意遮罩）先稀疏讀取相機內嵌預覽；其餘 RAW（與含感光資料的 TIFF）交給共用 `RawSourceLoader`。一般影像與內嵌縮圖經 `ImageBackend` 在桌面使用 Magick.NET、iOS 使用 Apple ImageIO，轉成已定向的 16-bit straight sRGB RGBA；RAW 編輯／匯出仍保留場景線性資料 |
+| `Imaging/AppleImageCodec` | iOS RID 的原生影像 I/O：ImageIO／CoreGraphics／ColorSync 解碼與 ICC 轉換、JPEG／PNG16／TIFF16 編碼、串流 EXIF 擷取；macOS 回歸可直接呼叫此後端，不代表桌面已切換 codec |
 | `Imaging/Raw/RawSourceLoader` | RAW 解碼、起始外觀、分箱／去馬賽克、高光重建與色彩處理，產生浮點 Rec.2020 場景來源；有 gain table 的 DNG 不額外擬合全域 JPEG tone。CPU／GPU 共用晚期 RAW 收尾，來源載入不提前量化成 SDR |
 | `Imaging/SourceImage` | 一般影像保存 `Rgba16`；RAW 保存場景像素、相機色調／白平衡、共用幾何與語意遮罩。`Downscale` 在場景域縮放，保留原始已定向的 `ReferenceWidth/Height`；算圖不改寫來源 |
 | `Imaging/ImageHistogram` | 直方圖與裁切比例 |
@@ -324,17 +331,21 @@ App 端由 `App/Services/PreviewService.cs` 包裝：核對來源世代、遞增
 | `Exporting/BatchExporter` | 匯出主流程：`BuildJobs` 為每張照片建立不可變快照 → `RunAsync` 在背景依序讀檔、`Render16`、縮放、編碼、寫入 EXIF / ICC → 寫 `export_log.json` |
 | `Exporting/ExportModels` | `ExportOptions`（格式、品質、尺寸、目的地、檔名範本）、`ExportJob` |
 | `Exporting/ExportFileNames` | 檔名範本（例如 `{name}_{preset}`、`{index}`）展開，並移除各平台的非法字元 |
-| `Exporting/TiffMetadata` | Magick.NET 無法寫 TIFF EXIF，這裡自行補寫 EXIF 目錄；RAW 來源的 EXIF／GPS 也由此從原檔（CR3 為 CMT1／CMT2／CMT4 區塊）正規化 |
+| `Exporting/TiffMetadata` | 使用正規化 EXIF 位元組，不依賴 Magick profile 型別；保留 TIFF 原有大小端與像素 strips，附加 EXIF／GPS 目錄；RAW 來源（CR3 為 CMT1／CMT2／CMT4 區塊）亦由此正規化 |
+
+內嵌縮圖的方向以 RAW 檔頭為準，覆寫預覽自帶的 EXIF，並保留 RAW 的原始已定向參考尺寸；找不到或無法解碼預覽時，回到完整 RAW 顯影，原始 RAW 的解碼錯誤仍會回報。Apple 記憶體來源只在同步解碼期間借用已固定的預覽位元組，原生參考全部釋放後才解除固定。ImageIO 縮圖可能使用首位 padding 的 XRGB，讀取時須略過 padding，不能將它當作紅色或 alpha。
+
+Apple 後端以串流讀取 JPEG／PNG／HEIF 的來源 EXIF，不因影像超過標頭探測範圍而丟失拍攝資訊；PNG 使用標準 `eXIf` chunk。輸出 JPEG／PNG 時，ImageIO 對 named sRGB 可能省略 ICC，因此編碼後明確寫入 JPEG APP2 `ICC_PROFILE`／PNG `iCCP`，並保留單一正規化 EXIF；TIFF 則保留 ICC tag 34675，再附加來源 EXIF／GPS。中繼資料重寫使用有界串流，不為大型影像額外複製整個檔案，也不加入舊式 `zTXt` ICC 副本來迎合解碼器。
 
 RAW 預覽擬合會先依 JPEG 的 ICC／EXIF／容器宣告決定色彩，只線性化一次，在線性光下縮放後轉到 Rec.2020。截斷代理像素以 NaN 排除；鄰域對比採 Rust `f32::min/max` 的略過 NaN 語意，避免連帶排除截斷像素周圍的有效樣本。X-Trans 穩健平均則沿用 Rust `total_cmp` 的負數與正負零排序。
 
 RAW 中繼資料的標頭辨識與感光解碼一致：RW2 的 `0x0055`、ORF 的 `0x4f52`／`0x5352` 都使用 classic TIFF IFD 佈局，保留其 Make／Model 與 EXIF 子目錄，不誤報為損毀的 TIFF。
 
-一般 TIFF 大於 RAW 可緩衝大小時，略過 RAW 探測，仍由 Magick.NET 載入；RAW 中繼資料損毀不阻止像素匯出，但必須在 `export_log.json` 記錄 `MetadataWarning`。RAW 移植的明確排除項目與 JPEG／ICC 偏差見 [參考輸出說明](../tools/raw-oracle/README.md#比較範圍與已知偏差)。
+一般 TIFF 大於 RAW 可緩衝大小時，略過 RAW 探測，仍由已選定的平台影像後端載入；RAW 中繼資料損毀不阻止像素匯出，但必須在 `export_log.json` 記錄 `MetadataWarning`。RAW 移植的明確排除項目與 JPEG／ICC 偏差見 [參考輸出說明](../tools/raw-oracle/README.md#比較範圍與已知偏差)。
 
 **讀檔與色彩陷阱**
 
-- 不要在判斷一般 TIFF 之前整檔 `File.ReadAllBytes`；大型一般 TIFF 可由 Magick.NET／串流中繼資料路徑處理，不代表 managed 全檔 RAW 解碼也支援任意大小。檔頭決定的尺寸／樣本數須先以 checked／寬整數驗證，再套用 `RawLimits.MaxSamples`（`1 << 30`）及各分支上限；語意遮罩另限 16 個 IFD、每張 `1 << 25` 個樣本。上限不是保證有足夠記憶體。
+- 不要在判斷一般 TIFF 之前整檔 `File.ReadAllBytes`；大型一般 TIFF 可由平台影像後端／串流中繼資料路徑處理，不代表 managed 全檔 RAW 解碼也支援任意大小。檔頭決定的尺寸／樣本數須先以 checked／寬整數驗證，再套用 `RawLimits.MaxSamples`（`1 << 30`）及各分支上限；語意遮罩另限 16 個 IFD、每張 `1 << 25` 個樣本。上限不是保證有足夠記憶體。
 - 損毀 RAW 的內容錯誤依 `RawException.Kind` 分類，不應洩漏索引／整數溢位例外；檔案存取錯誤與資源不足仍需保留原本原因。二維樣本以 `[height, width]`／`[y, x]` 對應，不能用正方形 fixture 掩蓋寬高顛倒。
 - CR3 的 CMT1／CMT2／CMT4 可各自使用不同 byte order；正規化各目錄，不把根目錄的大小端直接套到 EXIF／GPS 子區塊。
 - 嵌入預覽的色彩宣告與像素轉換是兩件事。不要先令 Magick.NET `ColorSpace = RGB`，再套一次 sRGB EOTF；歷史重現中，8-bit 灰階 128 的線性值由約 0.216 變成約 0.038。ICC／EXIF／容器的來源判定與「只線性化一次」須一起驗證，不能只檢查色彩空間標籤。
@@ -347,6 +358,8 @@ RAW 中繼資料的標頭辨識與感光解碼一致：RW2 的 `0x0055`、ORF �
 - 拒絕覆寫來源檔與既有輸出；先寫暫存檔，完成才搬到正式檔名，取消或失敗不留下半成品。
 - EXIF 解析失敗不會讓整張匯出失敗；JPEG EXIF 超過 APP1 上限（65,533 位元組）時先移除 MakerNote，仍超限才只保留方向、尺寸與 sRGB 宣告。這些縮減逐張記錄在 `export_log.json` 的 `MetadataWarning`。
 - 輸出是已轉正的 sRGB 影像：重建尺寸、方向與 Interop `R98`／`0100`，不要沿用來源 Adobe RGB 的 `R03` 或失效指標。Photoshop `ImageSourceData`（37724）等原圖圖層不屬於新算出的影像，不能一併搬入。
+- iOS 的 JPEG／PNG16／TIFF16 由 ImageIO 編碼；`ImageBackend` 於編譯時依 iOS RID 選用，桌面仍使用 Magick.NET。TIFF metadata append 支援大小端序，不重寫或重壓縮影像條帶；來源 EXIF／GPS 重新正規化後取代編碼器自行產生的 EXIF 指標。DNG 仍走共用 managed 寫入器。
+- 完整尺寸的 Apple 影像不經縮圖解碼器；已辨識為完整 sRGB 空間時不再透過量化 ICC TRC 做一次 identity 轉換。方向、straight alpha、低有效位元及 Adobe RGB 轉換由 `AppleImageCodecTests`／`AppleImagingTests` 覆蓋。
 
 ### 4.9 Gpu．WebGPU 薄封裝與 Shader
 
@@ -391,6 +404,11 @@ fn main(@builtin(global_invocation_id) id: vec3u) { /* 每個像素一次 */ }
 - 開發時可用 `ShaderLibrary` 的 `devFolder` 直接從原始碼讀取 shader，不必重新建置。
 
 ### 4.10 App．介面層
+
+本節 `ViewModels/`、`Controls/`、非視窗 `Views/`、`Localization/` 及共用 `Themes/` 均位於 `src/FilmBatch.App.Shared/`，仍使用原本 `FilmBatch.App` namespace；桌面 App 不再編譯另一份相同實作。資源 URI 的 assembly 為 `avares://FilmBatch.App.Shared/`。桌面專用 `MainWindow`、Dock、對話框視窗及 Gallery 留在 `FilmBatch.App`。
+
+行動版由 `MobileEditorView` 組合相同的 `MainWindowViewModel` 與各編輯 View，不複製參數、RAW、底片 LUT、復原或匯出演算法。`Suspend()` 取消入場、預覽、背景縮圖、分析與匯出，結束觸控互動並保存有效編輯；`Resume()` 保留專案、選取與復原，只恢復先前待處理的工作。iOS 的照片運算明確使用 CPU，不將 Avalonia 的 Metal 繪圖稱為攝影 GPU 運算。操作與建置見 [iOS 行動版](building.md#ios-行動版)。
+
 
 **職責**：Avalonia 12 桌面介面，採 MVVM（CommunityToolkit.Mvvm）。View 只負責呈現與輸入；ViewModel 不引用任何 Avalonia 控制項，所以能直接寫單元測試。
 

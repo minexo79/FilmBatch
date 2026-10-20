@@ -1,0 +1,21 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="FilmBatch.Mobile.MobileApp"
+             RequestedThemeVariant="Dark">
+  <Application.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceInclude Source="avares://FilmBatch.App.Shared/Themes/Colors.axaml" />
+      </ResourceDictionary.MergedDictionaries>
+    </ResourceDictionary>
+  </Application.Resources>
+  <Application.Styles>
+    <FluentTheme />
+    <StyleInclude Source="avares://FilmBatch.App.Shared/Themes/Controls.axaml" />
+    <Style Selector="Button"><Setter Property="MinHeight" Value="44" /></Style>
+    <Style Selector="ComboBox"><Setter Property="MinHeight" Value="44" /></Style>
+    <Style Selector="NumericUpDown"><Setter Property="MinHeight" Value="44" /></Style>
+    <Style Selector="Slider"><Setter Property="MinHeight" Value="40" /></Style>
+    <Style Selector="CheckBox"><Setter Property="MinHeight" Value="44" /></Style>
+  </Application.Styles>
+</Application>

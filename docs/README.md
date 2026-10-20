@@ -18,6 +18,7 @@
 | 評估顆粒、白平衡、膚色輔助或 Zone 測光 | [顆粒、中性點白平衡與 Zone Survey](grain-white-balance-survey.md) | 區分已觀察現況、工程提案與未知；顆粒晚期輸出、中性 patch、膚色獨立、Zone 只調曝光階調，不把候選當作已採用功能 |
 | 修改匯出或 EXIF | [匯出安全規則](architecture.md#48-engine影像讀取與批次匯出imaging--exporting) | [CLI](building.md#命令列工具cli)；區分算圖後的 DNG 與保留感光樣本的 `raw convert` |
 | 建置 Mac／Windows 發佈檔 | [發佈](building.md#發佈) | [簽章與公證](building.md#簽章與公證)；原生相依庫、目標 RID 與本機執行結果分開驗證 |
+| 建置／驗證 iPad／iPhone 的共用編輯器 | [iOS 行動版操作與建置](building.md#ios-行動版) → [共用優先決策 ADR 0004](adr/0004-apple-mobile-shared-core.md) | [診斷命令](../tools/apple-mobile/README.md) → [已通過的 prototype／Simulator gate](superpowers/plans/2026-10-19-ios-simulator-prototype.md)；主要編輯器另行驗收，不把 Mac／compile-only 或 prototype 證據當成完整 iOS 支援 |
 | 了解當時為何這樣做 | [決策與提交歷史](history.md) | 相應 ADR／現行契約／回歸測試；commit 標題不等於驗證結果 |
 | 盤點後續工作 | 下方「文件狀態」 | 先分辨已實作、核心元件、未落地提案與歷史設計，不把舊 checklist 當目前缺陷 |
 
@@ -31,6 +32,7 @@
 | [ADR 0001](adr/0001-webgpu-binding.md)、[ADR 0003](adr/0003-gpu-stack-decision.md) | GPU 選型、量測與後續修正；依文中的日期、狀態與邊界解讀 |
 | [ADR 0002](adr/0002-ai-denoise.md) | 現行 RawNIND／NAFNet 選型、原生推論、取消、快取、模型雜湊與授權；整合驗收狀態以連結的計畫為準 |
 | [AI 降噪 Survey](ai-denoise-survey.md) | 2026-10-18 的來源調查與 2026-10-19 的採用註記；歷史調查邊界不代表目前仍無推論 |
+| [ADR 0004](adr/0004-apple-mobile-shared-core.md) | 共用 C# 與獨立 Avalonia 行動編輯器的已採納方向、AI 分支整合及證據邊界；實機、原生閉包與記憶體仍須獨立驗證 |
 | [顆粒、白平衡與 Zone Survey](grain-white-balance-survey.md) | 2026-10-18／19 的顆粒模型、中性點 WB、膚色輔助與 Zone III／V／VIII 調查；只執行現有 CPU 顆粒觀察，未實作候選、未做盲評或效能校準 |
 | [裁切／遮罩／曲線計畫](cut-and-mask/plan.md) | 歷史分階段設計；裁切已整合，曲線核心不等於完整曲線功能，一般形狀遮罩不等於 RAW 語意遮罩 |
 | [底片替換計畫](superpowers/plans/2026-10-17-film-color-simulation.md) | 底片 LUT 切換的實作歷史；現況與工具入口在 `film-looks.md`，不復活已刪除的 Recipe Lab 校正工具 |

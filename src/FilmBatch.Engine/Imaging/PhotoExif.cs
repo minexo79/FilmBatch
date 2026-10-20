@@ -2,7 +2,6 @@ using System.Globalization;
 using FilmBatch.Engine.Imaging.Raw;
 using FilmBatch.Raw;
 using FilmBatch.Raw.Meta;
-using ImageMagick;
 
 namespace FilmBatch.Engine.Imaging;
 
@@ -16,7 +15,7 @@ public sealed record PhotoExif(
     double? ExposureSeconds,
     double? FNumber)
 {
-    /// <summary>只讀檔頭（Ping，不解碼像素）。EXIF 讀不到時仍回傳檔名，日期改用檔案修改時間。</summary>
+    /// <summary>只讀檔頭（不解碼像素）。EXIF 讀不到時仍回傳檔名，日期改用檔案修改時間。</summary>
     public static PhotoExif Read(string path)
     {
         var name = Path.GetFileName(path);
@@ -29,25 +28,11 @@ public sealed record PhotoExif(
                     CameraName(meta.Make, meta.Model), meta.LensModel,
                     meta.Iso is <= int.MaxValue ? (int?)meta.Iso : null, meta.ExposureTime, meta.FNumber);
             }
-            using var image = new MagickImage();
-            image.Ping(path);
-            // JPEG 的 EXIF profile 展開成 exif:*；TIFF 的 EXIF 子目錄同樣是 exif:*，
-            // 但 IFD0 的 Make／Model／DateTime 由 TIFF 解碼器寫成 tiff:make／tiff:model／tiff:timestamp
-            string? Attr(params string[] keys) => keys
-                .Select(k => image.GetAttribute(k)?.Trim().TrimEnd('\0').Trim())
-                .FirstOrDefault(v => !string.IsNullOrEmpty(v));
-
-            var taken = ParseDate(Attr("exif:DateTimeOriginal", "exif:DateTimeDigitized", "exif:DateTime", "tiff:timestamp"));
-            return new PhotoExif(
-                name,
-                taken ?? FileTime(path),
-                CameraName(Attr("exif:Make", "tiff:make"), Attr("exif:Model", "tiff:model")),
-                Attr("exif:LensModel", "exif:Lens"),
-                ParseInt(Attr("exif:PhotographicSensitivity", "exif:ISOSpeedRatings")),
-                ParseRational(Attr("exif:ExposureTime")),
-                ParseRational(Attr("exif:FNumber")));
+            var (taken, camera, lens, iso, exposure, fnumber) = ImageBackend.ReadExif(path);
+            return new PhotoExif(name, taken ?? FileTime(path), camera, lens, iso, exposure, fnumber);
         }
-        catch (Exception e) when (e is MagickException or RawException or IOException or UnauthorizedAccessException)
+        catch (Exception e) when (e is InvalidDataException or RawException or IOException or UnauthorizedAccessException
+            || e.GetType().Name == "MagickException")
         {
             return new PhotoExif(name, FileTime(path), null, null, null, null, null);
         }
@@ -87,7 +72,7 @@ public sealed record PhotoExif(
     public string? TakenText => Taken?.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
 
     /// <summary>型號已含廠牌時不重複（例如 Canon／Canon EOS R5、NIKON CORPORATION／NIKON Z 6）。</summary>
-    private static string? CameraName(string? make, string? model)
+    internal static string? CameraName(string? make, string? model)
     {
         if (string.IsNullOrEmpty(model)) return make;
         if (string.IsNullOrEmpty(make)) return model;
@@ -95,7 +80,7 @@ public sealed record PhotoExif(
         return model.StartsWith(brand, StringComparison.OrdinalIgnoreCase) ? model : $"{make} {model}";
     }
 
-    private static DateTime? ParseDate(string? value) =>
+    internal static DateTime? ParseDate(string? value) =>
         value is not null && DateTime.TryParseExact(value, "yyyy:MM:dd HH:mm:ss", CultureInfo.InvariantCulture,
             DateTimeStyles.None, out var dt) ? dt : null;
 
@@ -107,7 +92,7 @@ public sealed record PhotoExif(
     }
 
     /// <summary>EXIF 有理數字串：「1/250」「28/10」或小數。</summary>
-    private static double? ParseRational(string? value)
+    internal static double? ParseRational(string? value)
     {
         if (string.IsNullOrEmpty(value)) return null;
         var slash = value.IndexOf('/');
@@ -119,7 +104,7 @@ public sealed record PhotoExif(
     }
 
     /// <summary>ISO 可能是多值（「100, 0」），取第一個。</summary>
-    private static int? ParseInt(string? value)
+    internal static int? ParseInt(string? value)
     {
         var first = value?.Split(',', ' ')[0];
         return int.TryParse(first, NumberStyles.Integer, CultureInfo.InvariantCulture, out var i) ? i : null;
