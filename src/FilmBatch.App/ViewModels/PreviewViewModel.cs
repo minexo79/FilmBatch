@@ -220,6 +220,8 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
         IsBusy = false;
         OverlayText = null;
         ControlPoint = null;
+        _controlSettings = null;
+        UpdateFootprint();
         _resultHistogram = _originalHistogram = null;
         NotifyHistogram();
     }
@@ -262,30 +264,63 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
     // ───────────── 控制點 ─────────────
 
     /// <summary>
-    /// 顯示某個模組的控制點（只顯示目前展開模組的控制點）。換模組或收起控制點時先結束進行中的拖曳編輯，
+    /// 顯示某個模組的控制點與影響範圍（只顯示目前展開模組的）。換模組或收起控制點時先結束進行中的拖曳編輯，
     /// 之後的拖曳另成一筆復原紀錄；同一模組重新整理（拖曳中參數改變）則延續同一筆。
+    /// 控制點有開關（動態模糊的保護區）且關閉時只隱藏控制點，範圍導引照常顯示。
     /// </summary>
     public void ShowControlPoint(string? moduleKey, Settings? settings)
     {
         if (moduleKey != _controlModule) EndControlPointEdit();
         _controlModule = moduleKey;
-        ControlPoint = moduleKey is not null && settings is not null
-            ? new Point(settings.Number($"{moduleKey}.center_x"), settings.Number($"{moduleKey}.center_y"))
+        _controlSettings = moduleKey is not null ? settings : null;
+        _controlKeys = moduleKey is not null && ModuleCatalog.TryGetModule(moduleKey, out var schema) ? schema.CanvasPoint : null;
+        ControlPoint = _controlKeys is { } keys && settings is not null && (keys.ToggleKey is null || settings.Bool(keys.ToggleKey))
+            ? new Point(settings.Number(keys.XKey), settings.Number(keys.YKey))
             : null;
+        UpdateFootprint();
     }
 
     /// <summary>拖曳控制點：即時更新預覽，放開時記為一筆復原紀錄。控制點已收起時不再修改，放開只結束編輯。</summary>
     public void MoveControlPoint(Point normalized, bool completed)
     {
-        if (_controlModule is not null && main.Service is not null)
+        if (_controlModule is not null && _controlKeys is { } keys && main.Service is not null)
         {
             _editSession ??= $"cp:{_controlModule}:{Guid.NewGuid():N}";
             var p = new Point(Math.Clamp(normalized.X, 0, 1), Math.Clamp(normalized.Y, 0, 1));
             ControlPoint = p;
-            main.Service.SetValue(main.Selection, $"{_controlModule}.center_x", p.X, _editSession);
-            main.Service.SetValue(main.Selection, $"{_controlModule}.center_y", p.Y, _editSession);
+            // 範圍跟著控制點走，不等設定變更繞回來
+            _controlSettings = _controlSettings?.With(keys.XKey, p.X).With(keys.YKey, p.Y);
+            UpdateFootprint();
+            main.Service.SetValue(main.Selection, keys.XKey, p.X, _editSession);
+            main.Service.SetValue(main.Selection, keys.YKey, p.Y, _editSession);
         }
         if (completed) EndControlPointEdit();
+    }
+
+    /// <summary>目前展開模組在影像上的影響範圍（正規化座標）；沒有或模組未啟用時為空。</summary>
+    [ObservableProperty]
+    private IReadOnlyList<FootprintPath> _footprint = [];
+
+    private Settings? _controlSettings;
+    private CanvasPointKeys? _controlKeys;
+
+    /// <summary>範圍輪廓依顯示影像的長寬比計算（裁切改變畫框時重算）。</summary>
+    private void UpdateFootprint()
+    {
+        var size = (Image ?? Original)?.PixelSize;
+        Footprint = _controlModule is { } module && _controlSettings is { } settings && size is { } px
+            ? EffectFootprint.For(module, settings, px.Width, px.Height)
+            : [];
+    }
+
+    private PixelSize? _footprintImageSize;
+
+    partial void OnImageChanged(Bitmap? value)
+    {
+        var size = (value ?? Original)?.PixelSize;
+        if (size == _footprintImageSize) return;
+        _footprintImageSize = size;
+        UpdateFootprint();
     }
 
     /// <summary>
