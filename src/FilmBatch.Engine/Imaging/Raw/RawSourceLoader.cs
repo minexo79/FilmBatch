@@ -48,6 +48,32 @@ internal static class RawSourceLoader
         };
     }
 
+    /// <summary>縮圖快路徑：稀疏讀取檔頭與內嵌預覽，回傳預覽位元組（相機渲染的 JPEG／JXL）與檔頭資訊。
+    /// 非 RAW 副檔名、檔頭不可判讀或檔內無內嵌預覽時回傳 false，由呼叫端改走完整解碼
+    /// （維持「可辨識但不支援或損毀的 RAW 一律回報錯誤」的政策，不以嵌入 JPEG 掩蓋）。</summary>
+    internal static bool TryExtractThumbnail(string path, int edge, out byte[] preview, out RawInfo? info)
+    {
+        preview = [];
+        info = null;
+        if (!IsRawExtension(path)) return false;
+        try
+        {
+            var bytes = RawSparse.ReadFile(path, includePreview: true);
+            var memory = new ReadOnlyMemory<byte>(bytes);
+            info = RawDecoder.ProbeInfo(memory);
+            if (RawPreview.EmbeddedPreviewCovering(memory, (uint)Math.Max(1, edge)) is not { Length: >= 4 } found)
+                return false;
+            preview = found;
+            return true;
+        }
+        catch (Exception ex) when (ex is RawException or IOException or UnauthorizedAccessException)
+        {
+            preview = [];
+            info = null;
+            return false;
+        }
+    }
+
     internal static RawInfo? TryReadInfo(string path)
     {
         if (!IsCandidate(path)) return null;

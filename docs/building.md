@@ -276,7 +276,7 @@ Microsoft 的 [WARP 說明](https://learn.microsoft.com/en-us/windows/win32/dire
 
 #### 合併必要檢查
 
-- **GitHub Actions**：只在推送至 `master`、目標為 `master` 的 PR（`opened`、`synchronize`、`reopened`、`ready_for_review`）及 `master` merge queue（`merge_group.checks_requested`）時執行。沒有 `workflow_dispatch`、排程或 tag 觸發。`pre-merge` 使用 `always()` 檢查 `desktop`、`shaders` 的結果，只有全部成功才通過；失敗、取消或略過均不放行。在 `master` 的分支保護／ruleset 中將 **`pre-merge`** 設為必要檢查。
+- **GitHub Actions**：只在推送至 `master`／`pre-merge`、目標為這兩個分支的 PR（`opened`、`synchronize`、`reopened`、`ready_for_review`）及兩者的 merge queue（`merge_group.checks_requested`）時執行。沒有 `workflow_dispatch`、排程或 tag 觸發。名為 `pre-merge` 的聚合 job 與同名分支是不同概念：job 使用 `always()` 檢查 `desktop`、`shaders` 的結果，只有全部成功才通過；失敗、取消或略過均不放行。在兩個目標分支的分支保護／ruleset 中將 **`pre-merge`** 設為必要檢查。
 - **CircleCI**：保留 `pre-merge` 分支新增的聚合 gate，`requires` 下列三項實際檢查全部成功後才執行。啟用 **Project Settings → Advanced Settings → VCS Status Updates**，可將 **`ci/circleci: pre-merge`** 設為必要檢查；各前置工作的狀態仍可獨立檢視：
   - `ci/circleci: desktop-win-x64`
   - `ci/circleci: desktop-osx-arm64`
@@ -288,23 +288,24 @@ CircleCI 的 workflow-level GitHub Checks 與上述 job 狀態不同，不能在
 
 此儲存庫使用 GitHub，因此這裡的 Merge Request 指 **Pull Request（PR）**，不是 GitLab 的 `merge_request` 事件。CircleCI 先由專案 trigger 決定是否建立 pipeline，再由 YAML 決定是否執行 workflow；只改 `.circleci/config.yml` 不會訂閱新的 webhook。
 
-**GitHub App pipeline**：在 **Project Settings → Project Setup**，只保留同一個 pipeline definition 的下列 trigger，事件來源選本儲存庫：
+**GitHub App pipeline**：在 **Project Settings → Project Setup**，由管理員確認同一個 pipeline definition 的下列 trigger，事件來源選本儲存庫：
 
-1. **PR opened or pushed to, default branch and tag pushes**：涵蓋 PR 建立（含草稿）、更新、重新開啟及預設分支推送；預設分支須為 `master`。這個供應商預設選項包含 tag，YAML 會拒絕執行 tag 的 workflow。
+1. **PR opened or pushed to, default branch and tag pushes**：涵蓋 PR 建立（含草稿）、更新、重新開啟及預設分支推送；預設分支須為 `master`。PR 的目標可為 `master` 或 `pre-merge`；供應商預設選項包含的 tag 仍由 YAML 拒絕。
 2. **PR marked ready for review**：保留草稿轉為可審查時的 pre-merge 檢查。
-3. **Pushes to merge queues**：接收 merge queue 推送；YAML 僅放行 `gh-readonly-queue/master/`。
+3. **Pushes to merge queues**：接收 merge queue 推送；YAML 僅放行 `gh-readonly-queue/master/`／`gh-readonly-queue/pre-merge/`。
+4. **All pushes**：若要接收非預設分支 `pre-merge` 合併後的 `push`，必須另外訂閱此事件；只有上述預設分支選項不夠。YAML 仍拒絕一般分支與 tag 的建置。此預設選項會與預設分支／queue 推送訂閱重疊，可能建立重複 pipeline，須在遠端確認，不能宣稱 YAML 已去重。
 
-移除額外的 **All pushes**、tag-only、label／comment 及 schedule trigger；不要保留重複的 OAuth trigger。YAML 的 `ci` workflow 再依事件、PR 目標分支及 tag 做短路判斷，每次允許的執行仍包含 Windows、macOS、WGSL 三項實際檢查：
+移除無關的 tag-only、label／comment 及 schedule trigger，不要保留重複的 OAuth trigger。YAML 的 `ci` workflow 再依事件、PR 目標分支及 tag 做短路判斷，每次允許的執行仍包含 Windows、macOS、WGSL 三項實際檢查：
 
 | 事件 | 建置 |
 | --- | --- |
-| 推送至 `master`（包含 PR 合併後更新） | 執行 |
-| 目標為 `master` 的 PR `opened`、`synchronize`、`reopened`、`ready_for_review` | 執行 |
-| `gh-readonly-queue/master/` 推送 | 執行 |
+| 推送至 `master`／`pre-merge`（包含 PR 合併後更新） | 執行 |
+| 目標為 `master`／`pre-merge` 的 PR `opened`、`synchronize`、`reopened`、`ready_for_review` | 執行 |
+| `gh-readonly-queue/master/`／`gh-readonly-queue/pre-merge/` 推送 | 執行 |
 | 一般分支推送、其他目標分支的 PR／merge queue | 不執行 |
 | PR `closed`、`labeled`；tag、schedule、UI／API 手動觸發 | 不執行 |
 
-`master` 的合併後建置使用 `push` 事件，因此直接推送至 `master` 也會執行；若只允許 PR 合併更新 `master`，須由分支保護禁止直接推送，不能靠 commit 訊息猜測是否合併。重跑既有允許事件的工作仍沿用原事件，不是新建手動 pipeline。
+兩個目標分支的合併後建置使用 `push` 事件，因此直接推送至任一分支也會執行；若只允許透過 PR 合併更新，須由分支保護禁止直接推送，不能靠 commit 訊息猜測是否合併。重跑既有允許事件的工作仍沿用原事件，不是新建手動 pipeline。
 
 **GitHub OAuth pipeline**：一般分支的 `push` 無法提供此規則需要的 PR 目標分支資料，因此不放行；需要 CircleCI 的 PR 生命週期檢查時，使用上述 GitHub App pipeline，或以 GitHub Actions 的 `pre-merge` 作為合併閘門。`gh/` 組織可以同時有 OAuth 與 App pipelines，不能只憑專案 URL 判斷。整合差異見[官方說明](https://circleci.com/docs/guides/integration/using-the-circleci-github-app-in-an-oauth-org/)。
 

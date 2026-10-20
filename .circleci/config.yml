@@ -1,6 +1,6 @@
 # 與 .github/workflows/ci.yml 共用建置／驗證命令；平台及觸發設定見 docs/building.md「合併前 CI」。
 # GitHub App 專案須設定 PR 生命週期及 merge queue trigger；YAML 不會自行訂閱 webhook，見 docs/building.md。
-# 僅執行 master 更新及目標 master 的 PR／merge queue；拒絕手動 UI／API、tag 與一般分支推送。
+# 僅執行 master／pre-merge 更新及目標為兩者的 PR／merge queue；拒絕手動 UI／API、tag 與一般分支推送。
 # pre-merge 聚合 gate 依賴三項實際檢查成功，並沿用下方相同的觸發限制。
 # macOS 封裝為 ad-hoc 簽章；本機 Dawn 重建見 build/build-dawn.sh。
 version: 2.1
@@ -183,8 +183,8 @@ jobs:
           label: Validate embedded WGSL
           command: dotnet run build/CheckShaders.cs
 
-  # 對應 Actions 的 pre-merge：在 ruleset 中將 ci/circleci: pre-merge 設為必要檢查。
-  # CircleCI 只在所有 requires 皆成功時才執行此工作；任何平台失敗都不會回報成功，合併保持封鎖。
+
+  # 對應 Actions 的 pre-merge；只有全部前置工作成功才回報成功。
   pre-merge:
     docker:
       - image: cimg/base:current
@@ -200,10 +200,14 @@ workflows:
       pipeline.git.tag == "" and (
         (pipeline.event.name == "push" and (
           pipeline.git.branch == "master" or
-          pipeline.git.branch starts-with "gh-readonly-queue/master/"
+          pipeline.git.branch == "pre-merge" or
+          pipeline.git.branch starts-with "gh-readonly-queue/master/" or
+          pipeline.git.branch starts-with "gh-readonly-queue/pre-merge/"
         )) or
-        (pipeline.event.name == "pull_request" and
-          pipeline.event.github.pull_request.base.ref == "master" and (
+        (pipeline.event.name == "pull_request" and (
+          pipeline.event.github.pull_request.base.ref == "master" or
+          pipeline.event.github.pull_request.base.ref == "pre-merge"
+        ) and (
             pipeline.event.action == "opened" or
             pipeline.event.action == "synchronize" or
             pipeline.event.action == "reopened" or

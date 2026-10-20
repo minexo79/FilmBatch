@@ -1,4 +1,6 @@
 using FilmBatch.Engine.Exporting;
+using FilmBatch.Engine.Imaging.Raw;
+using FilmBatch.Raw;
 using FilmBatch.Raw.Raster;
 
 namespace FilmBatch.Engine.Imaging;
@@ -9,8 +11,8 @@ namespace FilmBatch.Engine.Imaging;
 /// （ImageIO/CoreGraphics）。僅為靜態分派，無執行期註冊／外掛機制。
 /// </summary>
 /// <remarks>
-/// RAW 攔截（<see cref="Raw.RawSourceLoader"/>）在 <see cref="ImageLoader"/> 層完成，
-/// 此處僅處理一般影像；RAW 與 DNG 寫入為純托管，與後端無關。
+/// RAW 攔截（<see cref="Raw.RawSourceLoader"/>）在 <see cref="ImageLoader"/> 層完成；
+/// 此處處理一般影像與相機渲染的內嵌縮圖。RAW 與 DNG 寫入為純托管，與後端無關。
 /// </remarks>
 internal static class ImageBackend
 {
@@ -21,6 +23,30 @@ internal static class ImageBackend
         return AppleImageCodec.Load(path, maxLongEdge, rawOptions);
 #else
         return MagickImageCodec.Load(path, maxLongEdge, rawOptions);
+#endif
+    }
+
+    /// <summary>相機渲染的內嵌縮圖；解碼失敗時回到原始 RAW 顯影，不掩蓋 RAW 錯誤。</summary>
+    internal static SourceImage? TryLoadEmbeddedPreview(byte[] preview, string path, RawLoadOptions rawOptions,
+        int maxLongEdge, RawInfo info)
+    {
+        try
+        {
+#if FILMBATCH_APPLE_IMAGING
+            return AppleImageCodec.FromEmbeddedPreview(preview, path, rawOptions, maxLongEdge, info);
+#else
+            return MagickImageCodec.FromEmbeddedPreview(preview, path, rawOptions, maxLongEdge, info);
+#endif
+        }
+        catch (Exception ex) when (ex is InvalidDataException or IOException)
+        {
+            return null;
+        }
+#if !FILMBATCH_APPLE_IMAGING
+        catch (ImageMagick.MagickException)
+        {
+            return null;
+        }
 #endif
     }
 

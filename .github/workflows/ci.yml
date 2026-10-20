@@ -1,16 +1,16 @@
 # macOS 封裝由 Mac runner 組裝並以 ad-hoc 簽章供測試；正式散佈另行執行（見 README 發佈說明）。
-# CI 僅限 master 更新及目標 master 的 PR／merge queue；不提供手動觸發。
+# CI 僅限 master／pre-merge 更新及目標為兩者的 PR／merge queue；不提供手動觸發。
 name: ci
 
 on:
   push:
-    branches: [master]
+    branches: [master, pre-merge]
   pull_request:
-    branches: [master]
+    branches: [master, pre-merge]
     types: [opened, synchronize, reopened, ready_for_review]
   merge_group:
     types: [checks_requested]
-    branches: [master]
+    branches: [master, pre-merge]
 
 permissions:
   contents: read

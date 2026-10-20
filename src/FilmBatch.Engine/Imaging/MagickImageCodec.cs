@@ -1,6 +1,7 @@
 #if !FILMBATCH_APPLE_IMAGING
 using FilmBatch.Core;
 using FilmBatch.Engine.Exporting;
+using FilmBatch.Raw;
 using FilmBatch.Engine.Imaging.Raw;
 using FilmBatch.Raw.Color;
 using FilmBatch.Raw.Raster;
@@ -37,6 +38,20 @@ internal static class MagickImageCodec
         return ToSource(image, path, rawOptions, reference);
     }
 
+    internal static SourceImage FromEmbeddedPreview(byte[] preview, string path, RawLoadOptions rawOptions,
+        int maxLongEdge, RawInfo info)
+    {
+        // 不用 JPEG size hint，避免放大較小的內嵌預覽；RAW 方向覆寫 JPEG 自帶的 EXIF。
+        using var image = new MagickImage(preview);
+        image.Orientation = (OrientationType)info.Orientation.ToExif();
+        image.AutoOrient();
+        if (Math.Max(image.Width, image.Height) > maxLongEdge)
+            image.Resize(new MagickGeometry((uint)maxLongEdge, (uint)maxLongEdge) { Greater = true });
+        var (width, height) = info.DevelopedSize();
+        var reference = info.Orientation.SwapsAxes() ? (height, width) : (width, height);
+        return ToSource(image, path, rawOptions, reference, info);
+    }
+
     internal static SourceImage LoadFull(string path, RawLoadOptions rawOptions)
     {
         using var image = new MagickImage(path);
@@ -54,7 +69,7 @@ internal static class MagickImageCodec
     }
 
     private static SourceImage ToSource(MagickImage image, string path, RawLoadOptions rawOptions,
-        (int Width, int Height)? reference = null)
+        (int Width, int Height)? reference = null, RawInfo? rawInfo = null)
     {
         image.TransformColorSpace(ColorProfiles.SRGB);
         image.ColorSpace = ColorSpace.sRGB;
@@ -67,6 +82,7 @@ internal static class MagickImageCodec
         {
             FilePath = Path.GetFullPath(path),
             RawOptions = rawOptions,
+            RawInfo = rawInfo,
             ReferenceWidth = reference?.Width ?? (int)image.Width,
             ReferenceHeight = reference?.Height ?? (int)image.Height,
         };

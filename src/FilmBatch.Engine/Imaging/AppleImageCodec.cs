@@ -4,6 +4,8 @@ using System.Runtime.InteropServices;
 using System.Text;
 using FilmBatch.Core;
 using FilmBatch.Engine.Exporting;
+using FilmBatch.Engine.Imaging.Raw;
+using FilmBatch.Raw;
 using FilmBatch.Raw.Color;
 using FilmBatch.Raw.Raster;
 
@@ -80,6 +82,26 @@ internal static unsafe partial class AppleImageCodec
         return FinishDecode(decoded, orientation: 1, path, scope, refW, refH, maxLongEdge, rawOptions);
     }
 
+    internal static SourceImage FromEmbeddedPreview(byte[] preview, string path, RawLoadOptions rawOptions,
+        int maxLongEdge, RawInfo info)
+    {
+        RequireApple();
+        // ImageIO 只在此同步區段借用位元組；釋放所有原生參考後才解除固定，不複製預覽資料。
+        fixed (byte* bytes = preview)
+        {
+            using var scope = new OwnedObjects();
+            var data = scope.Add(Native.CFDataCreateWithBytesNoCopy(0, (nint)bytes, preview.Length,
+                NameRef(Frameworks.Foundation, "kCFAllocatorNull")));
+            var source = scope.Add(Native.CGImageSourceCreateWithData(data, 0));
+            if (source == 0) throw new InvalidDataException($"Could not decode embedded preview: {path}");
+            var decoded = scope.Add(CreateThumbnail(source, maxLongEdge, scope, applyOrientation: false));
+            var (width, height) = info.DevelopedSize();
+            if (info.Orientation.SwapsAxes()) (width, height) = (height, width);
+            return FinishDecode(decoded, info.Orientation.ToExif(), path, scope, width, height,
+                maxLongEdge, rawOptions, info);
+        }
+    }
+
     /// <summary>全解析度解碼（匯出用）：轉正、不縮放、保留 16-bit。</summary>
     internal static SourceImage LoadFull(string path, RawLoadOptions rawOptions = default)
     {
@@ -94,7 +116,7 @@ internal static unsafe partial class AppleImageCodec
     }
 
     private static SourceImage FinishDecode(nint decoded, long orientation, string path, OwnedObjects scope,
-        int refW, int refH, int? maxEdge, RawLoadOptions rawOptions)
+        int refW, int refH, int? maxEdge, RawLoadOptions rawOptions, RawInfo? rawInfo = null)
     {
         var oriented = ApplyOrientation(decoded, orientation, scope);
         var raster = ConvertToSrgb(oriented, path, scope);
@@ -102,6 +124,7 @@ internal static unsafe partial class AppleImageCodec
         {
             FilePath = Path.GetFullPath(path),
             RawOptions = rawOptions,
+            RawInfo = rawInfo,
             ReferenceWidth = refW,
             ReferenceHeight = refH,
         };
@@ -141,10 +164,11 @@ internal static unsafe partial class AppleImageCodec
         return (refW, refH, orientation);
     }
 
-    private static nint CreateThumbnail(nint source, int maxPixelSize, OwnedObjects scope)
+    private static nint CreateThumbnail(nint source, int maxPixelSize, OwnedObjects scope, bool applyOrientation = true)
     {
         var options = Dict(scope,
-            ("kCGImageSourceCreateThumbnailWithTransform", Native.kCFBooleanTrue()),
+            ("kCGImageSourceCreateThumbnailWithTransform", applyOrientation
+                ? Native.kCFBooleanTrue() : NameRef(Frameworks.Foundation, "kCFBooleanFalse")),
             ("kCGImageSourceCreateThumbnailFromImageAlways", Native.kCFBooleanTrue()),
             ("kCGImageSourceShouldCacheImmediately", Native.kCFBooleanTrue()),
             ("kCGImageSourceThumbnailMaxPixelSize", Num(scope, Math.Max(1, maxPixelSize))));
@@ -472,14 +496,14 @@ internal static unsafe partial class AppleImageCodec
                             r = Component(row, at + stride8 * 3, bpc, byteOrder, isFloat);
                         }
                     }
-                    else // 標準 RGBA / ARGB
+                    else // 標準 RGBA / ARGB / XRGB；首位 padding 也必須略過，但不當作 alpha。
                     {
                         var aIdx = hasAlpha ? (alphaLast ? channels - 1 : 0) : -1;
                         var c0 = Component(row, at, bpc, byteOrder, isFloat);
                         var c1 = channels >= 2 ? Component(row, at + stride8, bpc, byteOrder, isFloat) : 0;
                         var c2 = channels >= 3 ? Component(row, at + stride8 * 2, bpc, byteOrder, isFloat) : 0;
                         var c3 = channels >= 4 ? Component(row, at + stride8 * 3, bpc, byteOrder, isFloat) : 0;
-                        if (aIdx == 0 && channels >= 4) (c0, c1, c2) = (c1, c2, c3);
+                        if ((aIdx == 0 || alphaInfo == 6) && channels >= 4) (c0, c1, c2) = (c1, c2, c3);
                         r = c0; g = c1; b = c2;
                         if (hasAlpha) a = Component(row, at + stride8 * aIdx, bpc, byteOrder, isFloat);
                     }
@@ -1544,6 +1568,7 @@ internal static unsafe partial class AppleImageCodec
         [LibraryImport(Foundation)] internal static partial byte CFStringGetCString(nint value, nint buffer, nint size, uint encoding);
         [LibraryImport(Foundation)] internal static partial nint CFURLCreateFromFileSystemRepresentation(nint allocator, byte[] bytes, nint count, byte directory);
         [LibraryImport(Foundation)] internal static partial nint CFDataCreate(nint allocator, nint bytes, nint count);
+        [LibraryImport(Foundation)] internal static partial nint CFDataCreateWithBytesNoCopy(nint allocator, nint bytes, nint count, nint bytesDeallocator);
         [LibraryImport(Foundation)] internal static partial nint CFDataGetLength(nint data);
         [LibraryImport(Foundation)] internal static partial nint CFDataGetBytePtr(nint data);
         [LibraryImport(Foundation)] internal static unsafe partial nint CFNumberCreate(nint allocator, int type, void* value);
@@ -1587,6 +1612,7 @@ internal static unsafe partial class AppleImageCodec
         }
 
         [LibraryImport(ImageIo)] internal static partial nint CGImageSourceCreateWithURL(nint url, nint options);
+        [LibraryImport(ImageIo)] internal static partial nint CGImageSourceCreateWithData(nint data, nint options);
         [LibraryImport(ImageIo)] internal static partial nint CGImageSourceCreateImageAtIndex(nint source, nuint index, nint options);
         [LibraryImport(ImageIo)] internal static partial nint CGImageSourceCreateThumbnailAtIndex(nint source, nuint index, nint options);
         [LibraryImport(ImageIo)] internal static partial nint CGImageSourceCopyPropertiesAtIndex(nint source, nuint index, nint options);
