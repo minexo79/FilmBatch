@@ -1,8 +1,8 @@
 # AI 物件移除：模型、畫質與操作 Survey
 
 - 查核日期：2026-10-20。用途：**研究／比較與實作選型提案，不是已支援功能**。
-- 結論：把「選取」與「重建」分開，先取得同一正式尺寸、可接受並保存的結果。**MI-GAN-512 浮點核心、具名 LaMa 轉換與 Moebius 完整推論鏈**進入資格比較；EfficientSAM-Ti 優先作選取輔助。不存在本輪已量測的「最佳畫質」模型。
-- 已做：讀取產品原始碼、上游 README／程式碼／授權與產品文件，派出三個平行評估角色並處置反方意見。未做：模型下載、移除推論、畫質盲評、延遲／記憶體量測、付費 API、照片上傳或功能實作。
+- 結論：把「選取」與「重建」分開；**目前不採用任何候選作為通用物件移除的產品預設，T1 維持 NO-GO**。MI-GAN 保留快速工程對照，EfficientSAM 僅作待人工修正的選取提案，Moebius 暫緩；沒有量測出「最佳畫質」模型。依據見[續驗決策](#10-續驗與採用決策)，VAE 不等價與未測場景微調候選見[來源續查](#11-權重來源與後續研究)。
+- 已做：來源／設計調查、反方審查、第 9 節前置實驗、第 10 節續驗，以及第 11 節官方 VAE tensor／CPU 元件比較與 checkpoint 來源續查。未做：40 場景人類盲評、Windows／iOS 移除推論、付費 API、私人照片上傳或產品功能實作。
 - 配套：[ADR 0005](adr/0005-ai-object-removal.md) 記錄取捨；[操作與資料契約](object-removal-design.md) 固定 UX／色彩與保存邊界；[實作計畫](superpowers/plans/2026-10-20-ai-object-removal.md) 提供 T1–T5 與 OR-01–OR-14 對照。
 
 ## 1. 問題要拆對：選哪裡，與補什麼
@@ -18,17 +18,17 @@
 
 ## 2. 填補候選與採用資格
 
-以下「工程風險」是依原始碼的 **[INFERENCE]**；「畫質」只引用作者展示／論文任務範圍，不宣稱獨立重現。所有候選在 FilmBatch 的移除推論、CoreML／DirectML 分區及 iOS 實機均為 **not-run**。
+以下表格的架構風險依原始碼作 **[INFERENCE]**，作者畫質宣稱不是獨立 benchmark。第 9 節另列已實跑的 macOS artifact／數值與限制；FilmBatch 產品整合、Windows DirectML 與 iOS 移除推論仍為 **not-run**，不能從本機子圖外推。
 
 | 候選 | 已查到的來源／權利 | 工程風險與畫質未知 | 決定 |
 |---|---|---|---|
-| **MI-GAN-512 核心** | S02 的 MIT 程式碼及獨立 `LICENSE-WEIGHTS`；官方 README／exporter 區分核心與便利 pipeline | 核心有固定解析度的 noise／filter buffers；需核對真實 FP32 artifact 的張量與前後處理。作者速度不包含完整產品的現像、ROI／合成與 I/O | **先做可行性基準**；小模型不等於已適合所有 iOS 裝置或大洞 |
-| **LaMa／big-lama** | S03 程式碼 Apache-2.0；外部 checkpoint 的明確授權仍需資格審查，鏡像 Apache 標籤不能替代來源權利 | FFC 原始碼使用 `rfft2/irfft2`。ONNX 轉換方式、固定尺寸 MatMul 替代、精度與 provider fallback 是各 artifact 的問題；不能推論「只有某個轉換可行」或一概禁用 CPU | **結構／紋理基準**；先以 FP32 作參考，再檢查最佳化，不直接採信來路不明的 FP16 圖 |
-| **Moebius（ECCV 2026）** | S05 固定 repo 明列程式碼及預訓練權重 Apache-2.0；S06 模型卡現讀 metadata 為 MIT，兩者不一致須保留。推論還依賴 PixelHacker VAE | 作者宣稱小核心達到大型模型等級；不是 FilmBatch 證據。需驗 denoiser、VAE、採樣、所有實際相依算子及完整記憶體，不以 requirements 中出現 CUDA 套件就判定活躍推論圖必須使用它 | **同場的新式生成式候選**，不能等舊候選畫質失敗才拿來作公平比較；也不先承諾 ONNX／手機可用 |
+| **MI-GAN-512 核心** | S02 的 MIT 程式碼及獨立 `LICENSE-WEIGHTS`；官方 README／exporter 區分核心與便利 pipeline | FP32 原生數值通過不代表移除成功；續驗大洞生成新彩色形狀，真實目標區域亦出現不相關形狀。只驗固定 512 輸入 | **保留快速工程對照，不採用為通用移除預設**；不把較小洞的少量結果改稱已合格的產品子功能 |
+| **LaMa／big-lama** | S03 程式碼 Apache-2.0；檢視的第一方位置仍未建立 exact checkpoint 權利，issue #368 無回覆 | FFT／exporter／精度與 fallback 仍是未實跑的 artifact 問題；不能由授權卡關推論畫質或工程失敗 | **暫停下載與採用**，取得具名權重的第一方條款或合格 owner 裁決後重議 |
+| **Moebius（ECCV 2026）** | S05 的程式碼及預訓練權重 Apache-2.0 明文與 S06 的 MIT metadata 差異保留；PixelHacker VAE 與官方 SDXL VAE 實測不等價，見第 11 節 | 續驗完整 .NET 模型鏈可執行，但固定噪聲後仍有 strict 數值失敗與高資源成本；已測 `pretrained` 不等於未測的 `ft_places2` | **暫緩工程主線及產品採用**；保留原失敗，場景微調只列獨立研究候選，不宣告整個家族通過或失敗 |
 | **ObjectClear（CVPR 2026）** | S07 的 NTU S-Lab 1.0 含非商業用途限制；完整 base／checkpoint 權利仍須分別追蹤 | 專門處理物件及其影響，適合作陰影／倒影評估參考；SDXL 類完整鏈的資源與原生轉換成本未測 | **品質研究參考，不列一般產品預設**；適用用途、下載或執行須先取得相應資格 |
 | **FLUX.1-Fill-dev** | S08：模型使用的 NC 條款與輸出的使用條款不同；開放程式碼不代表模型可自由商用 | 大型 denoiser 以外還有 VAE／文字元件與採樣成本；量化、offload 可能改變品質／速度。未在本機執行，不能宣稱只支援某類硬體 | **有條件品質參考，不內建或呼叫**；有合法執行權利且測得必要品質優勢時才重議 |
 | **MAT** | S04 的非商業／研究用途限制及 StyleGAN 系相依需分別審查 | 參考實作的自訂算子增加原生轉換成本；不把 CUDA 程式碼存在等同數學上不可轉換 | 不列初次短名單；授權或替代算子取得明確資格時才重議 |
-| **AOT-GAN／LaMa-Dilated、ZITS 類、PowerPaint／OmniPaint** | 平行角色擴展調查所列候補；本輪未逐一獨立複核完整 checkpoint／base／adapter 權利 | 架構／模型家族名不能繼承其他 artifact 的品質或平台資格；額外網路、base 模型與轉換器都必須算入成本 | 保留研究線索，不作已合格產品候選或授權結論；觸發點是前三路未過 gate，或有新來源證明值得同場比較 |
+| **AOT-GAN／LaMa-Dilated、ZITS 類、PowerPaint／OmniPaint、BrushNet** | 候補線索；第 11 節補查 PowerPaint v2.1、BrushNet 與 AOT-GAN 的具名來源，尚未閉合完整權利鏈 | 架構／模型家族名不能繼承其他 artifact 的品質或平台資格；額外網路、base 模型與轉換器都必須算入成本 | 不作已合格產品候選；先釐清現有 checkpoint／VAE，再決定是否值得引入另一套完整模型鏈 |
 
 ### MI-GAN 的 8-bit 邊界不能忽略
 
@@ -127,7 +127,7 @@ Moebius repo 的 Apache-2.0 與模型卡 MIT 必須並列，採用時重新檢�
 
 | ID | 問題／最強反方 | 狀態與本輪處置 | 證據／可推翻條件 |
 |---|---|---|---|
-| R1 | 易部署的 MI-GAN／LaMa 是否等於畫質最佳？ | 採納比較，不採納冠軍宣稱；加入 Moebius 同場 | 原作者來源 S02／S03／S05＋T1／T5 人類盲評；不存在本輪模型量測 |
+| R1 | 易部署的 MI-GAN／LaMa 是否等於畫質最佳？ | 採納比較，不採納冠軍宣稱；加入 Moebius 同場 | 原作者來源 S02／S03／S05＋T1／T5 人類盲評；第 9 節只有可行性實測，沒有畫質盲評 |
 | R2 | 沒有 FFT／文字提示就不會生成新物件？ | 否決；所有神經填補都要驗殘留、新物件與結構 | 「無新干擾物」是品質硬失敗，不由架構名豁免 |
 | R3 | 標準算子／小權重證明原生全加速或 iOS fit？ | 否決；允許真實 CPU／混合 provider，但要求完整圖與實機成本 | T1 artifact 執行與 T5 平台矩陣；未跑仍 not-run |
 | R4 | 把模型另外下載能解除資料／權重限制？ | 否決；來源鏈與明確權重條款分開記錄，不作法律結論 | S02–S08；採用前 owner／法律審查 |
@@ -150,15 +150,15 @@ Moebius repo 的 Apache-2.0 與模型卡 MIT 必須並列，採用時重新檢�
 | ID | 已讀材料與來源 | 查核／固定點與仍未知事項 |
 |---|---|---|
 | S01 | [PatchMatch 原論文書目](https://doi.org/10.1145/1531326.1531330)；[原作者投影片的 Princeton 課程鏡像](https://www.cs.princeton.edu/courses/archive/fall18/cos526/notes/patchmatch.pdf) | 論文站全文 HTTP 403；實讀投影片解釋 randomized correspondence／patch hole filling，不把投影片當本機重現或可重用程式授權 |
-| S02 | [MI-GAN README](https://github.com/Picsart-AI-Research/MI-GAN/blob/2b793c5ece43f4253e32d4afc257120a5deed6f5/README.md)；[權重 MIT](https://github.com/Picsart-AI-Research/MI-GAN/blob/2b793c5ece43f4253e32d4afc257120a5deed6f5/LICENSE-WEIGHTS)；[pipeline exporter](https://github.com/Picsart-AI-Research/MI-GAN/blob/2b793c5ece43f4253e32d4afc257120a5deed6f5/scripts/create_onnx_pipeline.py) | 協調者直接複核來源文字／wrapper 邊界；commit `2b793c5ece43f4253e32d4afc257120a5deed6f5`。未取得 ONNX bytes，無本機精度／速度證據 |
-| S03 | [LaMa README](https://github.com/advimman/lama/blob/786f5936b27fb3dacd2b1ad799e4de968ea697e7/README.md)；[FFT 實作](https://github.com/advimman/lama/blob/786f5936b27fb3dacd2b1ad799e4de968ea697e7/saicinpainting/training/modules/ffc.py) | 協調者讀取實作／repo；pin `786f5936b27fb3dacd2b1ad799e4de968ea697e7`。checkpoint 權利、指定轉換與 native partition 未解，不以鏡像標籤定案 |
+| S02 | [MI-GAN README](https://github.com/Picsart-AI-Research/MI-GAN/blob/2b793c5ece43f4253e32d4afc257120a5deed6f5/README.md)；[權重 MIT](https://github.com/Picsart-AI-Research/MI-GAN/blob/2b793c5ece43f4253e32d4afc257120a5deed6f5/LICENSE-WEIGHTS)；[pipeline exporter](https://github.com/Picsart-AI-Research/MI-GAN/blob/2b793c5ece43f4253e32d4afc257120a5deed6f5/scripts/create_onnx_pipeline.py) | pin `2b793c5ece43f4253e32d4afc257120a5deed6f5`；已取得原 checkpoint 並匯出 FP32 核心，macOS 原生結果見第 9 節。另下載的 `migan.onnx` 實查仍是 UINT8 pipeline，不是浮點核心 |
+| S03 | [LaMa README](https://github.com/advimman/lama/blob/786f5936b27fb3dacd2b1ad799e4de968ea697e7/README.md)；[FFT 實作](https://github.com/advimman/lama/blob/786f5936b27fb3dacd2b1ad799e4de968ea697e7/saicinpainting/training/modules/ffc.py)；[權重授權問題 #368](https://github.com/advimman/lama/issues/368) | pin `786f5936b27fb3dacd2b1ad799e4de968ea697e7`；2026-10-20 查到權重問題仍 open，未取得明確澄清，本輪未下載／執行。不能以 repo Apache 或鏡像標籤代替該 checkpoint 的來源資格 |
 | S04 | [MAT](https://github.com/fenglinglwb/MAT) 與 [LICENSE](https://github.com/fenglinglwb/MAT/blob/main/LICENSE) | 協調者複核非商業條款文字；原始碼脈絡由本機 lens 調查。不是 checkpoint／產品用途法律核准 |
-| S05 | [Moebius README](https://github.com/hustvl/Moebius/blob/b88d462bacb9af6e7128a3b4cc4a07418bedfd61/README.md)；[模型設定](https://github.com/hustvl/Moebius/blob/b88d462bacb9af6e7128a3b4cc4a07418bedfd61/config/model_cfg/moebius.yaml)；[lambda attention](https://github.com/hustvl/Moebius/blob/b88d462bacb9af6e7128a3b4cc4a07418bedfd61/model_lib/nets/layers/%CE%BB/vanilla%CE%BB.py) | 協調者直接讀取；pin `b88d462bacb9af6e7128a3b4cc4a07418bedfd61`（2026-08-12）。小核心／大型模型等級／加速是作者宣稱，未獨立重現 |
-| S06 | [Moebius 模型卡](https://huggingface.co/hustvl/Moebius)；[PixelHacker](https://huggingface.co/hustvl/PixelHacker) | 協調者讀到 Moebius 卡為 MIT、repo 為 Apache-2.0；VAE／取得檔案的權利仍須逐一確認。採用時重新固定模型卡版本、權重／VAE bytes，不能套用一個全家族授權 |
+| S05 | [Moebius README](https://github.com/hustvl/Moebius/blob/b88d462bacb9af6e7128a3b4cc4a07418bedfd61/README.md)；[模型設定](https://github.com/hustvl/Moebius/blob/b88d462bacb9af6e7128a3b4cc4a07418bedfd61/config/model_cfg/moebius.yaml)；[lambda attention](https://github.com/hustvl/Moebius/blob/b88d462bacb9af6e7128a3b4cc4a07418bedfd61/model_lib/nets/layers/%CE%BB/vanilla%CE%BB.py) | pin `b88d462bacb9af6e7128a3b4cc4a07418bedfd61`；第 9 節的單圖匯出未完成，第 10 節已用多 session 執行 3 組完整 native 模型鏈，但皆有 strict fail。小核心／大型模型等級仍是作者品質宣稱，不由本輪樣本證明 |
+| S06 | [Moebius 固定模型卡](https://huggingface.co/hustvl/Moebius/blob/cd01f47fb648219d3fa605806c5ce00b713faa5e/README.md)；[PixelHacker 固定模型卡](https://huggingface.co/hustvl/PixelHacker/blob/012fd343158936a265b8a0ee38a791a7a2841f45/README.md) | 本輪取得上述版本 student／VAE；兩張 HF 卡均標 MIT，GitHub repo 為 Apache-2.0，Moebius README 明列 weights。差異照錄，未找到 VAE 獨立條款，不作產品散布的法律核准 |
 | S07 | [ObjectClear repo](https://github.com/zjx0101/ObjectClear)；[實讀 LICENSE](https://github.com/zjx0101/ObjectClear/blob/c052d91ecd8772744a5ab97527441c813ab83009/LICENSE)；[原論文頁](https://arxiv.org/abs/2505.22636) | 協調者直接讀授權；固定 LICENSE `c052d91ecd8772744a5ab97527441c813ab83009`。論文版本／repo 副標不同不代表本機測過；不引用未複核的資料集數量 |
 | S08 | [FLUX 官方 Fill 說明](https://github.com/black-forest-labs/flux/blob/802fb4713906133fcbd0d8dc5351620ca4773036/docs/fill.md)；[固定 repo 模型條款](https://github.com/black-forest-labs/flux/blob/802fb4713906133fcbd0d8dc5351620ca4773036/model_licenses/LICENSE-FLUX1-dev)；[BFL 現行公開條款](https://bfl.ai/legal/non-commercial-license-terms) | 協調者讀取；程式碼 pin `802fb4713906133fcbd0d8dc5351620ca4773036`。現行網頁條款不能無聲取代所選權重附帶版本，採用時重新審查適用版本與使用方式 |
 | S09 | [SAM 2 README／License](https://github.com/facebookresearch/sam2/blob/2b90b9f5ceec907a1c18123530e92e794ad901a4/README.md) | 協調者直接複核 checkpoint／code Apache-2.0 文字；pin `2b90b9f5ceec907a1c18123530e92e794ad901a4`。原生 encoder／decoder 仍未部署 |
-| S10 | [EfficientSAM exporter](https://github.com/yformer/EfficientSAM/blob/d525f622e6f640acf5a0fc37c7ca1f243da5bde0/export_to_onnx.py)；[LICENSE](https://github.com/yformer/EfficientSAM/blob/d525f622e6f640acf5a0fc37c7ca1f243da5bde0/LICENSE) | 協調者直接讀；pin `d525f622e6f640acf5a0fc37c7ca1f243da5bde0`。full／split 出口存在，不等於數值與部署成功 |
+| S10 | [EfficientSAM exporter](https://github.com/yformer/EfficientSAM/blob/d525f622e6f640acf5a0fc37c7ca1f243da5bde0/export_to_onnx.py)；[LICENSE](https://github.com/yformer/EfficientSAM/blob/d525f622e6f640acf5a0fc37c7ca1f243da5bde0/LICENSE) | pin `d525f622e6f640acf5a0fc37c7ca1f243da5bde0`；已取得 Ti checkpoint、匯出 FP32 split 並原生串接，見第 9 節。來源為 Apache-2.0 repo 隨附權重，未找到獨立權重條款；不因此宣稱所有裝置可用 |
 | S11 | [MobileSAM exporter](https://github.com/ChaoningZhang/MobileSAM/blob/f706ad9c4eb7f219c00d9050e46328518ffb65d2/scripts/export_onnx_model.py) | 協調者直接讀 decoder script；pin `f706ad9c4eb7f219c00d9050e46328518ffb65d2`。不能拿 `image_embeddings` 輸入當完整影像 encoder |
 | S12 | [SAM 3 LICENSE](https://github.com/facebookresearch/sam3/blob/7f473cfd983d5eb43040ff608f66bff0d7bdcb53/LICENSE) | 協調者讀 current 與固定版條款，自訂 SAM License（文字日期 2025-11-19）；不繼承 SAM 2 的 Apache 判斷 |
 | S13 | [Lightroom Classic Remove](https://helpx.adobe.com/lightroom-classic/desktop/process-and-develop-photos/remove-tool.html) | 協調者直接讀；頁面顯示日期與 metadata 更新日期不同，依本輪文字而非宣稱單一發版日。產品操作說明，不是 SDK、模型或離線執行證據 |
@@ -166,7 +166,220 @@ Moebius repo 的 Apache-2.0 與模型卡 MIT 必須並列，採用時重新檢�
 | S15 | [Photoshop Remove](https://helpx.adobe.com/photoshop/using/tool-techniques/remove-tool.html) | UX lens 的原廠文件摘要，協調者未另行直接複核；僅補充互動線索 |
 | S16 | [Apple Photos Clean Up](https://support.apple.com/guide/photos/remove-distractions-and-imperfections-pht5c38b77c5/mac) | UX lens 的原廠文件摘要，協調者未另行直接複核；不判定 Apple 模型內部、可嵌入介面或未測支援能力 |
 | S17 | [Vertex AI 物件移除文件](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/image/edit-remove-objects) | 協調者直接讀公開文件；本輪未呼叫、未查帳務或區域可用性，文件樣例也須在實際採用時重驗，不能直接複製為部署配方 |
+| S18 | [Stability AI SDXL VAE 模型卡](https://huggingface.co/stabilityai/sdxl-vae/blob/6f5909a7e596173e25d4e97b07fd19cdf9611c76/README.md)；[固定 artifact 樹](https://huggingface.co/api/models/stabilityai/sdxl-vae/tree/6f5909a7e596173e25d4e97b07fd19cdf9611c76) | pin `6f5909a7e596173e25d4e97b07fd19cdf9611c76`；第一方卡標 MIT。本輪只取得一份 safetensors、驗證 LFS SHA-256 並做 tensor／CPU 元件比較，結果見第 11 節；不是現有 PixelHacker VAE 的來源證明或產品法律核准 |
+| S19 | [Moebius 場景微調 artifact](https://huggingface.co/api/models/hustvl/Moebius/tree/cd01f47fb648219d3fa605806c5ce00b713faa5e/ft_places2)；[論文 §4.1](https://arxiv.org/html/2606.19195v1#S4.SS1) 與 [OOD 表 7](https://arxiv.org/html/2606.19195v1#Sx1.T7) | 模型 repo 沿用 S06 pin；作者區分蒸餾與分領域微調，OOD 評估使用 Places2／CelebA-HQ 權重。僅讀 metadata／原文，未下載 `ft_places2`、未驗張量相容或畫質 |
+| S20 | [PowerPaint 程式碼 MIT](https://github.com/open-mmlab/PowerPaint/blob/5b4c3d52291709fcec2a1870d987da693fd3549c/LICENSE)；[v2.1 卡](https://huggingface.co/JunhaoZhuang/PowerPaint-v2-1/blob/5ae2be3ac38b162df209b7ad5de036d339081e33/README.md) 與 [元件樹](https://huggingface.co/api/models/JunhaoZhuang/PowerPaint-v2-1/tree/5ae2be3ac38b162df209b7ad5de036d339081e33?recursive=true) | 程式碼 pin `5b4c3d52291709fcec2a1870d987da693fd3549c`；模型 pin `5ae2be3ac38b162df209b7ad5de036d339081e33`。卡標 Apache-2.0，但 base／VAE／文字元件權利另審；沒有下載、原生轉換或資源量測 |
+| S21 | [BrushNet README](https://github.com/TencentARC/BrushNet/blob/0f9d9e54ca85c40a11a8f0504b4b5b2e7e8fd14d/README.md) 與 [Apache-2.0 條款](https://github.com/TencentARC/BrushNet/blob/0f9d9e54ca85c40a11a8f0504b4b5b2e7e8fd14d/LICENSE)；[具名 adapter 樹](https://huggingface.co/api/spaces/TencentARC/BrushNet/tree/0ae4b1d340aa8c60de67b117fcde71e4a2b06dbd/data/ckpt/segmentation_mask_brushnet_ckpt) | code pin `0f9d9e54ca85c40a11a8f0504b4b5b2e7e8fd14d`；Space pin `0ae4b1d340aa8c60de67b117fcde71e4a2b06dbd`。另需 SD base 等元件；本輪只讀來源及 metadata，未執行 |
+| S22 | [Qualcomm AOT-GAN 卡](https://huggingface.co/qualcomm/AOT-GAN/blob/da4d45719d75f84e67c4def8623641a481bc6779/README.md)；[LICENSE](https://huggingface.co/qualcomm/AOT-GAN/blob/da4d45719d75f84e67c4def8623641a481bc6779/LICENSE) 與 [release 指標](https://huggingface.co/qualcomm/AOT-GAN/blob/da4d45719d75f84e67c4def8623641a481bc6779/release_assets.json) | pin `da4d45719d75f84e67c4def8623641a481bc6779`，release `0.64.0`；卡標 MIT，但 LICENSE 僅轉指另一個 AttnGAN repo，未建立原 AOT checkpoint 的明確來源鏈。卡列 CelebAHQ／512／58 MB，不外推一般攝影品質或 ORT 1.25.0 相容 |
 
-**停止調查的理由**：已取得區分方法、三路候選、選取出口、授權風險與 FilmBatch 插入點所需的原始來源；每個採用所需但無法由文件確定的問題，都有 T1／T5 的明確實驗或 Human Review。繼續堆論文不會產生缺少的像素／實機證據，故停在可執行的比較計畫。
+**來源調查的停止點**：已取得區分方法、候選、選取出口、授權風險與 FilmBatch 插入點所需的原始來源；之後經使用者另行授權執行第 9 節實驗。其餘問題需要指定 artifact、品質資料或 Human Review，不能靠增加論文引用解決。
 
-**仍未判定**：哪個 artifact 畫質／總成本勝出、最終權重 digest、各 provider 數值、可用 ROI／裝置上限、手機完整生成功能。使用者若之後授權實作，先執行 T1；新 checkpoint／exporter／license／ORT 更新會使相應資格過期，採用／發佈前必須重新查核。這份文件沒有把尚未執行的工作記成通過。
+**仍未判定**：哪個 artifact 畫質／總操作成本勝出、最終採用版本、超出本輪固定尺寸／樣本的數值與裝置上限，以及手機完整生成功能。正式產品實作前仍須完成剩餘 T1 資格；新 checkpoint／exporter／license／ORT 會使相應資格過期。前置實驗不等於 T1／T5 或功能交付通過。
+
+## 9. 本機可行性實驗
+
+### 範圍、資料與工具
+
+使用者授權先保存研究文件，再做隔離可行性實驗、依結果回寫。文件基線已於本機 commit `a8744a8`；第 9 節前置階段未 push、未修改產品程式或新增永久測試。這不是第 6 節的品質驗收；後續文件發布授權見第 11 節。
+
+- 主機：Apple M3、16 GiB RAM；.NET SDK `10.0.402`、原生 ONNX Runtime `1.25.0`。CPU 為 sequential、intra-op 4／inter-op 1；CoreML 使用 `MLProgram`、`MLComputeUnits=ALL`、固定輸入及停用低精度 GPU accumulation。CoreML 內部使用 CPU／GPU／ANE 的比例未量測。
+- 暫用獨立 Python `3.11.17` venv、PyTorch `2.8.0`、ONNX `1.18.0` 作匯出／參考，並非產品新增 runtime；精確版本留於 `environment-freeze.txt`。未變更全域 Python、SDK 或 Xcode。
+- 共同輸入為非對稱 512×512 程序 RGB16 圖、13,592 像素 hole，以及 [NIND 公開照片](https://commons.wikimedia.org/wiki/File:NIND_droid_ISO200.jpg) 的 512×512 衍生裁片；作者 Trougnouf（Benoit Brummer），CC-BY-4.0。照片輸入另加合成紅色目標，不是自然物件／陰影移除 benchmark，也不是 sensor RAW。原照片 SHA-256 與 11 個 fixture 檔案檢查通過。
+- 原生量測在匯出／參考工作結束後串行執行。主 wave 為 **20 組，18 組 strict-reference pass、2 組 fail**；另有 **12 組記憶體 smoke，10 pass、同一 VAE encoder 的 2 組 fail**。所有失敗均保留。
+
+### 實際 artifact 與介面
+
+下列是本次本機匯出的 **FP32、opset 17、固定輸入尺寸**圖；不是產品 catalog 或平台支援清單。來源 checkpoint 與匯出圖的 digest 分開保存於各 `cases.json`／來源帳本。
+
+| ONNX artifact | bytes | SHA-256 |
+|---|---:|---|
+| MI-GAN-512 core | 28026345 | `37c1efb93fc5e2bb9f56b3d843298701d38542ddcd1069eaf4e3334512870e1c` |
+| EfficientSAM-Ti encoder | 24799767 | `e9e444487896b028143e0138c792bebe55de36a5eccb1f2f1504efef3ee55db1` |
+| EfficientSAM-Ti decoder | 16563593 | `64cf44d93606eca04912003c6428c99cb5535aa17147433106a1cd2a3b45e45b` |
+| Moebius removal-step | 905108134 | `0731ddf7fecc2ad480ad457187a69ff4cd5acf27655a5a943a5829d9fe5b0e4f` |
+| PixelHacker VAE encode | 136760895 | `68f3c5b6c5c69dece9519c7a9cff410fcd9f0fb2ef46f4b14854e5ae20b81d03` |
+| PixelHacker VAE decode | 198069306 | `13666ed6ce3a4176298afe9181e660c15741856077d124b2efde62662c4cf89c` |
+
+- **MI-GAN**：原 checkpoint 29,553,256 bytes，SHA-256 `1d6087eee0aac8923ad2606be5d8caeb4824d3e4de331995e420c74e124a466a`；依 S02 原 `Generator` strict 載入。輸入 float `[1,4,512,512]`，依序為 `known-0.5` 與 `(RGB*2-1)*known`，`known=1-hole`；輸出 `[1,3,512,512]`，以 `clip(out*0.5+0.5,0,1)` 映回 SDR。實測輸出可略超出名義 `[-1,1]`，不假設網路已自行 clamp。另取得的作者 `migan.onnx` 為 UINT8 pipeline，未拿它走 RGB16 整圖往返。
+- **EfficientSAM**：原 Ti checkpoint SHA-256 `dff858b19600a46461cbb7de98f796b23a7a888d9f5e34c0b033f7d6eb9e4e6a`。encoder 接 RGB float `[1,3,512,512]`，上游 wrapper 內部 bilinear 放大到 1024，再輸出 `[1,256,64,64]` embedding；decoder 收同一 provider 的**原生 encoder 輸出**、像素座標、labels 與 int64 `[H,W]`。參考是上游 ONNX bilinear wrapper，不宣稱與另一條 bicubic eager 後處理相同。以預測 score 排序三個候選，再用 logits `>=0`；score 曾超過 1，不能視為校準過的信心機率。
+- **Moebius**：student checkpoint 905,297,927 bytes，SHA-256 `6c9ee08ce467af48767b74416646d82f8a0c1dcfb558c478e635cef0ca8b2ad2`；VAE checkpoint 167,394,306 bytes，SHA-256 `a59d7ea697f2942d22002dc3469e8c53db807a6b78f7f5ec03bd4c1f70f98efe`。per-step 圖接 `[2,9,64,64]` CFG-concat、timestep 與 embedding IDs，本例 `t=950`；VAE latent 為 `[1,4,64,64]`。僅裁掉 package 的未用 teacher import，所有執行算子仍來自固定上游，沒有替代 attention／假類別。student checkpoint 另以顯式 `weights_only=True` 成功載入 1,203 個 tensor 項目；重現時須固定 restricted-load 政策，不因副檔名或 tensor key 就假定 pickle 安全。
+
+### 原生執行、延遲與程序記憶體
+
+每組先載入 session、首跑，再量 **10 次 warm run**，p50／p95 採 nearest-rank；開啟 ORT profiling。這些只含該 graph 推論，不含 decode、完整現像、ROI／合成、UI；cold load／first run 分列在原始結果，OS cache 未清空。表列合成圖與正點 decoder；照片及其餘 prompt 的完整 20 組資料保留於 `summary.json`。
+
+`.NET PeakWorkingSet64` 在本輪回報 0，**作 unavailable，不當成零記憶體**；表中 peak RSS 來自另外 12 組 `/usr/bin/time -l` smoke（首跑＋1 次 warm、無取消），不是主 wave 的同步峰值。它不含其他 CoreML 服務程序，也不是完整 app、多元件同時存活或 iOS 峰值。
+
+| graph | CPU p50／p95 ms | CoreML-request p50／p95 ms | 獨立 peak RSS CPU／CoreML MiB | CoreML-request 的 CoreML／CPU event names | 參考數值 |
+|---|---:|---:|---:|---:|---|
+| MI-GAN-512 | 271.34／329.31 | 74.12／105.52 | 987.7／1274.6 | 8／14 | pass |
+| EfficientSAM encoder | 1265.73／1344.62 | 1316.24／1358.32 | 1006.6／1026.4 | 18／353 | pass |
+| EfficientSAM decoder，正點 | 26.96／30.02 | 32.70／39.32 | 228.2／238.1 | 14／415 | pass |
+| Moebius removal-step，單步 | 7149.73／24133.69 | 3813.24／4668.73 | 3346.2／5207.9 | 47／138 | pass |
+| VAE encode | 8389.64／11059.11 | 1190.09／1405.94 | 1296.6／600.6 | 1／1 | **fail** |
+| VAE decode | 17686.34／18945.04 | 2340.91／2982.80 | 2324.3／776.4 | 1／0 | pass |
+
+event names 為 profile 中唯一已執行 kernel 名稱數，不是原始節點百分比，也不能證明 CoreML partition 內全部跑 GPU／ANE。MI-GAN 與 SAM 均是混合 provider；這個樣本下 SAM 的 CoreML-request 並未比 CPU 快，不預設「有 CoreML 就該優先」。單步 Moebius 成功不等於完整生成時間可由表格直接相加或乘步數得出。
+
+### 已驗證的窄邊界與失敗
+
+- **數值**：以同權重 PyTorch 參考檢查有限值，統一 strict gate 為 `abs(error) <= 0.0002 + 0.002*abs(reference)`。20 組皆有限值；18 組通過。VAE encoder 圖含 `RandomNormalLike`，跨 runtime 噪聲未對齊；CPU／CoreML 分別有 35／30 個 latent 元素超界，max-abs 為 0.004888／0.007498。保留 fail，不加寬容差或把 sample 換成 mean；也未證明全部誤差只來自 RNG。
+- **選取**：正點、正負點、框、框＋正點在兩種 provider 共 8 組，均串接原生 embedding。對同一程序圖紅色目標的實際 mask IoU 為 0.9631–0.9921；只證明這張已知幾何的基本行為，不是攝影品質通過。非最佳候選可能覆蓋背景，不能固定拿 candidate 0。
+- **RGB16／crop-back**：MI-GAN 的程序圖／照片、兩種 provider 共 4 組，二元 mask 外 RGB 變動皆 0，非零原點 `(137,83)` 放回大畫框後外部變動也為 0。反轉 mask 的負控制確實偵測到越界；4 組 PNG16 經獨立 OpenCV decode 逐值相等，其中 1 組再經 Apple ImageIO 解碼確認 16-bit sRGB 全部 RGB samples 相等。這不是完整效果管線、羽化、alpha、專案或接受結果重播驗收。
+- **取消／重用**：MI-GAN 兩種 provider 均在 native 尚未完成時要求 `RunOptions.Terminate`，觀察到 terminate exception；取消至 native 返回分別約 1.80／2.71 ms，同 session 隨後成功再推論並通過參考檢查。probe 有 post-run token 丟棄；未測產品 UI 回到可互動、世代／快取或 undo 行為。
+- **負控制**：缺少模型、模型 SHA-256 不符均明確失敗，沒有回原圖假成功；這是 probe 的邊界，不是尚不存在的產品 API 測試。
+- **Moebius 完整鏈**：真實 PyTorch CPU 參考以 seed 0、要求 20 DDIM steps、CFG 2.5、paste 執行，已檢視紅目標被填補；上游此介面仍是 PIL RGB8 輸入／輸出，不是合格 RGB16 原生鏈。2-step 單圖匯出兩次得到 SIGKILL／137，無獨立 memory-kill 證據，OOM 僅為推測；1-step 到寫檔時得到 `OSError: [Errno 28] No space left on device`，同時保留 15 GiB 可用的 df snapshot，不臆測原因或保證重試成功。0-byte 未完成圖已移除，完整錯誤仍在；沒有完整 native sampling／CFG／DDIM／VAE／paste 串接通過證據。
+- **權利與平台**：LaMa 權重資格未解，未下載／跑分；Moebius／PixelHacker 的 repo 與 HF 標籤差異尚待採用審查。未測 40 場景／3 位人類、Windows DirectML、iOS Simulator／實機移除，未做 FilmBatch UI／專案／輸出整合。不得把它們計成通過。
+
+### 證據、重現與下一個 gate
+
+本機忽略目錄 `dist/object-removal-feasibility-20261020/` 保存 `ledger.json`、`summary.json`、`native/runs.json`、`native-memory/summary.json`、`inspection/result.json`、三份候選 `cases.json`、來源／授權與 profiler／原始錯誤。已檢視圖包括 `inspection/native-fills-contact.png` 與 `moebius/reference/ref-steps20-cfg2.5-paste.png`；協調者的目視觀察不是人類盲評，格線仍可見局部不規則，不以漂亮小圖宣告畫質勝出。
+
+主量測原始 profile 集中保留於 `profiles-original/`，以 `profile-relocation.json` 對照各報告的原始名稱；原波次原始碼另存 `verification-harnesses-primary-wave.tar.gz`。最後封存只修正 profiler prefix／enable 的設定順序並另行 smoke，不改量測、模型或數值判準。
+
+驗證用原始碼封存為 `verification-harnesses.tar.gz`，沒有新增產品 runtime 或把腳本當正式功能。重現這次本機 smoke 可先將封存解回同一目錄，再使用保留的 venv／模型與 manifest 執行：
+
+```bash
+tar -xzf dist/object-removal-feasibility-20261020/verification-harnesses.tar.gz -C dist/object-removal-feasibility-20261020
+"$HOME/.dotnet/dotnet" build dist/object-removal-feasibility-20261020/native-runner/NativeRunner.csproj -c Release --disable-build-servers -p:UseSharedCompilation=false --nologo
+dist/object-removal-feasibility-20261020/venv/bin/python dist/object-removal-feasibility-20261020/run_native.py
+dist/object-removal-feasibility-20261020/venv/bin/python dist/object-removal-feasibility-20261020/measure_memory.py
+dist/object-removal-feasibility-20261020/venv/bin/python dist/object-removal-feasibility-20261020/inspect_outputs.py
+dist/object-removal-feasibility-20261020/venv/bin/python dist/object-removal-feasibility-20261020/summarize_results.py
+```
+
+上述資料不隨 repo 發佈；manifest 含這次工作站絕對路徑，搬移時需重新產生路徑／參考，不能當成跨機安裝器。原生 smoke 不下載模型；若重跑 PyTorch 參考／匯出，先固定來源、環境與 `TORCH_FORCE_WEIGHTS_ONLY_LOAD=1`。
+
+**前置波次決定**：MI-GAN FP32 core 與 EfficientSAM split 有繼續研究的本機證據，但不代表已採用或 T1 通過。續驗已執行固定噪聲與完整原生模型鏈，並發現真實照片的反例；目前採用決策以下節為準，以上原始失敗不追改為通過。
+
+## 10. 續驗與採用決策
+
+### 決策與適用範圍
+
+使用者另行要求繼續實驗並決策。第 10 節波次只延續忽略目錄內的研究與既有文件回寫，當時沒有產品實作、新 commit 或 push；原文件基線 `a8744a8` 與第 9 節證據保持不變。第 11 節再補來源實驗與文件發布範圍。
+
+| 項目 | 本輪決定 | 重議條件 |
+|---|---|---|
+| 通用物件移除／T1 | **NO-GO；沒有合格產品預設，不開始 T2–T5** | 合法 artifact、數值／資源與固定品質 gate 均通過；不降低原先要求 |
+| MI-GAN FP32 core | **保留工程對照，不採用為通用移除預設** | 獨立場景證明目標／影響真正消失，無顯眼新物件且通過既有盲評；目前沒有可宣稱已支援的小洞範圍 |
+| EfficientSAM-Ti | **可繼續選取提案研究，不自動套用**；手動筆刷／修正不可移除 | 候選需人工確認；正負點、鄰近受保護物、影子／倒影與候選排序須另外驗收 |
+| Moebius＋現有 VAE | **暫緩**，不再以單圖匯出重試為主線 | 定位剩餘數值漂移、精確後處理、明顯品質收益、可接受的整鏈成本與完整權利來源 |
+| LaMa／受限候補／雲端 | LaMa 保持資格 blocked；其他不新增下載或呼叫 | 第一方權重資格或明確用途裁決；雲端仍需另一份隱私／成本授權 |
+| 平台 | 僅有 **macOS M3、16 GiB、ORT 1.25.0 的研究證據** | Windows DirectML、iOS 及完整產品各自實跑；不以本機結果宣稱支援 |
+
+保留現有 `BasicDisplay`／`ToneSplit` 後、`Detail` 前的修補平面、接受結果保存與離線重播設計。不新增 Python 後備、通用 provider plugin、另一個填補引擎或假成功路徑。這不是取消原需求，也不是把小型瑕疵工具偷換成通用移除功能。
+
+### 真實照片、選取與合成續驗
+
+- 輸入在推論前固定：同一 NIND 場景的 ISO 200／6400 **兩個檔案，不是兩個獨立場景**；各 6 個遮罩，共 12 組。涵蓋原尺寸紋理小洞、50.82% 大洞、貼邊、細線，以及 1344×1344 裁片縮為 512 的真實玩偶／接觸陰影。沿用第 9 節 CC-BY-4.0 來源與 SHA-256；沒有私人照片外送。
+- MI-GAN 的 12 遮罩×CPU／CoreML-request 共 **24 組**，EfficientSAM 的 2 encoder＋8 prompt decoder 共 **10 組**；**34／34 strict pass**。decoder 使用實際 native encoder 輸出。另以 NumPy 從原始 tensor 獨立重算 **50 個輸出比較**全部通過，沒有只相信 C# 的成功標籤。
+- 這些是數值通過，**不是品質通過**。實際檢視兩種 ISO 的大洞皆出現新的紅／彩色形狀，玩偶移除區域出現不相關棕色形狀；MI-GAN 不宜作通用移除預設。這是可見反例，不是人類盲評或家族整體排名。
+- SAM 的單正點偏向只選身體；最高預測分的正負點候選反而涵蓋兩側玩偶。框／框＋點較接近目標，仍需人工修正。分數不是安全保證，負點不是絕不越界的約束。人工 polygon 為近似標註，其 IoU 只作診斷，不作真實選取準確率。
+- **48 組** RGB16 合成：12 遮罩×2 provider×硬邊／向內 8px 羽化。二元遮罩外 RGB、非零原點 crop-back 外部變動均為 0；48 個 PNG16 往返逐值相同。alpha 為借用的合成測試平面，並非照片原生透明度或產品 alpha 語意資格。1 組再由 Apple ImageIO 獨立解碼，1,048,576 個 RGBA16 samples 全數相同。原始照片雜湊未變。
+
+每組 5 次 warm graph 推論，以下將同組樣本合併取 nearest-rank p50／p95；CPU 為 sequential、intra-op 4。開啟 profiling，不含影像 decode、完整 ROI／現像／UI；peak RSS 是 `/usr/bin/time -l` 的 probe 程序峰值，不含其他 CoreML 服務。與第 9 節不同輸入／波次，不能解讀成產品最佳化前後差異。
+
+| graph／provider request | cases／warm samples | pooled p50／p95 ms | 最大程序 RSS MiB |
+|---|---:|---:|---:|
+| MI-GAN CPU | 12／60 | 198.84／207.45 | 998.5 |
+| MI-GAN CoreML-request | 12／60 | 60.85／75.86 | 1275.9 |
+| SAM encoder CPU | 2／10 | 905.26／920.09 | 1021.5 |
+| SAM decoder CPU | 8／40 | 18.12／18.52 | 243.6 |
+
+MI-GAN CoreML-request profile 仍含 8 個 CoreML／14 個 CPU kernel event names，不是全 GPU／ANE。SAM 本輪只補 CPU；先前 CoreML-request 未見收益的證據仍在，不假定所有模型共用同一最佳 provider。
+
+### Moebius：完整模型鏈可執行，但未合格
+
+不再展開巨大單圖。重用既有 denoiser／decoder，加上顯式 epsilon 的 VAE encoder，C# host 自 image／mask／噪聲開始計算兩次 VAE sample、初始加噪、CFG＋DDIM、decode 與貼回；**沒有把參考 latent 餵入冒充整鏈成功**。同固定 seed 的參考由真實上游模組／scheduler 生成，記錄每步供比較。
+
+- `num_steps=20`、`strength=0.99` 的實際上游行為為 **19 步，t=900…0**；不是先前單步範例的 t=950。eps 已外部化，沒有用 posterior mean 取代 sample。
+- 新 encoder 使用相同權重與數學式，但為降低原 exporter 的 normalization 累加誤差，另有具名 GroupNorm→分塊 ReduceMean lowering；不是未改動的作者 ONNX。實跑圖為 138,528,854 bytes，SHA-256 `4b4678abf23e9e9406cd97da34fbccc9f867d22b8de354bf9bad0bf45b9907b0`；原始 epsilon 圖與改寫來源／digest 均保留。
+- 固定輸入重跑差異為 0、無 Random 算子，**但 VAE strict 比較仍有 19／16,384 個元素失敗，max-abs 0.005284**。fp64-cast 與 fp32 PyTorch 自身亦有差異，是敏感度診斷，不是正確性豁免或修改容差的理由。
+- 合成圖兩個 provider 的 pre-paste 圖皆 strict pass，但中間階段與最終貼回仍 fail。真實玩偶照片 CPU pre-paste 有 **33／786,432** 個元素超界，max-abs **0.002469**；剩餘原因未全部定位，不能把所有失敗歸因於 RNG 或參考精度。
+- 貼回使用近似 Pillow blur，並非 bit-exact 上游後處理，還有 1 LSB 差異；`1/255` 大於本例容差的最大值 `0.0022`，**不算通過**。host 的「外部不變」檢查只涵蓋 blur 後 matte=0；獨立重算發現原二元 mask=0 區域仍被 blur 影響，因此不能拿它當產品嚴格遮罩外保留證據。產品仍須以正式確認 matte 作高精度合成。
+
+下列每格只有 **1 次完整鏈**，不是 p50／p95；chain 不含 session load、PNG／來源 decode，程序 wall 另包含載入／比較，CPU 合成圖亦含一次 denoiser 取消／重用 smoke。
+
+| 完整模型鏈 | session load s | chain s | 程序 wall s | peak RSS GiB | strict 整體 |
+|---|---:|---:|---:|---:|---|
+| 合成圖 CPU | 0.84 | 98.64 | 105.04 | 6.36 | fail |
+| 合成圖 CoreML-request | 28.36 | 46.86 | 76.13 | 7.46 | fail |
+| 真實玩偶 CPU | 0.85 | 114.60 | 116.61 | 5.26 | fail |
+
+CoreML-request 留下約 2.3 GiB cache；RSS 不包含外部服務程序。此結果未建立手機可行性。CPU denoiser 的 raw terminate／同 session 重用成功，但不等於完整鏈 UI 取消驗收。目視玩偶本體移除後仍見碎片／塗抹；人工 mask 近似，不能把所有殘留歸因於模型。這些結果不足以抵銷數值、權利與資源缺口。
+
+### 權利裁決與重現
+
+- MI-GAN 的第一方 [LICENSE-WEIGHTS](https://raw.githubusercontent.com/Picsart-AI-Research/MI-GAN/2b793c5ece43f4253e32d4afc257120a5deed6f5/LICENSE-WEIGHTS) 明列 MIT；EfficientSAM [README](https://raw.githubusercontent.com/yformer/EfficientSAM/d525f622e6f640acf5a0fc37c7ca1f243da5bde0/README.md) 將 checkpoint 放在 Apache-2.0 repo 中。這些足以支持繼續工程研究；日後散布須保留 notices，訓練資料政策與產品資格另審，不宣布法律清白。
+- Moebius 第一方明列 student 權重 Apache-2.0 商用許可，但 HF MIT metadata 差異與 exact VAE 的來源仍需釐清。[PixelHacker 論文 §4.2](https://arxiv.org/html/2504.20438v1#S4.SS2) 說使用 frozen SDXL-VAE，不能單憑名稱／scaling factor 直接替換。第 10 節波次只有現測 `.bin` 與官方檔案 metadata，當時 tensor 等價未知；第 11 節已實際取得官方 safetensors，證明不是單純 FP16 轉換即可相等。原始失敗不追改，也不據此判定 rehost 違法。
+- [LaMa issue #368](https://github.com/advimman/lama/issues/368) 本次讀取仍 open、comments=0；檢視的 README／LICENSE 未建立 exact checkpoint grant。這不是已證明全世界沒有授權，而是本專案資格 gate 未滿足；因此不下載、不宣稱被其他模型擊敗。
+
+續驗證據集中於 `dist/object-removal-decision-20261020/`：`ledger.json`、`photos.json`、`native-photos/summary.json`、`numeric-verification.json`、`inspection/result.json`、`rights-review.json` 及 `moebius/result.json`。檢視圖為 `inspection/iso200-fills-contact.png`、`inspection/iso6400-fills-contact.png`、`inspection/selection-contact.png` 與 Moebius native PNG。這些不是人類盲評紀錄。
+
+驗證原始碼封存於 `verification-harnesses.tar.gz`，沿用前一輪 venv／權重／絕對路徑；模型、參考 tensor、失敗與 runtime receipts 不因封存而刪除。T1 維持未通過；重新啟動產品實作的條件是既有資格與品質 gate 真正完成，不是再累積更多跑通的小圖。
+
+
+## 11. 權重來源與後續研究
+
+### 本輪範圍與決定
+
+使用者進一步授權「繼續研究，並提交文件並推送」。發布範圍僅限目前研究分支的 Survey、ADR、操作設計、實作計畫與文件索引；不合併 `master`，不納入模型、照片、參考 tensor 或實驗目錄。產品程式與 T1／T5 判準未變，T2–T5 仍未開始。下列來源查核與實驗均為 2026-10-20；新 checkpoint、設定、exporter 或授權版本需重新取得資格。
+
+**決定仍是通用移除 NO-GO。** 本輪新增的是「現有 VAE 不可視為官方檔的簡單 FP16 版本」及「先前只測 Moebius `pretrained`，不能當成 `ft_places2` 的品質結果」。沒有藉此宣告新模型勝出、舊失敗通過或產品可用。
+
+### 官方 VAE：相同架構不等於相同權重
+
+S18 的官方 `diffusion_pytorch_model.safetensors` 為 **334,643,268 bytes**，SHA-256 `1598f3d24932bcfe6634e8b618ea1e30ab1d57f5aad13a6d2de446d2199f2341`，與固定 repo 的 LFS OID 相同。只下載這一份候選權重，沒有新 runtime。現有 PixelHacker `.bin` 沿用第 9 節 `a59d7ea6…`，顯式 `weights_only=True` 並設 `TORCH_FORCE_WEIGHTS_ONLY_LOAD=1`。
+
+- key／shape **248／248 相同**，共 **83,653,863** 個元素；現有檔全 FP16、官方全 FP32。把現有值提升為 FP32 後，**0／248 tensor 完全相等**；把官方先轉 FP16，仍只有 **4／248** 相等，為 `quant_conv`／`post_quant_conv` 的 weight／bias。最大權重絕對差約 **55.429**。這不是只靠檔案大小猜測；另以 JS 解析官方 safetensors binary header，獨立確認 key、shape 與元素數。
+- 比較的是數值，不是來源權利。部分權重的縮放關係僅留作 lineage 診斷；**尚未辨識精確轉換或證明作者來源**。官方模型卡的 MIT metadata 也不能替現有 `.bin` 完成來源／散布審查。
+- 設定仍分開記錄：現有 `sample_size=512`、`force_upcast=false`，官方 `sample_size=1024`、未明列 `force_upcast`。實驗固定 512、CPU FP32 計算，兩份設定均可執行；不把相同 channel／scaling factor 當作等價或免驗更換的依據。
+
+實跑同一 `synthetic512` 與真實 `iso200-subject-object` 的既存 image、記錄 epsilon 與 decode latent。參考明確為「現有 checkpoint 在相同 CPU FP32 路徑的輸出」；encoder 保留 posterior sampling，不換 mean；decoder 用共同 latent。沿用 `abs(candidate-reference) <= 0.0002 + 0.002*abs(reference)`，不是比較模型誰畫得較好，也不是重跑原 ORT 失敗。
+
+| 共同輸入／元件 | 官方原始 FP32 相對現有檔的超界元素 | 最大絕對差 |
+|---|---:|---:|
+| 合成圖 encode，含相同 epsilon／scaling | 14,413／16,384 | 2.310204 |
+| 合成圖 decode，映至 `[0,1]` | 492,212／786,432 | 0.051611 |
+| 真實照片 encode，含相同 epsilon／scaling | 13,775／16,384 | 1.643790 |
+| 真實照片 decode，映至 `[0,1]` | 588,644／786,432 | 0.106013 |
+
+官方「原始 FP32」與「先 FP16 再 FP32」各作上述 4 組比較，**8／8 皆有限值但等價性 fail**。因此不直接換用官方 VAE、不沿用舊 denoiser／參考輸出身分；這不代表官方 VAE 本身品質差，也不證明 PixelHacker 權重來源違法。未匯出官方 VAE 為 ORT 圖、未跑替換後完整移除鏈、未做其畫質或平台資格。
+
+### Moebius：預訓練與場景微調需分開判斷
+
+S06 的固定 HF repo 同時列 `pretrained`、`ft_places2`、`ft_celebahq`、`ft_ffhq`。S19 論文 §4.1 描述蒸餾後再做分領域微調，OOD 表 7 使用 Places2／CelebA-HQ 權重；這是作者評估設定，不是 FilmBatch 已重現該表。
+
+| student artifact | bytes | SHA-256／狀態 |
+|---|---:|---|
+| `pretrained/diffusion_pytorch_model.bin` | 905,297,927 | `6c9ee08ce467af48767b74416646d82f8a0c1dcfb558c478e635cef0ca8b2ad2`；第 9／10 節已測 |
+| `ft_places2/diffusion_pytorch_model.bin` | 905,298,356 | `6525afb888e55f9b5c74fa0a5d19ca0762d720d6c716fb0f8422fbeb6868a09a`；只核對第一方 metadata，未下載／執行 |
+
+不能由兩檔大小接近或共用模型設定就宣稱 tensor keys／shape 或 runtime 100% 相容。現有反例適用已測 `pretrained`，不能移植為 `ft_places2` 的品質判決；反過來，微調名稱也不保證消除碎片、新物件或資源問題。原生 strict fail 與高成本仍是真實、未撤銷的證據。
+
+固定上游 pipeline 的 CFG 輸入由 learned embedding IDs 組成：conditional `0…9`、unconditional `10…19`，按 `[uncond,cond]` 組合；不是缺少一段文字 prompt 或未安裝文字 encoder 才失敗。`ft_places2` 仍需重新取得本身的 tensor／數值／品質資格，並由 owner 審查 student grant、資料 lineage 與實際使用的 VAE；不由本文件裁定資料條款是否傳遞。
+
+### 限量候補查核，不新增完整模型鏈
+
+| 路線 | 本次查到的具名材料 | 缺口與處置 |
+|---|---|---|
+| PowerPaint v2.1 | S20；`PowerPaint_Brushnet/diffusion_pytorch_model.safetensors` 為 3,544,366,408 bytes，OID `530f2886ef5bcdf199269ec344155a517639ba64219b85eeb23fd86aab93147f`；另列 Realistic Vision UNet、VAE、文字與安全元件 | code MIT 與模型卡 Apache-2.0 不覆蓋所有 base 元件；未下載、未轉換、未量測本機 RAM／延遲。不以單一 adapter 大小估全鏈或手機上限 |
+| BrushNet | S21；`segmentation_mask_brushnet_ckpt/diffusion_pytorch_model.safetensors` 為 2,475,354,520 bytes，OID `066793867083310c25b0d57d300b1ecdc02cb708a155060f020be64afb2ae9c3`；另需 SD base／VAE 等元件 | repo／Space 的 Apache-2.0 與第三方 base 條款分開；不是可獨立移除的單一 adapter。原生閉包、記憶體、速度及攝影品質皆未測 |
+| AOT-GAN | S22 的 Qualcomm 發布卡列 CelebAHQ checkpoint，release 指向 ONNX float ZIP；MIT metadata 與 LICENSE 的來源指標不一致 | 原始權重資格未閉合，不下載；不能拿臉部模型或 Qualcomm 平台的作者速度當一般攝影／macOS／iOS 證據。也不由 MI-GAN 的反例判定所有非 diffusion 模型失敗 |
+
+SD／Realistic Vision 類基底還需核對實際 CreativeML OpenRAIL-M 等條款；不能把 OpenRAIL 一律記成非商業，也不能把最外層 MIT／Apache 標籤當作全鏈商用許可。上述僅是可追溯的候補篩查，不是完整法律意見或畫質排名。
+
+**下一個建議實驗只有一條：有條件的 `ft_places2` 對 `pretrained` 開發集比較。** 先固定具名權重、VAE 來源、用途／資料政策與資源上限，再於相同 mask／seed／前後處理執行作者參考比較；先用既有失敗反例與 T1 的 16 張開發集判斷是否有值得繼續修原生數值／精確貼回的品質收益。**24 張 T5 留出集不拿來調參或挑 checkpoint**。若反例仍在，只拒絕該 checkpoint／設定；若改善，也仍須通過原有數值、完整鏈、3 位人類品質與各平台 gate。最強反方是先前整鏈 47–115 秒與高 RSS 不會因換同架構權重自動消失；有可見且必要的品質收益，才值得繼續工程投入。本輪未下載微調權重、未啟動另一套模型鏈。
+
+### 證據與重現邊界
+
+新增忽略目錄 `dist/object-removal-research-20261020/` 保存 `ledger.json`、`vae/result.json`、`vae/per-tensor-report.json`、`vae/paired-inference.json`、執行 receipts、來源／config 雜湊與 `vae/parent-verification.json`。模型卡與 tensor 報告是不同證據；完整記錄保留原失敗，不把 process exit 0 解讀成數值合格。驗證腳本封存於 `verification-harnesses.tar.gz`，不隨文件 commit 發布。
+
+重現 VAE 比較需保留原 venv、固定官方 safetensors、現有 `.bin` 與第 10 節參考輸入，解開封存至原忽略目錄後執行；腳本不自行下載模型，搬機需先更新 manifest／來源路徑：
+
+```bash
+TORCH_FORCE_WEIGHTS_ONLY_LOAD=1 dist/object-removal-feasibility-20261020/venv/bin/python dist/object-removal-research-20261020/vae/compare_tensors.py
+TORCH_FORCE_WEIGHTS_ONLY_LOAD=1 dist/object-removal-feasibility-20261020/venv/bin/python dist/object-removal-research-20261020/vae/paired_inference.py
+```
+
+原第 9／10 節的 artifact、失敗、參考與 profiler 保持不變。本輪只縮小來源與選型未知項，沒有宣告 T1 通過、產品整合完成或 Windows／iOS 支援。

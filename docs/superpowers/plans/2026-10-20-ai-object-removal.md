@@ -12,7 +12,7 @@
 
 ## 目前狀態與授權
 
-**僅完成研究／設計，所有實作步驟尚未執行。** 本輪未下載模型、跑移除推論、改程式或新增永久測試；沒有量測到的模型 digest、耗時、記憶體或盲評分數不填假值。使用者本次要求的是 Survey／ADR／Docs／Plan，不授權開始以下實作、外送照片、付費呼叫、commit 或 push。
+**隔離續驗與來源研究已完成，通用移除／T1 維持 NO-GO，T2–T5 未開始。** 文件基線為 `a8744a8`；使用者最新另行授權繼續研究及文件 commit／push，發布只限目前研究分支，不合併 `master`。本輪只有忽略目錄內的參考 probe 與五份研究文件，未改產品程式、未新增永久測試；產品實作、私人照片外送與付費呼叫仍不在授權內。採用反例見 [Survey 第 10 節](../../object-removal-survey.md#10-續驗與採用決策)，VAE／微調 checkpoint 與下一個研究方向見[第 11 節](../../object-removal-survey.md#11-權重來源與後續研究)。
 
 ### Global Constraints
 
@@ -64,7 +64,13 @@ public RemovalProposal Generate(RetouchFrame frame, RemovalMask mask,
 
 **輸入／輸出：** Survey 的候選 pin → 實際取得的 `model-manifest.json`、來源／權重 SHA-256、張量與前後處理契約、平台矩陣及比較結果。這是可重現的實驗交付，不是產品 UI scaffold。
 
-- [ ] 同場比較 **MI-GAN-512 浮點核心**、**LaMa／big-lama 的明確轉換版本**及 **Moebius denoiser＋PixelHacker VAE＋採樣迴圈**。依可行性先跑 MI-GAN，不把工程基準的完成順序當畫質名次。LaMa 權重權利、Moebius repo／模型卡標籤差異與 VAE 條款先釐清；取得相應使用資格後才下載至指定模型／忽略證據目錄。保留位置、bytes、SHA-256、程式碼／權重／base／轉換器／依賴授權與日期。選取優先試 **EfficientSAM-Ti encoder＋decoder**，SAM 2.1 作比較候選。
+**2026-10-20 前置實驗紀錄：** [Survey 第 9 節](../../object-removal-survey.md#9-本機可行性實驗) 保存原始 6 張圖、20 組主 native（18 pass／2 fail）、12 組記憶體 smoke、8 組選取與 4 組 RGB16 合成；其失敗不追改。本輪[續驗](../../object-removal-survey.md#10-續驗與採用決策) 新增 34 組照片／選取 native strict pass、48 組合成與 3 組完整 Moebius 模型鏈。Moebius 顯式噪聲可重現，但固定噪聲後仍 strict fail；真實照片 pre-paste 有 33 個元素超界，近似貼回也未合格。沒有再嘗試巨型單圖匯出。
+
+**採用裁決：** MI-GAN 只留快速工程對照，不作通用移除預設；真實照片與大洞出現不相關／新形狀，數值通過不能代替品質。EfficientSAM 只留人工可修正的提案研究；Moebius 已測 `pretrained` 因數值／後處理、整鏈資源與 VAE 來源暫緩；LaMa 權重資格維持 blocked。沒有選出產品模型，不開始 T2–T5。
+
+**來源續查與重新開啟條件：** 官方 SDXL VAE 與現測 PixelHacker VAE 只有 4／248 tensor 在 FP16 轉換後相同，8 組 CPU 元件等價比較皆 fail，不直接換用。下一個有條件研究是 `ft_places2` 對 `pretrained` 的固定開發集比較，先完成 artifact／VAE／用途資格；微調檔未下載，相容與品質未測。24 張 T5 留出集不供調參。合法候選仍須完成數值定位／精確後處理、固定資料與 3 位人類評審及整鏈／平台資格，再重新決策。不要以 posterior mean、放寬誤差、近似 blur 或小圖結果取代 gate；fp64 敏感度診斷不自動改變參考標準。本機延遲／記憶體不外推 full-frame、UI 或 iOS；以下方框仍表示完整產品交付條件。
+
+- [ ] 同場比較 **MI-GAN-512 浮點核心**、**LaMa／big-lama 的明確轉換版本**及 **Moebius 具名 student＋PixelHacker VAE＋採樣迴圈**。依可行性先跑 MI-GAN，不把工程基準的完成順序當畫質名次；Moebius 已測 `pretrained` 與未測 `ft_places2` 分開記錄，不能由架構／檔案大小推論張量相容。LaMa 權重權利、Moebius repo／模型卡標籤差異與 VAE 來源／條款先釐清；取得相應使用資格後才下載至指定模型／忽略證據目錄。保留位置、bytes、SHA-256、程式碼／權重／base／轉換器／依賴授權與日期。選取優先試 **EfficientSAM-Ti encoder＋decoder**，SAM 2.1 作比較候選。
 - [ ] 以原作者參考輸出建立非對稱已知小圖＋真實照片檢查；先暴露 mask polarity、RGB/BGR、range、resize／padding、crop-back 或 exporter 不一致的失敗，再修前後處理。不要用模型輸出自己算出「預期」值。
 - [ ] MI-GAN 官方便利 pipeline 為 UINT8 進出；產品候選採 FP32 核心，保留 FilmBatch 的高精度合成。不直接把完整 16-bit 圖經 UINT8 wrapper。core 的固定尺寸／noise/filter 與 wrapper 的任意尺寸不能混為一談。
 - [ ] manifest 固定 `modelId`、checkpoint／ONNX SHA-256、exporter revision、opset、dtype／shape／輸入輸出名稱、色彩域、mask polarity、normalization、resize／padding、context margin、output mapping；**數值從實際 artifact 讀取並驗證**，不可由同家族名稱推測。
@@ -164,4 +170,4 @@ dotnet run --project src/FilmBatch.Cli -c Release -- removal-models status
 
 **Definition of Done：** 支援範圍內 T1–T5 的 end-to-end 行為與對應需求完成、真實模型／實際 UI／保存與四格式匯出有證據，原有路徑無回歸，授權與平台限制如實記錄。外部資格失敗是拒絕候選或明確 blocker，不是把 scaffold 改稱完成。
 
-**本輪規劃的未知項：** 實際權重 bytes／digest、所選 graph 的數值與分區、盲評勝出者、可用 ROI 與裝置記憶體。由 T1／T5 的具體實驗解決；不新增空白 provider、假資料或宣稱未測能力。保留大洞高品質生成式候選的重新評估觸發點，見 Survey／ADR；未來另行決策，不在本機失敗時偷偷使用網路。
+**仍未解的資格項：** 最終採用的合法模型、固定品質比較／盲評、Moebius 完整鏈的數值與精確後處理、產品完整尺寸成本、可支援 ROI、Windows／iOS 裝置資源與生命週期。Moebius 顯式噪聲與完整 .NET 鏈已執行，但不是數值合格；候選 checkpoint／ONNX bytes、digest 與本次 macOS 數值／provider 證據各自保留。其餘由 T1／T5 解決，不新增空白 provider、假資料或未測能力，不在本機失敗時偷偷使用網路。
