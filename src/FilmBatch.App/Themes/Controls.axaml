@@ -225,7 +225,7 @@
     <Setter Property="FontWeight" Value="SemiBold" />
   </Style>
   <!-- 外框按鈕（面板內的次要動作） -->
-  <Style Selector="Button.outline">
+  <Style Selector="Button.outline, ToggleButton.outline">
     <Setter Property="Background" Value="Transparent" />
     <Setter Property="BorderBrush" Value="{DynamicResource FB.BorderLightBrush}" />
     <Setter Property="BorderThickness" Value="1" />
@@ -233,13 +233,19 @@
     <Setter Property="Padding" Value="10,4" />
     <Setter Property="FontSize" Value="12" />
   </Style>
-  <Style Selector="Button.outline:pointerover /template/ ContentPresenter">
+  <Style Selector="Button.outline:pointerover /template/ ContentPresenter, ToggleButton.outline:pointerover /template/ ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource FB.HoverOverlayBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource FB.SecondaryTextBrush}" />
   </Style>
-  <Style Selector="Button.outline:disabled /template/ ContentPresenter">
+  <Style Selector="Button.outline:disabled /template/ ContentPresenter, ToggleButton.outline:disabled /template/ ContentPresenter">
     <Setter Property="Background" Value="Transparent" />
     <Setter Property="BorderBrush" Value="{DynamicResource FB.BorderBrush}" />
+  </Style>
+  <!-- 外框切換按鈕：按下（取樣中／預覽中）時以強調色外框標示 -->
+  <Style Selector="ToggleButton.outline:checked /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource FB.HoverOverlayBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource FB.AccentBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource FB.TextBrush}" />
   </Style>
 
   <!-- 工具按鈕：只有圖示、透明背景、圓角滑過底色 -->
@@ -521,6 +527,21 @@
   </Style>
   <Style Selector="c|ModuleSection:module-disabled /template/ ContentPresenter#PART_Title">
     <Setter Property="Foreground" Value="{DynamicResource FB.DisabledTextBrush}" />
+  </Style>
+
+  <!-- 照片工具區塊：外觀比照模組區塊（40px 標題列、16px 縮排、底部細線），但沒有啟用／折疊控制 -->
+  <Style Selector="Border.tool-section">
+    <Setter Property="BorderBrush" Value="{DynamicResource FB.DividerBrush}" />
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
+  </Style>
+  <Style Selector="Border.tool-section > StackPanel">
+    <Setter Property="Margin" Value="16,0,16,12" />
+    <Setter Property="Spacing" Value="8" />
+  </Style>
+  <Style Selector="TextBlock.tool-section-title">
+    <Setter Property="FontSize" Value="14" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Padding" Value="0,11,0,3" />
   </Style>
 
   <!-- 模組啟用開關（眼睛圖示） -->
