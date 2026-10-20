@@ -1,8 +1,8 @@
 # 與 .github/workflows/ci.yml 共用建置／驗證命令；平台及觸發設定見 docs/building.md「合併前 CI」。
 # GitHub App 專案須設定 PR 生命週期及 merge queue trigger；YAML 不會自行訂閱 webhook，見 docs/building.md。
-# 手動 UI／API 觸發同時執行 ci 與 dawn-build，不需額外參數。
+# 僅執行 master 更新及目標 master 的 PR／merge queue；拒絕手動 UI／API、tag 與一般分支推送。
 # 合併規則直接要求 desktop-win-x64、desktop-osx-arm64、shaders 三項實際檢查，不使用空的聚合工作。
-# macOS 封裝為 ad-hoc 簽章；Dawn 重建僅產生可選的 artifacts/dawn/，desktop 不自動套用。
+# macOS 封裝為 ad-hoc 簽章；本機 Dawn 重建見 build/build-dawn.sh。
 version: 2.1
 
 executors:
@@ -17,11 +17,6 @@ executors:
   macos-26:
     macos:
       xcode: "26.4.1"
-    resource_class: m4pro.medium
-  # 官方 manifest v15338：Xcode 16.4.0 的宿主為 macOS 15.3.2、arm64。
-  macos-15:
-    macos:
-      xcode: "16.4.0"
     resource_class: m4pro.medium
   ubuntu:
     machine:
@@ -188,76 +183,33 @@ jobs:
           label: Validate embedded WGSL
           command: dotnet run build/CheckShaders.cs
 
-  # 可重現的 Dawn 重建：下載產物到本機 artifacts/dawn/ 後再執行 Build.cs。
-  # desktop 工作不會自動下載此產物；不改 Mach-O、不隱藏最低系統需求。
-  dawn-build:
-    executor: macos-15
-    steps:
-      # 對應 Actions 預設 360 分鐘的命令預算；CircleCI 方案的 job 上限可能更短。
-      - start-job-timer:
-          minutes: 360
-      - checkout
-      - setup-dotnet
-      - timed-run:
-          label: Restore (needs NuGet 內附 Dawn 作 ABI 比對)
-          command: dotnet restore FilmBatch.sln
-      - timed-run:
-          label: Install CMake for Dawn (isolated)
-          command: |
-            python3 -m venv "$HOME/.filmbatch-dawn-tools"
-            "$HOME/.filmbatch-dawn-tools/bin/python" -m pip install --disable-pip-version-check --only-binary=:all: cmake==3.31.6
-            "$HOME/.filmbatch-dawn-tools/bin/cmake" --version
-            printf 'export PATH=%q:$PATH\n' "$HOME/.filmbatch-dawn-tools/bin" >> "$BASH_ENV"
-      - timed-run:
-          label: Build Dawn for Apple Silicon
-          command: bash build/build-dawn.sh arm64
-      # 對應 actions/upload-artifact@v4（名稱 dawn-macos-minos14）
-      - store_artifacts:
-          path: artifacts/dawn
-          destination: dawn-macos-minos14
 
 workflows:
   ci:
-    when:
-      or:
-        - equal: [api, << pipeline.event.name >>]
-        - and:
-            - equal: ["", << pipeline.git.tag >>]
-            - or:
-                - equal: [push, << pipeline.event.name >>]
-                - and:
-                    - equal: [pull_request, << pipeline.event.name >>]
-                    - or:
-                        - equal: [opened, << pipeline.event.action >>]
-                        - equal: [synchronize, << pipeline.event.action >>]
-                        - equal: [reopened, << pipeline.event.action >>]
-                        - equal: [ready_for_review, << pipeline.event.action >>]
+    when: >-
+      pipeline.git.tag == "" and (
+        (pipeline.event.name == "push" and (
+          pipeline.git.branch == "master" or
+          pipeline.git.branch starts-with "gh-readonly-queue/master/"
+        )) or
+        (pipeline.event.name == "pull_request" and
+          pipeline.event.github.pull_request.base.ref == "master" and (
+            pipeline.event.action == "opened" or
+            pipeline.event.action == "synchronize" or
+            pipeline.event.action == "reopened" or
+            pipeline.event.action == "ready_for_review"
+          )
+        )
+      )
     jobs:
       # 對應 Actions matrix（fail-fast: false：CircleCI 各工作本來就互不中止）
       - desktop:
           name: desktop-win-x64
           os: windows
           rid: win-x64
-          filters:
-            tags:
-              only: /.*/
       - desktop:
           name: desktop-osx-arm64
           os: macos-26
           rid: osx-arm64
-          filters:
-            tags:
-              only: /.*/
-      - shaders:
-          filters:
-            tags:
-              only: /.*/
+      - shaders
 
-  dawn-build:
-    when:
-      equal: [api, << pipeline.event.name >>]
-    jobs:
-      - dawn-build:
-          filters:
-            tags:
-              only: /.*/
