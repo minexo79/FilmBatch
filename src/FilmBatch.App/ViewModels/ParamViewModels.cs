@@ -105,6 +105,10 @@ public sealed partial class SliderParamViewModel(string moduleKey, ParamDef def,
     public string Unit => Def.Unit;
     public string FormatString => Def.Step >= 1 ? "0" : Def.Step >= 0.1 ? "0.0" : "0.00";
 
+    /// <summary>讓參數列可套用與色彩語意相符的滑桿軌道樣式。</summary>
+    public bool IsTemperature => string.Equals(Def.Key, "temperature", StringComparison.Ordinal);
+    public bool IsTint => string.Equals(Def.Key, "tint", StringComparison.Ordinal);
+
     public double Value
     {
         get => _value;
