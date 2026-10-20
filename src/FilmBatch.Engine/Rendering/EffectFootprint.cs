@@ -6,8 +6,11 @@ namespace FilmBatch.Engine.Rendering;
 /// <summary>範圍輪廓的種類：內圈＝效果開始生效、外圈＝效果完全生效、導引＝方向等非範圍資訊。</summary>
 public enum FootprintStroke { Inner, Outer, Guide }
 
-/// <summary>一條範圍輪廓；座標為輸出影像的正規化座標（0–1，可超出影像）。</summary>
-public sealed record FootprintPath(FootprintStroke Stroke, IReadOnlyList<Vector2> Points, bool Closed);
+/// <summary>
+/// 一條範圍輪廓；座標為輸出影像的正規化座標（0–1，可超出影像）。
+/// <paramref name="DragKey"/> 非 null 時可在畫布上拖曳，拖曳改變的參數（完整鍵）由 <see cref="EffectFootprint.DragValue"/> 換算。
+/// </summary>
+public sealed record FootprintPath(FootprintStroke Stroke, IReadOnlyList<Vector2> Points, bool Closed, string? DragKey = null);
 
 /// <summary>
 /// 散景、放射旋轉模糊、動態模糊與暗角在預覽上的影響範圍輪廓。公式逐一對應 <see cref="CpuPipeline"/>
@@ -62,6 +65,7 @@ public static class EffectFootprint
         foreach (var (stroke, d) in new[] { (FootprintStroke.Inner, focusSize), (FootprintStroke.Outer, focusSize + transition) })
         {
             if (d <= 0) continue;
+            var key = stroke == FootprintStroke.Inner ? "bokeh.focus_size" : "bokeh.transition";
             switch (shape)
             {
                 case "hband" or "vband":
@@ -70,12 +74,12 @@ public static class EffectFootprint
                     foreach (var side in new[] { -d, d })
                         paths.Add(new FootprintPath(stroke, shape == "hband"
                             ? [ToImage(-reach, side), ToImage(reach, side)]
-                            : [ToImage(side, -reach), ToImage(side, reach)], false));
+                            : [ToImage(side, -reach), ToImage(side, reach)], false, key));
                     break;
                 default:
                     // 圓形：半徑 d；橢圓：ru²/a² + rv²·a² = d² → 半軸 d·a 與 d/a
                     var (ax, ay) = shape == "ellipse" ? (d * aspect, d / aspect) : (d, d);
-                    paths.Add(new FootprintPath(stroke, Ring(t => ToImage(ax * MathF.Cos(t), ay * MathF.Sin(t))), true));
+                    paths.Add(new FootprintPath(stroke, Ring(t => ToImage(ax * MathF.Cos(t), ay * MathF.Sin(t))), true, key));
                     break;
             }
         }
@@ -90,7 +94,7 @@ public static class EffectFootprint
         var center = new Vector2(Num(s, "zoom_rotate_blur.center_x"), Num(s, "zoom_rotate_blur.center_y"));
         var protect = Num(s, "zoom_rotate_blur.protect_radius") / 100f * shortSide;
         var transition = MathF.Max(1e-3f, Num(s, "zoom_rotate_blur.transition") / 100f * shortSide);
-        return PixelRings(center, protect, protect + transition, w, h);
+        return PixelRings(center, protect, protect + transition, w, h, "zoom_rotate_blur.protect_radius", "zoom_rotate_blur.transition");
     }
 
     // ───────────── 動態模糊：保護區圓 ＋ 方向導引（CpuPipeline.MotionBlur） ─────────────
@@ -102,7 +106,7 @@ public static class EffectFootprint
         var center = protectOn ? new Vector2(Num(s, "motion_blur.protect_x"), Num(s, "motion_blur.protect_y")) : new Vector2(.5f, .5f);
         var paths = protectOn
             ? PixelRings(center, Num(s, "motion_blur.protect_size") / 100f * shortSide,
-                Num(s, "motion_blur.protect_size") / 100f * shortSide + .15f * shortSide, w, h)
+                Num(s, "motion_blur.protect_size") / 100f * shortSide + .15f * shortSide, w, h, "motion_blur.protect_size", null)
             : [];
 
         // 導引：模糊取樣線段（長度 = 實際取樣長度，至少短邊 25%，不被控制點蓋住），兩端加短垂直刻線
@@ -133,6 +137,7 @@ public static class EffectFootprint
         foreach (var (stroke, d) in new[] { (FootprintStroke.Inner, inner), (FootprintStroke.Outer, outer) })
         {
             if (d <= 0) continue;
+            var key = stroke == FootprintStroke.Inner ? "vignette.size" : "vignette.feather";
             // |uu|^p + |v|^p = d^p，uu = 水平像素距離 / 高、v = 垂直像素距離 / 高
             paths.Add(new FootprintPath(stroke, Ring(t =>
             {
@@ -141,19 +146,86 @@ public static class EffectFootprint
                 var uu = d * MathF.Sign(c) * MathF.Pow(MathF.Abs(c), 2 / power);
                 var v = d * MathF.Sign(sn) * MathF.Pow(MathF.Abs(sn), 2 / power);
                 return center + new Vector2(uu * h / w, v);
-            }), true));
+            }), true, key));
         }
         return paths;
     }
 
+    // ───────────── 拖曳輪廓 ─────────────
+
+    /// <summary>
+    /// 把輪廓拖到 <paramref name="point"/>（正規化座標）時，<paramref name="dragKey"/> 參數的新值：
+    /// 內圈改變清晰區／保護區／暗角大小，外圈改變過渡／羽化（內圈不動）。值依參數範圍夾限並取到步進；
+    /// 不支援的鍵回傳 null。
+    /// </summary>
+    public static double? DragValue(string dragKey, Settings settings, double width, double height, Vector2 point)
+    {
+        if (width <= 0 || height <= 0 || ModuleCatalog.Param(dragKey) is not { } def) return null;
+        var w = (float)width;
+        var h = (float)height;
+        var shortSide = MathF.Min(w, h);
+        double? raw = dragKey switch
+        {
+            "bokeh.focus_size" => BokehDistance(settings, w, h, point) * 200,
+            "bokeh.transition" => (BokehDistance(settings, w, h, point) - Num(settings, "bokeh.focus_size") / 200f) * 100,
+            "zoom_rotate_blur.protect_radius" => PixelDistance(settings, "zoom_rotate_blur.center", w, h, point) / shortSide * 100,
+            "zoom_rotate_blur.transition" => (PixelDistance(settings, "zoom_rotate_blur.center", w, h, point) / shortSide
+                - Num(settings, "zoom_rotate_blur.protect_radius") / 100f) * 100,
+            "motion_blur.protect_size" => PixelDistance(settings, "motion_blur.protect", w, h, point) / shortSide * 100,
+            "vignette.size" => VignetteDistance(settings, w, h, point) / .7f * 100,
+            "vignette.feather" => (VignetteDistance(settings, w, h, point) - Num(settings, "vignette.size") / 100f * .7f) / .5f * 100,
+            _ => null,
+        };
+        if (raw is not { } value) return null;
+        var step = def.Step > 0 ? def.Step : 1;
+        return Math.Clamp(Math.Round(value / step) * step, def.Min, def.Max);
+    }
+
+    /// <summary>散景遮罩的距離（短邊單位、旋轉加長寬比），與 CpuPipeline.Bokeh 相同。</summary>
+    private static float BokehDistance(Settings s, float w, float h, Vector2 point)
+    {
+        var shortSide = MathF.Min(w, h);
+        var u = (point.X - Num(s, "bokeh.center_x")) * w / shortSide;
+        var v = (point.Y - Num(s, "bokeh.center_y")) * h / shortSide;
+        var aspect = MathF.Max(.01f, 1 + Num(s, "bokeh.aspect") / 100f);
+        var angle = Num(s, "bokeh.angle") * MathF.PI / 180;
+        var ru = u * MathF.Cos(angle) - v * MathF.Sin(angle);
+        var rv = u * MathF.Sin(angle) + v * MathF.Cos(angle);
+        return Text(s, "bokeh.focus_shape") switch
+        {
+            "ellipse" => MathF.Sqrt(ru * ru / (aspect * aspect) + rv * rv * aspect * aspect),
+            "hband" => MathF.Abs(rv),
+            "vband" => MathF.Abs(ru),
+            _ => MathF.Sqrt(ru * ru + rv * rv),
+        };
+    }
+
+    /// <summary>到中心（prefix_x / prefix_y）的像素距離。</summary>
+    private static float PixelDistance(Settings s, string prefix, float w, float h, Vector2 point)
+    {
+        var dx = (point.X - Num(s, prefix + "_x")) * w;
+        var dy = (point.Y - Num(s, prefix + "_y")) * h;
+        return MathF.Sqrt(dx * dx + dy * dy);
+    }
+
+    /// <summary>暗角的超橢圓距離（影像高為單位），與 CpuPipeline.Vignette 相同。</summary>
+    private static float VignetteDistance(Settings s, float w, float h, Vector2 point)
+    {
+        var roundness = Num(s, "vignette.roundness") / 100f;
+        var power = roundness >= 0 ? 2f + roundness * 3f : 2f / (1f - roundness);
+        var uu = MathF.Abs((point.X - Num(s, "vignette.center_x")) * w / h);
+        var v = MathF.Abs(point.Y - Num(s, "vignette.center_y"));
+        return MathF.Pow(MathF.Pow(uu, power) + MathF.Pow(v, power), 1f / power);
+    }
+
     // ───────────── 共用 ─────────────
 
-    private static List<FootprintPath> PixelRings(Vector2 center, float inner, float outer, float w, float h)
+    private static List<FootprintPath> PixelRings(Vector2 center, float inner, float outer, float w, float h, string? innerKey, string? outerKey)
     {
         var paths = new List<FootprintPath>();
-        foreach (var (stroke, r) in new[] { (FootprintStroke.Inner, inner), (FootprintStroke.Outer, outer) })
+        foreach (var (stroke, r, key) in new[] { (FootprintStroke.Inner, inner, innerKey), (FootprintStroke.Outer, outer, outerKey) })
             if (r > 0)
-                paths.Add(new FootprintPath(stroke, Ring(t => center + new Vector2(r * MathF.Cos(t) / w, r * MathF.Sin(t) / h)), true));
+                paths.Add(new FootprintPath(stroke, Ring(t => center + new Vector2(r * MathF.Cos(t) / w, r * MathF.Sin(t) / h)), true, key));
         return paths;
     }
 

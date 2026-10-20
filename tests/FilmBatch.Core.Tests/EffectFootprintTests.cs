@@ -142,6 +142,46 @@ public sealed class EffectFootprintTests
         AssertContours(paths, new Vector2(.5f, .5f), Run(Vignette, s), full);
     }
 
+    public static TheoryData<string, Settings> DraggableCases() => new()
+    {
+        { "bokeh", ModuleCatalog.Defaults.With("bokeh.enabled", true).With("bokeh.focus_shape", "ellipse")
+            .With("bokeh.aspect", 40).With("bokeh.angle", 35).With("bokeh.center_x", .4).With("bokeh.focus_size", 30).With("bokeh.transition", 20) },
+        { "bokeh", ModuleCatalog.Defaults.With("bokeh.enabled", true).With("bokeh.focus_shape", "hband").With("bokeh.angle", -20) },
+        { "zoom_rotate_blur", ModuleCatalog.Defaults.With("zoom_rotate_blur.enabled", true).With("zoom_rotate_blur.center_y", .3) },
+        { "motion_blur", ModuleCatalog.Defaults.With("motion_blur.enabled", true).With("motion_blur.protect_enabled", true).With("motion_blur.protect_x", .7) },
+        { "vignette", ModuleCatalog.Defaults.With("vignette.enabled", true).With("vignette.roundness", -40).With("vignette.size", 40).With("vignette.feather", 30) },
+    };
+
+    [Theory]
+    [MemberData(nameof(DraggableCases))]
+    public void Dragging_a_contour_onto_itself_keeps_its_value_and_outward_grows_it(string module, Settings s)
+    {
+        var paths = EffectFootprint.For(module, s, W, H).Where(p => p.DragKey is not null).ToList();
+        Assert.NotEmpty(paths);
+        var center = module == "motion_blur" ? new Vector2(.7f, .5f)
+            : new Vector2((float)s.Number(module + ".center_x"), (float)s.Number(module + ".center_y"));
+        foreach (var path in paths)
+        {
+            var key = path.DragKey!;
+            var point = path.Points[path.Points.Count / 8];
+            Assert.Equal(s.Number(key), EffectFootprint.DragValue(key, s, W, H, point)!.Value, 6);
+            Assert.True(EffectFootprint.DragValue(key, s, W, H, center + (point - center) * 1.3f) > s.Number(key), key);
+        }
+    }
+
+    [Fact]
+    public void Motion_blur_outer_contour_is_fixed_and_not_draggable()
+    {
+        var s = ModuleCatalog.Defaults.With("motion_blur.enabled", true).With("motion_blur.protect_enabled", true);
+        var paths = EffectFootprint.For("motion_blur", s, W, H);
+        Assert.Null(paths.Single(p => p.Stroke == FootprintStroke.Outer).DragKey);
+        Assert.Equal("motion_blur.protect_size", paths.Single(p => p.Stroke == FootprintStroke.Inner).DragKey);
+    }
+
+    [Fact]
+    public void Drag_values_are_clamped_to_the_parameter_range() =>
+        Assert.Equal(0, EffectFootprint.DragValue("bokeh.transition", ModuleCatalog.Defaults.With("bokeh.focus_size", 60), W, H, new Vector2(.5f, .5f)));
+
     [Theory]
     [InlineData("bokeh")]
     [InlineData("zoom_rotate_blur")]

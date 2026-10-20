@@ -297,6 +297,25 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
         if (completed) EndControlPointEdit();
     }
 
+    /// <summary>
+    /// 拖曳範圍輪廓：把 <paramref name="dragKey"/>（大小、過渡、羽化）設成拖到的位置，即時更新預覽；
+    /// 與拖曳控制點共用同一套編輯紀錄規則（放開記為一筆復原紀錄）。輪廓不屬於目前模組時不修改。
+    /// </summary>
+    public void DragFootprint(string dragKey, Point normalized, bool completed)
+    {
+        if (_controlModule is { } module && dragKey.StartsWith(module + ".", StringComparison.Ordinal)
+            && _controlSettings is { } settings && main.Service is not null && (Image ?? Original)?.PixelSize is { } px
+            && EffectFootprint.DragValue(dragKey, settings, px.Width, px.Height,
+                new System.Numerics.Vector2((float)normalized.X, (float)normalized.Y)) is { } value)
+        {
+            _editSession ??= $"fp:{dragKey}:{Guid.NewGuid():N}";
+            _controlSettings = settings.With(dragKey, value);
+            UpdateFootprint();
+            main.Service.SetValue(main.Selection, dragKey, value, _editSession);
+        }
+        if (completed) EndControlPointEdit();
+    }
+
     /// <summary>目前展開模組在影像上的影響範圍（正規化座標）；沒有或模組未啟用時為空。</summary>
     [ObservableProperty]
     private IReadOnlyList<FootprintPath> _footprint = [];

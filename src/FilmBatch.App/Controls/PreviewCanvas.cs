@@ -18,7 +18,8 @@ namespace FilmBatch.App.Controls;
 /// 面板顯示 / 隱藏而換成另一個畫布時，畫面停在同一處。</item>
 /// <item>原圖對比：<see cref="ShowOriginal"/>（按住空白鍵）、<see cref="IsSplit"/> 左右分割（分割線可拖曳）。</item>
 /// <item>控制點：與影像一起繪製，命中測試自行計算；拖曳時即時回報（<see cref="ControlPointDragged"/>）。</item>
-/// <item>影響範圍（<see cref="Footprint"/>）：內圈實線＝效果開始、外圈虛線＝效果完全套用，畫在控制點之下並裁在影像內。</item>
+/// <item>影響範圍（<see cref="Footprint"/>）：內圈實線＝效果開始、外圈虛線＝效果完全套用，畫在控制點之下並裁在影像內；
+/// 可拖曳的輪廓拖曳時即時回報（<see cref="FootprintDragged"/>），控制點優先。</item>
 /// <item>畫布工具：<see cref="ActiveTool"/>（裁切框等）畫在影像之上，指標事件優先交給工具；畫面上的對比分割線例外，仍可拖曳。</item>
 /// <item>拖曳在放開、失去指標擷取、視窗失去焦點、畫布離開畫面、工具被換掉或控制點消失時結束，並恢復高品質取樣。</item>
 /// <item>算圖中於右上角顯示細小的旋轉指示，不遮擋畫面、不鎖住操作。</item>
@@ -79,7 +80,7 @@ public class PreviewCanvas : Control
     private static readonly IBrush OverlayBackground = new SolidColorBrush(Color.FromArgb(0xB0, 0x1A, 0x1A, 0x1A));
     private static readonly IBrush OverlayForeground = new SolidColorBrush(Color.FromRgb(0xEA, 0xEA, 0xEA));
 
-    private enum DragMode { None, Pan, Split, ControlPoint, Tool }
+    private enum DragMode { None, Pan, Split, ControlPoint, Footprint, Tool }
 
     private DragMode _drag;
     private Point _dragStart;
@@ -88,6 +89,8 @@ public class PreviewCanvas : Control
     private Vector _panStart;
     /// <summary>接手這次拖曳的工具：拖曳中換掉工具時仍由它收尾。</summary>
     private ICanvasTool? _dragTool;
+    /// <summary>正在拖曳的範圍輪廓所改變的參數（完整鍵）。</summary>
+    private string? _dragFootprintKey;
     private IPointer? _dragPointer;
     private WindowBase? _window;
     private readonly DispatcherTimer _spinTimer;
@@ -115,6 +118,12 @@ public class PreviewCanvas : Control
     /// <summary>控制點拖曳沒有放開就結束（失去指標擷取、視窗失去焦點、控制點消失等）：不帶新位置，只結束這次編輯。</summary>
     public event Action? ControlPointDragInterrupted;
 
+    /// <summary>拖曳範圍輪廓：參數為輪廓的 <see cref="FootprintPath.DragKey"/>、正規化座標（可超出影像）與是否已放開。</summary>
+    public event Action<string, Point, bool>? FootprintDragged;
+
+    /// <summary>範圍輪廓拖曳沒有放開就結束：不帶新位置，只結束這次編輯。</summary>
+    public event Action? FootprintDragInterrupted;
+
     /// <summary>符合視窗時的實際倍率（相對 100%）。</summary>
     public event Action<double>? FitScaleChanged;
 
@@ -139,6 +148,11 @@ public class PreviewCanvas : Control
         ControlPointProperty.Changed.AddClassHandler<PreviewCanvas>((c, e) =>
         {
             if (e.NewValue is null && c._drag == DragMode.ControlPoint) c.EndDrag();
+        });
+        // 範圍消失（收起模組、停用模組）：拖曳中的輪廓已不存在
+        FootprintProperty.Changed.AddClassHandler<PreviewCanvas>((c, e) =>
+        {
+            if (c._drag == DragMode.Footprint && e.NewValue is not IReadOnlyList<FootprintPath> { Count: > 0 }) c.EndDrag();
         });
         FocusableProperty.OverrideDefaultValue<PreviewCanvas>(true);
         ClipToBoundsProperty.OverrideDefaultValue<PreviewCanvas>(true);
@@ -297,6 +311,38 @@ public class PreviewCanvas : Control
 
     private bool HitsControlPoint(Point pos) => ControlPointScreen() is { } cp && Distance(cp, pos) <= HitRadius;
 
+    /// <summary>指標附近（<see cref="HitRadius"/> 內、影像範圍內）最近的可拖曳輪廓；沒有則為 null。</summary>
+    private string? HitFootprint(Point pos)
+    {
+        if (ShowOriginal || Footprint is not { Count: > 0 } footprint || Displayed is not { } img) return null;
+        var dest = ImageRect(img.Size);
+        if (!dest.Inflate(HitRadius).Contains(pos)) return null;
+        string? best = null;
+        var bestDistance = HitRadius;
+        foreach (var path in footprint)
+        {
+            if (path.DragKey is null || path.Points.Count < 2) continue;
+            Point At(int i) => new(dest.X + path.Points[i].X * dest.Width, dest.Y + path.Points[i].Y * dest.Height);
+            var count = path.Closed ? path.Points.Count : path.Points.Count - 1;
+            for (var i = 0; i < count; i++)
+            {
+                var d = DistanceToSegment(pos, At(i), At((i + 1) % path.Points.Count));
+                if (d > bestDistance) continue;
+                bestDistance = d;
+                best = path.DragKey;
+            }
+        }
+        return best;
+    }
+
+    private static double DistanceToSegment(Point p, Point a, Point b)
+    {
+        var ab = b - a;
+        var lengthSquared = ab.X * ab.X + ab.Y * ab.Y;
+        var t = lengthSquared <= 0 ? 0 : Math.Clamp(((p.X - a.X) * ab.X + (p.Y - a.Y) * ab.Y) / lengthSquared, 0, 1);
+        return Distance(p, a + ab * t);
+    }
+
     /// <summary>對比分割線畫在畫面上：按住空白鍵看原圖、或原圖 / 效果圖還沒備妥時不畫，也不能拖曳。</summary>
     private bool IsSplitShown => IsSplit && !ShowOriginal && Original is not null && Image is not null;
 
@@ -336,6 +382,11 @@ public class PreviewCanvas : Control
         }
         else if (HitsControlPoint(pos))
             _drag = DragMode.ControlPoint;
+        else if (HitFootprint(pos) is { } footprintKey)
+        {
+            _drag = DragMode.Footprint;
+            _dragFootprintKey = footprintKey;
+        }
         else if (onSplit)
             _drag = DragMode.Split;
         else if (Zoom > 0 || IsLargerThanView())
@@ -368,6 +419,9 @@ public class PreviewCanvas : Control
             case DragMode.ControlPoint:
                 ControlPointDragged?.Invoke(ToNormalized(img.Size, pos), false);
                 break;
+            case DragMode.Footprint:
+                FootprintDragged?.Invoke(_dragFootprintKey!, ToNormalizedUnclamped(img.Size, pos), false);
+                break;
             case DragMode.Split:
                 SplitPosition = Math.Clamp(Mapping().ToImage(pos).X, 0, 1);
                 break;
@@ -379,6 +433,7 @@ public class PreviewCanvas : Control
                 var onSplit = HitsSplit(pos);
                 Cursor = !onSplit && ActiveTool?.CursorAt(pos, Mapping()) is { } toolCursor ? toolCursor
                     : HitsControlPoint(pos) ? new Cursor(StandardCursorType.Hand)
+                    : HitFootprint(pos) is not null ? new Cursor(StandardCursorType.SizeAll)
                     : onSplit ? new Cursor(StandardCursorType.SizeWestEast)
                     : Cursor.Default;
                 return;
@@ -409,9 +464,11 @@ public class PreviewCanvas : Control
         var drag = _drag;
         if (drag == DragMode.None) return;
         var tool = _dragTool;
+        var footprintKey = _dragFootprintKey;
         var pointer = _dragPointer;
         _drag = DragMode.None;
         _dragTool = null;
+        _dragFootprintKey = null;
         _dragPointer = null;
         RenderOptions.SetBitmapInterpolationMode(this, BitmapInterpolationMode.HighQuality);
 
@@ -423,6 +480,13 @@ public class PreviewCanvas : Control
                 ControlPointDragged?.Invoke(ToNormalized(img.Size, at), true);
             else
                 ControlPointDragInterrupted?.Invoke();
+        }
+        else if (drag == DragMode.Footprint && footprintKey is not null)
+        {
+            if (releasedAt is { } at && Displayed is { } img)
+                FootprintDragged?.Invoke(footprintKey, ToNormalizedUnclamped(img.Size, at), true);
+            else
+                FootprintDragInterrupted?.Invoke();
         }
 
         if (pointer is not null && ReferenceEquals(pointer.Captured, this)) pointer.Capture(null);
@@ -459,6 +523,13 @@ public class PreviewCanvas : Control
     {
         var dest = ImageRect(img);
         return new Point(Math.Clamp((pos.X - dest.X) / dest.Width, 0, 1), Math.Clamp((pos.Y - dest.Y) / dest.Height, 0, 1));
+    }
+
+    /// <summary>範圍輪廓可以拖到影像外（大的清晰區、羽化），不夾到 0–1。</summary>
+    private Point ToNormalizedUnclamped(Size img, Point pos)
+    {
+        var dest = ImageRect(img);
+        return new Point((pos.X - dest.X) / dest.Width, (pos.Y - dest.Y) / dest.Height);
     }
 
     private static double Distance(Point a, Point b) => Math.Sqrt((a.X - b.X) * (a.X - b.X) + (a.Y - b.Y) * (a.Y - b.Y));
