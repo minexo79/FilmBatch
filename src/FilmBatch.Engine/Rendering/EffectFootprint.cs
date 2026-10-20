@@ -105,13 +105,13 @@ public static class EffectFootprint
                 Num(s, "motion_blur.protect_size") / 100f * shortSide + .15f * shortSide, w, h)
             : [];
 
-        // 導引：模糊取樣線段（長度 = 實際取樣長度，至少短邊 6% 以便看出方向），兩端加短垂直刻線
+        // 導引：模糊取樣線段（長度 = 實際取樣長度，至少短邊 25%，不被控制點蓋住），兩端加短垂直刻線
         var length = Num(s, "motion_blur.length") / 100f * .2f * shortSide;
         if (length <= 0) return paths;
         var angle = Num(s, "motion_blur.angle") * MathF.PI / 180;
         var dir = new Vector2(MathF.Cos(angle), MathF.Sin(angle));
         var normal = new Vector2(-dir.Y, dir.X);
-        var half = MathF.Max(length, .06f * shortSide) / 2;
+        var half = MathF.Max(length, .25f * shortSide) / 2;
         var tick = .015f * shortSide;
         Vector2 Px(Vector2 offset) => center + new Vector2(offset.X / w, offset.Y / h);
         paths.Add(new FootprintPath(FootprintStroke.Guide, [Px(-dir * half), Px(dir * half)], false));

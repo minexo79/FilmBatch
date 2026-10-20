@@ -7,6 +7,7 @@ using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using FilmBatch.App.Controls.Tools;
+using FilmBatch.Engine.Rendering;
 
 namespace FilmBatch.App.Controls;
 
@@ -17,6 +18,7 @@ namespace FilmBatch.App.Controls;
 /// 面板顯示 / 隱藏而換成另一個畫布時，畫面停在同一處。</item>
 /// <item>原圖對比：<see cref="ShowOriginal"/>（按住空白鍵）、<see cref="IsSplit"/> 左右分割（分割線可拖曳）。</item>
 /// <item>控制點：與影像一起繪製，命中測試自行計算；拖曳時即時回報（<see cref="ControlPointDragged"/>）。</item>
+/// <item>影響範圍（<see cref="Footprint"/>）：內圈實線＝效果開始、外圈虛線＝效果完全套用，畫在控制點之下並裁在影像內。</item>
 /// <item>畫布工具：<see cref="ActiveTool"/>（裁切框等）畫在影像之上，指標事件優先交給工具；畫面上的對比分割線例外，仍可拖曳。</item>
 /// <item>拖曳在放開、失去指標擷取、視窗失去焦點、畫布離開畫面、工具被換掉或控制點消失時結束，並恢復高品質取樣。</item>
 /// <item>算圖中於右上角顯示細小的旋轉指示，不遮擋畫面、不鎖住操作。</item>
@@ -45,6 +47,9 @@ public class PreviewCanvas : Control
         AvaloniaProperty.Register<PreviewCanvas, string?>(nameof(OverlayText));
     public static readonly StyledProperty<Point?> ControlPointProperty =
         AvaloniaProperty.Register<PreviewCanvas, Point?>(nameof(ControlPoint));
+    /// <summary>目前展開模組的影響範圍（正規化座標）；按住空白鍵看原圖時不畫。</summary>
+    public static readonly StyledProperty<IReadOnlyList<FootprintPath>?> FootprintProperty =
+        AvaloniaProperty.Register<PreviewCanvas, IReadOnlyList<FootprintPath>?>(nameof(Footprint));
     /// <summary>目前的畫布工具（裁切、遮罩）；非 null 時指標事件先交給工具（畫面上的對比分割線除外）。</summary>
     public static readonly StyledProperty<ICanvasTool?> ActiveToolProperty =
         AvaloniaProperty.Register<PreviewCanvas, ICanvasTool?>(nameof(ActiveTool));
@@ -65,6 +70,10 @@ public class PreviewCanvas : Control
 
     private static readonly IPen PointPen = new Pen(new SolidColorBrush(Color.FromRgb(0x20, 0x20, 0x20)), 1);
     private static readonly IBrush PointFill = Brushes.White;
+    private static readonly IPen FootprintShadow = new Pen(new SolidColorBrush(Color.FromArgb(0x90, 0, 0, 0)), 3, lineCap: PenLineCap.Round);
+    private static readonly IPen FootprintInner = new Pen(new SolidColorBrush(Color.FromArgb(0xE6, 0xFF, 0xFF, 0xFF)), 1.25, lineCap: PenLineCap.Round);
+    private static readonly IPen FootprintOuter = new Pen(new SolidColorBrush(Color.FromArgb(0xC0, 0xFF, 0xFF, 0xFF)), 1.25, new DashStyle([4, 3], 0));
+    private static readonly IPen FootprintGuide = new Pen(new SolidColorBrush(Color.FromArgb(0xE6, 0xFF, 0xFF, 0xFF)), 1.5, lineCap: PenLineCap.Round);
     private static readonly IPen SplitPen = new Pen(Brushes.White, 1);
     private static readonly IPen SplitShadow = new Pen(new SolidColorBrush(Color.FromArgb(0xA0, 0, 0, 0)), 3);
     private static readonly IBrush OverlayBackground = new SolidColorBrush(Color.FromArgb(0xB0, 0x1A, 0x1A, 0x1A));
@@ -98,6 +107,7 @@ public class PreviewCanvas : Control
     public Point? ControlPoint { get => GetValue(ControlPointProperty); set => SetValue(ControlPointProperty, value); }
     public IBrush? CanvasBackground { get => GetValue(CanvasBackgroundProperty); set => SetValue(CanvasBackgroundProperty, value); }
     public ICanvasTool? ActiveTool { get => GetValue(ActiveToolProperty); set => SetValue(ActiveToolProperty, value); }
+    public IReadOnlyList<FootprintPath>? Footprint { get => GetValue(FootprintProperty); set => SetValue(FootprintProperty, value); }
 
     /// <summary>拖曳控制點：參數為正規化座標與是否已放開。</summary>
     public event Action<Point, bool>? ControlPointDragged;
@@ -111,7 +121,7 @@ public class PreviewCanvas : Control
     static PreviewCanvas()
     {
         AffectsRender<PreviewCanvas>(ImageProperty, OriginalProperty, ShowOriginalProperty, IsSplitProperty,
-            SplitPositionProperty, ZoomProperty, PanProperty, OverlayTextProperty, ControlPointProperty, CanvasBackgroundProperty, IsBusyProperty);
+            SplitPositionProperty, ZoomProperty, PanProperty, OverlayTextProperty, ControlPointProperty, CanvasBackgroundProperty, IsBusyProperty, FootprintProperty);
         ZoomProperty.Changed.AddClassHandler<PreviewCanvas>((c, e) =>
         {
             if (e.NewValue is <= 0.0) c.Pan = default;
@@ -202,6 +212,8 @@ public class PreviewCanvas : Control
             rotated?.Dispose();
             ActiveTool?.Render(ctx, map);
 
+            if (Footprint is { Count: > 0 } footprint && !ShowOriginal) DrawFootprint(ctx, footprint, dest);
+
             if (ControlPoint is { } p && !ShowOriginal)
             {
                 var c = new Point(dest.X + p.X * dest.Width, dest.Y + p.Y * dest.Height);
@@ -224,6 +236,31 @@ public class PreviewCanvas : Control
             DrawLabel(ctx, Localization.Loc.Get("Preview.Original"), new Point(10, string.IsNullOrEmpty(OverlayText) ? 10 : 36), alignRight: false);
 
         if (IsBusy) DrawSpinner(ctx, new Point(Bounds.Width - SpinnerRightInset, SpinnerTop));
+    }
+
+    /// <summary>先畫一層深色陰影再畫白線，任何底圖上都看得清楚；帶狀範圍的直線超出影像，裁在影像內。</summary>
+    private static void DrawFootprint(DrawingContext ctx, IReadOnlyList<FootprintPath> footprint, Rect dest)
+    {
+        using var clip = ctx.PushClip(dest);
+        foreach (var path in footprint)
+        {
+            if (path.Points.Count < 2) continue;
+            var geo = new StreamGeometry();
+            using (var g = geo.Open())
+            {
+                Point At(int i) => new(dest.X + path.Points[i].X * dest.Width, dest.Y + path.Points[i].Y * dest.Height);
+                g.BeginFigure(At(0), false);
+                for (var i = 1; i < path.Points.Count; i++) g.LineTo(At(i));
+                g.EndFigure(path.Closed);
+            }
+            ctx.DrawGeometry(null, FootprintShadow, geo);
+            ctx.DrawGeometry(null, path.Stroke switch
+            {
+                FootprintStroke.Outer => FootprintOuter,
+                FootprintStroke.Guide => FootprintGuide,
+                _ => FootprintInner,
+            }, geo);
+        }
     }
 
     private void DrawLabel(DrawingContext ctx, string text, Point at, bool alignRight)
