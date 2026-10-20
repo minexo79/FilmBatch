@@ -64,6 +64,44 @@ public class LayoutPersistenceTests
     }
 
     [AvaloniaFact]
+    public void DefaultLayout_SidebarSpansFullHeightBesideFilmstrip()
+    {
+        using var vm = TestEnv.CreateViewModel();
+        var layout = new DockFactory(vm).CreateLayout();
+        var main = Assert.IsAssignableFrom<Dock.Model.Controls.IProportionalDock>(Assert.Single(layout.VisibleDockables!));
+        Assert.Equal(Orientation.Horizontal, main.Orientation);
+        Assert.Contains(main.VisibleDockables!, d => d.Id == "RightDock");
+        var left = Assert.Single(main.VisibleDockables!, d => d.Id == "LeftColumn");
+        Assert.Contains(All(left), d => d.Id == DockFactory.PreviewId);
+        Assert.Contains(All(left), d => d.Id == DockFactory.FilmstripId);
+        Assert.True(DockFactory.IsCurrentLayout(layout));
+    }
+
+    [AvaloniaFact]
+    public void LegacyLayout_FilmstripSpanningFullWidth_FallsBackToDefault()
+    {
+        using var vm = TestEnv.CreateViewModel();
+        var path = Path.Combine(Path.GetTempPath(), $"filmbatch-layout-{Guid.NewGuid():N}.json");
+        try
+        {
+            // 舊版版面：外層垂直分割，縮圖列橫跨整個寬度、側邊欄只與預覽同高
+            var factory = new DockFactory(vm);
+            var layout = factory.CreateLayout();
+            var main = (Dock.Model.Controls.IProportionalDock)layout.VisibleDockables![0];
+            main.Orientation = Orientation.Vertical;
+            Assert.False(DockFactory.IsCurrentLayout(layout));
+            new LayoutService(factory, path).Save(layout);
+
+            var restored = new LayoutService(new DockFactory(vm), path).LoadOrDefault();
+            Assert.Equal(Orientation.Horizontal, ((Dock.Model.Controls.IProportionalDock)restored.VisibleDockables![0]).Orientation);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [AvaloniaFact]
     public void CorruptLayoutFile_FallsBackToDefault()
     {
         using var vm = TestEnv.CreateViewModel();

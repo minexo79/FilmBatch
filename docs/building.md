@@ -277,12 +277,12 @@ Microsoft 的 [WARP 說明](https://learn.microsoft.com/en-us/windows/win32/dire
 #### 合併必要檢查
 
 - **GitHub Actions**：只在推送至 `master`、目標為 `master` 的 PR（`opened`、`synchronize`、`reopened`、`ready_for_review`）及 `master` merge queue（`merge_group.checks_requested`）時執行。沒有 `workflow_dispatch`、排程或 tag 觸發。`pre-merge` 使用 `always()` 檢查 `desktop`、`shaders` 的結果，只有全部成功才通過；失敗、取消或略過均不放行。在 `master` 的分支保護／ruleset 中將 **`pre-merge`** 設為必要檢查。
-- **CircleCI**：不設只有 `echo` 的 `pre-merge` 聚合工作。若以 CircleCI 作為合併閘門，須啟用 **Project Settings → Advanced Settings → VCS Status Updates**，並將以下三項 **job 狀態**全部設為必要檢查：
+- **CircleCI**：保留 `pre-merge` 分支新增的聚合 gate，`requires` 下列三項實際檢查全部成功後才執行。啟用 **Project Settings → Advanced Settings → VCS Status Updates**，可將 **`ci/circleci: pre-merge`** 設為必要檢查；各前置工作的狀態仍可獨立檢視：
   - `ci/circleci: desktop-win-x64`
   - `ci/circleci: desktop-osx-arm64`
   - `ci/circleci: shaders`
 
-CircleCI 的 workflow-level GitHub Checks 與上述 job 狀態不同，不能在停用 VCS Status Updates 後仍要求不存在的 job 狀態；名稱及回報方式見[官方說明](https://circleci.com/docs/guides/integration/status-updates/)。原本的 `ci/circleci: pre-merge` 必要檢查應移除。三個工作彼此不因另一個失敗而中止，也不會因失敗的上游 `requires` 留下未啟動的假聚合工作。
+CircleCI 的 workflow-level GitHub Checks 與上述 job 狀態不同，不能在停用 VCS Status Updates 後仍要求不存在的 job 狀態；名稱及回報方式見[官方說明](https://circleci.com/docs/guides/integration/status-updates/)。聚合 gate 不取代測試，只回報三個前置工作已成功；上游失敗、取消或略過時，gate 不會排程，必要檢查不會取得成功狀態，可能維持等待。三個實際檢查彼此不因另一個失敗而中止，所有工作仍受同一個 `ci` workflow 的 master／pre-merge 觸發限制。
 
 #### CircleCI 觸發設定
 
