@@ -657,4 +657,21 @@ Clear overrides: use the new preset entirely.</value></data>
   <data name="Denoise.Status.ImportFailed" xml:space="preserve"><value>Failed to import {0}</value></data>
   <data name="Denoise.InstalledToast" xml:space="preserve"><value>Installed {0}; denoise is available</value></data>
   <data name="Denoise.InstallFailedToast" xml:space="preserve"><value>Model install failed: {0}</value></data>
+  <data name="BackgroundRemoval.Title" xml:space="preserve"><value>Background Removal</value></data>
+  <data name="BackgroundRemoval.Generate" xml:space="preserve"><value>AI Select Subject</value></data>
+  <data name="BackgroundRemoval.Edit" xml:space="preserve"><value>Edit Mask</value></data>
+  <data name="BackgroundRemoval.Restore" xml:space="preserve"><value>Restore Background</value></data>
+  <data name="BackgroundRemoval.Keep" xml:space="preserve"><value>Keep Brush</value></data>
+  <data name="BackgroundRemoval.Remove" xml:space="preserve"><value>Remove Brush</value></data>
+  <data name="BackgroundRemoval.BrushSize" xml:space="preserve"><value>Brush Size</value></data>
+  <data name="BackgroundRemoval.Invert" xml:space="preserve"><value>Invert Mask</value></data>
+  <data name="BackgroundRemoval.Hint" xml:space="preserve"><value>Apple Vision selects subjects locally without uploading photos. Changes transparency only, not background generation. Applies only to the focused photo; masks are not copied to other photos or presets. Choose PNG or TIFF for transparency.</value></data>
+  <data name="BackgroundRemoval.Unsupported" xml:space="preserve"><value>AI subject selection requires macOS 14 or later. Manual mask brushes remain available on this platform. Applies only to the focused photo; choose PNG or TIFF for transparency.</value></data>
+  <data name="BackgroundRemoval.Selecting" xml:space="preserve"><value>Selecting subjects with Apple Vision…</value></data>
+  <data name="BackgroundRemoval.NoSubject" xml:space="preserve"><value>No separable subject found; the photo was not changed. You can edit the mask manually.</value></data>
+  <data name="BackgroundRemoval.Draft" xml:space="preserve"><value>The draft shows the uncropped source. Refine with brushes, then apply or cancel. The project is unchanged until you apply.</value></data>
+  <data name="BackgroundRemoval.Applied" xml:space="preserve"><value>Background removal applied; undo is available. Reopening and export require no new inference.</value></data>
+  <data name="BackgroundRemoval.AppliedLabel" xml:space="preserve"><value>Background removed</value></data>
+  <data name="BackgroundRemoval.Restored" xml:space="preserve"><value>Background restored; undo is available.</value></data>
+  <data name="BackgroundRemoval.Failed" xml:space="preserve"><value>Background removal failed: {0}</value></data>
 </root>

@@ -9,6 +9,7 @@
 - 訓練空間條件續驗：[第 18 節](object-removal-survey.md#18-訓練空間條件續驗與最小可行路線) 在相同 4ch 模型內比較訓練分支 ON/OFF，保留局部重建增益、自然移除失敗與 FP32 offload 成本。48 份完整留存結果不等於全部嘗試數；OOM 後未授權 resume／清 cache 偏差不追認為預註冊通過。未取得 PowerPaint v1 權重，不放寬既有需求或 T1 gate。
 - 情境決策：[第 19 節](object-removal-survey.md#19-情境解法成本效益與決策紀錄) 與[兩案資格驗證計畫](superpowers/plans/2026-10-21-object-removal-scenario-qualification.md) 分開離線、人工、原生與外部候選用途。只有研究 GO-PLAN，未證明最高效益；外部或人工模式不能默改 OR-02 的本機模型要求，新增產品 scope 仍需明確同意。本設計版本與 T1–T5 不變，`RetouchStack` 仍未實作。
 - 決策：[ADR 0005](adr/0005-ai-object-removal.md)；證據與候選：[Survey](object-removal-survey.md)；執行切片與驗收：[實作計畫](superpowers/plans/2026-10-20-ai-object-removal.md)。
+- **另行實作的去背功能（2026-10-21）**：[本機 AI 去背](building.md#本機-ai-去背) 以 Apple Vision 前景遮罩、手動修正與透明 PNG／TIFF 匯出保留主體；`PhotoEntry.ForegroundMask` 已實作。它不生成／修補被移除區域的 RGB，不等於本提案的 `RetouchStack` 或通用物件移除，不改 OR-01–OR-14 與 T1–T5 的門檻。
 
 ## 1. 目的與邊界
 

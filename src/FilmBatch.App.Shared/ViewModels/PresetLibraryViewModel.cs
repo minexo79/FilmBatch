@@ -507,7 +507,7 @@ public sealed class PresetHoverCoordinator
                     }
                     return;
                 }
-                hoverSource = source.Downscale(HoverLongEdge);
+                hoverSource = _main.SourceForPhoto(focus, source.Downscale(HoverLongEdge));
                 _hoverSources[key] = hoverSource;
             }
             // 低優先縮圖佇列：與縮圖列共用，鍵命名空間不相交；正在進行的預覽算圖永遠優先。
@@ -610,7 +610,7 @@ public sealed class PresetHoverCoordinator
     internal static Bitmap ToBitmap(RenderResult result)
     {
         var bitmap = new WriteableBitmap(
-            new PixelSize(result.Width, result.Height), new Vector(96, 96), PixelFormat.Bgra8888, AlphaFormat.Opaque);
+            new PixelSize(result.Width, result.Height), new Vector(96, 96), PixelFormat.Bgra8888, AlphaFormat.Unpremul);
         using var frame = bitmap.Lock();
         var rowBytes = result.Width * 4;
         if (frame.RowBytes == rowBytes)

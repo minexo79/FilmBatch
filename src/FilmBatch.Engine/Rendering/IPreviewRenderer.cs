@@ -5,7 +5,7 @@ using FilmBatch.Engine.Denoising;
 
 namespace FilmBatch.Engine.Rendering;
 
-/// <summary>算圖結果：8-bit BGRA（premultiplied 與否不影響，alpha 恆為不透明）。</summary>
+/// <summary>算圖結果：8-bit BGRA straight alpha（未預乘；UI 以 AlphaFormat.Unpremul 呈現）。</summary>
 public sealed record RenderResult(int Width, int Height, byte[] Bgra, TimeSpan Elapsed)
 {
     public DenoiseReport? Denoise { get; init; }

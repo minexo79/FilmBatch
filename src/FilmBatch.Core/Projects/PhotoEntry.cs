@@ -7,13 +7,17 @@ public sealed record PhotoEntry(string FileName, Guid? PresetId, Settings Overri
 {
     public static PhotoEntry New(string fileName, Guid? presetId) => new(fileName, presetId, Settings.Empty);
 
-    public bool HasOverrides => Overrides.Count > 0;
+    /// <summary>已套用的逐張去背遮罩；不屬於預設或可複製的參數。</summary>
+    public ForegroundMask? ForegroundMask { get; init; }
+
+    public bool HasOverrides => Overrides.Count > 0 || ForegroundMask is not null;
 
     /// <summary>被覆寫的模組 key 集合。</summary>
     public IEnumerable<string> OverriddenModules => Overrides.Keys.Select(ModuleSchema.ModuleOf).Distinct();
 
     public bool Equals(PhotoEntry? other) =>
-        other is not null && FileName == other.FileName && PresetId == other.PresetId && Overrides.Equals(other.Overrides);
+        other is not null && FileName == other.FileName && PresetId == other.PresetId
+        && Overrides.Equals(other.Overrides) && Equals(ForegroundMask, other.ForegroundMask);
 
     public override int GetHashCode() => HashCode.Combine(FileName, PresetId);
 }

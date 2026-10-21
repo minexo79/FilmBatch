@@ -76,6 +76,11 @@ public sealed class ProjectService
         });
     }
 
+    /// <summary>套用或移除焦點照片的去背遮罩；與其他編輯共用原子保存與復原。</summary>
+    public bool SetForegroundMask(string fileName, ForegroundMask? mask) =>
+        Apply(mask is null ? CoreText.T("還原背景", "Restore background") : CoreText.T("套用去背", "Apply background removal"),
+            [fileName], entry => entry with { ForegroundMask = mask });
+
     public bool ResetParam(IReadOnlyCollection<string> fileNames, string key) =>
         Apply($"重設 {ModuleCatalog.Param(key)?.Label ?? key}", fileNames, e => PhotoOperations.ResetParam(e, key));
 

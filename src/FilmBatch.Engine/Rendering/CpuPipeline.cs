@@ -31,6 +31,9 @@ public static class CpuPipeline
         var cur = DecodeLinear(source);
         ct.ThrowIfCancellationRequested();
 
+        // 去背遮罩：在任何幾何之前把覆蓋率乘進 alpha（只乘一次；RGB 維持 straight）
+        ForegroundAlpha.Apply(cur, source);
+
         // 裁切（旋轉 90°、翻轉、拉直、裁切）：之後所有模組都以裁切後的畫框計算
         if (p.Crop.On) cur = Crop(cur, source.Width, source.Height, p.CropT);
         int w = p.OutWidth, h = p.OutHeight, n = w * h;

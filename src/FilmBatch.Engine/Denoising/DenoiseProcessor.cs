@@ -298,6 +298,7 @@ public sealed class DenoiseProcessor : IDisposable
                 ReferenceWidth = source.ReferenceWidth,
                 ReferenceHeight = source.ReferenceHeight,
                 Denoise = report,
+                ForegroundMask = source.ForegroundMask,
             };
             return needsDownscale ? prepared.Resize(source.Width, source.Height) : prepared;
         }
@@ -312,6 +313,7 @@ public sealed class DenoiseProcessor : IDisposable
             ReferenceWidth = source.ReferenceWidth,
             ReferenceHeight = source.ReferenceHeight,
             Denoise = report,
+            ForegroundMask = source.ForegroundMask,
         };
         return needsDownscale ? preparedRgb.Resize(source.Width, source.Height) : preparedRgb;
     }

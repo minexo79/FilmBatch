@@ -71,7 +71,10 @@ public sealed class Project
             foreach (var (id, preset) in saved.PresetSnapshots) project.PresetSnapshots.Add(id, preset.ToPreset(id));
             foreach (var (id, updatedAt) in saved.KeptPresetUpdates) project._keptPresetUpdates.Add(id, updatedAt);
             foreach (var (name, photo) in saved.Photos)
-                project._photos.Add(name, new PhotoEntry(name, photo.PresetId, photo.Overrides));
+                project._photos.Add(name, new PhotoEntry(name, photo.PresetId, photo.Overrides)
+                {
+                    ForegroundMask = photo.ForegroundMask is { } mask ? ForegroundMask.FromDocument(mask) : null,
+                });
         }
         foreach (var file in Directory.EnumerateFiles(folder)
             .Where(f => SupportedExtensions.Contains(Path.GetExtension(f), StringComparer.OrdinalIgnoreCase))
@@ -123,7 +126,10 @@ public sealed class Project
         var photos = _photos.ToDictionary(pair => pair.Key, pair =>
         {
             var photo = changes?.GetValueOrDefault(pair.Key) ?? pair.Value;
-            return new PhotoDocument { PresetId = photo.PresetId, Overrides = photo.Overrides };
+            return new PhotoDocument
+            {
+                PresetId = photo.PresetId, Overrides = photo.Overrides, ForegroundMask = photo.ForegroundMask?.ToDocument(),
+            };
         }, StringComparer.Ordinal);
         var document = new ProjectDocument
         {

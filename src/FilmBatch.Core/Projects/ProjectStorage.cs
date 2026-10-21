@@ -19,6 +19,7 @@ internal sealed class PhotoDocument
 {
     public Guid? PresetId { get; init; }
     public required Settings Overrides { get; init; }
+    public ForegroundMaskDocument? ForegroundMask { get; init; }
 }
 
 internal sealed class PresetDocument
@@ -49,10 +50,10 @@ internal sealed class PresetDocument
 internal static class ProjectStorage
 {
     /// <summary>
-    /// 寫入的專案格式版本。2：加入裁切 / 遮罩 / 曲線等新 key（舊版讀到會顯示「較新版本建立」而非損毀）。
-    /// 讀取時接受 1 ~ 目前版本。
+    /// 寫入的專案格式版本。3：加入逐張照片的去背覆蓋率；2：加入裁切／遮罩／曲線等新 key。
+    /// 讀取時接受 1 ~ 目前版本；舊版不得默默覆寫含去背結果的專案。
     /// </summary>
-    public const int CurrentVersion = 2;
+    public const int CurrentVersion = 3;
 
     public static string FilePath(string folder) => Path.Combine(AppPaths.ProjectFolder(folder), "project.json");
 

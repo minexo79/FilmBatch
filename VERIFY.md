@@ -2,8 +2,8 @@
 
 此頁讓沒有對話歷史的開發者從現有測試與真正的 App／CLI 驗證程式。領域契約仍在[文件地圖](docs/README.md)指向的原文件；本頁不建立第二套功能規格、驗收 runner 或治理 runtime。
 
-- 驗證基準：`6e3291a5cbe33d267ec33b9d42054efde9bd82f3`，2026-10-18。
-- 本次結果、輸入範圍與未知項：[有日期的稽核記錄](docs/superpowers/plans/2026-10-18-governed-verification-and-knowledge.md#current-observations)。這不是永遠有效的綠燈。
+- 初始稽核基準：`6e3291a5cbe33d267ec33b9d42054efde9bd82f3`，2026-10-18。
+- 初始結果、輸入範圍與未知項：[有日期的稽核記錄](docs/superpowers/plans/2026-10-18-governed-verification-and-knowledge.md#current-observations)。後續去背功能的來源回歸、原生視窗限制與重跑命令另見 [2026-10-21 去背現況](docs/building.md#去背驗證現況2026-10-21)，不把舊基準當目前版本永遠有效的綠燈。
 - 改動相關來源、相依庫、輸入、設定或驗收條件後，重跑涵蓋該改動的檢查；更新記錄，不改期望值來迎合產品。
 
 ## 範圍與權限
@@ -56,6 +56,7 @@ dotnet test FilmBatch.sln -c Release --logger trx --results-directory "$work/tes
 | 底片 LUT、色相帶、舊設定移除 | `FilmLutTests`、`FilmLookTests`、`RetiredParamsTests` | [底片契約與來源](docs/film-looks.md) |
 | 顆粒座標／足跡、局部膚色、白平衡提案與 Zone | `GrainModelTests`、`SurveyRenderingTests`、`PhotoAdjustmentTests`、`PhotoAnalysisTests`、`PhotoToolsTests` | [現行操作與限制](docs/grain-white-balance-survey.md#目前實作與操作)、[實作及原生驗收](docs/superpowers/plans/2026-10-19-grain-neutral-zone.md) |
 | AI 分塊／混合、模型完整性、快取、取消與 UI 狀態 | `DenoisingTests`、`DenoiseViewModelTests`、`RenderSchedulerTests`；真實權重另走原生實拍 smoke | [AI 資料域與授權](docs/adr/0002-ai-denoise.md)、[端到端驗收](docs/superpowers/plans/2026-10-19-ai-denoising.md) |
+| 去背原生選取、逐張遮罩、透明度、保存衝突與編輯草稿 | `ForegroundSelectionTests`、`ForegroundPersistenceTests`、`ForegroundAlphaTests`、`BackgroundRemovalTests`、`DenoisingOrtTests.PreparedSource_StillRendersForegroundCoverageAfterDenoising` | [去背操作、可重跑命令與驗證邊界](docs/building.md#本機-ai-去背)、[專案格式與復原](docs/architecture.md#42-core專案與照片設定projects)；Headless 不代替原生視窗或人類畫質驗收 |
 | JPEG XL ABI、樣本與錯誤路徑 | `PortableJxlTests`、`JpegXlTests` | [發佈閉包](docs/building.md#macos)、[native manifest](src/FilmBatch.Raw/Native/Jxl/provenance.json) |
 | Apple ImageIO、方向／16-bit／ICC、來源 EXIF 與 TIFF 目錄 | `AppleImageCodecTests`、`AppleImagingTests`、`TiffMetadataTests` | [影像與匯出契約](docs/architecture.md#48-engine影像讀取與批次匯出imaging--exporting)、[iOS 原生驗證邊界](docs/building.md#驗證邊界) |
 | 共用觸控標題、滑桿與背景時的編輯入場 | `ModuleSectionTests`、`ParamSliderTests`、`BulkLoadingTests` | [行動版操作與資料所有權](docs/building.md#操作與資料所有權)；Headless／Mac 結果不代替 iOS 原生操作 |

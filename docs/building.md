@@ -456,6 +456,51 @@ macOS Auto 嘗試 CoreML，Windows Auto 嘗試 DirectML；初始化失敗才明�
 本次 Apple Silicon 原生降噪介面及 self-contained GUI smoke 各 25 項通過；已實際執行隨附 CLI 的模型下載／匯入及兩個來源域的 16-bit PNG 匯出，保留 ICC 與來源雜湊。Windows 完成交叉封裝及 DirectML 原生庫／授權閉包檢查，未執行 Windows 推論。實拍畫質、測試數量及證據索引見[AI 降噪驗收紀錄](superpowers/plans/2026-10-19-ai-denoising.md#observed-acceptance-evidence--2026-10-19)；不宣稱 Lightroom 同等品質或所有相機均已驗證。
 
 
+### 本機 AI 去背
+
+在基本參數頂端的「去背」區，點選「AI 選取主體」。macOS 透過系統 Apple Vision 產生前景遮罩；API 需求為 macOS 14 以上，不代表整個應用程式已在該版本驗收。封裝的部署下限仍由[實際原生相依庫](#macos)決定，本輪只在 macOS 26 執行。應用程式不另下載權重，也不呼叫雲端或外部 CLI。其他平台的 AI 按鈕停用，仍可用「修正遮罩」手動畫筆；沒有主體或原生失敗時明確回報，不把空白或全圖當成成功提案。
+
+1. 草稿顯示未裁切的來源，以棋盤格表示透明區；切換「保留筆刷／移除筆刷」、調整大小，或反轉遮罩。
+2. 「套用」只修改焦點照片，形成一筆可復原的操作；「取消」、換照片／工具或 app 暫停會丟棄未接受草稿。已套用的結果可用「還原背景」移除，也可復原這個操作。
+3. 遮罩存於 `.filmbatch/project.json`，不修改原始影像；移動整個照片資料夾、重開、縮圖或匯出不需重新選取主體。預設、複製／貼上不會把遮罩帶到別張照片；重設照片會移除遮罩。
+4. 透明結果請匯出 PNG16 或 TIFF16。若遮罩處理後仍有透明像素，JPEG／DNG 明確失敗，不默默丟棄透明度。CLI 沿用已保存的遮罩：
+
+   ```bash
+   filmbatch-cli export "/path/to/photos" --out "/path/to/cutouts" --format png
+   ```
+
+AI／新草稿的工作影像長邊最多 2048，遮罩以來源參考尺寸對齊完整影像，不先放大保存；已存的較高解析度遮罩不因打開較小預覽而降解析度。CPU／GPU 在裁切與幾何之前，只將覆蓋率乘進原始 alpha 一次；RAW 仍保留場景線性 RGB。Vision 可能把多個物體一起選取或選錯邊緣，必須檢視並修正；這是去背，不是重建被遮擋背景，[生成式物件移除](object-removal-design.md) 的 NO-GO 與 T1–T5 不變。
+
+#### 去背驗證現況（2026-10-21）
+
+目前完成的是來源程式的去背功能與下列驗證，不是新發行包或跨平台驗收：
+
+| 實際執行的檢查 | 結果與範圍 |
+|---|---|
+| Release solution build | 0 warnings／0 errors |
+| 完整 Release 回歸 | Core 594 passed／27 skipped；RAW 626 passed／293 skipped；App 207 passed／0 skipped；合計 1,427 passed／0 failed／320 skipped |
+| CPU／GPU 遮罩覆蓋率 | 兩條路徑均通過，GPU 案例實際編譯並執行遮罩 shader，未用 CPU fallback 冒充 |
+| 真實 Vision＋Headless Skia 共用桌面 | 20 項通過，含控制項、保留／移除筆刷、取消、套用、復原／重做、重開及 PNG 匯出 |
+| PNG16 獨立解碼 | 旋轉後 615,360 個 alpha 樣本零差異，來源檔案雜湊不變 |
+| CLI 重開已存專案 | 完整 RGBA16 與介面匯出相同，不需重新推論 |
+
+完成本頁的還原／建置後，可從儲存庫根目錄重跑去背相關回歸；本次文件交付前實際執行為 Core 26、App 5 通過，0 failed／0 skipped：
+
+```bash
+dotnet test FilmBatch.sln -c Release --no-restore --nologo --filter 'FullyQualifiedName~Foreground|FullyQualifiedName~BackgroundRemoval|FullyQualifiedName~PreparedSource_StillRendersForegroundCoverageAfterDenoising'
+```
+
+`ForegroundSelectionTests` 涵蓋原生取消與無主體結果；`ForegroundPersistenceTests` 涵蓋格式 1／2 遷移、格式 3 遮罩、損毀輸入及保存衝突下的 undo／redo；`ForegroundAlphaTests`、`BackgroundRemovalTests` 與上述降噪案例涵蓋透明度、操作生命週期及 RGB／RAW 來源重建。沒有匹配案例、平台或 GPU 略過均不得算通過。
+
+尚未驗證的項目：
+
+- 原生去背視窗操作：本輪桌面鎖定（`activeDisplays=0`），Avalonia.Native 啟動回傳 `-6661`。Headless 畫面不代替 `NSWindow` 驗收，未替換計時器或抑制例外；須在可用的桌面工作階段補跑。
+- Windows／iOS 去背實機、神經網路硬體放置、人類畫質與髮絲級邊緣品質。
+- 獨立 Naga 檢查：本機未提供執行檔，屬於工具鏈未就緒；實際 GPU 遮罩案例通過不等於這項靜態檢查通過。
+- 包含本次去背變更的新 `.app`／Windows／iOS 發行包尚未重新封裝；先前版本的封裝或原生 smoke 結果不得延伸為本次新功能通過。
+
+一次性端到端驅動、TRX、畫面與 PNG／CLI 核對收據保留於儲存庫外的工作階段證據。四份驗證來源已封存為 `verification-harnesses.tar.gz`（SHA-256：`c914a5def6c6b990b2be2e279b42a1a48f570c142f20a888cd0c4e9a3b2cca99`），曾還原核對來源雜湊並重播離線 PNG／文件檢查；原始臨時腳本與其建置暫存已移除，既有研究資料未清除。fresh clone 不依賴這份暫存證據；永久回歸入口見上方命令及 [VERIFY V1](../VERIFY.md#v1)。
+
 ## 資料位置
 
 | 內容 | 位置 |

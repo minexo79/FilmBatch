@@ -95,6 +95,11 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
     [ObservableProperty]
     private IBrush _background = new SolidColorBrush(Color.FromRgb(0x16, 0x16, 0x16));
 
+    [ObservableProperty]
+    private bool _showTransparency;
+
+    internal bool SourceHasTransparency { get; private set; }
+
     /// <summary>目前展開模組的控制點（正規化座標）；沒有則為 null。</summary>
     [ObservableProperty]
     private Point? _controlPoint;
@@ -133,6 +138,14 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
             _resultHistogram = _originalHistogram = null;
             NotifyHistogram();
             Source = source;
+            SourceHasTransparency = false;
+            if (!source.IsSceneLinear)
+            {
+                var values = source.Rgba16;
+                for (var i = 3; i < values.Length; i += 4)
+                    if (values[i] < ushort.MaxValue) { SourceHasTransparency = true; break; }
+            }
+            ShowTransparency = SourceHasTransparency;
             _originalShown = null;
             UpdateOriginal();
             _ = LoadExifAsync(source);
@@ -218,6 +231,8 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
         _originalShown = null;
         Exif = null;
         IsBusy = false;
+        SourceHasTransparency = false;
+        ShowTransparency = false;
         OverlayText = null;
         ControlPoint = null;
         _controlSettings = null;
@@ -354,7 +369,7 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
     }
 
     private static WriteableBitmap CreateBitmap(int w, int h) =>
-        new(new PixelSize(w, h), new Vector(96, 96), PixelFormat.Bgra8888, AlphaFormat.Opaque);
+        new(new PixelSize(w, h), new Vector(96, 96), PixelFormat.Bgra8888, AlphaFormat.Unpremul);
 
     private static WriteableBitmap ToBitmap(byte[] bgra, int w, int h)
     {

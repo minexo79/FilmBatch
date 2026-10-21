@@ -52,6 +52,7 @@ public static class BatchExporter
                 PresetName = preset?.Name ?? CoreText.T("未命名", "Untitled"),
                 Index = index,
                 PipelineVersion = project.PipelineVersion,
+                ForegroundMask = entry.ForegroundMask,
             });
         }
         return jobs;
@@ -223,7 +224,8 @@ public static class BatchExporter
             throw new FileNotFoundException(CoreText.T($"找不到來源照片：{job.FileName}", $"Source photo not found: {job.FileName}"), job.SourcePath);
 
         // 1. 全解析度解碼；RAW 保留場景線性資料，顯示收尾由完整算圖管線執行一次。
-        var source = ImageLoader.LoadFull(job.SourcePath, RawLoadOptions.FromSettings(job.Settings));
+        var source = ImageLoader.LoadFull(job.SourcePath, RawLoadOptions.FromSettings(job.Settings))
+            .WithForegroundMask(job.ForegroundMask);
         ct.ThrowIfCancellationRequested();
 
         // 2. 完整 16-bit 算圖（GPU 或 CPU 等效；超限時算圖器內部以等效路徑處理，不靜默截斷）
@@ -339,7 +341,16 @@ public static class BatchExporter
         ct.ThrowIfCancellationRequested();
         if (File.Exists(outputPath))
             throw new IOException(CoreText.T($"輸出檔已存在，拒絕覆寫：{outputPath}", $"Output file already exists; refusing to overwrite: {outputPath}"));
-
+        // JPEG／DNG 不支援透明度：套過遮罩的透明輸出必須明確失敗，不靜默寫成不透明檔。
+        if (job.ForegroundMask is not null && options.Format is ExportFormat.Jpeg or ExportFormat.Dng)
+        {
+            var px = image.Rgba16;
+            for (var i = 3; i < px.Length; i += 4)
+                if (px[i] != ushort.MaxValue)
+                    throw new InvalidDataException(CoreText.T(
+                        $"{options.Format} 不支援透明背景：請改用 PNG16 或 TIFF16 匯出去背結果。",
+                        $"{options.Format} cannot store transparency: export the masked result as PNG16 or TIFF16 instead."));
+        }
         var exif = CopyExifProfile(job.SourcePath, (uint)image.Width, (uint)image.Height, options.Format, image.RawInfo?.Metadata, out var metadataWarning);
         byte[]? dng = null;
         if (options.Format == ExportFormat.Dng)

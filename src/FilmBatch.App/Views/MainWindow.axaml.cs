@@ -41,7 +41,12 @@ public partial class MainWindow : Window
             if (Clipboard is { } cb) await cb.SetTextAsync(json);
         };
         vm.PropertyChanged += OnViewModelPropertyChanged;
-        Deactivated += (_, _) => { vm.Preview.ShowOriginal = false; vm.PhotoTools.CancelStale(); };
+        Deactivated += (_, _) =>
+        {
+            vm.Preview.ShowOriginal = false;
+            vm.PhotoTools.CancelStale();
+            vm.BackgroundRemoval.CancelCommand.Execute(null);
+        };
         Loc.Instance.PropertyChanged += (_, _) =>
         {
             if (DockHost.Layout is { } l) _factory.UpdateTitles(l);
@@ -201,6 +206,13 @@ public partial class MainWindow : Window
 
         // ── 單鍵（輸入文字時不處理）──
         var crop = _vm.CropTool;
+        if (e.Key == Key.Escape && mods == KeyModifiers.None && !_vm.IsFullScreen
+            && (_vm.BackgroundRemoval.IsBusy || _vm.BackgroundRemoval.IsEditing))
+        {
+            _vm.BackgroundRemoval.CancelCommand.Execute(null);
+            e.Handled = true;
+            return;
+        }
         // Esc 在輸入焦點中也要生效：照片工具提案／取樣不允許被文字輸入吞掉。
         if (e.Key == Key.Escape && mods == KeyModifiers.None
             && (_vm.PhotoTools.IsSampling || _vm.PhotoTools.IsPicking) && !_vm.IsFullScreen)

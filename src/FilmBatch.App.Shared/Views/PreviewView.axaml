@@ -12,6 +12,7 @@
                      SplitPosition="{Binding SplitPosition}" Zoom="{Binding Zoom}" Pan="{Binding Pan}"
                      IsBusy="{Binding IsBusy}" OverlayText="{Binding OverlayText}"
                      ControlPoint="{Binding ControlPoint}" Footprint="{Binding Footprint}" CanvasBackground="{Binding Background}"
+                     ShowTransparency="{Binding ShowTransparency}"
                      ActiveTool="{Binding ActiveTool}" />
     <TextBlock Classes="secondary" Text="{Binding EmptyText}" HorizontalAlignment="Center" VerticalAlignment="Center"
                IsVisible="{Binding Image, Converter={x:Static ObjectConverters.IsNull}}" IsHitTestVisible="False" />

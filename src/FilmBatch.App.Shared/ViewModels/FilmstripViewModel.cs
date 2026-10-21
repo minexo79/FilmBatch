@@ -290,10 +290,17 @@ public sealed partial class FilmstripViewModel : ObservableObject
                 try
                 {
                     var rawOptions = RawLoadOptions.FromSettings(service.SettingsFor(next.FileName));
+                    // 已去背 RAW 必須與未裁切現像來源對齊；相機內嵌 JPEG 可能有不同裁切。
+                    var needsDeveloped = service.Project[next.FileName].ForegroundMask is not null
+                        && Project.IsRawFile(next.FileName);
                     var source = next.Source is { } cached && cached.RawOptions == rawOptions
+                        && (!needsDeveloped || cached.IsSceneLinear)
                         ? cached
-                        : await _main.Images.GetThumbnailSourceAsync(
-                            service.Project.PathOf(next.FileName), rawOptions, token).ConfigureAwait(true);
+                        : needsDeveloped
+                            ? (await _main.Images.GetPreviewAsync(service.Project.PathOf(next.FileName), rawOptions, token)
+                                .ConfigureAwait(true)).Downscale(ImageLoader.ThumbnailLongEdge)
+                            : await _main.Images.GetThumbnailSourceAsync(
+                                service.Project.PathOf(next.FileName), rawOptions, token).ConfigureAwait(true);
 
                     if (_main.Service != service || !_main.Images.IsCurrent(generation)
                         || !_byName.TryGetValue(next.FileName, out var after) || !ReferenceEquals(after, next))
@@ -496,7 +503,7 @@ public sealed partial class FilmstripViewModel : ObservableObject
     private void ApplyBitmap(ThumbnailViewModel vm, RenderResult r)
     {
         var old = vm.Bitmap;
-        var bmp = new WriteableBitmap(new PixelSize(r.Width, r.Height), new Vector(96, 96), PixelFormat.Bgra8888, AlphaFormat.Opaque);
+        var bmp = new WriteableBitmap(new PixelSize(r.Width, r.Height), new Vector(96, 96), PixelFormat.Bgra8888, AlphaFormat.Unpremul);
         using (var fb = bmp.Lock())
         {
             for (var y = 0; y < r.Height; y++)

@@ -402,7 +402,7 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
             dst[o] = (byte)(s[i + 2] >> 8);
             dst[o + 1] = (byte)(s[i + 1] >> 8);
             dst[o + 2] = (byte)(s[i] >> 8);
-            dst[o + 3] = 255;
+            dst[o + 3] = (byte)(s[i + 3] >> 8);
         }
         return dst;
     }
@@ -435,7 +435,9 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
                     var bottom = s[i01 + c] + (s[i11 + c] - s[i01 + c]) * ax;
                     dst[o + 2 - c] = (byte)((int)Math.Round(top + (bottom - top) * ay) >> 8);
                 }
-                dst[o + 3] = 255;
+                var topAlpha = s[i00 + 3] + (s[i10 + 3] - s[i00 + 3]) * ax;
+                var bottomAlpha = s[i01 + 3] + (s[i11 + 3] - s[i01 + 3]) * ax;
+                dst[o + 3] = (byte)((int)Math.Round(topAlpha + (bottomAlpha - topAlpha) * ay) >> 8);
             }
         });
         return dst;

@@ -464,4 +464,21 @@
   <data name="PhotoTools.ZoneFitUnreachable" xml:space="preserve"><value>擬合結果斜率 {0:0.###}／位移 {1:0.###} 超出範圍（斜率 {2:0.##}…{3:0.##}、位移 {4:0.##}…{5:0.##}），未寫入</value></data>
   <data name="PhotoTools.Confidence" xml:space="preserve"><value>信心</value></data>
   <data name="PhotoTools.Residual" xml:space="preserve"><value>殘差</value></data>
+  <data name="BackgroundRemoval.Title" xml:space="preserve"><value>去背</value></data>
+  <data name="BackgroundRemoval.Generate" xml:space="preserve"><value>AI 選取主體</value></data>
+  <data name="BackgroundRemoval.Edit" xml:space="preserve"><value>修正遮罩</value></data>
+  <data name="BackgroundRemoval.Restore" xml:space="preserve"><value>還原背景</value></data>
+  <data name="BackgroundRemoval.Keep" xml:space="preserve"><value>保留筆刷</value></data>
+  <data name="BackgroundRemoval.Remove" xml:space="preserve"><value>移除筆刷</value></data>
+  <data name="BackgroundRemoval.BrushSize" xml:space="preserve"><value>筆刷大小</value></data>
+  <data name="BackgroundRemoval.Invert" xml:space="preserve"><value>反轉遮罩</value></data>
+  <data name="BackgroundRemoval.Hint" xml:space="preserve"><value>Apple Vision 本機主體選取，不上傳照片。只調整焦點照片的透明度，不生成背景；遮罩不會複製到其他照片或預設。透明匯出請選 PNG 或 TIFF。</value></data>
+  <data name="BackgroundRemoval.Unsupported" xml:space="preserve"><value>AI 主體選取需要 macOS 14 以上；此平台仍可使用筆刷手動去背。只調整焦點照片，透明匯出請選 PNG 或 TIFF。</value></data>
+  <data name="BackgroundRemoval.Selecting" xml:space="preserve"><value>正在以 Apple Vision 選取主體…</value></data>
+  <data name="BackgroundRemoval.NoSubject" xml:space="preserve"><value>沒有找到可分離的主體，未修改照片。可改用筆刷手動去背。</value></data>
+  <data name="BackgroundRemoval.Draft" xml:space="preserve"><value>草稿顯示未裁切來源；以筆刷修正後套用，或取消。套用前不會變更專案。</value></data>
+  <data name="BackgroundRemoval.Applied" xml:space="preserve"><value>去背已套用，可復原；重開與匯出不需要再次推論。</value></data>
+  <data name="BackgroundRemoval.AppliedLabel" xml:space="preserve"><value>已套用去背</value></data>
+  <data name="BackgroundRemoval.Restored" xml:space="preserve"><value>背景已還原，可復原此操作。</value></data>
+  <data name="BackgroundRemoval.Failed" xml:space="preserve"><value>去背失敗：{0}</value></data>
 </root>

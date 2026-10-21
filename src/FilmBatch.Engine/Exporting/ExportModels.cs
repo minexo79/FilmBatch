@@ -42,6 +42,8 @@ public sealed record ExportJob
     public required string PresetName { get; init; }
     public required int Index { get; init; }
     public required int PipelineVersion { get; init; }
+    /// <summary>建立 job 時擷取的逐張去背遮罩快照；匯出期間的遮罩編輯不影響已排入的照片。</summary>
+    public FilmBatch.Core.Projects.ForegroundMask? ForegroundMask { get; init; }
 }
 
 /// <summary>單張匯出的 IProgress 回報。</summary>

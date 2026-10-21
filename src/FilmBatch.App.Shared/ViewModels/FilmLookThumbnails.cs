@@ -63,7 +63,7 @@ public sealed class FilmLookThumbnails(MainWindowViewModel main)
             _timer?.Start();
             return;
         }
-        var source = preview.Downscale(LongEdge);
+        var source = main.SourceForPhoto(focus, preview.Downscale(LongEdge));
         foreach (var (kind, tile, settings) in _jobs())
         {
             var key = $"{KeyPrefix}{kind}/{tile.Key}/{Uri.EscapeDataString(focus)}/{_generation}.{++_sequence}";

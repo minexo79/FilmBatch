@@ -51,6 +51,40 @@
 
     <ScrollViewer HorizontalScrollBarVisibility="Disabled" IsEnabled="{Binding HasPhoto}">
       <StackPanel>
+      <ContentControl Content="{Binding Main.BackgroundRemoval}" IsVisible="{Binding ShowsPhotoTools}">
+        <ContentControl.DataTemplates>
+          <DataTemplate x:DataType="vt:BackgroundRemovalViewModel">
+            <Border Classes="tool-section">
+              <StackPanel Spacing="8">
+                <TextBlock Classes="group-title" Text="{l:Tr BackgroundRemoval.Title}" />
+                <TextBlock Classes="secondary small" TextWrapping="Wrap" Text="{Binding Hint}" />
+                <WrapPanel ItemSpacing="6" LineSpacing="6">
+                  <Button Classes="outline" AutomationProperties.AutomationId="BackgroundRemoval.Generate" Command="{Binding GenerateCommand}" Content="{l:Tr BackgroundRemoval.Generate}" />
+                  <Button Classes="outline" AutomationProperties.AutomationId="BackgroundRemoval.Edit" Command="{Binding BeginEditCommand}" Content="{l:Tr BackgroundRemoval.Edit}" />
+                  <Button Classes="outline" AutomationProperties.AutomationId="BackgroundRemoval.Restore" Command="{Binding RestoreCommand}" Content="{l:Tr BackgroundRemoval.Restore}" IsVisible="{Binding HasAppliedMask}" />
+                </WrapPanel>
+                <ProgressBar Height="4" IsIndeterminate="True" IsVisible="{Binding IsBusy}" />
+                <StackPanel Spacing="8" IsVisible="{Binding IsEditing}">
+                  <ToggleSwitch AutomationProperties.AutomationId="BackgroundRemoval.BrushMode" IsChecked="{Binding KeepForeground}"
+                                OnContent="{l:Tr BackgroundRemoval.Keep}" OffContent="{l:Tr BackgroundRemoval.Remove}" />
+                  <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
+                    <TextBlock Classes="param-name" Text="{l:Tr BackgroundRemoval.BrushSize}" />
+                    <TextBlock Grid.Column="1" Classes="numeric" Text="{Binding BrushSize, StringFormat='{}{0:0}%'}" />
+                    <Slider Grid.Row="1" Grid.ColumnSpan="2" Minimum="1" Maximum="30" SmallChange="1" Value="{Binding BrushSize}" />
+                  </Grid>
+                  <WrapPanel ItemSpacing="6" LineSpacing="6">
+                    <Button Classes="outline" AutomationProperties.AutomationId="BackgroundRemoval.Invert" Command="{Binding InvertCommand}" Content="{l:Tr BackgroundRemoval.Invert}" />
+                    <Button Classes="outline" AutomationProperties.AutomationId="BackgroundRemoval.Apply" Command="{Binding ApplyCommand}" Content="{l:Tr Tool.Crop.Apply}" />
+                  </WrapPanel>
+                </StackPanel>
+                <Button Classes="outline" HorizontalAlignment="Left" AutomationProperties.AutomationId="BackgroundRemoval.Cancel" Command="{Binding CancelCommand}" Content="{l:Tr Dialog.Cancel}" IsVisible="{Binding CanCancel}" />
+                <TextBlock Classes="secondary small" TextWrapping="Wrap" Text="{Binding StatusText}" IsVisible="{Binding StatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                <TextBlock Classes="secondary small" Foreground="{DynamicResource FB.WarningTextBrush}" TextWrapping="Wrap" Text="{Binding ErrorText}" IsVisible="{Binding ErrorText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+              </StackPanel>
+            </Border>
+          </DataTemplate>
+        </ContentControl.DataTemplates>
+      </ContentControl>
       <ContentControl Content="{Binding Main.PhotoTools}" IsVisible="{Binding ShowsPhotoTools}">
         <ContentControl.DataTemplates>
           <DataTemplate x:DataType="vt:PhotoToolsViewModel">

@@ -31,7 +31,7 @@ public static class PhotoOperations
     public static PhotoEntry ResetModule(PhotoEntry entry, string moduleKey) =>
         entry with { Overrides = entry.Overrides.WithoutRange(ModuleCatalog.Module(moduleKey).FlatKeys) };
 
-    public static PhotoEntry ResetAll(PhotoEntry entry) => entry with { Overrides = Settings.Empty };
+    public static PhotoEntry ResetAll(PhotoEntry entry) => entry with { Overrides = Settings.Empty, ForegroundMask = null };
 
     public static PhotoEntry AssignPreset(PhotoEntry entry, Guid? presetId, bool keepOverrides, Settings newPresetBase) =>
         entry with

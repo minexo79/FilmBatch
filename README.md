@@ -11,6 +11,7 @@
 - **非破壞性編輯**：原始檔永不修改；匯出 JPEG／16-bit TIFF／16-bit PNG，保留 EXIF 並嵌入 sRGB ICC。
 - **直接編輯 RAW**：支援 Sony、Canon（CR2／CR3）、Nikon、Fujifilm、Panasonic、Olympus、Pentax、Samsung、Leica、Hasselblad、Epson、Mamiya 與 DNG（解碼移植自 [LightCraft](https://github.com/storytold/lightcraft)）。保留場景線性高光供曝光調整，提供相機白平衡／自訂 2500–9900 K＋色偏、內嵌語意遮罩局部調整與鏡頭校正；一般幅度的白平衡調整即更新預覽。含 JPEG XL 的 DNG 使用隨附解碼器，不需安裝系統函式庫。不支援的 RAW 直接回報，不以內嵌預覽代替。
 - **本機 AI 降噪**：RAW 使用線性 Rec.2020 RawNIND，一般 RGB 照片使用 NAFNet-SIDD；先對全解析度推論，再產生預覽。強度、亮度與色彩可分開混合，支援取消、復原與 16-bit 匯出；模型須明確下載／匯入，推論不連線。署名、模型資料域與驗證邊界見 [AI 降噪決策](docs/adr/0002-ai-denoise.md)。
+- **AI 去背與遮罩修正**：在 macOS 使用 Apple Vision 本機選取主體，不上傳照片、不生成背景；可用保留／移除筆刷與反轉遮罩修正，再套用、復原或還原背景。遮罩逐張存入專案，重開與批次匯出不需再次推論；透明輸出請選 PNG／TIFF。操作、平台相容性與已驗證範圍見[本機 AI 去背](docs/building.md#本機-ai-去背)。
 - **可重現的顆粒**：團塊、多尺度相關場、2D 光學統計三種模型；可調 seed、暗部／中間調／高光響應與光學取樣品質。裁切與旋轉不重新隨機化，縮小預覽會濾除次像素顆粒；不是特定片種／ISO 的量測重建。
 - **照片取樣工具**：在基本參數頂端展開「照片工具」，圈選中性區求白平衡、擷取跨照片的相對參考色，或只調整羽化區域的膚色。RAW 可取樣 Zone 並放置到 III／V／VIII，或以暗部／高光雙錨點擬合階調。提案預覽不存檔，接受後可一次復原；取樣時暫停創意效果，取消後恢復。限制與操作見[顆粒、白平衡與 Zone](docs/grain-white-balance-survey.md#目前實作與操作)。
 - **命令列批次輸出**：`filmbatch-cli` 可在腳本中直接套用已保存的設定匯出。

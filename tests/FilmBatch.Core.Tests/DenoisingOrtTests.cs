@@ -270,6 +270,31 @@ public class DenoisingOrtTests : IDisposable
         Assert.Equal(new ushort[] { 0, 0, 0, 65535 }, result.Rgba16.AsSpan(0, 4).ToArray());
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void PreparedSource_StillRendersForegroundCoverageAfterDenoising(bool sceneLinear)
+    {
+        var onnx = MakeNegOnnx(TinyTile);
+        var dir = Dir("foreground-denoise");
+        File.WriteAllBytes(Path.Combine(dir, "tiny.onnx"), onnx);
+        var spec = TinySpec("tiny-neg", "tiny.onnx", onnx, matchGain: false)
+            with { SceneLinear = sceneLinear };
+        var source = sceneLinear
+            ? new SourceImage(new RawSceneData(
+                new FilmBatch.Raw.Raster.RgbImage(2, 1, [1.5f, 0.2f, -0.1f, 0.4f, 0.3f, 0.2f]),
+                null, null, DenoiseTestScene.Geometry(2, 1)))
+            : new SourceImage(2, 1, [10000, 20000, 30000, 40000, 20000, 30000, 40000, 40000]);
+        source = source.WithForegroundMask(new FilmBatch.Core.Projects.ForegroundMask(2, 1, 2, 1, [0, 32768]));
+        using var processor = new DenoiseProcessor(dir, "CPU");
+        var prepared = processor.Prepare(source, spec, new DenoiseSettings(true, 25f, 100f, 100f),
+            TestContext.Current.CancellationToken);
+        using var renderer = new FilmBatch.Engine.Rendering.CpuFakeRenderer();
+        var rendered = renderer.Render16(prepared, ModuleCatalog.Defaults, TestContext.Current.CancellationToken);
+        Assert.Equal((ushort)0, rendered.Rgba16[3]);
+        Assert.Equal(sceneLinear ? (ushort)32768 : (ushort)20000, rendered.Rgba16[7]);
+    }
+
     [Fact]
     public void ProxyPixels_MatchDownscaledFullResolutionResult()
     {

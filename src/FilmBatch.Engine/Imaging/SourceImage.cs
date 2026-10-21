@@ -1,3 +1,4 @@
+using FilmBatch.Core.Projects;
 using FilmBatch.Engine.Denoising;
 using FilmBatch.Engine.Imaging.Raw;
 using FilmBatch.Raw;
@@ -44,6 +45,19 @@ public sealed class SourceImage
         _display = new(() => RawDisplay.Encode(scene.Image, scene.Tone), LazyThreadSafetyMode.ExecutionAndPublication);
     }
 
+    /// <summary>
+    /// <see cref="WithForegroundMask"/> 專用：共享原始像素／RAW 場景緩衝與延遲顯示編碼；
+    /// 複製建構子讓遮蔽包裝與原始來源保持同一份 <see cref="Lazy{T}"/>，不重新求值 RAW 顯示轉換。
+    /// </summary>
+    private SourceImage(SourceImage source)
+    {
+        Width = source.Width;
+        Height = source.Height;
+        Scene = source.Scene;
+        _rgba16 = source._rgba16;
+        _display = source._display;
+    }
+
     public int Width { get; }
     public int Height { get; }
     public int ShortSide => Math.Min(Width, Height);
@@ -80,6 +94,31 @@ public sealed class SourceImage
     /// <summary>實際來源階段 AI 推論資訊；不影響原始檔與 RAW 場景的色彩／幾何中繼資料。</summary>
     public DenoiseReport? Denoise { get; init; }
 
+    /// <summary>
+    /// 已套用的逐張去背遮罩（<see cref="FilmBatch.Core.Projects.ForegroundMask"/>）；算圖於
+    /// 任何裁切／旋轉／翻轉／輸出尺寸幾何之前，把覆蓋率與來源 alpha 相乘一次。
+    /// 算圖後的 <see cref="SourceImage"/> 一律為 <see langword="null"/>：透明度已烘入像素。
+    /// </summary>
+    public ForegroundMask? ForegroundMask { get; init; }
+
+    /// <summary>
+    /// 回傳同一張影像但帶（或不帶）<paramref name="mask"/> 的來源：像素／RAW 場景緩衝、
+    /// 延遲顯示編碼與中繼資料全部共享，不重複 RAW 顯示轉換。遮罩值描述整張已轉正、
+    /// 未裁切來源，渲染時重採樣到目前來源尺寸；遮罩的參考尺寸必須與來源
+    /// <see cref="ReferenceWidth"/>／<see cref="ReferenceHeight"/> 一致，否則明確失敗。
+    /// </summary>
+    public SourceImage WithForegroundMask(ForegroundMask? mask)
+    {
+        if (ReferenceEquals(mask, ForegroundMask)) return this;
+        if (mask is not null) Rendering.ForegroundAlpha.RequireCompatible(this, mask);
+        return new SourceImage(this)
+        {
+            ReferenceWidth = ReferenceWidth, ReferenceHeight = ReferenceHeight,
+            FilePath = FilePath, RawOptions = RawOptions, RawInfo = RawInfo,
+            SemanticMasks = SemanticMasks, Denoise = Denoise, ForegroundMask = mask,
+        };
+    }
+
     /// <summary>縮小（box filter），用於縮圖或拖曳中的降解析度預覽。RAW 來源在場景域縮放並保留中繼資料。</summary>
     public SourceImage Downscale(int maxLongEdge)
     {
@@ -101,7 +140,7 @@ public sealed class SourceImage
             {
                 FilePath = FilePath, RawOptions = RawOptions, RawInfo = RawInfo, SemanticMasks = SemanticMasks,
                 ReferenceWidth = ReferenceWidth, ReferenceHeight = ReferenceHeight,
-                Denoise = Denoise,
+                Denoise = Denoise, ForegroundMask = ForegroundMask,
             };
         }
         var dst = new ushort[w * h * 4];
@@ -136,7 +175,7 @@ public sealed class SourceImage
         {
             FilePath = FilePath, RawOptions = RawOptions, RawInfo = RawInfo, SemanticMasks = SemanticMasks,
             ReferenceWidth = ReferenceWidth, ReferenceHeight = ReferenceHeight,
-            Denoise = Denoise,
+            Denoise = Denoise, ForegroundMask = ForegroundMask,
         };
     }
 }

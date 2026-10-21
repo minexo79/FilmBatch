@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using Avalonia.Threading;
 using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -38,6 +39,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private bool _hasLoadProgress;
     private bool _resumePreview;
     private string? _loadingError;
+    private readonly ConditionalWeakTable<SourceImage, ForegroundSourceCache> _foregroundSources = new();
+
+    private sealed class ForegroundSourceCache
+    {
+        public ForegroundMask? Mask;
+        public SourceImage? RenderSource;
+    }
 
     public AppSettings Settings { get; }
     public IDialogService Dialogs { get; }
@@ -68,6 +76,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     public PhotoToolsViewModel PhotoTools { get; internal set; }
 
     public DenoiseViewModel Denoise { get; }
+    public BackgroundRemovalViewModel BackgroundRemoval { get; internal set; }
 
     /// <summary>焦點照片的最終參數（三層合併）；沒有照片時為系統預設。</summary>
     public Settings FocusedResolved =>
@@ -152,6 +161,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         CropTool.PropertyChanged += OnCropToolChanged;
         PhotoTools = new PhotoToolsViewModel(this);
         Sidebar = new SidebarViewModel(Presets, Inspector, FilmEffects, new ExportViewModel(this), Preview, CropTool);
+        BackgroundRemoval = new BackgroundRemovalViewModel(this);
+        Sidebar.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(SidebarViewModel.Active) && !Sidebar.IsInspector)
+                BackgroundRemoval.CancelCommand.Execute(null);
+        };
         Sidebar.Export.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(ExportViewModel.IsExporting))
@@ -188,6 +203,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         Renderer.Notice += msg => Toast.Show(msg);
         Renderer.PreviewReady += (r, histogram, originalHistogram) =>
         {
+            if (BackgroundRemoval.IsEditing) return;
             Preview.SetResult(r, histogram, originalHistogram);
             if (r.PreparedSource is { } prepared) PhotoTools.SetAnalysisSource(prepared);
             Denoise.OnRendered(r);
@@ -263,6 +279,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 // A same-folder/alias target must include the crop just committed to disk.
                 if (changed) project = Project.Open(folder, SamplePresets.Neutral);
             }
+            BackgroundRemoval.Invalidate();
             Renderer.CancelThumbnails();
             Presets.Hover.InvalidateCache();
             FilmLook.InvalidateThumbnails();
@@ -310,6 +327,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             // 記住要對新照片進入裁切——新來源可能尚未解碼，Begin 會延後到載入完成。
             // 照片工具：作廢提案與進行中的取樣（同專案的參考色保留），關閉取樣視圖。
             PhotoTools.InvalidateForPhotoChange();
+            BackgroundRemoval.Invalidate();
             if (CropTool.IsActive) CropTool.Apply();
             Preview.Clear();
             if (Sidebar.IsCrop) CropTool.Begin();
@@ -321,6 +339,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         SelectionText = Service is null ? Loc.Get("Status.NoProject") : Loc.Format("Status.Selected", selection.Count);
         OnPropertyChanged(nameof(HasSelection));
         RefreshModulePanels();
+        BackgroundRemoval.RefreshContext();
         if (Sidebar.IsExport) Sidebar.Export.Refresh();
         _ = LoadPreviewAsync();
         NotifyCommands();
@@ -358,6 +377,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 return;
             }
             Preview.SetOriginal(source);
+            BackgroundRemoval.RefreshContext();
             Inspector.Refresh();
             PhotoTools.UpdateContext(service, file, source, service.SettingsFor(file));
             if (Sidebar.IsCrop) CropTool.ResumeBegin();
@@ -382,6 +402,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         if (_disposed) return;
         if (_suspended) { _resumePreview = true; return; }
         if (Service is null || FocusFile is null || Preview.Source is null) return;
+        if (BackgroundRemoval.IsEditing) return;
         var settings = Service.SettingsFor(FocusFile);
         if (Preview.Source.FilePath != Service.Project.PathOf(FocusFile)
             || Preview.Source.RawOptions != RawLoadOptions.FromSettings(settings))
@@ -397,7 +418,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         // 原圖對比也套用同一個裁切 / 方向：只比較調整（與 Lightroom 相同）
         Preview.SetCompareCrop(CropGeometry.FromSettings(settings));
         Denoise.RefreshContext();
-        Renderer.RequestPreview(FocusFile, Preview.Source, settings);
+        var source = SourceForPhoto(FocusFile, Preview.Source);
+        Preview.ShowTransparency = Preview.SourceHasTransparency || source.ForegroundMask is not null;
+        Renderer.RequestPreview(FocusFile, source, settings);
         Preview.IsBusy = true;
     }
 
@@ -459,10 +482,24 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         Sidebar.ToggleCrop();
     }
 
+    /// <summary>同一個解碼來源／遮罩重用包裝，不因滑桿或外觀縮圖重複上傳 GPU 來源。</summary>
+    internal SourceImage SourceForPhoto(string file, SourceImage source)
+    {
+        var mask = Service?.Project[file].ForegroundMask;
+        if (mask is null) return source;
+        var cache = _foregroundSources.GetValue(source, static _ => new ForegroundSourceCache());
+        if (!ReferenceEquals(cache.Mask, mask))
+        {
+            cache.Mask = mask;
+            cache.RenderSource = source.WithForegroundMask(mask);
+        }
+        return cache.RenderSource!;
+    }
+
     public void RequestThumbnail(string file, SourceImage source)
     {
         if (Service is null) return;
-        Renderer.RequestThumbnail(file, source, Service.SettingsFor(file));
+        Renderer.RequestThumbnail(file, SourceForPhoto(file, source), Service.SettingsFor(file));
         UpdateBackgroundText();
     }
 
@@ -475,6 +512,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             if (CropTool.IsActive && !_committingCrop && Service is not null) CropTool.Reload(Service.SettingsFor(FocusFile));
             // 提案與非同步取樣綁服務＋檔案＋來源＋設定；外部設定改變（undo／貼上）使提案作廢
             if (Service is { } service) PhotoTools.InvalidateForSettingsChange(service.SettingsFor(FocusFile));
+            BackgroundRemoval.RefreshContext();
             Presets.Hover.InvalidateForPhoto(FocusFile);
             RefreshModulePanels();
             RequestPreview();
@@ -496,6 +534,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         Filmstrip.UpdateMarkers(all);
         foreach (var f in all) Filmstrip.RequestThumbnail(f);
         RefreshModulePanels();
+        BackgroundRemoval.RefreshContext();
         RequestPreview();
     }
 
@@ -883,6 +922,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         // Export cancellation uses its existing honest path (no phantom completed files).
         if (Sidebar.Export.IsExporting) Sidebar.Export.CancelExportCommand.Execute(null);
         PhotoTools.CancelStale();
+        BackgroundRemoval.Suspend();
         Preview.EndControlPointEdit();
         _loadingTimer.Stop();
         _folderLoadWatch.Stop();
@@ -898,6 +938,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     {
         if (_disposed || !_suspended) return;
         _suspended = false;
+        BackgroundRemoval.Resume();
         if (OperatingSystem.IsIOS())
         {
             try { Library.Reload(); }
@@ -924,6 +965,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         if (_disposed) return;
         _disposed = true;
         PhotoTools.InvalidateForPhotoChange();
+        BackgroundRemoval.Dispose();
         Denoise.Dispose();
         ++_openGeneration;
         _loadingTimer.Stop();

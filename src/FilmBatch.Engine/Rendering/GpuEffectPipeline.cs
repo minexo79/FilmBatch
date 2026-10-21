@@ -55,7 +55,7 @@ internal sealed class GpuEffectPipeline : IDisposable
     }
     private readonly ComputeKernel _decode, _encode8, _encode16, _display, _spike, _blur, _box,
         _crop, _basicLinear, _photoAdjust, _lens, _multi, _double, _bokeh, _zoom, _motion, _vignette,
-        _halExtract, _halAdd, _leak, _look, _plate,
+        _halExtract, _halAdd, _leak, _look, _plate, _foreground,
         _basicDisplay, _tone, _detail, _dirt, _grain, _texture;
 
     public GpuEffectPipeline(GpuDevice gpu, ShaderLibrary shaders, EffectRendererOptions? options = null)
@@ -77,6 +77,7 @@ internal sealed class GpuEffectPipeline : IDisposable
         _rawWhiteBalance = K("io/raw_white_balance", tex, storage, uniform);
         _rawSemantic = K("io/raw_semantic_adjust", tex, tex, storage, uniform);
         _decode = K("io/decode_rgba16", BindingSpec.TextureUint, storage);
+        _foreground = K("io/foreground_alpha", tex, tex, storage);
         _encode8 = K("io/encode_bgra8", tex, BindingSpec.Storage, uniform);
         _encode16 = K("io/encode_rgba16", tex, BindingSpec.Storage, uniform);
         _display = K("io/linear_to_display", tex, storage);
@@ -114,6 +115,8 @@ internal sealed class GpuEffectPipeline : IDisposable
         var (w, h) = OutputSize(source, p);
         var bytes = WorkspaceBytes(w, h) + CachedSource.BytesFor(source.Width, source.Height);
         if (p?.RawMaskOn == true) bytes += (ulong)source.Width * (ulong)source.Height * 4;
+        if (source.ForegroundMask is { } mask)
+            bytes += (ulong)source.Width * (ulong)source.Height * 16 + (ulong)mask.Width * (ulong)mask.Height * 4;
         if (p?.DoubleAsset is { } doubleAsset) bytes += AssetBytes(doubleAsset);
         if (p?.LeakAsset is { } leakAsset) bytes += AssetBytes(leakAsset);
         if (p?.DirtAsset is { } dirtAsset) bytes += AssetBytes(dirtAsset);
@@ -127,6 +130,7 @@ internal sealed class GpuEffectPipeline : IDisposable
         bool Fits(SourceImage image) => (uint)image.Width <= limit && (uint)image.Height <= limit;
         var (w, h) = OutputSize(source, p);
         return Fits(source) && w <= limit && h <= limit
+            && (source.ForegroundMask is not { } mask || (uint)mask.Width <= limit && (uint)mask.Height <= limit)
             && (p?.DoubleAsset is null || Fits(p.DoubleAsset.Image))
             && (p?.LeakAsset is null || Fits(p.LeakAsset.Image))
             && (p?.DirtAsset is null || Fits(p.DirtAsset.Image));
@@ -466,24 +470,24 @@ internal sealed class GpuEffectPipeline : IDisposable
         var uploaded = new CachedSource(_gpu, source);
         try
         {
-            if (source.Scene is not null)
+            if (source.ForegroundMask is { } mask)
             {
-                // Only the source color-space conversion runs on CPU; all editing and finishing stays on GPU.
-                var working = CpuPipeline.DecodeLinear(source);
-                _gpu.WriteTexture<float>(uploaded.Linear, working);
-            }
-            else
-            {
-            // 16-bit 上傳紋理只用於解碼；解碼後立即釋放，快取只保留線性紋理
-            using (var upload = _gpu.CreateTexture((uint)source.Width, (uint)source.Height, GpuTextureFormat.Rgba16Uint,
-                GpuTextureUsage.CopyDst | GpuTextureUsage.Sampled, "source upload"))
-            {
-                _gpu.WriteTexture<ushort>(upload, source.Rgba16);
+                // 遮罩維持原尺寸上傳，由 GPU 依來源像素中心取樣；不在 CPU 放大成整張照片。
+                // 解碼後只乘 alpha，先於任何幾何 pass，RGB 維持 straight。
+                ForegroundAlpha.RequireCompatible(source, mask);
+                var coverage = ForegroundAlpha.ToFloatPlane(mask);
+                using var maskTex = _gpu.CreateTexture((uint)mask.Width, (uint)mask.Height, GpuTextureFormat.R32Float,
+                    GpuTextureUsage.Sampled | GpuTextureUsage.CopyDst, "foreground mask");
+                _gpu.WriteTexture<float>(maskTex, coverage);
+                using var staged = _gpu.CreateTexture((uint)source.Width, (uint)source.Height, GpuTextureFormat.Rgba32Float,
+                    GpuTextureUsage.Sampled | GpuTextureUsage.Storage | GpuTextureUsage.CopyDst, "masked staging");
+                DecodeSource(source, staged);
                 using var commands = _gpu.BeginCommands();
-                commands.Dispatch2D(_decode, [upload, uploaded.Linear], (uint)source.Width, (uint)source.Height);
+                commands.Dispatch2D(_foreground, [staged, maskTex, uploaded.Linear],
+                    (uint)source.Width, (uint)source.Height);
                 commands.Submit();
             }
-            }
+            else DecodeSource(source, uploaded.Linear);
         }
         catch
         {
@@ -492,6 +496,25 @@ internal sealed class GpuEffectPipeline : IDisposable
         }
         _sources.AddFirst(uploaded);
         return uploaded.Linear;
+    }
+
+    /// <summary>解碼來源到指定線性紋理並送出（SDR 上傳 16-bit 紋理解碼；RAW 先 CPU 色彩轉換再寫入）。</summary>
+    private void DecodeSource(SourceImage source, GpuTexture destination)
+    {
+        if (source.Scene is not null)
+        {
+            // Only the source color-space conversion runs on CPU; all editing and finishing stays on GPU.
+            var working = CpuPipeline.DecodeLinear(source);
+            _gpu.WriteTexture<float>(destination, working);
+            return;
+        }
+        // 16-bit 上傳紋理只用於解碼；同一指令清單送出後立即釋放，快取只保留線性紋理
+        using var upload = _gpu.CreateTexture((uint)source.Width, (uint)source.Height, GpuTextureFormat.Rgba16Uint,
+            GpuTextureUsage.CopyDst | GpuTextureUsage.Sampled, "source upload");
+        _gpu.WriteTexture<ushort>(upload, source.Rgba16);
+        using var commands = _gpu.BeginCommands();
+        commands.Dispatch2D(_decode, [upload, destination], (uint)source.Width, (uint)source.Height);
+        commands.Submit();
     }
 
     private void TrimSources()

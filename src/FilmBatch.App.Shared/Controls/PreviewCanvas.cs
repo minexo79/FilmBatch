@@ -56,6 +56,8 @@ public class PreviewCanvas : Control
         AvaloniaProperty.Register<PreviewCanvas, ICanvasTool?>(nameof(ActiveTool));
     public static readonly StyledProperty<IBrush?> CanvasBackgroundProperty =
         AvaloniaProperty.Register<PreviewCanvas, IBrush?>(nameof(CanvasBackground));
+    public static readonly StyledProperty<bool> ShowTransparencyProperty =
+        AvaloniaProperty.Register<PreviewCanvas, bool>(nameof(ShowTransparency));
 
     private const double PointRadius = 6;
     private const double HitRadius = 12;
@@ -79,6 +81,21 @@ public class PreviewCanvas : Control
     private static readonly IPen SplitShadow = new Pen(new SolidColorBrush(Color.FromArgb(0xA0, 0, 0, 0)), 3);
     private static readonly IBrush OverlayBackground = new SolidColorBrush(Color.FromArgb(0xB0, 0x1A, 0x1A, 0x1A));
     private static readonly IBrush OverlayForeground = new SolidColorBrush(Color.FromRgb(0xEA, 0xEA, 0xEA));
+    private static readonly IBrush Checkerboard = new DrawingBrush
+    {
+        Drawing = new DrawingGroup
+        {
+            Children =
+            [
+                new GeometryDrawing { Brush = new SolidColorBrush(Color.FromRgb(0x60, 0x60, 0x60)), Geometry = new RectangleGeometry(new Rect(0, 0, 16, 16)) },
+                new GeometryDrawing { Brush = new SolidColorBrush(Color.FromRgb(0x48, 0x48, 0x48)), Geometry = new RectangleGeometry(new Rect(0, 0, 8, 8)) },
+                new GeometryDrawing { Brush = new SolidColorBrush(Color.FromRgb(0x48, 0x48, 0x48)), Geometry = new RectangleGeometry(new Rect(8, 8, 8, 8)) },
+            ],
+        },
+        TileMode = TileMode.Tile,
+        DestinationRect = new RelativeRect(0, 0, 16, 16, RelativeUnit.Absolute),
+        Stretch = Stretch.Fill,
+    };
 
     private enum DragMode { None, Pan, Split, ControlPoint, Footprint, Tool, Pinch }
 
@@ -113,6 +130,7 @@ public class PreviewCanvas : Control
     public Point? ControlPoint { get => GetValue(ControlPointProperty); set => SetValue(ControlPointProperty, value); }
     public IBrush? CanvasBackground { get => GetValue(CanvasBackgroundProperty); set => SetValue(CanvasBackgroundProperty, value); }
     public ICanvasTool? ActiveTool { get => GetValue(ActiveToolProperty); set => SetValue(ActiveToolProperty, value); }
+    public bool ShowTransparency { get => GetValue(ShowTransparencyProperty); set => SetValue(ShowTransparencyProperty, value); }
     public IReadOnlyList<FootprintPath>? Footprint { get => GetValue(FootprintProperty); set => SetValue(FootprintProperty, value); }
 
     /// <summary>拖曳控制點：參數為正規化座標與是否已放開。</summary>
@@ -133,7 +151,7 @@ public class PreviewCanvas : Control
     static PreviewCanvas()
     {
         AffectsRender<PreviewCanvas>(ImageProperty, OriginalProperty, ShowOriginalProperty, IsSplitProperty,
-            SplitPositionProperty, ZoomProperty, PanProperty, OverlayTextProperty, ControlPointProperty, CanvasBackgroundProperty, IsBusyProperty, FootprintProperty);
+            SplitPositionProperty, ZoomProperty, PanProperty, OverlayTextProperty, ControlPointProperty, CanvasBackgroundProperty, IsBusyProperty, FootprintProperty, ShowTransparencyProperty);
         ZoomProperty.Changed.AddClassHandler<PreviewCanvas>((c, e) =>
         {
             if (e.NewValue is <= 0.0) c.Pan = default;
@@ -210,6 +228,7 @@ public class PreviewCanvas : Control
             var map = Mapping();
             // 工具要求旋轉顯示（裁切拉直）時，影像與對比分割一起轉；工具本身照 map 換算畫在轉後的位置
             DrawingContext.PushedState? rotated = map.RotationDeg != 0 ? ctx.PushTransform(map.Transform) : null;
+            if (ShowTransparency) ctx.FillRectangle(Checkerboard, dest);
             ctx.DrawImage(img, new Rect(size), dest);
 
             if (IsSplitShown && Original is { } orig)

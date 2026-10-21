@@ -136,7 +136,9 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
         FileName = _main.Selection.Count > 1 ? Loc.Format("Inspector.FileMulti", file, _main.Selection.Count) : file;
         Dimensions = _main.Preview.Source is { } src && _main.FocusFile == file ? Loc.Format("Inspector.PreviewSize", src.Width, src.Height) : "";
         HasOverrides = entry.HasOverrides;
-        OverrideText = entry.HasOverrides ? Loc.Format("Inspector.Overrides", entry.Overrides.Count) : Loc.Get("Inspector.NoOverrides");
+        var adjustments = entry.Overrides.Count > 0 ? Loc.Format("Inspector.Overrides", entry.Overrides.Count) : Loc.Get("Inspector.NoOverrides");
+        OverrideText = entry.ForegroundMask is null ? adjustments
+            : entry.Overrides.Count > 0 ? $"{adjustments} · {Loc.Get("BackgroundRemoval.AppliedLabel")}" : Loc.Get("BackgroundRemoval.AppliedLabel");
 
         _loadingPreset = true;
         SelectedPreset = PresetOptions.FirstOrDefault(p => p.Id == entry.PresetId);
