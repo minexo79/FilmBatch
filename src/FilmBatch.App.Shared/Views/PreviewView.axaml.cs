@@ -11,6 +11,8 @@ public partial class PreviewView : UserControl
         InitializeComponent();
         Canvas.ControlPointDragged += (p, completed) => (DataContext as PreviewViewModel)?.MoveControlPoint(p, completed);
         Canvas.ControlPointDragInterrupted += () => (DataContext as PreviewViewModel)?.EndControlPointEdit();
+        Canvas.FootprintDragged += (key, p, completed) => (DataContext as PreviewViewModel)?.DragFootprint(key, p, completed);
+        Canvas.FootprintDragInterrupted += () => (DataContext as PreviewViewModel)?.EndControlPointEdit();
         Canvas.FitScaleChanged += scale => (DataContext as PreviewViewModel)?.ReportFitScale(scale);
         DragDrop.AddDragOverHandler(Root, (_, e) =>
             e.DragEffects = e.DataTransfer.Contains(PresetLibraryView.PresetFormat) ? DragDropEffects.Copy : DragDropEffects.None);

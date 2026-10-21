@@ -64,18 +64,21 @@
                   </Panel>
                 </StackPanel>
               </ToggleButton>
-              <StackPanel IsVisible="{Binding IsPanelExpanded}" Spacing="8" Margin="16,0,16,12">
-                <TextBlock Classes="secondary small" TextWrapping="Wrap" Text="{Binding StatusText}" />
-                <TextBlock Classes="secondary small" TextWrapping="Wrap" Text="{Binding WarningText}" Foreground="{DynamicResource FB.WarningTextBrush}" IsVisible="{Binding WarningText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+              <!-- 各工具區塊的版面比照模組區塊：14pt 標題列、左右 16px 縮排、區塊間細線、外框按鈕、兩行式滑桿 -->
+              <StackPanel IsVisible="{Binding IsPanelExpanded}">
+                <StackPanel Spacing="4" Margin="16,0,16,4">
+                  <TextBlock Classes="secondary small" TextWrapping="Wrap" Text="{Binding StatusText}" IsVisible="{Binding StatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                  <TextBlock Classes="secondary small" TextWrapping="Wrap" Text="{Binding WarningText}" Foreground="{DynamicResource FB.WarningTextBrush}" IsVisible="{Binding WarningText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                </StackPanel>
 
                 <!-- W1/W3 WB：區域取樣、自動候選、參考色、預覽/套用 -->
-                <Border Classes="tool-group">
-                  <StackPanel Spacing="6">
-                    <TextBlock Classes="panel-title" Text="{l:Tr PhotoTools.WbTitle}" />
+                <Border Classes="tool-section">
+                  <StackPanel>
+                    <TextBlock Classes="tool-section-title" Text="{l:Tr PhotoTools.WbTitle}" />
                     <TextBlock Classes="secondary small" TextWrapping="Wrap" Text="{Binding WbHint}" IsVisible="{Binding HasWbHint}" />
                     <WrapPanel ItemSpacing="6" LineSpacing="6">
-                      <ToggleButton AutomationProperties.AutomationId="PhotoTools.PickWb" IsEnabled="{Binding CanWb}" IsChecked="{Binding IsPickingWb, Mode=OneWay}" Command="{Binding PickWbCommand}" Content="{l:Tr PhotoTools.PickWb}" />
-                      <Button AutomationProperties.AutomationId="PhotoTools.AutoWb" IsEnabled="{Binding CanWb}" Command="{Binding AutoWbCommand}" Content="{l:Tr PhotoTools.AutoWb}" />
+                      <ToggleButton Classes="outline" AutomationProperties.AutomationId="PhotoTools.PickWb" IsEnabled="{Binding CanWb}" IsChecked="{Binding IsPickingWb, Mode=OneWay}" Command="{Binding PickWbCommand}" Content="{l:Tr PhotoTools.PickWb}" />
+                      <Button Classes="outline" AutomationProperties.AutomationId="PhotoTools.AutoWb" IsEnabled="{Binding CanWb}" Command="{Binding AutoWbCommand}" Content="{l:Tr PhotoTools.AutoWb}" />
                     </WrapPanel>
                     <ListBox ItemsSource="{Binding Candidates}" SelectedItem="{Binding SelectedCandidate}"
                              AutomationProperties.AutomationId="PhotoTools.Candidates" Classes="flat" MaxHeight="180"
@@ -99,65 +102,81 @@
                       </ListBox.ItemTemplate>
                     </ListBox>
                     <WrapPanel ItemSpacing="6" LineSpacing="6">
-                      <ToggleButton AutomationProperties.AutomationId="PhotoTools.WbRefToggle" IsChecked="{Binding UseWbReference}" IsEnabled="{Binding HasWbReference}" Content="{l:Tr PhotoTools.UseWbReference}" />
-                      <Button AutomationProperties.AutomationId="PhotoTools.WbRefPick" IsEnabled="{Binding CanWb}" Command="{Binding PickWbReferenceCommand}" Content="{l:Tr PhotoTools.CaptureWbRef}" />
-                      <Button AutomationProperties.AutomationId="PhotoTools.WbRefClear" IsEnabled="{Binding HasWbReference}" Command="{Binding ClearWbReferenceCommand}" Content="{l:Tr PhotoTools.ClearRef}" />
+                      <ToggleButton Classes="outline" AutomationProperties.AutomationId="PhotoTools.WbRefToggle" IsChecked="{Binding UseWbReference}" IsEnabled="{Binding HasWbReference}" Content="{l:Tr PhotoTools.UseWbReference}" />
+                      <Button Classes="outline" AutomationProperties.AutomationId="PhotoTools.WbRefPick" IsEnabled="{Binding CanWb}" Command="{Binding PickWbReferenceCommand}" Content="{l:Tr PhotoTools.CaptureWbRef}" />
+                      <Button Classes="outline" AutomationProperties.AutomationId="PhotoTools.WbRefClear" IsEnabled="{Binding HasWbReference}" Command="{Binding ClearWbReferenceCommand}" Content="{l:Tr PhotoTools.ClearRef}" />
                     </WrapPanel>
                     <TextBlock Classes="secondary small" Text="{Binding WbReferenceText}" IsVisible="{Binding HasWbReference}" />
                     <WrapPanel ItemSpacing="6" LineSpacing="6">
-                      <ToggleButton AutomationProperties.AutomationId="PhotoTools.Preview" IsChecked="{Binding IsPreviewing, Mode=OneWay}" IsEnabled="{Binding HasProposal}" Command="{Binding TogglePreviewCommand}" Content="{l:Tr PhotoTools.Preview}" />
-                      <Button AutomationProperties.AutomationId="PhotoTools.ApplyWb" IsEnabled="{Binding CanApply}" Command="{Binding ApplyWbCommand}" Content="{l:Tr PhotoTools.ApplyWb}" />
-                      <Button AutomationProperties.AutomationId="PhotoTools.Cancel" Command="{Binding CancelCommand}" Content="{l:Tr PhotoTools.Cancel}" />
+                      <ToggleButton Classes="outline" AutomationProperties.AutomationId="PhotoTools.Preview" IsChecked="{Binding IsPreviewing, Mode=OneWay}" IsEnabled="{Binding HasProposal}" Command="{Binding TogglePreviewCommand}" Content="{l:Tr PhotoTools.Preview}" />
+                      <Button Classes="outline" AutomationProperties.AutomationId="PhotoTools.ApplyWb" IsEnabled="{Binding CanApply}" Command="{Binding ApplyWbCommand}" Content="{l:Tr PhotoTools.ApplyWb}" />
+                      <Button Classes="outline" AutomationProperties.AutomationId="PhotoTools.Cancel" Command="{Binding CancelCommand}" Content="{l:Tr PhotoTools.Cancel}" />
                     </WrapPanel>
                   </StackPanel>
                 </Border>
 
-                <!-- W4 膚色：獨立羽化區域，溫暖/色偏/強度，可選參考色 -->
-                <Border Classes="tool-group">
-                  <StackPanel Spacing="6">
-                    <TextBlock Classes="panel-title" Text="{l:Tr PhotoTools.SkinTitle}" />
+                <!-- W4 膚色：獨立羽化區域，溫暖/色偏/強度，可選參考色；滑桿用與 ParamRow 相同的兩行式（名稱｜數值，下行整寬滑桿） -->
+                <Border Classes="tool-section">
+                  <StackPanel>
+                    <TextBlock Classes="tool-section-title" Text="{l:Tr PhotoTools.SkinTitle}" />
                     <WrapPanel ItemSpacing="6" LineSpacing="6">
-                      <ToggleButton AutomationProperties.AutomationId="PhotoTools.PickSkin" IsChecked="{Binding IsPickingSkin, Mode=OneWay}" Command="{Binding PickSkinCommand}" Content="{l:Tr PhotoTools.PickSkin}" />
+                      <ToggleButton Classes="outline" AutomationProperties.AutomationId="PhotoTools.PickSkin" IsChecked="{Binding IsPickingSkin, Mode=OneWay}" Command="{Binding PickSkinCommand}" Content="{l:Tr PhotoTools.PickSkin}" />
                     </WrapPanel>
-                    <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto" ColumnSpacing="8" RowSpacing="4">
-                      <TextBlock Grid.Row="0" Grid.Column="0" Classes="param-name" Text="{l:Tr PhotoTools.SkinTemperature}" />
-                      <Slider Grid.Row="0" Grid.Column="1" Minimum="-100" Maximum="100" AutomationProperties.AutomationId="PhotoTools.SkinTemperature" Value="{Binding SkinTemperature}" />
-                      <TextBlock Grid.Row="1" Grid.Column="0" Classes="param-name" Text="{l:Tr PhotoTools.SkinTint}" />
-                      <Slider Grid.Row="1" Grid.Column="1" Minimum="-100" Maximum="100" AutomationProperties.AutomationId="PhotoTools.SkinTint" Value="{Binding SkinTint}" />
-                      <TextBlock Grid.Row="2" Grid.Column="0" Classes="param-name" Text="{l:Tr PhotoTools.SkinStrength}" />
-                      <Slider Grid.Row="2" Grid.Column="1" Minimum="0" Maximum="100" AutomationProperties.AutomationId="PhotoTools.SkinStrength" Value="{Binding SkinStrength}" />
-                      <TextBlock Grid.Row="3" Grid.Column="0" Classes="param-name" Text="{l:Tr PhotoTools.SkinFeather}" />
-                      <Slider Grid.Row="3" Grid.Column="1" Minimum="0" Maximum="100" AutomationProperties.AutomationId="PhotoTools.SkinFeather" Value="{Binding SkinFeather}" />
-                    </Grid>
+                    <StackPanel>
+                      <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto" Height="{StaticResource FB.ParamRowHeight}" VerticalAlignment="Center">
+                        <TextBlock Classes="param-name" Text="{l:Tr PhotoTools.SkinTemperature}" />
+                        <TextBlock Grid.Column="1" Classes="numeric" VerticalAlignment="Center" Text="{Binding SkinTemperature, StringFormat='{}{0:0}'}" />
+                        <c:ParamSlider Grid.Row="1" Grid.ColumnSpan="2" Classes="temperature" Height="20" MinHeight="0" Minimum="-100" Maximum="100"
+                                       AutomationProperties.AutomationId="PhotoTools.SkinTemperature" Value="{Binding SkinTemperature}" />
+                      </Grid>
+                      <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto" Height="{StaticResource FB.ParamRowHeight}" VerticalAlignment="Center">
+                        <TextBlock Classes="param-name" Text="{l:Tr PhotoTools.SkinTint}" />
+                        <TextBlock Grid.Column="1" Classes="numeric" VerticalAlignment="Center" Text="{Binding SkinTint, StringFormat='{}{0:0}'}" />
+                        <c:ParamSlider Grid.Row="1" Grid.ColumnSpan="2" Classes="tint" Height="20" MinHeight="0" Minimum="-100" Maximum="100"
+                                       AutomationProperties.AutomationId="PhotoTools.SkinTint" Value="{Binding SkinTint}" />
+                      </Grid>
+                      <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto" Height="{StaticResource FB.ParamRowHeight}" VerticalAlignment="Center">
+                        <TextBlock Classes="param-name" Text="{l:Tr PhotoTools.SkinStrength}" />
+                        <TextBlock Grid.Column="1" Classes="numeric" VerticalAlignment="Center" Text="{Binding SkinStrength, StringFormat='{}{0:0}'}" />
+                        <c:ParamSlider Grid.Row="1" Grid.ColumnSpan="2" Height="20" MinHeight="0" Minimum="0" Maximum="100"
+                                       AutomationProperties.AutomationId="PhotoTools.SkinStrength" Value="{Binding SkinStrength}" />
+                      </Grid>
+                      <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto" Height="{StaticResource FB.ParamRowHeight}" VerticalAlignment="Center">
+                        <TextBlock Classes="param-name" Text="{l:Tr PhotoTools.SkinFeather}" />
+                        <TextBlock Grid.Column="1" Classes="numeric" VerticalAlignment="Center" Text="{Binding SkinFeather, StringFormat='{}{0:0}'}" />
+                        <c:ParamSlider Grid.Row="1" Grid.ColumnSpan="2" Height="20" MinHeight="0" Minimum="0" Maximum="100"
+                                       AutomationProperties.AutomationId="PhotoTools.SkinFeather" Value="{Binding SkinFeather}" />
+                      </Grid>
+                    </StackPanel>
                     <WrapPanel ItemSpacing="6" LineSpacing="6">
-                      <ToggleButton AutomationProperties.AutomationId="PhotoTools.SkinRefToggle" IsChecked="{Binding UseSkinReference}" IsEnabled="{Binding HasSkinReference}" Content="{l:Tr PhotoTools.UseSkinRef}" />
-                      <Button AutomationProperties.AutomationId="PhotoTools.SkinRefPick" Command="{Binding PickSkinReferenceCommand}" Content="{l:Tr PhotoTools.CaptureSkinRef}" />
-                      <Button AutomationProperties.AutomationId="PhotoTools.SkinRefClear" IsEnabled="{Binding HasSkinReference}" Command="{Binding ClearSkinReferenceCommand}" Content="{l:Tr PhotoTools.ClearRef}" />
+                      <ToggleButton Classes="outline" AutomationProperties.AutomationId="PhotoTools.SkinRefToggle" IsChecked="{Binding UseSkinReference}" IsEnabled="{Binding HasSkinReference}" Content="{l:Tr PhotoTools.UseSkinRef}" />
+                      <Button Classes="outline" AutomationProperties.AutomationId="PhotoTools.SkinRefPick" Command="{Binding PickSkinReferenceCommand}" Content="{l:Tr PhotoTools.CaptureSkinRef}" />
+                      <Button Classes="outline" AutomationProperties.AutomationId="PhotoTools.SkinRefClear" IsEnabled="{Binding HasSkinReference}" Command="{Binding ClearSkinReferenceCommand}" Content="{l:Tr PhotoTools.ClearRef}" />
                     </WrapPanel>
                     <TextBlock Classes="secondary small" Text="{Binding SkinReferenceText}" IsVisible="{Binding HasSkinReference}" />
                     <WrapPanel ItemSpacing="6" LineSpacing="6">
-                      <Button AutomationProperties.AutomationId="PhotoTools.ApplySkin" IsEnabled="{Binding CanApplySkin}" Command="{Binding ApplySkinCommand}" Content="{l:Tr PhotoTools.ApplySkin}" />
+                      <Button Classes="outline" AutomationProperties.AutomationId="PhotoTools.ApplySkin" IsEnabled="{Binding CanApplySkin}" Command="{Binding ApplySkinCommand}" Content="{l:Tr PhotoTools.ApplySkin}" />
                     </WrapPanel>
                   </StackPanel>
                 </Border>
 
                 <!-- Z1/Z2 Zone：暗部/高光取樣、III/V/VIII 放置、擬合 -->
-                <Border Classes="tool-group">
-                  <StackPanel Spacing="6">
-                    <TextBlock Classes="panel-title" Text="{l:Tr PhotoTools.ZoneTitle}" />
+                <Border Classes="tool-section">
+                  <StackPanel>
+                    <TextBlock Classes="tool-section-title" Text="{l:Tr PhotoTools.ZoneTitle}" />
                     <TextBlock Classes="secondary small" TextWrapping="Wrap" Text="{Binding ZoneHint}" IsVisible="{Binding HasZoneHint}" />
                     <WrapPanel ItemSpacing="6" LineSpacing="6">
-                      <ToggleButton AutomationProperties.AutomationId="PhotoTools.PickZoneShadow" IsEnabled="{Binding CanZone}" IsChecked="{Binding IsPickingZoneShadow, Mode=OneWay}" Command="{Binding PickZoneShadowCommand}" Content="{l:Tr PhotoTools.PickZoneShadow}" />
-                      <ToggleButton AutomationProperties.AutomationId="PhotoTools.PickZoneHighlight" IsEnabled="{Binding CanZone}" IsChecked="{Binding IsPickingZoneHighlight, Mode=OneWay}" Command="{Binding PickZoneHighlightCommand}" Content="{l:Tr PhotoTools.PickZoneHighlight}" />
+                      <ToggleButton Classes="outline" AutomationProperties.AutomationId="PhotoTools.PickZoneShadow" IsEnabled="{Binding CanZone}" IsChecked="{Binding IsPickingZoneShadow, Mode=OneWay}" Command="{Binding PickZoneShadowCommand}" Content="{l:Tr PhotoTools.PickZoneShadow}" />
+                      <ToggleButton Classes="outline" AutomationProperties.AutomationId="PhotoTools.PickZoneHighlight" IsEnabled="{Binding CanZone}" IsChecked="{Binding IsPickingZoneHighlight, Mode=OneWay}" Command="{Binding PickZoneHighlightCommand}" Content="{l:Tr PhotoTools.PickZoneHighlight}" />
                     </WrapPanel>
                     <TextBlock Classes="secondary small" Text="{Binding ZoneShadowText}" IsVisible="{Binding ZoneShadowText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                     <TextBlock Classes="secondary small" Text="{Binding ZoneHighlightText}" IsVisible="{Binding ZoneHighlightText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                     <TextBlock Classes="secondary small" Text="{Binding ZoneCurrentText}" IsVisible="{Binding ZoneCurrentText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                     <WrapPanel ItemSpacing="6" LineSpacing="6">
-                      <Button AutomationProperties.AutomationId="PhotoTools.ZoneIII" IsEnabled="{Binding CanZoneAct}" Command="{Binding ZoneIiiCommand}">Zone III</Button>
-                      <Button AutomationProperties.AutomationId="PhotoTools.ZoneV" IsEnabled="{Binding CanZoneAct}" Command="{Binding ZoneVCommand}">Zone V</Button>
-                      <Button AutomationProperties.AutomationId="PhotoTools.ZoneVIII" IsEnabled="{Binding CanZoneAct}" Command="{Binding ZoneViiiCommand}">Zone VIII</Button>
-                      <Button AutomationProperties.AutomationId="PhotoTools.FitZone" IsEnabled="{Binding CanZoneFit}" Command="{Binding FitZoneSpanCommand}" Content="{l:Tr PhotoTools.FitZone}" />
+                      <Button Classes="outline" AutomationProperties.AutomationId="PhotoTools.ZoneIII" IsEnabled="{Binding CanZoneAct}" Command="{Binding ZoneIiiCommand}">Zone III</Button>
+                      <Button Classes="outline" AutomationProperties.AutomationId="PhotoTools.ZoneV" IsEnabled="{Binding CanZoneAct}" Command="{Binding ZoneVCommand}">Zone V</Button>
+                      <Button Classes="outline" AutomationProperties.AutomationId="PhotoTools.ZoneVIII" IsEnabled="{Binding CanZoneAct}" Command="{Binding ZoneViiiCommand}">Zone VIII</Button>
+                      <Button Classes="outline" AutomationProperties.AutomationId="PhotoTools.FitZone" IsEnabled="{Binding CanZoneFit}" Command="{Binding FitZoneSpanCommand}" Content="{l:Tr PhotoTools.FitZone}" />
                     </WrapPanel>
                   </StackPanel>
                 </Border>

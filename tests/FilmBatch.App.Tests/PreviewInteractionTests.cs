@@ -184,6 +184,51 @@ public sealed class PreviewInteractionTests
     }
 
     private static WriteableBitmap Image() => new(new PixelSize(400, 300), new Vector(96, 96), PixelFormat.Bgra8888, AlphaFormat.Premul);
+    [AvaloniaFact]
+    public async Task DraggingFootprintRings_ResizesTheEffectAsOneUndoStep()
+    {
+        using var main = TestEnv.CreateViewModel();
+        var window = new MainWindow(main) { Width = 1280, Height = 800 };
+        window.Show();
+        try
+        {
+            await TestEnv.OpenSamplesAsync(main);
+            main.Inspector.Modules.Single(m => m.Key == "zoom_rotate_blur").IsExpanded = true;
+            main.Service!.SetValue(main.Selection, "zoom_rotate_blur.enabled", true, null);
+            main.Stack.Clear();
+            window.CaptureRenderedFrame()?.Dispose();
+            var canvas = VisibleCanvas(window);
+            Point Ring(Engine.Rendering.FootprintStroke stroke)
+            {
+                var p = canvas.Footprint!.Single(f => f.Stroke == stroke).Points[0];
+                return new Point(p.X, p.Y);
+            }
+            Point Outward(Point p, double scale) => new(0.5 + (p.X - 0.5) * scale, 0.5 + (p.Y - 0.5) * scale);
+            using var pointer = new Avalonia.Input.Pointer(45, PointerType.Mouse, true);
+
+            // 內圈：保護區半徑 20 → 30
+            var inner = Ring(Engine.Rendering.FootprintStroke.Inner);
+            Press(window, canvas, pointer, Map(canvas).ToCanvas(inner));
+            Move(window, canvas, pointer, Map(canvas).ToCanvas(Outward(inner, 1.25)), true);
+            Release(window, canvas, pointer, Map(canvas).ToCanvas(Outward(inner, 1.5)));
+            Assert.Equal(30, main.FocusedResolved.Number("zoom_rotate_blur.protect_radius"), 6);
+            Assert.Equal(30, main.FocusedResolved.Number("zoom_rotate_blur.transition"), 6);
+
+            // 外圈：過渡 30 → 15（保護區不動）
+            var outer = Ring(Engine.Rendering.FootprintStroke.Outer);
+            Press(window, canvas, pointer, Map(canvas).ToCanvas(outer));
+            Release(window, canvas, pointer, Map(canvas).ToCanvas(Outward(outer, 45.0 / 60)));
+            Assert.Equal(30, main.FocusedResolved.Number("zoom_rotate_blur.protect_radius"), 6);
+            Assert.Equal(15, main.FocusedResolved.Number("zoom_rotate_blur.transition"), 6);
+
+            main.UndoCommand.Execute(null);
+            Assert.Equal(30, main.FocusedResolved.Number("zoom_rotate_blur.transition"), 6);
+            main.UndoCommand.Execute(null);
+            Assert.Equal(20, main.FocusedResolved.Number("zoom_rotate_blur.protect_radius"), 6);
+        }
+        finally { window.Close(); }
+    }
+
     private static PreviewCanvas VisibleCanvas(Window window) => window.GetVisualDescendants().OfType<PreviewCanvas>().Single(c => c.IsEffectivelyVisible);
     private static CanvasMapping Map(PreviewCanvas canvas) => (CanvasMapping)typeof(PreviewCanvas).GetMethod("Mapping", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(canvas, null)!;
     private static Vector ImageOffset(PreviewCanvas canvas) => Map(canvas).ToCanvas(new Point(0.5, 0.5)) - new Point(canvas.Bounds.Width / 2, canvas.Bounds.Height / 2);

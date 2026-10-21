@@ -40,6 +40,8 @@
 
 2026-10-20 的另一項整合，以 `cea2d58` 的 AI 降噪與 `754ca96` 的 iOS／CI 為兩端：採用 iOS 分支的唯一 `FilmBatch.App.Shared` 編輯器，保留降噪分支的實際模型、非破壞式參數與來源階段匯出；ONNX 套件依目標平台分開選取，避免舊路徑重複實作或把 Windows 原生 DLL 帶入 iOS。既有 webhook admission／continuation 與 `pre-merge` 所需 gate 保持不變；平台證據仍依[建置與驗證邊界](building.md#ios-行動版)分開記錄。
 
+2026-10-21 的預覽整合，以研究提交 `a93c017` 所在的 `dev-ai-denoising` 為目標，來源為 `dev-preview-enhanced` 的 `bf3d529`：效果輪廓與拖曳功能進入既有 `FilmBatch.App.Shared`，保留原本的雙指縮放、中斷收尾與復原分組；桌面同時載入共用 Controls、host 專用 Dock 與新增的色溫／色偏滑桿樣式，不回復已淘汰的桌面 Controls 路徑。合併後 Release 測試實際為 1,400 通過、0 失敗、320 跳過，跳過案例不算驗收；macOS 原生主 App 的 25 項 smoke 通過，另在真正的 `NSWindow` 驗證輪廓內／外圈拖曳、兩次復原，以及拖曳途中第二指接手縮放且不繼續改參數。這些是 CPU 算圖與 macOS 視窗的證據，不延伸為 Windows、iOS 實機或硬體 GPU 通過；既有 AI 降噪及物件移除研究 gate 不因預覽合併而改變。
+
 ## 如何新增歷史列
 
 只記對未來修改有用的決定：真實 commit／日期、可核對的理由或重現、被拒絕方案、目前契約／檢查、後續取代。沒有當時證據時明寫「只確認提交意圖」；數值必須保留平台、輸入與來源版本，不把舊測試 totals 複製成新版本的驗收結果。
