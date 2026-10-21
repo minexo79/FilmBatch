@@ -7,7 +7,9 @@
 
 最新延伸：[原生平台與最低可行成本](#16-原生平台與最低可行成本)、[既有 CLI 實測](#17-既有-cli-作為外部模型入口)與[訓練空間條件續驗](#18-訓練空間條件續驗與最小可行路線) 將公開系統 API、外掛權重與外部來源放在相同產品／裝置條件下比較；不是要求使用者換硬體，也不把作業系統 app 的功能當成可嵌入 SDK。
 
-最新決策整理：[第 19 節情境解法／成本效益](#19-情境解法成本效益與決策紀錄) 記錄 41 項候選想法、11 個情境及各自 No-Go／重開條件；[兩案資格驗證計畫](superpowers/plans/2026-10-21-object-removal-scenario-qualification.md) 只規劃下一輪必要條件篩選，不宣稱已證明最高效益或通過產品 gate。
+決策整理：[第 19 節情境解法／成本效益](#19-情境解法成本效益與決策紀錄) 記錄 41 項候選想法、11 個情境及各自 No-Go／重開條件；[兩案資格驗證計畫](superpowers/plans/2026-10-21-object-removal-scenario-qualification.md) 保留原門檻及後續技術續跑紀錄，不宣稱已證明最高效益或通過產品 gate。
+
+[第 20 節清理盤點與下一輪前檢查](#20-清理盤點與下一輪前檢查) 記錄中斷前空間與第一階段未發影像請求的事實；[第 21 節中斷後實際續跑](#21-中斷後實際續跑與同案低成本對照) 記錄兩次真實影像、四個本機 donor 對照及新的資料／精度邊界。原清理清單不可直接執行，產品 T1 仍 NO-GO。
 
 ## 1. 問題要拆對：選哪裡，與補什麼
 
@@ -1170,4 +1172,88 @@ ROI／Depth／圖層補充依 `dist/object-removal-roi-layer-20261021/decision.j
 每項重開都綁**用途／artifact／版本／裝置／預算／接受標準**；新權利版本只能解權利 blocker，不能順便解畫質或原生數值。新兩案可接受只足以建議擴大資格比較，不通過原 40 場景、三位人類、各平台及 T1–T5；外部或人工模式仍須 owner 明確同意新增 scope。`RetouchStack`、無模型重開與完整產品匯出仍是提案，不因本輪文件存在而算已實作。
 
 本節與新計畫是本輪交付；另同步四份既有相依文件。新分析／文件檢查收據放在 `dist/object-removal-scenario-decision-20261021/`，不覆寫第 14–18 節或 ROI 波次的歷史報告。**沒有新增模型執行、外部請求、產品功能、永久測試或依賴，也不 commit／push。**
+
+## 20. 清理盤點與下一輪前檢查
+
+日期：2026-10-21。使用者要求先 commit，再檢查 `/tmp` 與 `dist/*` 哪些可清除，接著只針對具有相當可行性的方案規劃／實驗。先以 `7b3c200` 提交六份既有研究文件，未 push。清理要求是**盤點**，不是刪除授權；本輪沒有移除既有研究資料或其他專案／系統檔案。
+
+**交付前資料中斷：** 驗證時，七個既有研究根目錄及本輪新目錄內容從 `dist/` 消失；新 `src/prepare.py` 與既有 `alternatives/inputs/v2-paint200-small-rgb.f32` 讀取均回 ENOENT，目錄實讀只剩最後重建的文件檢查器，可用空間約由 18 GiB 變為 25 GiB。**來源未知；不是本助手執行的清理，不能把空間變化當成安全清理成功。** 已從仍存活的 JS kernel 保存十份 JSON 快照／物件，另保存兩位 scout 的留存報告，並從 `/tmp` 複製四張 SHA-256 與原 manifest 相符的公開 PNG 至 `recovered-public-inputs/`；`recovered-*.json` 明標記是恢復物件，不是原檔 bytes。舊權重、80 份凍結輸入、歷史原始輸出／archives、本輪 preparation source／原始 feature stdout 未恢復；不重建收據、不重下模型。`workspace-interruption.json`、`recovery-verification.json` 記錄此界線。原有結果只保留「當時已觀察」身分；無法重新驗證的資料不宣稱仍完整存在。
+
+### 實測容量與清理裁定
+
+兩個 read-only scout 分別盤點 `dist` 與 `/private/tmp`；協調者再用實際 `du -sk`、雜湊／archive member、空目錄與 open-file snapshot 核對。原 advisory 混用邏輯大小／估算，且把不再引用的中間模型稱為立即可刪，未照單採用。以下 **GiB＝allocated KiB／1,048,576**；不是檔案邏輯 bytes、峰值磁碟或 APFS 保證可回收量。**這是資料中斷前快照，不是目前檔案仍存在或現在可以刪除的證明。**
+
+| 範圍 | 實測配置 | 裁定 |
+|---|---:|---|
+| 七個既有 `dist/object-removal-*` 根目錄合計 | 7.905 GiB | 沒有整個根目錄獲判可直接刪；新本輪目錄不在這個合計 |
+| `prompt-guidance-20261021/model` | 2.001 GiB | 停止的 9ch SD 權重；接受失去離線重跑、保留取得／權利／SHA 收據並確認可重新取得後，才可考慮清除 |
+| `native-followup-20261021/powerpaint/model-a` | 2.299 GiB | 不同的 4ch base＋ControlNet，不能與上列當重複檔；條件同上 |
+| `/private/tmp` 明確量測的 `.onnx`／`.pt`／`.npy` 舊診斷中間檔 | 1.176 GiB | 下一輪不用，但未逐一證明可重建／已有副本；先保存唯一診斷與 lineage，或驗證封存後再清，不稱零風險 |
+| `compact-depth-20261020/venv` | 0.849 GiB | **保留**：後續波次共用的 Python／PNG／native 驗證環境 |
+| `alternatives-20261020/inputs` | 0.137 GiB | **保留**：多輪固定 v2 像素／mask／公開來源，不跟停用模型一起刪 |
+| `prompt-guidance-20261021/runtime` | 0.021 GiB | **保留**：既有 diffusion／offload 的 runtime overlay；不是只有原始碼 |
+
+較大的兩組停止模型權重合計約 **4.300 GiB**，是有條件回收選項，不是本輪已回收量。保存像素／合成 verifier 與外部候選試驗不需要載入它們，但原模型重跑需要；重新下載仍依當時來源、權利、網路與精確 digest，不能承諾永遠可取。
+
+中斷前判為較高可清除程度、但**當時前提如今須重查**的項目：
+
+- `/private/tmp/e2ref/` 的八個檔案均與 `compact-depth` 的 `verification-harnesses.tar.gz` 成員 SHA-256 相同。保留 archive；未來使用歷史絕對路徑時先恢復副本。
+- `/private/tmp/filmbatch-codex-image-yi6evA/{context.png,mask.png}` 與保留的 `v2-wall-large` canonical PNG 逐檔雜湊相同；清除會移除舊 cwd，舊 runner 重播前須重建，不能改寫歷史 receipts。
+- 五個已確認非 symlink 的空目錄：`roi-layer-20261021/src/`、`compact-depth-20261020/inpaint/src/`，以及 `/private/tmp/` 下 `fb-cursor-probe-qiGjxX/`、`agy-probe-WC2sbP/`、`filmbatch-codex-probe-DNCjCn/`。仍須在真正刪除當下確認無新 owner。
+
+**不能依名稱一律清除：** `restoration-proof/`、`native/`、`cache/` 可能混有唯一 smoke 收據、有效 executable 或原始權重；有 ONNX 不代表原 safetensors 已備份。`/private/tmp/moebius-arch/`、`sel_artifacts.json`、`object-removal-ux-review.md` 與舊推論 logs 可能是早期 `dist` 遺失後的唯一倖存證據，應先封存／核對，不刪。Orca／Claude 他專案、系統鎖／powerlog 與 OpenMP 註冊檔均不以時間／PID 猜測清除。已量測舊 tensor／model 檔的 `lsof` snapshot 沒有列出開啟者，但這不是全部程序與未來刪除時點的保證。
+
+原容量命令與部分原始收據已隨資料中斷遺失；仍可查 `recovered-cleanup-decision.json`、`recovered-storage-identity.json`、`recovered-tmp-open-file-snapshot.json`、`recovered-audit-adjudication.json` 及兩位 scout 的恢復報告。**原 archive／canonical 來源已不在，故撤回把 `/tmp/e2ref/` 與舊影像 cwd 視為現在可清副本的建議；它們可能已成為僅存來源，先保留 `/tmp`，不執行舊清單。** 本助手沒有執行 `rm dist/*`、刪除既有權重、停止其他服務或變更登入／全域設定。
+
+### 下一輪：可行候選與真實停止點
+
+延續[兩案計畫](superpowers/plans/2026-10-21-object-removal-scenario-qualification.md)，只選已取得過真實像素的 Codex 來源，不再展開其他模型。使用者在明示 quota／內部影像呼叫數未知後選擇「做有限公開影像試驗」：既有 ChatGPT 登入，兩個固定公開 context／mask，每案最多一次、240 秒、不重試、不新增 Key 或付費方案；只是技術試驗，不作人類品質／成本效益驗收。
+
+已實跑的零推論前檢查：
+
+- 凍結 `v2-droid200-shadow`、`v2-bikes-rack` 的四張 outbound PNG：512px、二值 mask、洞內 context 為零、去除 metadata；未送乾淨參考、私人照片或原始碼。
+- 確認現有 CLI `0.163.0` 與 ChatGPT 登入。另以獨立 `CODEX_HOME`、基本 OS 環境 allowlist 與既有登入的臨時唯讀引用查 feature inventory；沒有複製或讀出 token 值，完成後移除本輪建立的引用，原登入 metadata 不變。
+- **前置條件未過：** 明訂 `--disable unified_exec` 後，inventory 仍回 `unified_exec=true`；其餘 15 個要求停用項目為 false。這證明不能只信任傳入 flag，也不能由 `shell_tool=false` 推定實際一般執行 tool 已不存在。尚未取得完整 model-visible tool manifest，不進行推論探路或放寬權限。
+
+因此 **live dispatch＝0、自然案例兩案均 not-run**。這不是影像品質 fail、不是否定先前真實 PNG，也不表示所有 CLI 永遠不安全。當前研究裁定是 **BLOCKED／No-Go 此執行邊界**：先取得固定版本、零推論的實際 tool 清單／等效 host 證據，確認沒有 shell／一般執行／MCP／瀏覽／非允許資料讀取，再恢復同一兩案預算。不能新增全權限、第二個 SDK、其他模型或一輪輪「測試用」推論來繞過。
+
+原 `manifest.json` 綁定提交 `7b3c200` 時的計畫 SHA；後續註記不追認為依新 oracle 執行。資料中斷後，只可讀明標為恢復物件的 `recovered-manifest.json`、`recovered-isolated-features.json`、`recovered-capability-blocker.json`、`recovered-auth-reference-cleanup.json`、`recovered-decision.json` 與恢復 PNG；原始 stdout 及其他原檔未恢復，不能據此重新執行完整推論／原始資料驗證。三位人類與實際人工工作量仍缺，原 Q-01–Q-06、OR-01–OR-14 與產品 T1–T5 不變。**沒有新的影像生成／CLI 文字探針、模型下載、產品程式或永久測試；不 push。**
+
+## 21. 中斷後實際續跑與同案低成本對照
+
+日期：2026-10-21。使用者明確要求「將有價值重跑但被中斷的再次跑比對，一樣比對有價值可行性高的方案，現在開始」。本輪實際補跑原本 **not-run** 的 `v2-droid200-shadow`、`v2-bikes-rack`，不重跑已完成的 48 格 FP32 ControlNet 波次，不重新下載權重，也不以 donor 代替所承諾的真實影像請求。另用已安裝的 OpenCV 4.8.0／NumPy 1.24.4／Pillow 12.3.0 製作同案的低成本對照；不是舊 3 個小洞的重現或配對效能 benchmark。
+
+### 資料恢復與隔離：先解實際 blocker
+
+- 四張公開 context／mask PNG 與第一階段 manifest SHA-256 相同；重新取得的兩張 NIND JPEG 也與舊來源雜湊完全相同。兩個 raw mask 成功恢復成舊 digest，八份 `/tmp/e2ref` 來源檔與中斷前 archive-member 雜湊相同，均保留副本。
+- 舊 RGBA16 buffer 的雜湊**未能重建**，不追認其非均勻 alpha／精度。R2 `manifest.json` 另凍結由原 JPEG／512 crop 取得的**新 opaque canonical**；洞外 RGB 與原 context 逐元素相同。RGB8 上轉 PNG16 不增加影像資訊；新驗證不算原 Q-03／RAW／OR gate 通過。
+- CLI 固定 `0.163.0`，對照官方釋出 tag 的 commit `83086188ae0614bd882818ff1aa23f3194962012`。[shell 註冊程式](https://github.com/openai/codex/blob/83086188ae0614bd882818ff1aa23f3194962012/codex-rs/core/src/tools/spec_plan.rs) 在 `shell_tool=false` 或 model `shell_type=disabled` 時，先於 `unified_exec` 判斷就返回；因此不能把先前 inventory 的 `unified_exec=true` 直接等同於 shell 可調用。該檔也顯示 patch 是獨立入口，不能只停 shell。
+- 在獨立 `CODEX_HOME` 使用同一語言模型的本機 catalog，只限縮為 `shell_type=disabled`、`apply_patch_tool_type=null`、`tool_mode=direct`，移除額外工具名稱；不換 generator、帳戶、Key 或 SDK。[型別與可空 patch 欄位](https://github.com/openai/codex/blob/83086188ae0614bd882818ff1aa23f3194962012/codex-rs/protocol/src/openai_models.rs)、[static catalog](https://github.com/openai/codex/blob/83086188ae0614bd882818ff1aa23f3194962012/codex-rs/models-manager/src/manager.rs) 與實際 CLI catalog 回讀互相核對。shell、code-mode、browser、MCP／apps、plugins、hooks、skills search 等入口停用；空 `HOME` 加 `skills.include_instructions=false` 的 prompt 回讀不再含個人／repo skills metadata。
+- 這是**固定版本註冊條件＋實際有效設定回讀的 deterministic 證據**，不是原始 wire tools manifest。[該版 prompt debug 原始碼](https://github.com/openai/codex/blob/83086188ae0614bd882818ff1aa23f3194962012/codex-rs/core/src/prompt_debug.rs) 只返回 `prompt.input`，不能拿它冒充完整 tool schema。沒有擴權繞過；證據不自動適用其他版本／設定。
+
+只發出兩個 CLI process，每案一次，240 秒停止線，沒有重抽、改 prompt／mask 或換來源。每案 cwd 只有兩張已批准附件；既有登入只以臨時引用供 CLI 使用，結束後移除該引用，原登入 inode／size／mtime 不變。完整證據移至本次 OMP session 的 **`local://filmbatch-scenario-resume-20261021/`**，不再以容易清除的 `dist`／`tmp` 作唯一收據位置；生成圖、來源照片、登入與模型均不加入 Git。
+
+### 真正輸出與最低成本對照
+
+兩案使用相同四張凍結附件。Cloud 儲存兩張新產生的 1254×1254 RGB8 PNG，依事前約定只做一次 full-frame bilinear 縮回 512，並只貼回正式 mask。兩次 language CLI 顯示的模型是 `gpt-6.1-sol`；**實際 image model、內部 image call 次數、帳單金額仍未揭露**，不能以兩個 process 推算它們。
+
+本機對照事先固定 offset pool：`dx,dy∈[-384,384]`、step 32；完整 hole 與一像素四鄰 halo 都必須取自畫框內已知區，不 wrap、不借洞內原物件。按洞內 donor 與已知外圈的平均 RGB 差決定一個來源，不看修補輸出挑選。兩案分別有 70／1 個合格位移，選到 `(160,-128)`／`(160,-192)`；同 donor 同時跑硬複製與 `NORMAL_CLONE`，Poisson 的目的區先以已知 donor 預填，避免舊零初始化黑塊。這不是人工最佳來源、語意選取或 PatchMatch。
+
+| 實際方法 | 中央玩具／接觸區 | 自行車架 | 本輪觀察成本；邊界不同，不算加速比 |
+|---|---|---|---|
+| Codex 原生影像＋host mask 合成 | 開放檢視未見中央玩具或顯眼替代物；值得保留作人工覆核候選，非人類接受結論 | 原始圖另造中央立柱／大基座；host 只貼 mask 後仍有支腳、輪框接合與邊界殘留，**本案硬失敗** | 每案整個 CLI process **71.83／107.88 s**；合計 179.71 s；外部費用未知 |
+| 同案單一已知 donor 硬複製 | 複製出鄰近 robot 片段 | 錯位輪框／背景片段 | 兩次內部 copy 各 1.61／1.11 ms；不含搜尋、import、寫檔與 UI |
+| 同 donor 預填＋normal Poisson RGB8 | 色調有融合，但複製的前景片段仍在 | 接合／結構仍不自然 | 兩次 cloning 呼叫 48.45／36.67 ms；不含搜尋、import、寫檔與 UI，非 RGB16 solver |
+
+本機每案包含來源搜尋、兩臂合成／寫檔的時間約 0.22／0.19 s，仍排除 Python import。以上都是各案單次觀察，不是 warm p50／p95 或產品延遲保證。三個方法均未測人類選取、修正、拒絕、重作與總完成時間，**不能宣布最高效益或全市場最便宜**。
+
+自行車案不能只歸罪於模型：固定近似 mask 在正式範圍外仍留下部分原車架，host 正確保留了這些 pixels；生成內容與保留輪框也未可靠接合。不擴 mask 重抽、不因像素保存通過就把結構錯誤算成功。三位獨立人類、真實人工基線、40 場景與跨平台資格均未補齊。
+
+### 驗證、裁定與停止線
+
+獨立程式不 import producer／cv2／模型，自行解 PNG filter／CRC，重算 bilinear、量化與 formal-mask 保存；六個 RGBA16 輸出共 **6,291,456 samples**：兩個 cloud 候選 2,097,152，加四個 donor 對照 4,194,304。相對於**新 canonical**，遮罩外 RGB 與全部 alpha 差異均為 0；cloud 的 saved-pixel／bilinear 重算也零差異。另一方法重算 donor eligibility、score 與 hard-copy 像素；沒有冒稱獨立驗證 Poisson solver fidelity。記憶體故障控制能抓到外部 RGB、alpha 與重複 premultiply 錯誤，與人類品質／產品 fractional-coverage 能力分開。
+
+裁定：**完成真實續跑，但兩案自動使用資格仍 NO-GO**。中央玩具圖保留為有條件、需操作者審查的外部候選；自行車案提供具體 mask／拓樸／接合反例。單一自動 donor 對照也不能作通用移除預設，不外推否定人工多筆 Clone／Heal。T1 仍 NO-GO，T2–T5 不啟動，沒有產品程式、永久測試、依賴或模型權重新增。
+
+`manifest.json`、`dispatch-ledger.json`、兩案的 raw stdout／stderr／provider PNG／host composite／100% ROI、`donor-comparison-plan.json`、`donor-comparison.json`、獨立 verification、`comparison.png`、`decision.json` 與來源封包位於上述 session-local 目錄。保留已執行初版 verifier 與新版本的對應，不用最終版本冒充過去。**本輪兩次 dispatch 預算已用完；任何新 mask、來源、prompt 或重跑都須另列目的、授權與停止線**，不能為改善報告數字繼續生成。下一個有價值的前提是人類確認選取／接合可接受性與真實操作成本，不是再次抽圖。
 

@@ -12,7 +12,7 @@
 
 ## 狀態與 Definition of Ready
 
-**GO-PLAN；新請求未執行。通用產品仍 NO-GO，T2–T5 未開始。** 目前沒有已證明「最高效益」的通用方案；此計畫優先消除最關鍵未知，不宣稱勝出。原生輔助、其他 CLI、REST 及新本機模型不混入同一輪。
+**原 R1 前檢查 BLOCKED／資料中斷紀錄保留；R2 已依使用者續跑授權完成兩次真實 CLI 影像及四個同案本機對照，兩案自動使用篩選仍 NO-GO。通用產品 T1 仍 NO-GO，T2–T5 未開始。** 詳見 [Survey 第 21 節](../../object-removal-survey.md#21-中斷後實際續跑與同案低成本對照)。R2 另凍結新 opaque canonical，不冒稱恢復舊 RGBA16 alpha、三位人類驗收或最高效益；原 Q／OR 門檻不變。
 
 可立即做來源／資料的離線查核；新外部請求前必須同時具備：
 
@@ -110,4 +110,38 @@ Review focus：mask 內殘留陰影／新物件、provider resize 導致保護�
 
 離線／普通硬體沒有合格通用模型、Windows runtime 未跑、原生精度反例、未閉合權重 grant、Depth 硬 gate、完整 amodal／高頻量產等，均依 [Survey 第 19 節](../../object-removal-survey.md#19-情境解法成本效益與決策紀錄) 各自記錄 No-Go／缺證據，不建立空殼 implementation task。出現具名新 artifact、可存取的 eligible 裝置、允許的 endpoint／費用上限或獨立人力效益證據，才開對應小輪；不擴充此兩請求計畫。
 
-**Next action:** 執行前先完成 Task 1 的離線封包與帳戶／權限／評審 Ready，取得本輪兩次外部 dispatch 的明確授權。此規劃回合不發新請求；產品實作仍由原 T1 與既有契約阻擋。
+**Next action:** 兩次真實 dispatch 已完成且預算用完，不重抽。先由人類確認 mask 覆蓋、細線／輪框接合及真實操作總成本；任何新影像請求都須另訂明確假說與範圍。中央玩具圖只保留為人工覆核候選；自行車案硬失敗，不能用像素保存通過替代品質。原 T1 及 Q-04／Q-05、OR gate 不因本輪技術結果解除。
+
+## 2026-10-21 執行紀錄與後續選擇
+
+使用者要求 commit、盤點可清除資料，再只做相當可行的實驗。先以 `7b3c200` 提交既有六份研究文件；未 push。完整空間／依賴／清理裁定見 [Survey 第 20 節](../../object-removal-survey.md#20-清理盤點與下一輪前檢查)。本輪沒有刪除既有 `/tmp`／`dist` 研究資料，也沒有為預計不再使用的模型再下載材料。
+
+| 本輪檢查 | 已觀察結果 | 不能宣稱的事 |
+|---|---|---|
+| 兩案公開輸入封包 | 四張去 metadata 的 512px PNG；binary mask、洞內 context 零值及原始 digest 核對 | 不是新模型候選或自然移除成功 |
+| 原登入與環境 | ChatGPT 登入可用；獨立 `CODEX_HOME`，只引用既有登入、不複製 token；結束後移除本輪引用、原 metadata 不變 | 沒有更換登入／Key／付費方案或宣稱已知 quota |
+| 原生 CLI 停用前檢查 | `0.163.0`；16 個指定停用項中 15 個為 false，`unified_exec` 在 `--disable` 後仍為 true | 沒有證明實際 shell／一般執行 tool 不可用，不以 `shell_tool=false` 偷代 |
+| 推論／品質 | 在 Q-01 停止；0 次 live dispatch，兩案均 not-run | 不把未跑當畫質 fail，不勾選 Q-02–Q-05 或 T1 |
+
+**本輪的可執行研究已止於真實前檢查，不以較容易的像素複製或新的假候選替代所要驗證的自然移除。** 一次 `codex sandbox macos --help` 舊介面拼法在此版本被當成執行 `macos`，失敗在模型請求之前；未拿它作隔離證據。另一次 JSON 診斷讀取把 object 當 array，改用 key projection，沒有更改原檢查資料。這些屬 driver／查核事件，不是模型失敗。
+
+原證據寫入 `dist/object-removal-scenario-qualification-20261021/`；交付前，該目錄連同七個既有研究根目錄內容突發遺失，來源未知，不是本助手執行清理。已恢復十份 kernel 物件、兩位 scout 留存報告及四張與原 manifest SHA-256 相符的公開 `/tmp` PNG；恢復檔明標 `recovered-*`，不得當成原始 receipt bytes。原 preparation source、feature raw stdout、舊權重／凍結輸入／歷史輸出未恢復。見 `workspace-interruption.json`、`recovery-verification.json`；493 份產品檔仍與原 baseline 相符，不能同時宣稱遺失的 80 份輸入及四張原照片通過最終重驗。Manifest 物件固定原提交版本的計畫 SHA，後續狀態註記不更改原接受標準。
+
+R1 中斷後的重開條件如下；R2 的固定版本證據及資料重綁另列於末節，不刪除原判定：
+
+1. 有固定 CLI 版本的零推論實際 tool inventory，或等效的 deterministic host 證據，證明模型不能調用 shell／一般執行／MCP／browser 或讀到未允許的資料；單看 flag／help／文字承諾不足。
+2. 先恢復／重新取得具明確來源及權利的必要資料並核對 digest，另凍結實際可讀的新 manifest；仍限定相同兩案、每案一次、240 秒、既有登入與不重試停止線。不能把本輪恢復物件視為可直接重播的完整封包；若必須擴權／新 SDK／新增付費入口，該路線仍 No-Go，不自動換方法。
+3. 技術輸出、host 像素驗證、人類接受與工作量各自記錄；缺人類資料不宣稱最高效益，更不改本機 OR-02 或啟動 T2–T5。
+
+## R2：使用者要求後的實際續跑（2026-10-21）
+
+- **範圍：** 只補原本 not-run 的兩個自然案例，最多兩個 CLI process、每案一次／240 秒／不重試；沒有新模型權重、Key、付費方案或產品實作。R2 合同與 SHA 固定在 `local://filmbatch-scenario-resume-20261021/manifest.json`，不以本文件後續註記追認原 R1 已執行。
+- **隔離解法：** exact CLI `0.163.0`／release commit `83086188ae0614bd882818ff1aa23f3194962012` 的註冊邏輯＋有效 catalog 回讀：shell disabled、patch null、direct tool mode、MCP／browser／code-mode／plugins／hooks 等停用；空 HOME 與不注入 skills。這是版本綁定的 deterministic 控制，不是原始 tools wire manifest，也不是擴權繞過。
+- **資料邊界：** 四張原公開附件、兩張 JPEG、兩個 raw mask 雜湊匹配；舊 RGBA16 alpha 未恢復。新 JPEG-derived opaque canonical 只供 R2 host 合成，RGB8 上轉不增加精度，不勾選原 Q-03／RAW／OR 通過。
+- **實跑：** 兩張 1254×1254 RGB8 新候選，process wall 71.83／107.88 秒；固定 bilinear 回 512，正式 mask 內合成。另按輸出前凍結的已知區位移規則，跑兩案 hard donor／normal Poisson 共四圖，並明示 RGB8 Poisson 與非人工最佳來源限制。
+- **已觀察：** 中央玩具案開放檢視未見明顯替代物，可人工覆核；車架 raw 另造立柱，host 合成仍有支腳／輪框錯位與 mask fringe，硬失敗。便宜 donor 會複製前景／破壞結構，不能作通用替代。
+- **驗證：** 六圖 6,291,456 個 RGBA16 samples，獨立 saved-PNG／bilinear／hard-copy／保存核對通過，洞外 RGB 與 alpha 零差異；不是人類接受或完整 solver／原生平台 fidelity。初版 verifier 和後續新增 local-control 檢查的版本均留存。
+- **裁定：** 此兩案自動使用 NO-GO；不推進 T1–T5，不把 1 張有希望圖計為盲評接受率。實際 image model／內部呼叫／費用、人類總工作量仍 unknown。兩次請求後停止；沒有新 seed／prompt／mask 試到成功。
+
+可直接檢視 `comparison.png`、兩案 `contact.png`／`roi-100percent.png`、`decision.json`、`verification-summary.json`、`auth-reference-cleanup.json`；登入臨時引用已移除，原 metadata 不變。來源封存／恢復驗證只執行離線 verifier，**不以恢復測試重發模型請求**；照片／衍生圖不隨文件提交。三份原產品契約（design／ADR／T1–T5 plan）未更改，因為產品資料域、保存與採用門檻沒有變更。
+
