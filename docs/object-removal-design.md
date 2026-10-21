@@ -2,7 +2,12 @@
 
 - 日期：2026-10-20。
 - 設計版本：1（提案）；實作時若改需求或驗收，需同步更新相依計畫與驗收紀錄。
-- 狀態：**待實作提案；通用移除產品 NO-GO，尚無合格預設模型**。前置、原生完整鏈、VAE 與場景微調證據見 Survey [第 9 節](object-removal-survey.md#9-本機可行性實驗)、[第 10 節](object-removal-survey.md#10-續驗與採用決策)、[第 11 節](object-removal-survey.md#11-權重來源與後續研究)、[第 12 節](object-removal-survey.md#12-場景微調vae-身分與原生續驗)；[第 13 節](object-removal-survey.md#13-多角色替代方案與實驗) 的古典／人工 donor 只作研究對照，不改本契約。研究期間舊 `dist/` artifact 消失，新 v2 不是舊資料重跑；來源中斷不撤銷原失敗，也不補出產品資格。T1 未通過，不開始 T2–T5；沒有產品移除 UI、逐張資產或人類畫質盲評，不以小型瑕疵子功能縮減原需求。
+- 狀態：**待實作提案；通用移除產品 NO-GO，尚無合格預設模型**。前置、原生完整鏈、VAE 與場景微調證據見 Survey [第 9 節](object-removal-survey.md#9-本機可行性實驗)、[第 10 節](object-removal-survey.md#10-續驗與採用決策)、[第 11 節](object-removal-survey.md#11-權重來源與後續研究)、[第 12 節](object-removal-survey.md#12-場景微調vae-身分與原生續驗)；[第 13 節](object-removal-survey.md#13-多角色替代方案與實驗) 的古典／人工 donor 只作研究對照；[第 14 節](object-removal-survey.md#14-小型模型與-depth-分層實驗) 補上 MI-GAN 儲存精度失敗、Depth Small 原生與可見圖層研究，不新增產品圖層需求。Depth band 不是物件 mask／alpha matting，重組相同不代表還原隱藏背景。研究期間舊 `dist/` artifact 消失，新 v2 不是舊資料重跑；來源中斷不撤銷原失敗，也不補出產品資格。T1 未通過，不開始 T2–T5；沒有產品移除 UI、逐張資產或人類畫質盲評，不以小型瑕疵子功能縮減原需求。
+- 提示詞續驗：[第 15 節](object-removal-survey.md#15-提示詞與-llm-引導實驗) 另用真正文字條件 artifact 與本機文字 LLM 作同模型對照；不是對既有 MI-GAN 增加文字輸入，也不是 VLM 自動看圖。研究不新增產品 prompt／圖層功能，不改 OR-01–OR-14 或既有接受資產契約。
+- 原生／外部來源續查：[第 16 節](object-removal-survey.md#16-原生平台與最低可行成本) 以既有裝置的最低實用成本比較三階層；保留共用渲染器與選取／重建分離。平台 app 功能不等於 SDK，8-bit 候選不迫使遮罩外降精度；該節 REST endpoint 仍是來源調查，未新增產品上傳或雲端 fallback。若未來另行採用，接受後可保存本機資產，不必每次匯出重呼叫；本輪不新增產品 provider、LLM 或平台渲染分支。
+- 既有 CLI 實測：[第 17 節](object-removal-survey.md#17-既有-cli-作為外部模型入口) 依後續授權實跑 codex／agy／Cursor／opencode；Codex 另產生一個真實影像候選並驗證 host 保存。這與第 16 節尚未 live 呼叫的 REST endpoint 分開，不把文字能力、單張 RGB8 結果或現有訂閱推定為完整產品品質／散布契約；本輪仍不新增產品 backend。
+- 訓練空間條件續驗：[第 18 節](object-removal-survey.md#18-訓練空間條件續驗與最小可行路線) 在相同 4ch 模型內比較訓練分支 ON/OFF，保留局部重建增益、自然移除失敗與 FP32 offload 成本。48 份完整留存結果不等於全部嘗試數；OOM 後未授權 resume／清 cache 偏差不追認為預註冊通過。未取得 PowerPaint v1 權重，不放寬既有需求或 T1 gate。
+- 情境決策：[第 19 節](object-removal-survey.md#19-情境解法成本效益與決策紀錄) 與[兩案資格驗證計畫](superpowers/plans/2026-10-21-object-removal-scenario-qualification.md) 分開離線、人工、原生與外部候選用途。只有研究 GO-PLAN，未證明最高效益；外部或人工模式不能默改 OR-02 的本機模型要求，新增產品 scope 仍需明確同意。本設計版本與 T1–T5 不變，`RetouchStack` 仍未實作。
 - 決策：[ADR 0005](adr/0005-ai-object-removal.md)；證據與候選：[Survey](object-removal-survey.md)；執行切片與驗收：[實作計畫](superpowers/plans/2026-10-20-ai-object-removal.md)。
 
 ## 1. 目的與邊界

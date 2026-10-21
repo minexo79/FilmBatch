@@ -86,4 +86,16 @@
 
 [第 13 節替代方案調查](../object-removal-survey.md#13-多角色替代方案與實驗) 新增四角色平行來源查核、古典／人工 donor 對照及 Mac .NET RGB16 probe；**只採研究對照，不採產品模型**。AOT 精確權重 grant／lineage 未閉合，OSOR 等仍有完整 base／材料與契約限制；不以原始碼 license 推定全鏈權利。古典大洞與 donor 接縫反例未解除通用需求。研究期間整個 `dist/` 消失，舊 artifact 目前不可讀；新 v2 公開縮圖／mask 是不同資料，不能與舊結果假作同場比較，歷史失敗不追改。
 
+[第 14 節小型模型／Depth 實驗](../object-removal-survey.md#14-小型模型與-depth-分層實驗) 沿用凍結 v2：MI-GAN FP32 補齊 16 案例，FP16 initializer 儲存／FP32 計算雖縮小檔案，兩組原生數值比較均失敗；AOT／EdgeConnect 精確權重資格仍 blocked，沒有新重建模型家族通過。Depth Anything V2 Small 在 Mac .NET CPU 的兩個固定方形輸入與 PyTorch 參考相符；保持比例的攝影分層鏈仍是 Python 研究，不能合併宣稱原生全鏈支援。三層可見 RGBA 可精確重組，移動後卻有未知覆蓋；Depth band 不是實例／alpha，也不提供隱藏背景。Qwen-Image-Layered 是另一條生成式多 RGBA 路線，原始 transformer 已超本輪材料上限，未下載／執行。不因此改修補資料域、接受資產或產品資格；初次 PNG8 誤編碼失敗與修正後 PNG16 證據分開保留。
+
+[第 15 節提示詞／LLM 實驗](../object-removal-survey.md#15-提示詞與-llm-引導實驗) 使用另一個真正文字條件 artifact 作配對對照，不把換模型誤算為提示詞增益。文字可以改變部分內容，但第一輪攝影重建未達大幅改善篩選；本機 Qwen 一次 critic 回覆八組提示原文未改，規則刪尾句另列為非 LLM 控制。不因 JSON 有效、單一合成正向結果或四角色意見就核准通用移除，也不將舊 SD 結果外推為現代 instruction model 無效。完整原文、失敗、raw／合成像素與資源證據分開保留；未新增產品 runtime／UI 或放寬平台／畫質 gate。
+
+[第 16 節原生平台與最低成本調查](../object-removal-survey.md#16-原生平台與最低可行成本) 以現有裝置與完整工作流程比較公開系統 API、外掛權重及外部 API，不以 native／local／cloud 標籤預定勝負。Mac Vision 可提供前景提案，但有群聚與誤選；Core Image LUT 的本次精度門檻未過，未替換共用渲染器。Windows 系統 imaging 的裝置／身分條件與通用 Windows ML runtime 分開。外部 API 可作未來明確選用的編輯時來源，接受後本機保存，不必在重開／匯出時重付；該節列出的 REST endpoint 未 live 呼叫，也未新增產品上傳功能，不將來源規格當成畫質、成本或產品資格。
+
+[第 17 節既有 CLI 實測](../object-removal-survey.md#17-既有-cli-作為外部模型入口) 依使用者後續授權呼叫四個既有 CLI，並由 Codex 的現有登入取得一個真實影像候選、獨立核對 host 的遮罩外 RGB 與 alpha 保存。這是低前置成本的研究入口，不是第 16 節 REST API 實測、四個獨立模型 benchmark、免費／零留存保證或產品 backend。OpenCode 的額外校準呼叫與共同題未執行、CLI tool-trace／model-ID 界線均保留；單張磚牆不改通用移除決策。
+
+[第 18 節訓練空間條件續驗](../object-removal-survey.md#18-訓練空間條件續驗與最小可行路線) 的同模型分支比較有固定攝影重建數值增益，但玩具／陰影與車架仍未可信移除；FP32 MPS offload 呼叫慢且 OOM，未採為既有裝置預設。完整留存輸出、額外失敗／未收據計算及違反停止界線的 resume 分開裁定；不將 48 份結果當成僅 48 次執行，不把單次 full-resident OOM 外推為必然失敗。PowerPaint v1 精確 grant 未閉合，未下載／執行；本輪不否決所有小型或外部模型，也不核准通用產品預設。
+
+[第 19 節情境決策](../object-removal-survey.md#19-情境解法成本效益與決策紀錄) 將既有候選、總成本／人力未知、各情境 Solution 與 No-Go 重開條件集中記錄。[兩案資格驗證計畫](../superpowers/plans/2026-10-21-object-removal-scenario-qualification.md) 優先驗證既有 Codex 的自然移除必要條件，不宣稱最高效益或採用外部 backend；本輪沒有新請求／產品實作。先維持原本本機移除與接受資產契約，外部或人工模式須另經 owner 同意，不以研究成功縮減 OR-02 或開始 T2–T5。
+
 完整產品 alpha／UI／專案／undo／重開、40 場景／3 位人類盲評、full-frame 成本與 Windows／iOS 移除仍未驗收。T1 未通過，不開始 T2–T5，也不將小型瑕疵子功能偷換為原通用需求；若日後候選在既有 gate 通過再重議。修補 stage、接受像素保存、真實 provider 與平台 gate 保留，不新增 runtime 或放寬容差。
