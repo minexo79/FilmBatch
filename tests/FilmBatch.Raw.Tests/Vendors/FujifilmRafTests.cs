@@ -5,6 +5,7 @@ using FilmBatch.Raw;
 using FilmBatch.Raw.Meta;
 using FilmBatch.Raw.Tests.Support;
 using FilmBatch.Raw.Vendors.Fujifilm;
+using FujiRaf = FilmBatch.Raw.Vendors.Fujifilm.Raf;
 
 namespace FilmBatch.Raw.Tests.Vendors;
 
@@ -155,6 +156,30 @@ public sealed class FujifilmRafTests
     public void RafMetaExtractsEmbeddedJpegExif()
     {
         Assert.Equal(new Metadata().Model, RafMeta.Extract(null).Model);
-        Assert.Equal(new Metadata().Model, RafMeta.Extract([0xFF, 0xD8, 0xFF, 0xD9]).Model);
+        Assert.Equal(new Metadata().Model, RafMeta.Extract(new ReadOnlyMemory<byte>([0xFF, 0xD8, 0xFF, 0xD9])).Model);
     }
+    [Fact]
+    public void PreviewJpegSkipsRawParsingAndBounds()
+    {
+        // Valid container: preview equals declared JPEG bytes (no EOI trim in PreviewJpeg itself).
+        byte[] jpeg = [0xFF, 0xD8, 0xFF, 0xC0, 0, 0x0B, 8, 0, 0x78, 0, 0xA0, 1, 0x11, 0, 0xFF, 0xD9];
+        var strip = RafFixture.Pack(Enumerable.Range(0, 96).Select(i => (ushort)(i * 37)).ToArray(), 16);
+        var file = Raf(16, 6, 16, strip, RafFixture.XTransLayoutRecord(), jpeg);
+        Assert.Equal(jpeg, FujiRaf.PreviewJpeg(new ReadOnlyMemory<byte>(file))!.Value.ToArray());
+        // Preview works even when the raw IFD is corrupt: must not copy or parse raw payload.
+        var rawOff = (file[100] << 24) | (file[101] << 16) | (file[102] << 8) | file[103];
+        var corrupt = (byte[])file.Clone();
+        for (var i = 0; i < 64; i++) corrupt[rawOff + i] ^= 0xFF;
+        Assert.ThrowsAny<RawException>(() => RawDecoder.Decode(new ReadOnlyMemory<byte>(corrupt)));
+        Assert.Equal(jpeg, FujiRaf.PreviewJpeg(new ReadOnlyMemory<byte>(corrupt))!.Value.ToArray());
+        // Declared length overruns the buffer: clamped, not thrown; zero/negative is null.
+        var over = (byte[])file.Clone();
+        over[88] = 0x00; over[89] = 0x10; over[90] = 0x00; over[91] = 0x00; // 1 MiB, positive overrun
+        Assert.Equal(file.Length - 160, FujiRaf.PreviewJpeg(new ReadOnlyMemory<byte>(over))!.Value.Length);
+        var zero = (byte[])file.Clone();
+        zero[84] = 0; zero[85] = 0; zero[86] = 0; zero[87] = 0;
+        Assert.Null(FujiRaf.PreviewJpeg(new ReadOnlyMemory<byte>(zero)));
+        Assert.Null(FujiRaf.PreviewJpeg(new ReadOnlyMemory<byte>([(byte)'N', (byte)'O', (byte)'T', (byte)'R'])));
+    }
+
 }

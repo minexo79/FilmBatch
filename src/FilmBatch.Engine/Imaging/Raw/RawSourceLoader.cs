@@ -144,8 +144,9 @@ internal static class RawSourceLoader
         byte[] file;
         try { file = RawSparse.ReadFile(path, includePreview: true); }
         catch { return null; }
-        var jpeg = Raf.PreviewJpeg(new ReadOnlyMemory<byte>(file));
-        if (jpeg is null || jpeg.Length < 4 || jpeg[0] != 0xFF || jpeg[1] != 0xD8)
+        if (Raf.PreviewJpeg(file) is not { } preview) return null;
+        var jpeg = preview.Span;
+        if (jpeg.Length < 4 || jpeg[0] != 0xFF || jpeg[1] != 0xD8)
             return null;
         var i = 2;
         while (i + 4 <= jpeg.Length)
@@ -168,7 +169,9 @@ internal static class RawSourceLoader
                 && jpeg[i + 4] == (byte)'i' && jpeg[i + 5] == (byte)'f'
                 && jpeg[i + 6] == 0 && jpeg[i + 7] == 0)
             {
-                return new MemoryStream(jpeg, i + 8, len - 8, writable: false);
+                // PreviewJpeg borrows this byte[]; retain its slice offset without copying either payload.
+                System.Runtime.InteropServices.MemoryMarshal.TryGetArray(preview, out var segment);
+                return new MemoryStream(segment.Array!, segment.Offset + i + 8, len - 8, writable: false);
             }
             i += len;
         }

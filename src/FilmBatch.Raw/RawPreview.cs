@@ -226,7 +226,7 @@ internal static class RawPreview
         if (span.StartsWith("FUJIFILMCCD-RAW"u8))
         {
             var j = Raf.PreviewJpeg(bytes);
-            return j is not null && IsDctJpeg(j) ? TrimEoi(j).ToArray() : null;
+            return j is { } mem && IsDctJpeg(mem.Span) ? TrimEoi(mem).ToArray() : null;
         }
         var format = RawDecoder.Probe(bytes);
         if (format == RawFormat.Cr3)

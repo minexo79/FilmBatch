@@ -427,4 +427,31 @@ public sealed class SparseReadTests
         }
         finally { File.Delete(rawPath); if (File.Exists(tifPath)) File.Delete(tifPath); }
     }
+    [Fact]
+    public void WholeFallbackReturnsCompleteFileBytesFromStream()
+    {
+        // Whole fallback must preserve every byte; error/range behavior unchanged.
+        var file = SyntheticDng(64, new byte[64 * 64], MinimalDctJpeg());
+        string path = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllBytes(path, file);
+            // Ready path returns identical bytes.
+            Assert.Equal(file, RawSparse.ReadFile(path, includePreview: true));
+            // Whole-only container (ORF magic): fallback returns the whole file intact.
+            var orf = new byte[1024];
+            "IIRO"u8.CopyTo(orf);
+            new Random(42).NextBytes(orf.AsSpan(4));
+            File.WriteAllBytes(path, orf);
+            Assert.Equal(orf, RawSparse.ReadFile(path));
+            // Errors preserved: too-large length rejected before allocation.
+            Assert.Throws<IOException>(() => RawSparse.LoadIntoCore(new MemoryStream([1, 2, 3]), (long)Array.MaxLength + 1, false));
+            Assert.Throws<ArgumentOutOfRangeException>(() => RawSparse.LoadIntoCore(new MemoryStream([]), -1, false));
+            var (empty, _, whole) = RawSparse.LoadIntoCore(new MemoryStream([]), (1L << 30) + 1, false);
+            Assert.IsType<RawHeaderPlan.Whole>(whole);
+            Assert.Empty(empty);
+        }
+        finally { File.Delete(path); }
+    }
+
 }
