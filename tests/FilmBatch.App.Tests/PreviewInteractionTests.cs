@@ -229,6 +229,35 @@ public sealed class PreviewInteractionTests
         finally { window.Close(); }
     }
 
+    [AvaloniaFact]
+    public async Task DraggingSkinHandles_ChangesOnlyThatRadius()
+    {
+        using var main = TestEnv.CreateViewModel();
+        var window = new MainWindow(main) { Width = 1280, Height = 800 };
+        window.Show();
+        try
+        {
+            await TestEnv.OpenSamplesAsync(main);
+            main.Inspector.Modules.Single(m => m.Key == "skin").IsExpanded = true;
+            main.Service!.SetValue(main.Selection, "skin.enabled", true, null);
+            window.CaptureRenderedFrame()?.Dispose();
+            var canvas = VisibleCanvas(window);
+            var handles = canvas.Footprint!.Where(f => f.Stroke == Engine.Rendering.FootprintStroke.Handle).ToList();
+            // 預設區域中心 (0.5, 0.5)、半寬半高 0.15；沒有裁切時右把手在 (0.65, 0.5)
+            var right = handles.Select(h => h.Points[0]).Single(p => p.X > 0.6f);
+            Assert.Equal(0.65, right.X, 4);
+            using var pointer = new Avalonia.Input.Pointer(46, PointerType.Mouse, true);
+            Press(window, canvas, pointer, Map(canvas).ToCanvas(new Point(right.X, right.Y)));
+            Move(window, canvas, pointer, Map(canvas).ToCanvas(new Point(0.7, 0.5)), true);
+            Release(window, canvas, pointer, Map(canvas).ToCanvas(new Point(0.75, 0.5)));
+
+            Assert.Equal(0.25, main.FocusedResolved.Number("skin.radius_x"), 6);
+            Assert.Equal(0.15, main.FocusedResolved.Number("skin.radius_y"), 6);
+            Assert.Equal(0.5, main.FocusedResolved.Number("skin.region_cx"), 6);
+        }
+        finally { window.Close(); }
+    }
+
     private static PreviewCanvas VisibleCanvas(Window window) => window.GetVisualDescendants().OfType<PreviewCanvas>().Single(c => c.IsEffectivelyVisible);
     private static CanvasMapping Map(PreviewCanvas canvas) => (CanvasMapping)typeof(PreviewCanvas).GetMethod("Mapping", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(canvas, null)!;
     private static Vector ImageOffset(PreviewCanvas canvas) => Map(canvas).ToCanvas(new Point(0.5, 0.5)) - new Point(canvas.Bounds.Width / 2, canvas.Bounds.Height / 2);
