@@ -47,6 +47,23 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         public SourceImage? RenderSource;
     }
 
+    private EditSession? _edit;
+
+    /// <summary>
+    /// 進行中的連續編輯（滑桿拖曳／滾輪、曲線拖曳）。擁有者（服務＋選取的照片）在手勢第一次修改時固定；
+    /// <c>Pending</c> 是尚未寫入專案的 transient 值，只用於預覽與面板顯示。
+    /// </summary>
+    private sealed class EditSession(string id, string key, ProjectService service, string[] files)
+    {
+        public string Id { get; } = id;
+        public string Key { get; } = key;
+        public ProjectService Service { get; } = service;
+        public string[] Files { get; } = files;
+        public ParamValue? Pending { get; set; }
+        /// <summary>選取或專案已切換：已寫入的部分留在原照片，之後同一手勢的修改一律丟棄。</summary>
+        public bool Interrupted { get; set; }
+    }
+
     public AppSettings Settings { get; }
     public IDialogService Dialogs { get; }
     public PresetLibrary Library { get; }
@@ -78,9 +95,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     public DenoiseViewModel Denoise { get; }
     public BackgroundRemovalViewModel BackgroundRemoval { get; internal set; }
 
-    /// <summary>焦點照片的最終參數（三層合併）；沒有照片時為系統預設。</summary>
+    /// <summary>焦點照片目前呈現的參數（含尚未提交的手勢）；沒有照片時為系統預設。</summary>
     public Settings FocusedResolved =>
-        Service is not null && FocusFile is not null ? Service.SettingsFor(FocusFile) : ModuleCatalog.Defaults;
+        Service is not null && FocusFile is not null ? EditingSettings(FocusFile) : ModuleCatalog.Defaults;
     public ToastViewModel Toast { get; }
 
     public ProjectService? Service { get; private set; }
@@ -164,8 +181,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         BackgroundRemoval = new BackgroundRemovalViewModel(this);
         Sidebar.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName == nameof(SidebarViewModel.Active) && !Sidebar.IsInspector)
-                BackgroundRemoval.CancelCommand.Execute(null);
+            if (e.PropertyName != nameof(SidebarViewModel.Active)) return;
+            // 換分頁與畫布控制點相同：結束進行中的滑桿／曲線手勢，之後的修改另成一筆復原紀錄。
+            EndEdit();
+            if (!Sidebar.IsInspector) BackgroundRemoval.CancelCommand.Execute(null);
         };
         Sidebar.Export.PropertyChanged += (_, e) =>
         {
@@ -271,14 +290,15 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             // Validate the target before replacing the current project or committing its crop.
             var project = await Task.Run(() => Project.Open(folder, SamplePresets.Neutral));
             if (_disposed || generation != _openGeneration) return;
-            // Crop still belongs to the old Service, focus and undo stack at this point.
+            // The in-progress slider gesture and the crop still belong to the old Service, focus and undo stack here.
+            var changed = InterruptEdit();
             if (CropTool.IsActive)
             {
-                var changed = CropTool.HasChanges;
+                changed |= CropTool.HasChanges;
                 CropTool.Apply();
-                // A same-folder/alias target must include the crop just committed to disk.
-                if (changed) project = Project.Open(folder, SamplePresets.Neutral);
             }
+            // A same-folder/alias target must include the edits just committed to disk.
+            if (changed) project = Project.Open(folder, SamplePresets.Neutral);
             BackgroundRemoval.OnProjectChanging();
             Renderer.CancelThumbnails();
             Presets.Hover.InvalidateCache();
@@ -321,6 +341,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     public void OnSelectionChanged(IReadOnlyList<string> selection, string? focus)
     {
         var newFocus = focus ?? selection.LastOrDefault();
+        // 進行中的滑桿手勢屬於原本的照片：先寫回原照片，之後同一手勢的修改不轉移到新選取。
+        if (_edit is { } edit && (FocusFile != newFocus || edit.Files.Length != selection.Count || edit.Files.Any(f => !selection.Contains(f))))
+            InterruptEdit();
         if (FocusFile != newFocus)
         {
             // 換照片前把未套用的裁切寫回原本的焦點照片；若還在「裁切」分頁，
@@ -366,12 +389,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         }
         Preview.UpdateOverlay(Selection.Count);
         Preview.IsBusy = true;
-        var rawOptions = RawLoadOptions.FromSettings(service.SettingsFor(file));
+        var rawOptions = RawLoadOptions.FromSettings(EditingSettings(file));
         try
         {
             var source = await Images.GetPreviewAsync(service.Project.PathOf(file), rawOptions, cancellationToken);
             if (_disposed || Service != service || file != FocusFile || generation != _previewLoadGeneration) return;
-            if (source.RawOptions != RawLoadOptions.FromSettings(service.SettingsFor(file)))
+            if (source.RawOptions != RawLoadOptions.FromSettings(EditingSettings(file)))
             {
                 _ = LoadPreviewAsync();
                 return;
@@ -379,7 +402,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             Preview.SetOriginal(source);
             BackgroundRemoval.RefreshContext();
             Inspector.Refresh();
-            PhotoTools.UpdateContext(service, file, source, service.SettingsFor(file));
+            PhotoTools.UpdateContext(service, file, source, EditingSettings(file));
             if (Sidebar.IsCrop) CropTool.ResumeBegin();
             RequestPreview();
         }
@@ -387,7 +410,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         catch (Exception ex)
         {
             if (_disposed || Service != service || file != FocusFile || generation != _previewLoadGeneration
-                || rawOptions != RawLoadOptions.FromSettings(service.SettingsFor(file))) return;
+                || rawOptions != RawLoadOptions.FromSettings(EditingSettings(file))) return;
             AppLog.Error($"讀取失敗：{file}", ex);
             Filmstrip.SetError(file, ex.Message);
             Preview.Clear();
@@ -396,14 +419,14 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>以目前參數重算預覽（拖曳中每次修改都會呼叫；排程器只保留最新請求）。</summary>
+    /// <summary>以目前呈現的參數（含連續手勢的 transient 值）重算預覽；拖曳中每次修改都會呼叫，排程器只保留最新請求。</summary>
     public void RequestPreview()
     {
         if (_disposed) return;
         if (_suspended) { _resumePreview = true; return; }
         if (Service is null || FocusFile is null || Preview.Source is null) return;
         if (BackgroundRemoval.IsEditing) return;
-        var settings = Service.SettingsFor(FocusFile);
+        var settings = EditingSettings(FocusFile);
         if (Preview.Source.FilePath != Service.Project.PathOf(FocusFile)
             || Preview.Source.RawOptions != RawLoadOptions.FromSettings(settings))
         {
@@ -461,6 +484,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private void CommitCrop(Settings values)
     {
         if (Service is null || FocusFile is null) return;
+        FlushEdit();
         _committingCrop = true;
         try
         {
@@ -511,7 +535,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             // 外部裁切變更（復原、貼上等）才重載工具；RAW／其他效果變更保留未套用的裁切。
             if (CropTool.IsActive && !_committingCrop && Service is not null) CropTool.Reload(Service.SettingsFor(FocusFile));
             // 提案與非同步取樣綁服務＋檔案＋來源＋設定；外部設定改變（undo／貼上）使提案作廢
-            if (Service is { } service) PhotoTools.InvalidateForSettingsChange(service.SettingsFor(FocusFile));
+            if (Service is not null) PhotoTools.InvalidateForSettingsChange(EditingSettings(FocusFile));
             BackgroundRemoval.RefreshContext();
             Presets.Hover.InvalidateForPhoto(FocusFile);
             RefreshModulePanels();
@@ -519,6 +543,109 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         }
         // 背景重算縮圖（低優先）
         foreach (var f in files) Filmstrip.RequestThumbnail(f);
+    }
+
+    // ───────────── 連續編輯（滑桿拖曳／滾輪、曲線拖曳） ─────────────
+
+    /// <summary>
+    /// 連續手勢的一次修改：只更新 transient 預覽與面板，不寫入專案、不觸發 EntriesChanged、不進復原堆疊。
+    /// 手勢的擁有者（服務＋照片）在第一次修改時固定；選取或專案切換後同一手勢的修改一律丟棄，絕不轉移到新照片。
+    /// </summary>
+    internal void PreviewEdit(string session, string key, ParamValue value)
+    {
+        if (_disposed || Service is null || Selection.Count == 0) return;
+        if (_edit is { } current && (current.Id != session || current.Key != key)) EndEdit();
+        _edit ??= new EditSession(session, key, Service, [.. Selection]);
+        if (_edit.Interrupted) return;
+        var first = _edit.Pending is null;
+        _edit.Pending = value;
+        if (first) UndoCommand.NotifyCanExecuteChanged();
+        RefreshEditPreview();
+    }
+
+    /// <summary>
+    /// 結束連續手勢（放開、滾輪停止、失去焦點、曲線放開、換分頁、背景化）：transient 值以一筆
+    /// ProjectService 命令寫入手勢的擁有者（一次保存、一筆復原紀錄），之後的修改另成一筆。
+    /// </summary>
+    internal void EndEdit()
+    {
+        var edit = _edit;
+        FlushEdit();
+        _edit = null;
+        Stack.CloseMerge();
+        // 被中斷的手勢在參數列留下了被丟棄的值：還原成目前照片的設定。
+        if (edit is { Interrupted: true } && !_disposed) RefreshModulePanels();
+    }
+
+    /// <summary>
+    /// 寫入進行中手勢已有的 transient 值，手勢本身繼續；其他命令、儲存與生命週期邊界先呼叫，讓命令順序與即時寫入時相同。
+    /// 以手勢 id 為合併 key：中途寫入的部分與放開時的值仍是同一筆復原紀錄。
+    /// 保存失敗時 ProjectService 不改照片、專案檔與復原堆疊；transient 值丟棄、畫面還原為已保存的設定並提示。
+    /// </summary>
+    /// <returns>是否寫入了專案。</returns>
+    internal bool FlushEdit()
+    {
+        if (_disposed || _edit is not { Pending: { } value } edit) return false;
+        edit.Pending = null;
+        var written = false;
+        var failed = true;
+        try
+        {
+            written = edit.Service.SetValue(edit.Files, edit.Key, value, edit.Id);
+            failed = false;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            AppLog.Error($"無法儲存調整：{edit.Key}", error);
+            Toast.Show(Loc.Format("Toast.UnhandledError", error.Message));
+        }
+        finally
+        {
+            if (!written) UndoCommand.NotifyCanExecuteChanged();
+            if (failed && edit.Service == Service) RefreshEditPreview();
+        }
+        return written;
+    }
+
+    /// <summary>選取或專案即將改變：進行中手勢已有的值寫回原本的照片，之後同一手勢的修改一律丟棄。</summary>
+    /// <returns>是否寫入了專案（重新開啟同一資料夾時需重讀）。</returns>
+    private bool InterruptEdit()
+    {
+        if (_edit is not { Interrupted: false } edit) return false;
+        var written = FlushEdit();
+        Stack.CloseMerge();
+        edit.Interrupted = true;
+        return written;
+    }
+
+    /// <summary>照片目前在編輯器中呈現的項目：已保存的項目加上進行中手勢的 transient 值；專案本身不變。</summary>
+    internal PhotoEntry EditingEntry(string file)
+    {
+        var service = Service!;
+        var entry = service.Project[file];
+        return _edit is { Pending: { } value } edit && edit.Service == service && edit.Files.Contains(file)
+            ? PhotoOperations.SetValue(entry, edit.Key, value, service.BaseFor(entry.PresetId))
+            : entry;
+    }
+
+    /// <summary>照片目前在編輯器中呈現的最終參數（<see cref="EditingEntry"/> 的三層合併）。</summary>
+    internal Settings EditingSettings(string file)
+    {
+        var entry = EditingEntry(file);
+        return PhotoOperations.Resolve(Service!.BaseFor(entry.PresetId), entry.Overrides);
+    }
+
+    /// <summary>
+    /// 焦點照片的呈現改變但專案未寫入（transient 修改、保存失敗）：與已寫入的修改相同地作廢取樣提案與去背草稿，
+    /// 重新載入面板並以呈現的設定重算預覽。縮圖與縮圖列標記只跟隨已保存的設定（EntriesChanged）。
+    /// </summary>
+    private void RefreshEditPreview()
+    {
+        if (Service is null || FocusFile is not { } focus) return;
+        PhotoTools.InvalidateForSettingsChange(EditingSettings(focus));
+        if (BackgroundRemoval.IsEditing || BackgroundRemoval.IsBusy) BackgroundRemoval.Invalidate();
+        RefreshModulePanels();
+        RequestPreview();
     }
 
     private void OnLibraryChanged()
@@ -566,7 +693,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         finally { _resolvingPresetUpdates = false; }
     }
 
-    public void SaveProject() => Service?.Project.Save(Library);
+    public void SaveProject()
+    {
+        // A gesture commit already saves the entire project atomically.
+        if (!FlushEdit()) Service?.Project.Save(Library);
+    }
 
     private void UpdateBackgroundText()
     {
@@ -622,21 +753,29 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     // ───────────── 編輯 ─────────────
 
-    private bool CanUndo() => BackgroundRemoval.IsEditing ? BackgroundRemoval.CanUndo : Stack.CanUndo;
+    private bool CanUndo() => BackgroundRemoval.IsEditing ? BackgroundRemoval.CanUndo : _edit?.Pending is not null || Stack.CanUndo;
     private bool CanRedo() => BackgroundRemoval.IsEditing ? BackgroundRemoval.CanRedo : Stack.CanRedo;
 
     [RelayCommand(CanExecute = nameof(CanUndo))]
     private void Undo()
     {
         if (BackgroundRemoval.IsEditing) BackgroundRemoval.UndoCommand.Execute(null);
-        else Stack.Undo();
+        else
+        {
+            FlushEdit();
+            Stack.Undo();
+        }
     }
 
     [RelayCommand(CanExecute = nameof(CanRedo))]
     private void Redo()
     {
         if (BackgroundRemoval.IsEditing) BackgroundRemoval.RedoCommand.Execute(null);
-        else Stack.Redo();
+        else
+        {
+            FlushEdit();
+            Stack.Redo();
+        }
     }
 
     private bool CanEditSelection() => Service is not null && Selection.Count > 0;
@@ -645,6 +784,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private void Copy()
     {
         if (Service is null || FocusFile is null) return;
+        FlushEdit();
         _clipboard = Service.Copy(FocusFile);
         _moduleOnly = null;
         Toast.Show(Loc.Format("Toast.CopiedPhoto", FocusFile));
@@ -673,6 +813,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     public void CopyModuleOnly(string moduleKey)
     {
         if (Service is null || FocusFile is null) return;
+        FlushEdit();
         _clipboard = Service.Copy(FocusFile);
         _moduleOnly = moduleKey;
         Toast.Show(Loc.Format("Toast.CopiedModule", Loc.ModuleLabel(ModuleCatalog.Module(moduleKey))));
@@ -684,6 +825,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private void DoPaste(PasteOptions options)
     {
         if (Service is null || _clipboard is null) return;
+        FlushEdit();
         if (_moduleOnly is { } m && options.Mode == PasteMode.Full)
             options = options with { Mode = PasteMode.Selective, Modules = new HashSet<string> { m } };
         var targets = Selection;
@@ -711,6 +853,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     public async Task AssignPresetAsync(IReadOnlyCollection<string> targets, Guid presetId)
     {
         if (Service is null || targets.Count == 0) return;
+        FlushEdit();
         var withOverrides = targets.Count(t => Service.Project[t].HasOverrides);
         var keep = true;
         if (withOverrides > 0)
@@ -750,6 +893,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private async Task CreatePreset()
     {
         if (Service is null || FocusFile is null) return;
+        FlushEdit();
         var name = await Dialogs.PromptAsync(Loc.Get("Cmd.CreatePreset"), Loc.Get("Presets.Col.Name"), Path.GetFileNameWithoutExtension(FocusFile));
         if (string.IsNullOrWhiteSpace(name)) return;
         var current = Service.PresetFor(Service.Project[FocusFile].PresetId);
@@ -761,6 +905,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private async Task UpdatePreset()
     {
         if (Service is null || FocusFile is null) return;
+        FlushEdit();
         var entry = Service.Project[FocusFile];
         if (Service.PresetFor(entry.PresetId) is not { } preset || !entry.HasOverrides) return;
         var users = Service.CountUsing(preset.Id);
@@ -773,7 +918,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand(CanExecute = nameof(CanEditSelection))]
-    private void ResetPhoto() => Service?.ResetAll(Selection);
+    private void ResetPhoto()
+    {
+        FlushEdit();
+        Service?.ResetAll(Selection);
+    }
 
     [RelayCommand]
     private Task ManagePresets() => Dialogs.ShowPresetManagerAsync(new PresetManagerViewModel(this));
@@ -914,6 +1063,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     public void Suspend()
     {
         if (_disposed || _suspended) return;
+        InterruptEdit();
         _suspended = true;
         // Folder scan adoption stops; explicit user cancellation stays cancelled.
         ++_openGeneration;
@@ -971,6 +1121,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         if (_disposed) return;
+        EndEdit();
         _disposed = true;
         PhotoTools.InvalidateForPhotoChange();
         BackgroundRemoval.Dispose();

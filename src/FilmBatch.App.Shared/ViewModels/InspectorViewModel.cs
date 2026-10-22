@@ -48,7 +48,7 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
         {
             if (!SetProperty(ref _isActive, value) || !value) return;
             if (_main.Service is not null && _main.FocusFile is not null)
-                UpdateControlPoint(_main.Service.SettingsFor(_main.FocusFile));
+                UpdateControlPoint(_main.EditingSettings(_main.FocusFile));
         }
     }
 
@@ -84,7 +84,7 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
         FilmLook = schemas.Any(s => s.Key == "film") ? new FilmLookViewModel(main) : null;
         Modules = schemas
             .Select(s => new ModuleSectionViewModel(s, this,
-                m => { if (_main.Service is { } svc) svc.ResetModule(_main.Selection, m.Key); },
+                m => { _main.FlushEdit(); if (_main.Service is { } svc) svc.ResetModule(_main.Selection, m.Key); },
                 m => _main.CopyModuleOnly(m.Key), FilmLook) { IsVisible = s.Key != "raw" })
             .ToList();
         foreach (var m in Modules) m.ExpandedChanged += OnModuleExpanded;
@@ -154,8 +154,8 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
             return;
         }
 
-        var entry = svc.Project[file];
-        var resolved = svc.SettingsFor(file);
+        var entry = _main.EditingEntry(file);
+        var resolved = _main.EditingSettings(file);
         FileName = _main.Selection.Count > 1 ? Loc.Format("Inspector.FileMulti", file, _main.Selection.Count) : file;
         Dimensions = _main.Preview.Source is { } src && _main.FocusFile == file ? Loc.Format("Inspector.PreviewSize", src.Width, src.Height) : "";
         HasOverrides = entry.HasOverrides;
@@ -199,12 +199,18 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
     public void SetValue(string flatKey, ParamValue value, string? mergeKey)
     {
         if (_main.Service is null || _main.Selection.Count == 0) return;
-        _main.Service.SetValue(_main.Selection, flatKey, value, mergeKey);
+        if (mergeKey is not null) _main.PreviewEdit(mergeKey, flatKey, value);
+        else
+        {
+            _main.FlushEdit();
+            _main.Service.SetValue(_main.Selection, flatKey, value);
+        }
     }
 
     public void SetValues(IReadOnlyDictionary<string, ParamValue> values, string? mergeKey)
     {
         if (_main.Service is null || _main.Selection.Count == 0) return;
+        _main.FlushEdit();
         _main.Service.SetValues(_main.Selection, new Settings(values), Loc.Get("Raw.MaskEdit"));
     }
 
@@ -223,10 +229,11 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
     public void ResetParam(string flatKey)
     {
         if (_main.Service is null) return;
+        _main.FlushEdit();
         _main.Service.ResetParam(_main.Selection, flatKey);
     }
 
-    public void EndEdit() => _main.Stack.CloseMerge();
+    public void EndEdit() => _main.EndEdit();
 
     // ───────────── 控制點 ─────────────
 
@@ -237,7 +244,7 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
         if (sender is ModuleSectionViewModel { IsExpanded: true, Schema.HasCanvasPoint: true } m) _pointModule = m;
         else if (sender == _pointModule && _pointModule is { IsExpanded: false }) _pointModule = Modules.FirstOrDefault(x => x.IsExpanded && x.Schema.HasCanvasPoint);
         if (_main.Service is not null && _main.FocusFile is not null)
-            UpdateControlPoint(_main.Service.SettingsFor(_main.FocusFile));
+            UpdateControlPoint(_main.EditingSettings(_main.FocusFile));
     }
 
     private void UpdateControlPoint(Settings resolved)

@@ -60,13 +60,21 @@ public sealed partial class ThumbnailViewModel(string fileName) : ObservableObje
 /// （<see cref="RefreshThumbnails"/>）才推進下一張。挑選順序：目前焦點 → 可見已實化範圍
 /// （<see cref="SetVisibleRange"/>）→ 明確編輯佇列 → 游標往後的資料夾順序；全部照片最終都會載入。
 /// 取消（<see cref="CancelLoading"/>）凍結計數並停止自動掃描，明確編輯仍可逐張更新，不會恢復未完成的掃描。
+/// 已送達的點陣圖與解碼來源只保留可見範圍、焦點與最近送達的少量（<see cref="MaxRetainedThumbnails"/>），
+/// 離開保留集的舊圖釋放像素並捲回滾動再載；計數以終態集合為準，不受釋放影響。
 /// </para>
 /// </summary>
 public sealed partial class FilmstripViewModel : ObservableObject
 {
+    /// <summary>送達後仍保留點陣圖／解碼來源的上限（含焦點與可見範圍；超出即釋放最舊送達）。</summary>
+    private const int MaxRetainedThumbnails = 64;
     private readonly MainWindowViewModel _main;
     private readonly Dictionary<string, ThumbnailViewModel> _byName = new(StringComparer.Ordinal);
     private readonly List<ThumbnailViewModel> _all = [];
+    private readonly HashSet<ThumbnailViewModel> _deliveredOnce = [];
+    private readonly LinkedList<ThumbnailViewModel> _retentionOrder = new();
+    private readonly Dictionary<ThumbnailViewModel, LinkedListNode<ThumbnailViewModel>> _retentionNodes = [];
+    private ThumbnailViewModel? _inflight;
     private bool _syncingSelection;
 
     // ── 有界載入幫浦狀態（全都在 _pumpLock 底下存取）──
@@ -199,6 +207,7 @@ public sealed partial class FilmstripViewModel : ObservableObject
             _explicitQueue.Clear();
             _explicitSet.Clear();
             _pendingStart = false;
+            _inflight = null;
             var cts = _pumpCts;
             _pumpCts = null;
             _deliveryAbort = null;
@@ -279,13 +288,16 @@ public sealed partial class FilmstripViewModel : ObservableObject
                         LoadingProgressChanged?.Invoke();
                         return;
                     }
+                    _inflight = next;
                 }
 
                 var service = _main.Service;
                 var generation = _main.Images.FolderGeneration;
                 if (service is null || !_byName.TryGetValue(next.FileName, out var current) || !ReferenceEquals(current, next))
+                {
+                    lock (_pumpLock) if (ReferenceEquals(_inflight, next)) _inflight = null;
                     continue;
-
+                }
                 var delivered = false;
                 try
                 {
@@ -346,8 +358,11 @@ public sealed partial class FilmstripViewModel : ObservableObject
                         delivered = true;
                     }
                 }
+                finally
+                {
+                    lock (_pumpLock) if (ReferenceEquals(_inflight, next)) _inflight = null;
+                }
                 if (delivered) RecordTerminal(next);
-
             }
         }
         catch (Exception ex)
@@ -447,9 +462,63 @@ public sealed partial class FilmstripViewModel : ObservableObject
         return vm;
     }
 
-    /// <summary>照片是否仍需要縮圖工作（鎖內呼叫）。已送達 bitmap 或已記錄錯誤者不算待處理；明確重試（<see cref="_explicitSet"/>）可重新進入。</summary>
-    private bool IsPendingLocked(ThumbnailViewModel vm) =>
-        _explicitSet.ContainsKey(vm) || (_initialActive && vm.Bitmap is null && vm.Error is null);
+    /// <summary>照片是否仍需要縮圖工作（鎖內呼叫）。明確重試（<see cref="_explicitSet"/>）可重新進入；已送達但被釋放的舊圖只在可見／焦點時捲回重載。</summary>
+    private bool IsPendingLocked(ThumbnailViewModel vm)
+    {
+        if (_explicitSet.ContainsKey(vm)) return true;
+        if (vm.Bitmap is not null || vm.Error is not null) return false;
+        if (_initialActive) return true;
+        return _deliveredOnce.Contains(vm) && IsPinnedLocked(vm);
+    }
+
+    /// <summary>目前不得釋放的照片：焦點、可見已實化範圍與幫浦飛行中的一張（鎖內呼叫）。</summary>
+    private bool IsPinnedLocked(ThumbnailViewModel vm)
+    {
+        if (ReferenceEquals(_inflight, vm)) return true;
+        if (_main.FocusFile is { } focus && _byName.TryGetValue(focus, out var focusVm) && ReferenceEquals(focusVm, vm))
+            return true;
+        if (_visibleFirst >= 0 && _visibleLast >= _visibleFirst)
+        {
+            var hi = Math.Min(_visibleLast, Items.Count - 1);
+            for (var i = Math.Max(0, _visibleFirst); i <= hi; i++)
+                if (ReferenceEquals(Items[i], vm)) return true;
+        }
+        return false;
+    }
+
+    /// <summary>送達後把照片記入保留佇列頭，超出 <see cref="MaxRetainedThumbnails"/> 即由尾端釋放像素（焦點／可見／飛行中跳過）。呼叫端在 UI 執行緒。</summary>
+    private void TouchRetention(ThumbnailViewModel vm)
+    {
+        List<ThumbnailViewModel> evicted = [];
+        lock (_pumpLock)
+        {
+            if (!_byName.TryGetValue(vm.FileName, out var current) || !ReferenceEquals(current, vm)) return;
+            _deliveredOnce.Add(vm);
+            if (_retentionNodes.TryGetValue(vm, out var existing)) _retentionOrder.Remove(existing);
+            _retentionNodes[vm] = _retentionOrder.AddFirst(vm);
+            for (var node = _retentionOrder.Last; node is not null && _retentionNodes.Count > MaxRetainedThumbnails;)
+            {
+                var prev = node.Previous;
+                if (!IsPinnedLocked(node.Value) && !ReferenceEquals(node.Value, vm))
+                {
+                    _retentionOrder.Remove(node);
+                    _retentionNodes.Remove(node.Value);
+                    evicted.Add(node.Value);
+                }
+                node = prev;
+            }
+        }
+        foreach (var old in evicted) ReleasePixels(old);
+    }
+
+    /// <summary>釋放一張已送達舊圖的像素（點陣圖 Dispose 並清空來源參考）；終態計數與錯誤旗標保留，捲回可見時重載。呼叫端在 UI 執行緒。</summary>
+    private static void ReleasePixels(ThumbnailViewModel vm)
+    {
+        var old = vm.Bitmap;
+        vm.Bitmap = null;
+        vm.Source = null;
+        old?.Dispose();
+    }
 
     /// <summary>初次載入終態已計數的照片集合；每張照片最多一次，明確重試不影響總完成數。</summary>
     private readonly HashSet<ThumbnailViewModel> _terminalCounted = [];
@@ -514,6 +583,7 @@ public sealed partial class FilmstripViewModel : ObservableObject
         vm.Error = null;
         old?.Dispose();
         if (hadError) AdjustForRetrySuccess(vm);
+        TouchRetention(vm);
         foreach (var handler in _deliveryHandlers.ToArray()) handler(vm);
     }
 
@@ -556,6 +626,10 @@ public sealed partial class FilmstripViewModel : ObservableObject
             _pumpCts = new CancellationTokenSource();
             _terminalCounted.Clear();
             _failedCounted.Clear();
+            _deliveredOnce.Clear();
+            _retentionOrder.Clear();
+            _retentionNodes.Clear();
+            _inflight = null;
         }
         ApplyFilter();
         UpdateMarkers(project.FileNames);
@@ -583,6 +657,7 @@ public sealed partial class FilmstripViewModel : ObservableObject
             IsLoadingThumbnails = _initialActive && !_initialComplete;
             _loadingWatch.Stop();
             _pendingStart = false;
+            _inflight = null;
             var cts = _pumpCts;
             _pumpCts = null;
             _deliveryAbort = null;
@@ -593,14 +668,14 @@ public sealed partial class FilmstripViewModel : ObservableObject
         LoadingProgressChanged?.Invoke();
     }
 
-    /// <summary>Resumes queued edits and any unfinished scan; never revives a user-cancelled folder scan.</summary>
+    /// <summary>Resumes queued edits, any unfinished scan and visible scroll-back reloads; never revives a user-cancelled folder scan.</summary>
     public void ResumePump()
     {
         lock (_pumpLock)
         {
             _pumpSuspended = false;
             var scanning = _initialActive && !_initialComplete;
-            if (!scanning && _explicitQueue.Count == 0) return;
+            if (!scanning && _explicitQueue.Count == 0 && !VisibleNeedsReloadLocked()) return;
             IsLoadingThumbnails = scanning;
             if (scanning) _loadingWatch.Start();
         }
@@ -621,10 +696,23 @@ public sealed partial class FilmstripViewModel : ObservableObject
             if (first == _visibleFirst && last == _visibleLast) return;
             _visibleFirst = first;
             _visibleLast = last;
-            // 若幫浦目前閒置但仍有未完成照片，喚醒它以新範圍挑選下一張。
-            wake = !_pumpRunning && (_initialActive || _explicitQueue.Count > 0);
+            // 幫浦閒置時喚醒：初次掃描、明確佇列，或捲回已釋放舊圖的可見範圍。
+            wake = !_pumpRunning && (_initialActive || _explicitQueue.Count > 0 || VisibleNeedsReloadLocked());
         }
         if (wake) StartPumpLoop();
+    }
+
+    /// <summary>目前可見範圍內是否有已送達但像素已釋放的舊圖（鎖內呼叫；只掃可見範圍，不掃全資料夾）。</summary>
+    private bool VisibleNeedsReloadLocked()
+    {
+        if (_visibleFirst < 0 || _visibleLast < _visibleFirst) return false;
+        var hi = Math.Min(_visibleLast, Items.Count - 1);
+        for (var i = Math.Max(0, _visibleFirst); i <= hi; i++)
+        {
+            var vm = Items[i];
+            if (vm.Bitmap is null && vm.Error is null && _deliveredOnce.Contains(vm)) return true;
+        }
+        return false;
     }
 
     /// <summary>
@@ -788,5 +876,14 @@ public sealed partial class FilmstripViewModel : ObservableObject
         if (Selection.AnchorIndex >= 0 && Selection.AnchorIndex < Items.Count && Selection.IsSelected(Selection.AnchorIndex))
             focus = Items[Selection.AnchorIndex].FileName;
         _main.OnSelectionChanged(selected, focus);
+        // 焦點照片若像素已釋放（曾送達）：幫浦閒置時喚醒重載，保持焦點可用。
+        var wake = false;
+        lock (_pumpLock)
+        {
+            if (!_pumpRunning && focus is not null && _byName.TryGetValue(focus, out var focusVm)
+                && focusVm.Bitmap is null && focusVm.Error is null && _deliveredOnce.Contains(focusVm))
+                wake = true;
+        }
+        if (wake) StartPumpLoop();
     }
 }

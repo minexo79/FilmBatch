@@ -221,6 +221,7 @@ public sealed partial class ExportViewModel : ObservableObject
         IProgress<BatchExportProgress>? progress = null, CancellationToken ct = default)
     {
         var svc = _main.Service ?? throw new InvalidDataException(Loc.Get("Export.Error.NoFolder"));
+        _main.FlushEdit();
         var files = PlannedFiles();
         if (files.Count == 0) throw new InvalidDataException(Loc.Get("Export.Error.NoPhotos"));
         var options = ToOptions(Destination);

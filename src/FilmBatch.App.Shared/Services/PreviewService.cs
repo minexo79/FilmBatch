@@ -17,7 +17,6 @@ public sealed class PreviewService : IDisposable
     private long _requested;
     private long _delivered;
     private long _firstSourceGeneration;
-    private long _configuration;
     private bool _disposed;
     private volatile bool _collectHistogram = true;
     private SourceImage? _source;
@@ -42,29 +41,20 @@ public sealed class PreviewService : IDisposable
     {
         _post = post;
         _scheduler = new RenderScheduler(factory, cpuFallback ? fallback ?? (() => new CpuFakeRenderer()) : null);
-        _scheduler.DeviceReady += (name, sw) =>
+        _scheduler.DeviceReady += ready => PostAtEpoch(ready.Epoch, () => DeviceReady?.Invoke(ready.DeviceName, ready.IsSoftware));
+        _scheduler.Notice += notice =>
         {
-            var configuration = Interlocked.Read(ref _configuration);
-            _post(() =>
-            {
-                if (!_disposed && configuration == Interlocked.Read(ref _configuration))
-                    DeviceReady?.Invoke(name, sw);
-            });
-        };
-        _scheduler.Notice += msg =>
-        {
-            AppLog.Warn(msg);
-            PostCurrent(() => Notice?.Invoke(msg));
+            AppLog.Warn(notice.Message);
+            PostAtEpoch(notice.Epoch, () => Notice?.Invoke(notice.Message));
         };
         _scheduler.RenderFailed += failure =>
         {
             AppLog.Error($"算圖失敗：{failure.Key}", failure.Error);
-            PostCurrent(() =>
+            PostAtEpoch(failure.Epoch, () =>
             {
                 if (failure.PreviewGeneration is { } generation)
                 {
-                    if (generation < Interlocked.Read(ref _firstSourceGeneration)
-                        || generation <= Interlocked.Read(ref _delivered)) return;
+                    if (IsStalePreview(generation)) return;
                     Interlocked.Exchange(ref _delivered, generation);
                 }
                 Failed?.Invoke(failure);
@@ -72,8 +62,9 @@ public sealed class PreviewService : IDisposable
         };
         _scheduler.PreviewRendered += r =>
         {
-            if (r.Generation < Interlocked.Read(ref _firstSourceGeneration)
-                || r.Generation <= Interlocked.Read(ref _delivered)) return;
+            // payload 攜帶來源世代：直方圖計算期間若發生重建，送達時仍能以舊世代擋下；
+            // 不得在回呼入口重新讀取 scheduler.Epoch（鎖外回呼起動前可能已換代）。
+            if (IsStalePreview(r.Generation)) return;
             ImageHistogram? histogram = null, original = null;
             if (_collectHistogram)
             {
@@ -86,25 +77,29 @@ public sealed class PreviewService : IDisposable
                 }
                 original = _originalHistogram;
             }
-            PostCurrent(() =>
+            // 昂貴計算之後重核世代：期間的新來源/取消/重建使此影格過期，不再排入 UI。
+            if (IsStalePreview(r.Generation)) return;
+            PostAtEpoch(r.Epoch, () =>
             {
-                if (r.Generation < Interlocked.Read(ref _firstSourceGeneration)
-                    || r.Generation <= Interlocked.Read(ref _delivered)) return;
+                if (IsStalePreview(r.Generation)) return;
                 Interlocked.Exchange(ref _delivered, r.Generation);
                 PreviewReady?.Invoke(r.Result, histogram, original);
             });
         };
-        _scheduler.ThumbnailRendered += (key, r) => PostCurrent(() => ThumbnailReady?.Invoke(key, r));
+        _scheduler.ThumbnailRendered += t => PostAtEpoch(t.Epoch, () => ThumbnailReady?.Invoke(t.Key, t.Result));
     }
 
-    private void PostCurrent(Action action)
+    private void PostAtEpoch(long epoch, Action action)
     {
-        var epoch = _scheduler.Epoch;
         _post(() =>
         {
             if (!_disposed && epoch == _scheduler.Epoch) action();
         });
     }
+
+    private bool IsStalePreview(long generation) =>
+        generation < Interlocked.Read(ref _firstSourceGeneration)
+        || generation <= Interlocked.Read(ref _delivered);
 
     /// <summary>Start after the view model has subscribed to initialization and failure events.</summary>
     public void Start() => _scheduler.Start();
@@ -118,7 +113,7 @@ public sealed class PreviewService : IDisposable
     /// </summary>
     public void Reconfigure(Func<IPreviewRenderer> factory, Func<IPreviewRenderer>? fallback = null)
     {
-        Interlocked.Increment(ref _configuration);
+        // 世代圍欄已涵蓋裝置/完成/失敗/通知：ResetRenderer 推進 epoch，舊 payload 在送達時丟棄。
         CancelPreview();
         _scheduler.ResetRenderer(factory, fallback);
     }

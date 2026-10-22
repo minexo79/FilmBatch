@@ -18,7 +18,7 @@ public sealed class RenderSchedulerTests
         var completed = new TaskCompletionSource<(string? Device, bool Software, RenderResult Result)>(TaskCreationOptions.RunContinuationsAsynchronously);
         string? device = null;
         var software = false;
-        scheduler.DeviceReady += (name, isSoftware) => { device = name; software = isSoftware; };
+        scheduler.DeviceReady += ready => { device = ready.DeviceName; software = ready.IsSoftware; };
         scheduler.PreviewRendered += result => completed.TrySetResult((device, software, result.Result));
         scheduler.RenderFailed += failure => completed.TrySetException(failure.Error);
         var source = new SourceImage(1, 1, [ushort.MaxValue, 0, 0, ushort.MaxValue]);
@@ -66,7 +66,7 @@ public sealed class RenderSchedulerTests
             if (result.Key == "current.tif") delivered.TrySetResult(result.Result);
             else staleDelivered = true;
         };
-        scheduler.ThumbnailRendered += (_, _) => { if (!delivered.Task.IsCompleted) staleDelivered = true; };
+        scheduler.ThumbnailRendered += t => { if (!delivered.Task.IsCompleted) staleDelivered = true; };
         scheduler.Notice += _ => reinitialized = true;
         scheduler.RenderFailed += failure => delivered.TrySetException(failure.Error);
         var old = new SourceImage(1, 1, [65535, 0, 0, 65535]);
@@ -89,9 +89,9 @@ public sealed class RenderSchedulerTests
         var background = new TaskCompletionSource<RenderResult>(TaskCreationOptions.RunContinuationsAsynchronously);
         var retried = new TaskCompletionSource<RenderResult>(TaskCreationOptions.RunContinuationsAsynchronously);
         scheduler.RenderFailed += failure => background.TrySetException(failure.Error);
-        scheduler.ThumbnailRendered += (key, result) =>
+        scheduler.ThumbnailRendered += t =>
         {
-            if (key == "other.tif") background.TrySetResult(result);
+            if (t.Key == "other.tif") background.TrySetResult(t.Result);
             else background.TrySetException(new InvalidOperationException("Cancelled source resumed through a thumbnail"));
         };
         scheduler.PreviewRendered += result => retried.TrySetResult(result.Result);
@@ -109,6 +109,97 @@ public sealed class RenderSchedulerTests
         scheduler.RequestPreview("current.tif", source, ModuleCatalog.Defaults, 2);
         Assert.Equal(new byte[] { 0, 0, 255, 255 },
             (await retried.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken)).Bgra);
+    }
+
+    [Fact]
+    public async Task GatedPreviewCallback_DoesNotBlockNewSubmission()
+    {
+        // The first completion handler gates on a signal: a new submission must still proceed,
+        // and both frames must deliver in order once the gate releases.
+        using var scheduler = new RenderScheduler(() => new CpuFakeRenderer());
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var bothDelivered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var delivered = new List<long>();
+        var frames = new List<RenderResult>();
+        scheduler.PreviewRendered += result =>
+        {
+            lock (delivered)
+            {
+                delivered.Add(result.Generation);
+                frames.Add(result.Result);
+                if (delivered.Count == 2) bothDelivered.TrySetResult();
+            }
+            if (result.Generation == 1)
+            {
+                entered.TrySetResult();
+                release.Task.Wait(TimeSpan.FromSeconds(30));
+            }
+        };
+        scheduler.RenderFailed += failure =>
+        {
+            entered.TrySetResult();
+            bothDelivered.TrySetException(failure.Error);
+        };
+        var source = new SourceImage(1, 1, [0x4040, 0x4040, 0x4040, ushort.MaxValue]);
+        scheduler.Start();
+        try
+        {
+            scheduler.RequestPreview("photo.dng", source, ModuleCatalog.Defaults, 1);
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+            var submit = Task.Run(() => scheduler.RequestPreview("photo.dng", source,
+                ModuleCatalog.Defaults.With("basic.exposure", 1.0), 2), TestContext.Current.CancellationToken);
+            await submit.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        }
+        finally
+        {
+            release.TrySetResult();
+        }
+        await bothDelivered.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        lock (delivered)
+        {
+            Assert.Equal(2, delivered.Count);
+            Assert.Equal(1L, delivered[0]);
+            Assert.Equal(2L, delivered[1]);
+            Assert.Equal(new byte[] { 64, 64, 64, 255 }, frames[0].Bgra);
+            Assert.NotEqual(frames[0].Bgra, frames[1].Bgra);
+        }
+    }
+
+    [Fact]
+    public async Task CompletionPayload_CarriesOriginatingEpoch_AcrossReset()
+    {
+        // A completion whose delegate snapshot passed must still carry the originating epoch,
+        // even if ResetRenderer advances the epoch before the out-of-lock callback starts.
+        using var scheduler = new RenderScheduler(() => new CpuFakeRenderer());
+        var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        scheduler.DeviceReady += _ => ready.TrySetResult();
+        scheduler.Start();
+        await ready.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        var before = scheduler.Epoch;
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var observed = new TaskCompletionSource<(long Payload, long AtEntry)>(TaskCreationOptions.RunContinuationsAsynchronously);
+        scheduler.PreviewRendered += result =>
+        {
+            if (result.Generation == 1)
+            {
+                entered.TrySetResult();
+                release.Task.Wait(TimeSpan.FromSeconds(30));
+                observed.TrySetResult((result.Epoch, scheduler.Epoch));
+            }
+        };
+        scheduler.RenderFailed += failure => observed.TrySetException(failure.Error);
+        var source = new SourceImage(1, 1, [0x4040, 0x4040, 0x4040, ushort.MaxValue]);
+        scheduler.RequestPreview("photo.dng", source, ModuleCatalog.Defaults, 1);
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        scheduler.ResetRenderer(() => new CpuFakeRenderer());
+        var after = scheduler.Epoch;
+        Assert.True(after > before);
+        release.TrySetResult();
+        var (payload, atEntry) = await observed.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        Assert.Equal(before, payload);
+        Assert.Equal(after, atEntry);
     }
 
     // Simulates a slow native inference boundary, but keeps rendering and its pixels real.

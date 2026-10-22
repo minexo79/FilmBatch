@@ -10,7 +10,7 @@ namespace FilmBatch.App.ViewModels;
 /// <summary>模組面板接收參數修改的對象（由 <see cref="InspectorViewModel"/> 實作）。</summary>
 public interface IParamHost
 {
-    /// <param name="mergeKey">非 null 時，連續相同 key 的修改合併為一筆復原紀錄（拖曳中）。</param>
+    /// <param name="mergeKey">非 null 時識別一次連續手勢：先預覽，結束時提交一筆可復原修改。</param>
     void SetValue(string flatKey, ParamValue value, string? mergeKey);
     /// <summary>一筆可復原的多欄位寫入（例如遮罩名稱＋實例）。預設逐 key 呼叫 <see cref="SetValue"/>；
     /// 專案實作以單一命令寫入，復原一次還原全部欄位。</summary>
@@ -19,7 +19,7 @@ public interface IParamHost
         foreach (var (key, value) in values) SetValue(key, value, mergeKey);
     }
     void ResetParam(string flatKey);
-    /// <summary>連續編輯結束（放開滑桿）：結束復原紀錄的合併。</summary>
+    /// <summary>提交連續編輯（放開滑桿），並結束復原紀錄的合併。</summary>
     void EndEdit();
     /// <summary>目錄參數的瀏覽；<paramref name="current"/> 為目前設定值。預設不支援（回傳 null）。</summary>
     Task<string?> PickFolderAsync(string? current) => Task.FromResult<string?>(null);

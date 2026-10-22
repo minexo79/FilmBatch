@@ -132,6 +132,49 @@ public sealed class PreviewDeliveryTests
         Assert.False(service.IsBusy);
     }
 
+    [Fact]
+    public async Task Reconfigure_DropsAlreadyPostedFrame()
+    {
+        var posts = new ConcurrentQueue<Action>();
+        using var service = new PreviewService(() => new CpuFakeRenderer(), posts.Enqueue);
+        var frames = new List<RenderResult>();
+        service.PreviewReady += (frame, _, _) => frames.Add(frame);
+        service.Start();
+        await UntilPosted(posts);
+        Drain(posts);
+        var source = new SourceImage(1, 1, [ushort.MaxValue, 0, 0, ushort.MaxValue]);
+        service.RequestPreview("photo.tif", source, ModuleCatalog.Defaults);
+        await UntilPosted(posts);
+        Assert.True(posts.TryDequeue(out var pendingPreview));
+        Assert.True(posts.IsEmpty);
+        service.Reconfigure(() => new CpuFakeRenderer());
+        pendingPreview();
+        Assert.Empty(frames);
+        service.RequestPreview("photo.tif", source, ModuleCatalog.Defaults);
+        while (frames.Count == 0 && service.IsBusy) { Drain(posts); if (frames.Count == 0 && service.IsBusy) await UntilPosted(posts); }
+        Assert.Equal(new byte[] { 0, 0, 255, 255 }, Assert.Single(frames).Bgra);
+        Assert.False(service.IsBusy);
+    }
+
+    [Fact]
+    public async Task Reconfigure_DropsAlreadyPostedDeviceReady()
+    {
+        var posts = new ConcurrentQueue<Action>();
+        using var service = new PreviewService(() => new CpuFakeRenderer(), posts.Enqueue);
+        var devices = new List<string>();
+        service.DeviceReady += (name, _) => devices.Add(name);
+        service.Start();
+        await UntilPosted(posts);
+        Assert.True(posts.TryDequeue(out var pendingDevice));
+        Assert.True(posts.IsEmpty);
+        service.Reconfigure(() => new CpuFakeRenderer());
+        pendingDevice();
+        Assert.Empty(devices);
+        await UntilPosted(posts);
+        Drain(posts);
+        Assert.NotEmpty(devices);
+    }
+
     private static Settings MissingAsset() => ModuleCatalog.Defaults
         .With("double_exposure.enabled", true).With("double_exposure.source", "file")
         .With("double_exposure.source_path", Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".tif"));

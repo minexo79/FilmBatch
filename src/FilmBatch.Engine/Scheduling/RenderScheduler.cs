@@ -6,13 +6,36 @@ using FilmBatch.Engine.Rendering;
 
 namespace FilmBatch.Engine.Scheduling;
 
-public sealed record PreviewRendered(string Key, long Generation, RenderResult Result);
+/// <summary>完成的預覽影格，攜帶送出時的算圖世代，供 UI 交付圍欄比對。</summary>
+/// <param name="Key">照片鍵。</param>
+/// <param name="Generation">預覽世代（PreviewService 的遞增請求編號）。</param>
+/// <param name="Result">算圖結果。</param>
+/// <param name="Epoch">完成資格快照時的算圖世代；重建後送達即丟棄。</param>
+public sealed record PreviewRendered(string Key, long Generation, RenderResult Result, long Epoch);
+
+/// <summary>完成的縮圖，攜帶送出時的算圖世代，供 UI 交付圍欄比對。</summary>
+/// <param name="Key">照片／磁磚鍵。</param>
+/// <param name="Result">算圖結果。</param>
+/// <param name="Epoch">完成資格快照時的算圖世代；重建後送達即丟棄。</param>
+public sealed record ThumbnailRendered(string Key, RenderResult Result, long Epoch);
+
+/// <summary>算圖器建立完成（或改用備援），攜帶建立當下的算圖世代。</summary>
+/// <param name="DeviceName">裝置名稱。</param>
+/// <param name="IsSoftware">是否為軟體介面卡。</param>
+/// <param name="Epoch">資格快照當下的算圖世代；重建後送達即丟棄。</param>
+public readonly record struct DeviceReady(string DeviceName, bool IsSoftware, long Epoch);
+
+/// <summary>需要告知使用者的訊息（例如 GPU 重新初始化），攜帶發出時的算圖世代。</summary>
+/// <param name="Message">訊息本文。</param>
+/// <param name="Epoch">發出當下的算圖世代；重建後送達即丟棄。</param>
+public readonly record struct SchedulerNotice(string Message, long Epoch);
 
 /// <summary>Identifies a failed render and its preview generation, or a thumbnail/initialization failure when that generation is null.</summary>
 /// <param name="Key">The photo/tile key, or <c>$init</c> for renderer initialization.</param>
 /// <param name="Error">The original render or initialization exception.</param>
 /// <param name="PreviewGeneration">The failed preview generation; null for thumbnails and initialization.</param>
-public readonly record struct RenderFailure(string Key, Exception Error, long? PreviewGeneration);
+/// <param name="Epoch">失敗當下的算圖世代（逐筆請求沿用其送出世代；<c>$init</c> 為快照當下）；重建後送達即丟棄。</param>
+public readonly record struct RenderFailure(string Key, Exception Error, long? PreviewGeneration, long Epoch);
 
 /// <summary>
 /// 單一 GPU 執行緒：所有算圖都在這裡序列化執行（計畫書 9.2、11.3）。
@@ -40,15 +63,15 @@ public sealed class RenderScheduler : IDisposable
     private string? _previewKey, _previewPath, _activeKey;
     private (string? Key, string? Path)? _cancelledPreview;
 
-    /// <summary>算圖器建立完成（或改用備援）。參數為裝置名稱與是否為軟體介面卡。</summary>
-    public event Action<string, bool>? DeviceReady;
+    /// <summary>算圖器建立完成（或改用備援），攜帶資格快照當下的算圖世代。</summary>
+    public event Action<DeviceReady>? DeviceReady;
 
     /// <summary>目前算圖器的裝置名稱（CPU 備援的名稱依目前語言；切換語言時重新讀取）。</summary>
     public string? DeviceName => Volatile.Read(ref _renderer)?.DeviceName;
     public event Action<PreviewRendered>? PreviewRendered;
-    public event Action<string, RenderResult>? ThumbnailRendered;
-    /// <summary>需要告知使用者的訊息（例如 GPU 重新初始化）。</summary>
-    public event Action<string>? Notice;
+    public event Action<ThumbnailRendered>? ThumbnailRendered;
+    /// <summary>需要告知使用者的訊息（例如 GPU 重新初始化），攜帶發出時的算圖世代。</summary>
+    public event Action<SchedulerNotice>? Notice;
     public event Action<RenderFailure>? RenderFailed;
 
     /// <summary>排隊中的縮圖數（狀態列的背景工作進度）。</summary>
@@ -235,9 +258,16 @@ public sealed class RenderScheduler : IDisposable
                         if (p.Epoch != epoch) continue;
                         if (TryRender(p.Key, p.Source, p.Settings, p.Epoch, cancellation!.Token, p.Generation) is { } r)
                         {
+                            // 完成資格在送件鎖內快照，昂貴回呼在鎖外執行：直方圖等不得卡住新的 RequestPreview。
+                            //  payload 攜帶快照時的世代：鎖釋放後若發生重建，回呼入口不得再取新世代，
+                            // 過期交付由 payload 世代與 PreviewService 的世代/epoch 圍欄擋下。
+                            Action<PreviewRendered>? completed = null;
                             lock (_lock)
+                            {
                                 if (p.Epoch == _epoch && !cancellation.IsCancellationRequested)
-                                    PreviewRendered?.Invoke(new PreviewRendered(p.Key, p.Generation, r));
+                                    completed = PreviewRendered;
+                            }
+                            completed?.Invoke(new PreviewRendered(p.Key, p.Generation, r, p.Epoch));
                         }
                     }
                     else if (thumb is { } t)
@@ -245,9 +275,13 @@ public sealed class RenderScheduler : IDisposable
                         if (t.Epoch != epoch) continue;
                         if (TryRender(t.Key, t.Source, t.Settings, t.Epoch, cancellation!.Token) is { } r)
                         {
+                            Action<ThumbnailRendered>? completed = null;
                             lock (_lock)
+                            {
                                 if (t.Epoch == _epoch && !cancellation.IsCancellationRequested)
-                                    ThumbnailRendered?.Invoke(t.Key, r);
+                                    completed = ThumbnailRendered;
+                            }
+                            completed?.Invoke(new ThumbnailRendered(t.Key, r, t.Epoch));
                         }
                     }
                     else break;
@@ -280,8 +314,14 @@ public sealed class RenderScheduler : IDisposable
             InitRenderer();
             if (_renderer is null)
             {
+                Action<RenderFailure>? failed = null;
+                Exception? initError = null;
                 lock (_lock)
-                    if (epoch == _epoch) RenderFailed?.Invoke(new(key, _initError!, previewGeneration));
+                {
+                    if (epoch == _epoch) failed = RenderFailed;
+                    initError = _initError;
+                }
+                failed?.Invoke(new(key, initError!, previewGeneration, epoch));
                 return null;
             }
         }
@@ -302,19 +342,29 @@ public sealed class RenderScheduler : IDisposable
                 && !(DenoiseSettings.From(settings).IsActive && ex is IOException))
             {
                 // 裝置遺失或驅動程式重置：重建裝置並重新上傳後重試一次
-                Notice?.Invoke(CoreText.T($"GPU 已重新初始化（{ex.Message}）", $"GPU reinitialized ({ex.Message})"));
+                PostNotice(CoreText.T($"GPU 已重新初始化（{ex.Message}）", $"GPU reinitialized ({ex.Message})"), epoch);
                 InitRenderer();
                 if (_renderer is null)
                 {
+                    Action<RenderFailure>? failed = null;
+                    Exception? initError = null;
                     lock (_lock)
-                        if (epoch == _epoch) RenderFailed?.Invoke(new(key, _initError!, previewGeneration));
+                    {
+                        if (epoch == _epoch) failed = RenderFailed;
+                        initError = _initError;
+                    }
+                    failed?.Invoke(new(key, initError!, previewGeneration, epoch));
                     return null;
                 }
             }
             catch (Exception ex)
             {
+                Action<RenderFailure>? failed = null;
                 lock (_lock)
-                    if (epoch == _epoch) RenderFailed?.Invoke(new(key, ex, previewGeneration));
+                {
+                    if (epoch == _epoch) failed = RenderFailed;
+                }
+                failed?.Invoke(new(key, ex, previewGeneration, epoch));
             }
         }
         return null;
@@ -342,7 +392,7 @@ public sealed class RenderScheduler : IDisposable
         {
             try
             {
-                Notice?.Invoke(CoreText.T($"無法建立 GPU 裝置，改用 CPU 算圖：{primaryError?.Message}", $"Could not create a GPU device; rendering on the CPU: {primaryError?.Message}"));
+                PostNotice(CoreText.T($"無法建立 GPU 裝置，改用 CPU 算圖：{primaryError?.Message}", $"Could not create a GPU device; rendering on the CPU: {primaryError?.Message}"));
                 next = _fallback();
             }
             catch (Exception fallbackError)
@@ -352,19 +402,49 @@ public sealed class RenderScheduler : IDisposable
         }
         if (next is null)
         {
+            Action<RenderFailure>? failed = null;
+            Exception initError;
+            long failedEpoch;
             lock (_lock)
             {
-                _initError = primaryError ?? new InvalidOperationException("Renderer factory returned no renderer.");
-                if (_pendingReset is null) RenderFailed?.Invoke(new("$init", _initError, null));
+                _initError = initError = primaryError ?? new InvalidOperationException("Renderer factory returned no renderer.");
+                failedEpoch = _epoch;
+                if (_pendingReset is null) failed = RenderFailed;
             }
+            failed?.Invoke(new("$init", initError, null, failedEpoch));
             return;
         }
         _renderer = next;
+        Action<DeviceReady>? ready = null;
+        long readyEpoch;
         lock (_lock)
         {
             _initError = null;
-            if (_pendingReset is null) DeviceReady?.Invoke(_renderer.DeviceName, _renderer.IsSoftware);
+            readyEpoch = _epoch;
+            if (_pendingReset is null) ready = DeviceReady;
         }
+        ready?.Invoke(new DeviceReady(_renderer.DeviceName, _renderer.IsSoftware, readyEpoch));
+    }
+
+    /// <summary>在送件鎖內快照當下世代並於鎖外發出通知；回呼不得重新讀取世代。</summary>
+    private void PostNotice(string message, long? epoch = null)
+    {
+        Action<SchedulerNotice>? notice;
+        long noticeEpoch;
+        if (epoch is { } fixedEpoch)
+        {
+            notice = Notice;
+            noticeEpoch = fixedEpoch;
+        }
+        else
+        {
+            lock (_lock)
+            {
+                notice = Notice;
+                noticeEpoch = _epoch;
+            }
+        }
+        notice?.Invoke(new SchedulerNotice(message, noticeEpoch));
     }
 
     public void Dispose()

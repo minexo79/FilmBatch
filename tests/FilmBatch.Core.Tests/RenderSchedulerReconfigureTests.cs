@@ -84,10 +84,10 @@ public sealed class RenderSchedulerReconfigureTests
         var previews = new List<byte>();
         var previewReady = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var rebuilt = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        scheduler.DeviceReady += (name, _) =>
+        scheduler.DeviceReady += ready =>
         {
-            lock (devices) devices.Add(name);
-            if (name == "second") rebuilt.TrySetResult();
+            lock (devices) devices.Add(ready.DeviceName);
+            if (ready.DeviceName == "second") rebuilt.TrySetResult();
         };
         scheduler.PreviewRendered += r =>
         {
@@ -131,7 +131,7 @@ public sealed class RenderSchedulerReconfigureTests
         Assert.NotNull(scheduler.InitError);
 
         var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        scheduler.DeviceReady += (_, _) => ready.TrySetResult();
+        scheduler.DeviceReady += _ => ready.TrySetResult();
         var done = new TaskCompletionSource<RenderResult>(TaskCreationOptions.RunContinuationsAsynchronously);
         scheduler.PreviewRendered += result => done.TrySetResult(result.Result);
         scheduler.ResetRenderer(() => new CpuFakeRenderer());

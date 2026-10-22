@@ -9,9 +9,11 @@ namespace FilmBatch.App.Services;
 
 /// <summary>
 /// 解碼後的來源影像快取。預覽代理圖以目前偏好尺寸（<see cref="PreviewLongEdge"/>，可即時變更）LRU 保留少量；
-/// 縮圖來源（200px）全部保留，供設定變更後重算縮圖。
+/// 縮圖來源（200px）同樣 LRU 界定已完成來源的保留量，供可見範圍與設定變更重算縮圖。
 /// 前景預覽（<c>_decodeGate</c>）與背景縮圖（<c>_backgroundGate</c>，容量 1）使用獨立的入場控制：
 /// 大量縮圖排隊不會阻塞目前照片；背景一次只解一張，並依程序 CPU 合作式讓出時間。
+/// 縮圖逐出只丟棄快取字典的參考（呼叫端若仍保留即仍可用），絕不取消他人的共享飛行中解碼；
+/// 目前顯示來源由焦點預覽快取與 filmstrip 的可見／焦點釘選保護。
 /// </summary>
 /// <remarks>
 /// <para>CPU 目標（<see cref="SetBackgroundCpuPercent"/>，10–100，預設 70）是合作式軟目標，以
@@ -25,12 +27,15 @@ namespace FilmBatch.App.Services;
 /// 明確取消（<see cref="CancelBackground"/>）只回收背景側，不清除已完成的前景或縮圖。
 /// 呼叫端的等待取消（<c>CancellationToken</c>）只取消該呼叫的等待，不毒化共享的快取任務。
 /// 前景快取鍵包含路徑、尺寸與 RAW 選項，復原可重用先前的來源；所有選項合計最多保留八筆，
-/// LRU 逐出與尺寸失效均取消排隊工作，避免同一張照片反覆切換選項留下無界解碼。</para>
+/// LRU 逐出與尺寸失效均取消排隊工作，避免同一張照片反覆切換選項留下無界解碼。
+/// 縮圖快取鍵為路徑（選項改變即取代同路徑舊條目），LRU 保留最近完成的少量來源；
+/// 逐出只釋放已完成的字典參考，飛行中的解碼任務仍由等待者共享完成，不會被他人的逐出取消。</para>
 /// </remarks>
 public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge) : IDisposable
 {
     public const int ThumbnailLongEdge = 200;
     private const int MaxPreviews = 8;
+    private const int MaxThumbnails = 64;
     private const int DefaultBackgroundCpuPercent = 70;
     private const double MaxPacingDelaySeconds = 2.0;
 
@@ -39,6 +44,7 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
     private readonly ConcurrentDictionary<string, (RawLoadOptions Options, Task<SourceImage> Task, CancellationTokenSource Cts)> _thumbs = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<(string Path, int Edge, RawLoadOptions Options), (Task<SourceImage> Task, CancellationTokenSource Cts)> _previews = new();
     private readonly LinkedList<(string Path, int Edge, RawLoadOptions Options)> _previewOrder = new();
+    private readonly LinkedList<string> _thumbOrder = new();
     private readonly object _stateLock = new();
     private int _previewLongEdge = previewLongEdge;
     private long _folderGeneration;
@@ -68,7 +74,7 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
         get { lock (_stateLock) return _backgroundCpuPercent; }
     }
 
-    /// <summary>背景縮圖來源：單次飛行、獨立背景入場加 CPU 節流；等待取消不毒化共享任務。</summary>
+    /// <summary>背景縮圖來源：單次飛行、獨立背景入場加 CPU 節流；等待取消不毒化共享任務。已完成來源以 LRU 界定保留量，逐出不取消他人的飛行中解碼。</summary>
     public Task<SourceImage> GetThumbnailSourceAsync(string path, RawLoadOptions rawOptions = default, CancellationToken cancellationToken = default)
     {
         Task<SourceImage> shared;
@@ -78,6 +84,7 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
             if (_thumbs.TryGetValue(path, out var cur) && cur.Options == rawOptions
                 && !cur.Task.IsFaulted && !cur.Task.IsCanceled)
             {
+                TouchThumbLocked(path);
                 shared = cur.Task;
             }
             else
@@ -91,10 +98,46 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
                 var task = DecodeThumbnailAsync(path, rawOptions, generation, backgroundToken, entryCts);
                 task.ContinueWith(static t => { _ = t.Exception; }, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
                 _thumbs[path] = (rawOptions, task, entryCts);
+                _thumbOrder.Remove(path);
+                _thumbOrder.AddFirst(path);
+                EvictThumbsLocked();
                 shared = task;
             }
         }
         return ApplyWaiter(shared, cancellationToken);
+    }
+
+    private void TouchThumbLocked(string path)
+    {
+        _thumbOrder.Remove(path);
+        _thumbOrder.AddFirst(path);
+    }
+
+    private void EvictThumbsLocked()
+    {
+        // 只逐出已完成的成功來源；飛行中的共享解碼移到前端保留，絕不取消。
+        // 字典大小界定為 MaxThumbnails 加飛行中數量（有界泵一次只解一張）。
+        // 呼叫端皆持有 _stateLock，檢查後移除不需跨執行緒的條件移除。
+        var guard = _thumbOrder.Count;
+        while (_thumbOrder.Count > MaxThumbnails && guard-- > 0)
+        {
+            var last = _thumbOrder.Last!;
+            if (_thumbs.TryGetValue(last.Value, out var evicted)
+                && evicted.Task.IsCompletedSuccessfully)
+            {
+                _thumbs.TryRemove(last.Value, out _);
+                _thumbOrder.Remove(last);
+            }
+            else if (!_thumbs.ContainsKey(last.Value))
+            {
+                _thumbOrder.Remove(last);
+            }
+            else
+            {
+                _thumbOrder.Remove(last);
+                _thumbOrder.AddFirst(last);
+            }
+        }
     }
 
     /// <summary>前景預覽：獨立前景入場、不節流；LRU 逐出會取消已取代的舊解碼，等待取消不毒化共享任務。</summary>
@@ -208,6 +251,7 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
             _thumbs.Clear();
             _previews.Clear();
             _previewOrder.Clear();
+            _thumbOrder.Clear();
             _lastPaceTimestamp = paceTimestamp;
             _lastPaceCpu = paceCpu;
             generation = ++_folderGeneration;
@@ -240,6 +284,7 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
             _thumbs.Clear();
             _previews.Clear();
             _previewOrder.Clear();
+            _thumbOrder.Clear();
             _folderGeneration++;
         }
         // 取消排隊／節流但不 Dispose 閘門或舊 CTS：進行中的解碼 finally 仍會 Release，
@@ -277,23 +322,47 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
     {
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(backgroundToken, entryCts.Token);
         var ct = linked.Token;
-        ct.ThrowIfCancellationRequested();
-        await _backgroundGate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
             ct.ThrowIfCancellationRequested();
-            if (!IsCurrent(generation)) throw new OperationCanceledException(ct);
-            await PaceBackgroundAsync(ct).ConfigureAwait(false);
-            ct.ThrowIfCancellationRequested();
-            if (!IsCurrent(generation)) throw new OperationCanceledException(ct);
-            var result = await Task.Run(() => ImageLoader.Load(path, ThumbnailLongEdge, rawOptions), ct).ConfigureAwait(false);
-            ct.ThrowIfCancellationRequested();
-            if (!IsCurrent(generation)) throw new OperationCanceledException(ct);
-            return result;
+            await _backgroundGate.WaitAsync(ct).ConfigureAwait(false);
+            try
+            {
+                ct.ThrowIfCancellationRequested();
+                if (!IsCurrent(generation)) throw new OperationCanceledException(ct);
+                await PaceBackgroundAsync(ct).ConfigureAwait(false);
+                ct.ThrowIfCancellationRequested();
+                if (!IsCurrent(generation)) throw new OperationCanceledException(ct);
+                var result = await Task.Run(() => ImageLoader.Load(path, ThumbnailLongEdge, rawOptions), ct).ConfigureAwait(false);
+                ct.ThrowIfCancellationRequested();
+                if (!IsCurrent(generation)) throw new OperationCanceledException(ct);
+                // Concurrent callers can fill the cache while every entry is still in flight.
+                // Trim again as work completes, not only when the next request arrives.
+                lock (_stateLock)
+                {
+                    if (_thumbs.TryGetValue(path, out var current) && ReferenceEquals(current.Cts, entryCts))
+                        EvictThumbsLocked();
+                }
+                return result;
+            }
+            finally
+            {
+                _backgroundGate.Release();
+            }
         }
-        finally
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
-            _backgroundGate.Release();
+            // 終端取消／解碼失敗不留可重放的舊任務：只移除仍指向本次任務的條目，
+            // 新選項取代或新資料夾的同路徑任務不受影響，下次請求重新解碼。
+            lock (_stateLock)
+            {
+                if (_thumbs.TryGetValue(path, out var cur) && ReferenceEquals(cur.Cts, entryCts))
+                {
+                    _thumbs.TryRemove(path, out _);
+                    _thumbOrder.Remove(path);
+                }
+            }
+            throw;
         }
     }
 

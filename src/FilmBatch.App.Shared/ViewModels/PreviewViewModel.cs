@@ -300,6 +300,7 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
     {
         if (_controlModule is not null && _controlKeys is { } keys && main.Service is not null)
         {
+            if (_editSession is null) main.FlushEdit();
             _editSession ??= $"cp:{_controlModule}:{Guid.NewGuid():N}";
             var p = new Point(Math.Clamp(normalized.X, 0, 1), Math.Clamp(normalized.Y, 0, 1));
             ControlPoint = p;
@@ -323,6 +324,7 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
             && EffectFootprint.DragValue(dragKey, settings, px.Width, px.Height,
                 new System.Numerics.Vector2((float)normalized.X, (float)normalized.Y)) is { } value)
         {
+            if (_editSession is null) main.FlushEdit();
             _editSession ??= $"fp:{dragKey}:{Guid.NewGuid():N}";
             _controlSettings = settings.With(dragKey, value);
             UpdateFootprint();
