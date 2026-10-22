@@ -170,7 +170,7 @@ public partial class LocalizationTests
             var texts = new List<string?>
             {
                 vm.Preview.EmptyText, vm.GpuName, vm.Filmstrip.CountText, vm.Preview.ZoomText, vm.Preview.HistogramClipping, vm.SelectionText, vm.BackgroundText,
-                vm.Inspector.OverrideText, vm.Sidebar.Export.Summary, vm.Sidebar.Export.StatusText,
+                vm.Inspector.OverrideText, vm.Sidebar.Export.Summary, vm.Sidebar.Export.StatusText, Loc.Get("AiFeatures.Title"),
             };
             foreach (var panel in new[] { vm.Inspector, vm.FilmEffects })
             {

@@ -638,6 +638,7 @@ Clear overrides: use the new preset entirely.</value></data>
   <data name="Param.denoise.amount" xml:space="preserve"><value>Strength</value></data>
   <data name="Param.denoise.luminance" xml:space="preserve"><value>Luminance Denoise</value></data>
   <data name="Param.denoise.color" xml:space="preserve"><value>Color Denoise</value></data>
+  <data name="AiFeatures.Title" xml:space="preserve"><value>AI Features</value></data>
   <data name="Denoise.Title" xml:space="preserve"><value>AI Denoise Model</value></data>
   <data name="Denoise.Domain.Raw" xml:space="preserve"><value>RAW scene-linear source</value></data>
   <data name="Denoise.Domain.Srgb" xml:space="preserve"><value>sRGB source</value></data>

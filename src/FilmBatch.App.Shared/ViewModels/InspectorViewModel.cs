@@ -27,8 +27,18 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
     /// <summary>照片工具（取樣／提案）所在的主視窗 VM；同時控制要不要顯示工具面板。</summary>
     public MainWindowViewModel Main => _main;
 
-    /// <summary>「照片基本參數」分頁是否顯示照片工具面板（取樣／WB／膚色／Zone）。</summary>
+    /// <summary>「照片基本參數」分頁是否顯示照片工具與「AI 功能」（取樣／WB／膚色／Zone、降噪、去背）。</summary>
     public bool ShowsPhotoTools => ShowsPhotoInfo;
+
+    /// <summary>收進「AI 功能」、不出現在基本／光學分組標題下的模組。</summary>
+    private static readonly HashSet<string> AiModuleKeys = ["denoise"];
+
+    /// <summary>降噪模組。仍留在 <see cref="Modules"/>，所以載入、隱藏停用模組與語言切換照舊。</summary>
+    public IReadOnlyList<ModuleSectionViewModel> AiModules { get; }
+
+    /// <summary>「AI 功能」是否展開。不寫入設定；預設展開，讓原本就看得到的降噪與去背留在畫面上。</summary>
+    [ObservableProperty]
+    private bool _isAiFeaturesExpanded = true;
 
     /// <summary>是否為目前顯示中的分頁；畫布控制點只採用顯示中分頁裡展開的模組。由 <see cref="SidebarViewModel"/> 設定。</summary>
     public bool IsActive
@@ -86,7 +96,8 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
         });
         // 照片基本參數預設展開基本調整；不依賴 RAW／裁切等模組在目錄中的位置。
         if (Modules.FirstOrDefault(m => m.Key == "basic") is { } basic) basic.IsExpanded = true;
-        Groups = new(Modules.GroupBy(m => m.Schema.Group).Select(g => new ModuleGroupViewModel(g.Key, g)));
+        AiModules = Modules.Where(m => AiModuleKeys.Contains(m.Key)).ToList();
+        Groups = new(Modules.Where(m => !AiModuleKeys.Contains(m.Key)).GroupBy(m => m.Schema.Group).Select(g => new ModuleGroupViewModel(g.Key, g)));
         RefreshPresetOptions();
     }
 
@@ -102,6 +113,18 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
 
     /// <summary>「隱藏停用的模組」由兩個模組分頁共用；設定改變後由 <see cref="MainWindowViewModel"/> 通知每個分頁。</summary>
     internal void NotifyHideDisabledModulesChanged() => OnPropertyChanged(nameof(HideDisabledModules));
+
+    /// <summary>
+    /// 收合時取消未套用的單張去背草稿與進行中的單張選取。
+    /// 批次會在背景跑完並一次保存；降噪下載、匯入與推論不受影響。底片效果分頁沒有這塊面板，也不會連帶取消。
+    /// </summary>
+    partial void OnIsAiFeaturesExpandedChanged(bool value)
+    {
+        if (value || !ShowsPhotoTools) return;
+        var removal = _main.BackgroundRemoval;
+        if (removal is { CanCancel: true, IsBatchRunning: false })
+            removal.CancelCommand.Execute(null);
+    }
 
     public void RefreshPresetOptions()
     {

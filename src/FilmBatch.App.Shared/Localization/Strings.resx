@@ -395,6 +395,7 @@
   <data name="Param.denoise.amount" xml:space="preserve"><value>強度</value></data>
   <data name="Param.denoise.luminance" xml:space="preserve"><value>亮度降噪</value></data>
   <data name="Param.denoise.color" xml:space="preserve"><value>色度降噪</value></data>
+  <data name="AiFeatures.Title" xml:space="preserve"><value>AI 功能</value></data>
   <data name="Denoise.Title" xml:space="preserve"><value>AI 降噪模型</value></data>
   <data name="Denoise.Domain.Raw" xml:space="preserve"><value>RAW 場景線性來源</value></data>
   <data name="Denoise.Domain.Srgb" xml:space="preserve"><value>sRGB 來源</value></data>

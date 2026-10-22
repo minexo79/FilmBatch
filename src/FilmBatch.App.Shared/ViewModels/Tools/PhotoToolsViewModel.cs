@@ -131,7 +131,7 @@ public sealed partial class PhotoToolsViewModel : ObservableObject
 
     // ───────────── 面板狀態 ─────────────
 
-    /// <summary>「照片工具」區塊是否展開（在「照片基本參數」分頁的模組清單頂部）。</summary>
+    /// <summary>「照片工具」區塊是否展開（在「照片基本參數」分頁、「AI 功能」下方）。</summary>
     [ObservableProperty]
     private bool _isPanelExpanded;
 
