@@ -73,6 +73,12 @@ Sigma BF 另在 `research/sigma-bf-raw-performance` 保存並推送研究提交 
 
 程式修正分組提交為 `a5c8266`（透明縮小／PNG16／JPEG）、`7211c44`（編輯手勢／縮圖／排程）、`a7f22c2`（RAW 配置）與 `35f4373`（降噪代理／精確 Gaussian）。Git 已回報 `b32cd4c..35f4373` 一般前進式推送至 `origin/dev-ai-denoising` 成功；本證據文件另行提交，不從提交主旨推論測試或遠端狀態。
 
+## Sigma BF、預覽分支整合與 Windows 修正（2026-10-22）
+
+使用者後續提供可讀取的 Sigma BF DNG，取代前節的缺少輸入限制。研究分支提交 `e61090f`、`91827cb` 量測並修正共用 GainMap 的逐列工作分配，保留插值與完整輸出雜湊；已正式合併至 `dev-ai-denoising`。接著以 `4a86715` 合併 `dev-preview-enhanced` 的 `4996977`，保留共用編輯器的暫存手勢／單次提交、AI／遮罩／匯出契約，納入 RAW 白平衡、色軌、膚色控制點、漏光混合與 Lensfun 偏好。
+
+同一整合提交修正 `35f4373` 引入的大型 Gaussian 佇列逾時：限制累積工作量、分批等待，不延長 10 秒期限、不縮小案例、不改走應用程式 CPU renderer。[Windows CI #110](https://circleci.com/gh/minexo79/FilmBatch/110) 已在 DX12 軟體介面卡上通過原案例、完整回歸、封裝與原生 smoke；macOS、shader、admission 與 pre-merge gate 也通過。程式碼已推送；後續文件提交僅補記遠端結果，不混淆驗證版本。[整合與驗證證據](superpowers/plans/2026-10-22-performance-correctness.md#subsequent-sigma-and-preview-branch-integration)保留各平台測試數與未驗證範圍。
+
 ## 如何新增歷史列
 
 只記對未來修改有用的決定：真實 commit／日期、可核對的理由或重現、被拒絕方案、目前契約／檢查、後續取代。沒有當時證據時明寫「只確認提交意圖」；數值必須保留平台、輸入與來源版本，不把舊測試 totals 複製成新版本的驗收結果。

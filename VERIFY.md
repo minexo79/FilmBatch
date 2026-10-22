@@ -64,7 +64,7 @@ dotnet test FilmBatch.sln -c Release --logger trx --results-directory "$work/tes
 | iOS 主要編輯器的實際 Files／Photos、編輯、輸出與取消 | `src/FilmBatch.Mobile.iOS` 的實際 Release app；原生 XCTest 操作及獨立輸出解碼 | [建置／操作](docs/building.md#ios-行動版)、[本輪實測與證據邊界](docs/building.md#本輪實測2026-10-20)；不以診斷 app、Headless 或 Mac 的 pass 代替 |
 | 暗部研究、局部 tone mapping 與獨立感光解碼比較 | [輸入 SHA-256、工具版本與重播順序](docs/shadow-recovery-survey.md#可重現的高反差-raw-比較)、[三相機受控解碼比較](docs/shadow-recovery-survey.md#獨立感光解碼比較2026-10-22) | 早期原型、現有產品功能及外部 oracle 分列；`V1` 綠燈不證明 Lightroom 優劣、相機噪聲校準或其他相機的解碼一致 |
 | 透明縮放／PNG16 精度、JPEG 提示、RAW 配置及本輪效能 | `ForegroundAlphaTests`、`BatchExporterTests`、`DemosaicTests`、`FujifilmRafTests`、`SparseReadTests`；原生操作及前後量測另跑 smoke | [實作契約與成對量測](docs/superpowers/plans/2026-10-22-performance-correctness.md)；不把配置量、保留量或單機計時混為跨平台效能承諾 |
-| 精確 Gaussian 分批、tile／直接核心邊界與大型光暈／清晰度 | `GpuGaussianTests`；Naga 全部 entry point 與原生 Metal spike 另跑 | [Windows 逾時修正與平台邊界](docs/building.md#windows-gaussian-逾時修正)；保留 2049×1665 案例與原 10 秒期限，Metal／交叉發佈不代替 Windows CI |
+| 精確 Gaussian 分批、tile／直接核心邊界與大型光暈／清晰度 | `GpuGaussianTests`；Naga 全部 entry point 與原生 Metal spike 另跑 | [Windows 逾時修正與平台邊界](docs/building.md#windows-gaussian-逾時修正)；保留 2049×1665 案例與原 10 秒期限，Metal 與 [Windows DX12 軟體介面卡 CI](docs/superpowers/plans/2026-10-22-performance-correctness.md#remote-windows-ci-evidence-after-push)分別驗證，不延伸為 Windows 硬體 GPU 結論 |
 
 需要縮小範圍時，用 `--filter FullyQualifiedName~類別名稱`；先確認實際執行了預期測試，不能把沒有匹配 case 的 exit 當 pass。外部語料取得與釘選參考輸出見 [raw-oracle](tools/raw-oracle/README.md)。
 

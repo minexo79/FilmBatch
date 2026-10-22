@@ -200,9 +200,9 @@ The user additionally requested merging `origin/dev-preview-enhanced`; the fetch
 | Lensfun preferences, CLI options and warned fallback | verified | Preference/cache/export regressions; native preference save/runtime update/clear; packaged CLI accepts both `--denoise 0` and `--lens-database` and exports PNG16 |
 | BF RAW load and full-size PNG16 remain valid | verified | Same local DNG; native scene-linear 1504×1003 preview, 6016×4012 PNG16 export; preview and reloaded export hashes match the verified pre-merge output |
 | Final merged Release suite and packaged macOS smoke | verified | RAW 636 passed/293 skipped, Core 679 passed/27 skipped, App 243 passed; total 1558 passed, zero failed, 320 skipped; 25 packaged native smoke checks pass |
-| Commit and push the completed integration | pending | Normal push acknowledgement; no force, tags or original photos |
+| Commit and push the completed integration | verified | Normal push `eb7e201..4a86715` to `origin/dev-ai-denoising` acknowledged; no force, tags or original photos |
 
-Consumer coverage: desktop and mobile share the edited ViewModels/controls; macOS native UI and CLI are exercised after integration. CPU/GPU rendering, cached sources, project/undo persistence, export metadata and existing documentation are in scope. Windows/iOS native execution, broader BF samples and independent decoder/perceptual comparisons remain explicit untested boundaries.
+Consumer coverage: desktop and mobile share the edited ViewModels/controls; macOS native UI and CLI are exercised after integration, and Windows DX12 software-adapter CI and native smoke pass as recorded below. CPU/GPU rendering, cached sources, project/undo persistence, export metadata and existing documentation are in scope. Windows hardware-GPU and iOS native execution, broader BF samples and independent decoder/perceptual comparisons remain explicit untested boundaries.
 
 ### Windows Gaussian timeout repair and final verification
 
@@ -217,7 +217,7 @@ The user supplied `dist/build_105_step_106_container_0.txt` for the failure intr
 - Packaged CLI exports the isolated BF copy with both merged options (`--denoise 0`, `--lens-database`): one success, 1600×1067, PNG bit depth 16 / color type 6, Metal. The unsupported harness argument `--format png16` was rejected; the documented value `--format png` succeeds.
 - macOS packaging and all **25** native smoke checks pass; the application is ad-hoc signed, not notarized. Windows cross-publish plus ZIP succeeds; GUI and CLI are PE32+ x86-64 binaries.
 - An additional 6000×4000 CLI spike was rejected by the existing benchmark memory budget before rendering. The guard was not changed. The original Gaussian regression remains 2049×1665; full-size BF GUI export is checked separately.
-- **Untested boundary:** no local Windows runtime or configured SSH host is available, and `gh auth status` reports no authenticated host. Windows execution/CI is not claimed by Metal tests or cross-publishing. iOS native execution was not repeated for this merge.
+- **Untested boundary:** Windows hardware-GPU and iOS native execution were not repeated for this merge. The Windows DX12 software-adapter execution below is separate evidence, not a claim inferred from Metal tests or cross-publishing.
 
 Consumer coverage: both Gaussian shader variants, production blur callers, multi-effect accumulation, partial workgroups and alpha/edge preservation are covered by the Gaussian suite; GUI and CLI rendering/export are exercised on Metal. Desktop/mobile color styles now live under the shared editor resource assembly, with no desktop-only alias. Existing project formats and parameter values are unchanged; docs and verification routes are updated.
 
@@ -226,3 +226,14 @@ TWINS: searched `Dispatch2D(..._blur`, `Dispatch(..._blur`, and `"common/gaussia
 The final native BF run also reads the GUI export log and asserts `Device=Apple M3 · Metal` and `IsSoftwareRenderer=false`; the full-size PNG16's reloaded RGBA16 SHA-256 remains `8d38398287f500c2295debe49f7eccd76fd0a0b8f28af71dbd9e57ff06f1833a`. Original and isolated-copy DNG SHA-256 both remain `277235132dce1e228cc9fc1ee0d24033ddddd1dbf021bc44ac85dfa669369c7e`.
 
 Local verification archive: `artifacts/verification/2026-10-22-preview-merge.tar.gz` (ignored, not pushed), SHA-256 `2d0732614fe0a40f84174063bd0ab6cb613561f76c3885e774ae8f6695b8d8e1`; gzip integrity passes. It contains the final native driver, TRX/result summaries, shader/red-regression/build receipts, supplied Windows failure log, isolated export metadata and native/package captures. Original DNGs, exported photo files, model weights and build outputs are excluded. The disposable driver emits two obsolete `Bitmap.Save` warnings; these are harness warnings, not suppressed product failures.
+
+### Remote Windows CI evidence after push
+
+Commit `4a867155179365d65a1a55d984dbb23a7bda2a5c` completed [Windows job #110](https://circleci.com/gh/minexo79/FilmBatch/110) successfully. Its build, test, bundled JXL ABI/sample decode and native publish/smoke steps all exited zero.
+
+- The unchanged 2049×1665 `HalationAndClarity_LargeRadius_MatchesCpuOnOddSizeWithTransparentEdges` case passed in approximately **30 seconds**; all **12 Gaussian cases** passed. This is total test duration across bounded submissions, not a longer queue-wait deadline: the existing per-wait limit remains 10 seconds.
+- Windows Release results: **1541 passed, 0 failed, 337 skipped**. Per-project counts and skip reasons are retained in the saved summary and complete test log; they are not substituted for the separate macOS totals above.
+- All **24 native Windows smoke checks** passed, including preview shader compilation/readback, edit persistence, project reopen, full-size 16-bit PNG export, embedded sRGB ICC and unchanged source photos. The observed adapter is **Microsoft Basic Render Driver · DX12 (Software)**. This is the selected WebGPU/DX12 adapter, not a switch to the application's CPU renderer.
+- The [commit status API](https://api.github.com/repos/minexo79/FilmBatch/commits/4a867155179365d65a1a55d984dbb23a7bda2a5c/status) reports success for [admission #109](https://circleci.com/gh/minexo79/FilmBatch/109), [shaders #111](https://circleci.com/gh/minexo79/FilmBatch/111), [macOS #112](https://circleci.com/gh/minexo79/FilmBatch/112) and [pre-merge #113](https://circleci.com/gh/minexo79/FilmBatch/113), as well as Windows #110.
+
+Additional local evidence archive: `artifacts/verification/2026-10-22-preview-merge-windows-ci.tar.gz` (ignored, not pushed), SHA-256 `2f1db2a16a32002ec00dafaf1e8d7e37a56c9e420cd5424de26f68b94136640a`; gzip integrity passes. It contains the public job/gate summary, full Windows test log, native smoke receipt and inspected screenshot. This follow-up changes documentation only; the runtime evidence is pinned to `4a86715`.
