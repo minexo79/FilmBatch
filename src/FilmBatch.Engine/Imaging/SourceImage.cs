@@ -158,16 +158,21 @@ public sealed class SourceImage
                 for (var sx = x0; sx < x1; sx++)
                 {
                     var i = (sy * Width + sx) * 4;
-                    r += rgba16[i];
-                    g += rgba16[i + 1];
-                    b += rgba16[i + 2];
-                    a += rgba16[i + 3];
+                    var alpha = (long)rgba16[i + 3];
+                    r += rgba16[i] * alpha;
+                    g += rgba16[i + 1] * alpha;
+                    b += rgba16[i + 2] * alpha;
+                    a += alpha;
                 }
                 var n = (x1 - x0) * (y1 - y0);
                 var o = (y * w + x) * 4;
-                dst[o] = (ushort)(r / n);
-                dst[o + 1] = (ushort)(g / n);
-                dst[o + 2] = (ushort)(b / n);
+                // Filter premultiplied color, then return straight RGBA. Invisible RGB contributes nothing.
+                if (a != 0)
+                {
+                    dst[o] = (ushort)(r / a);
+                    dst[o + 1] = (ushort)(g / a);
+                    dst[o + 2] = (ushort)(b / a);
+                }
                 dst[o + 3] = (ushort)(a / n);
             }
         }

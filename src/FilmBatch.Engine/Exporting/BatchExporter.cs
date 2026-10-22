@@ -252,7 +252,7 @@ public static class BatchExporter
         var h = Math.Max(1, (int)Math.Round(image.Height * scale));
         var src = image.Rgba16;
         var dst = new ushort[w * h * 4];
-        // Lanczos-3 可分離縮放（sRGB 端；16-bit 精度保留）
+        // Lanczos-3 filters premultiplied sRGB; unpremultiply only after both passes.
         var xContrib = Weights(image.Width, w);
         var yContrib = Weights(image.Height, h);
         var tmp = new float[h * image.Width * 4];
@@ -266,7 +266,10 @@ public static class BatchExporter
                 foreach (var (sx, wt) in yc.Source)
                 {
                     var s = (sx * image.Width + x) * 4;
-                    r += src[s] * wt; g += src[s + 1] * wt; b += src[s + 2] * wt; a += src[s + 3] * wt;
+                    var coverage = src[s + 3] / 65535.0;
+                    var colorWeight = wt * coverage;
+                    r += src[s] * colorWeight; g += src[s + 1] * colorWeight; b += src[s + 2] * colorWeight;
+                    a += src[s + 3] * wt;
                 }
                 var d = (y * image.Width + x) * 4;
                 tmp[d] = (float)r; tmp[d + 1] = (float)g; tmp[d + 2] = (float)b; tmp[d + 3] = (float)a;
@@ -285,7 +288,15 @@ public static class BatchExporter
                     r += tmp[s] * wt; g += tmp[s + 1] * wt; b += tmp[s + 2] * wt; a += tmp[s + 3] * wt;
                 }
                 var d = (y * w + x) * 4;
-                dst[d] = Clamp16(r); dst[d + 1] = Clamp16(g); dst[d + 2] = Clamp16(b); dst[d + 3] = Clamp16(a);
+                var alpha = Clamp16(a);
+                if (alpha != 0)
+                {
+                    var unpremultiply = 65535.0 / a;
+                    dst[d] = Clamp16(r * unpremultiply);
+                    dst[d + 1] = Clamp16(g * unpremultiply);
+                    dst[d + 2] = Clamp16(b * unpremultiply);
+                    dst[d + 3] = alpha;
+                }
             }
         });
         ct.ThrowIfCancellationRequested();

@@ -71,6 +71,51 @@ public sealed class ForegroundAlphaTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public void Downsampling_DoesNotMixInvisibleColorIntoVisibleEdges(bool lanczos)
+    {
+        var source = new SourceImage(2, 1, [65535, 0, 0, 65535, 0, 0, 65535, 0]);
+        var result = lanczos ? BatchExporter.DownscaleLongEdge(source, 1, Ct) : source.Downscale(1);
+        Assert.Equal((1, 1), (result.Width, result.Height));
+        Assert.Equal(new ushort[] { 65535, 0, 0 }, result.Rgba16[..3]);
+        Assert.InRange(result.Rgba16[3], 32767, 32768);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Downsampling_WeightsTranslucentColorsByCoverage(bool lanczos)
+    {
+        var source = new SourceImage(2, 1, [65535, 0, 0, 65535, 0, 0, 65535, 21845]);
+        var result = lanczos ? BatchExporter.DownscaleLongEdge(source, 1, Ct) : source.Downscale(1);
+        Assert.InRange(result.Rgba16[0], 49151, 49152);
+        Assert.Equal(0, result.Rgba16[1]);
+        Assert.InRange(result.Rgba16[2], 16383, 16384);
+        Assert.Equal(43690, result.Rgba16[3]);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Downsampling_ClearsColorsWhenCoverageIsZero(bool lanczos)
+    {
+        var source = new SourceImage(2, 1, [65535, 0, 0, 0, 0, 12345, 65535, 0]);
+        var result = lanczos ? BatchExporter.DownscaleLongEdge(source, 1, Ct) : source.Downscale(1);
+        Assert.Equal(new ushort[] { 0, 0, 0, 0 }, result.Rgba16);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Downsampling_PreservesOpaqueColorAverages(bool lanczos)
+    {
+        var source = new SourceImage(2, 1, [1000, 10000, 50000, 65535, 3000, 20000, 10000, 65535]);
+        var result = lanczos ? BatchExporter.DownscaleLongEdge(source, 1, Ct) : source.Downscale(1);
+        Assert.Equal(new ushort[] { 2000, 15000, 30000, 65535 }, result.Rgba16);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public void Mask_MultipliesOriginalAlpha_ExactlyOnce(bool useGpu)
     {
         var source = AlphaSource();
@@ -192,6 +237,22 @@ public sealed class ForegroundAlphaTests
                 Assert.True(Math.Abs(reloaded.Rgba16[i] - rendered.Rgba16[i]) <= 2,
                     $"alpha mismatch at {i}: {reloaded.Rgba16[i]} vs {rendered.Rgba16[i]}");
             Assert.Equal(0, reloaded.Rgba16[(0 * 8 + 7) * 4 + 3]);
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void DownsampledPng16_PreservesCoverageInsteadOfPaletteAlpha(bool lanczos)
+    {
+        var source = new SourceImage(2, 1, [65535, 0, 0, 65535, 0, 0, 65535, 0]);
+        var resized = lanczos ? BatchExporter.DownscaleLongEdge(source, 1, Ct) : source.Downscale(1);
+        var path = Path.Combine(Path.GetTempPath(), $"filmbatch-resized-alpha-{Guid.NewGuid():N}.png");
+        try
+        {
+            ImageBackend.Encode(resized, path, ExportFormat.Png16, 95, null);
+            Assert.Equal(resized.Rgba16, ImageLoader.LoadFull(path).Rgba16);
         }
         finally { File.Delete(path); }
     }

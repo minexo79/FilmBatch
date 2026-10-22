@@ -18,12 +18,21 @@ internal static class MagickImageCodec
 {
     internal static SourceImage Load(string path, int maxLongEdge, RawLoadOptions rawOptions)
     {
+        using var image = new MagickImage();
         var settings = new MagickReadSettings();
-        // JPEG 可在解碼時直接縮小，大幅加快縮圖
-        if (maxLongEdge <= ImageLoader.ThumbnailLongEdge * 2)
-            settings.SetDefine(MagickFormat.Jpeg, "size", $"{maxLongEdge * 2}x{maxLongEdge * 2}");
-
-        using var image = new MagickImage(path, settings);
+        var extension = Path.GetExtension(path.AsSpan());
+        if (maxLongEdge > 0 && maxLongEdge <= int.MaxValue / 2
+            && (extension.Equals(".jpg", StringComparison.OrdinalIgnoreCase)
+                || extension.Equals(".jpeg", StringComparison.OrdinalIgnoreCase)))
+        {
+            // JPEG size is a decoder hint, not a maximum: a shorter source axis can be enlarged.
+            // Probe only preview JPEGs and require both axes to exceed the oversampling bound.
+            image.Ping(path);
+            var edge = (uint)maxLongEdge * 2;
+            if (image.Format == MagickFormat.Jpeg && image.Width > edge && image.Height > edge)
+                settings.SetDefine(MagickFormat.Jpeg, "size", $"{edge}x{edge}");
+        }
+        image.Read(path, settings);
         // Base dimensions retain the file raster even when JPEG's decoder-size hint was used.
         var swap = image.Orientation is OrientationType.RightTop or OrientationType.RightBottom
             or OrientationType.LeftTop or OrientationType.LeftBottom;
@@ -150,7 +159,7 @@ internal static class MagickImageCodec
                 picture.Settings.Compression = CompressionMethod.Zip;
                 break;
             case ExportFormat.Png16:
-                picture.Format = MagickFormat.Png;
+                picture.Format = MagickFormat.Png64;
                 picture.Settings.SetDefines(new ImageMagick.Formats.PngWriteDefines { PreserveiCCP = true });
                 break;
             default: throw new ArgumentOutOfRangeException(nameof(format));

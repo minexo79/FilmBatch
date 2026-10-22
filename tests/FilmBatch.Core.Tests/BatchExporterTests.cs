@@ -108,6 +108,58 @@ public class BatchExporterTests
     }
 
     [Theory]
+    [InlineData(128, 33)]
+    [InlineData(4096, 1067)]
+    public void JpegPreview_PreservesOrientedReferenceSizeAndAdobeRgbColor(int sourceHeight, int previewWidth)
+    {
+        var folder = Directory.CreateTempSubdirectory("filmbatch-jpeg-preview-").FullName;
+        try
+        {
+            var path = Path.Combine(folder, "oriented-adobe.jpg");
+            using (var image = new MagickImage(new MagickColor(32768, 16384, 49151), 6144, (uint)sourceHeight))
+            {
+                image.SetProfile(ColorProfiles.AdobeRGB1998);
+                var exif = new ExifProfile();
+                exif.SetValue(ExifTag.Orientation, (ushort)6);
+                image.SetProfile(exif);
+                image.Orientation = OrientationType.RightTop;
+                image.Quality = 100;
+                image.Write(path, MagickFormat.Jpeg);
+            }
+            var preview = ImageLoader.Load(path, 1600);
+            Assert.Equal((previewWidth, 1600), (preview.Width, preview.Height));
+            Assert.Equal((sourceHeight, 6144), (preview.ReferenceWidth, preview.ReferenceHeight));
+            var full = ImageLoader.LoadFull(path);
+            Assert.Equal((sourceHeight, 6144), (full.Width, full.Height));
+            foreach (var decoded in new[] { preview, full })
+            {
+                // Independent Adobe RGB -> sRGB expectation, allowing JPEG quantization.
+                var i = ((decoded.Height / 2) * decoded.Width + decoded.Width / 2) * 4;
+                Assert.InRange((int)decoded.Rgba16[i], 36713, 38113);
+                Assert.InRange((int)decoded.Rgba16[i + 1], 15106, 16506);
+                Assert.InRange((int)decoded.Rgba16[i + 2], 49669, 51069);
+                Assert.Equal(ushort.MaxValue, decoded.Rgba16[i + 3]);
+            }
+        }
+        finally { Directory.Delete(folder, recursive: true); }
+    }
+
+    [Fact]
+    public void JpegPreview_DoesNotEnlargeAnImageSmallerThanRequestedEdge()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"filmbatch-small-{Guid.NewGuid():N}.jpg");
+        try
+        {
+            using (var image = new MagickImage(new MagickColor(24000, 32000, 40000), 32, 24))
+                image.Write(path, MagickFormat.Jpeg);
+            var preview = ImageLoader.Load(path, 64);
+            Assert.Equal((32, 24), (preview.Width, preview.Height));
+            Assert.Equal((32, 24), (preview.ReferenceWidth, preview.ReferenceHeight));
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Theory]
     [InlineData(ExportFormat.Jpeg)]
     [InlineData(ExportFormat.Png16)]
     [InlineData(ExportFormat.Tiff16)]
