@@ -34,9 +34,10 @@ public class ColorSliderTests
             "basic.saturation", "raw.mask_saturation", "halation.hue",
             "light_leak.red", "light_leak.yellow", "light_leak.blue", "light_leak.hue",
             "tone.shadow_hue", "tone.highlight_hue", "photo_plate.tint_hue",
+            "skin.ref_red", "skin.ref_green", "skin.ref_blue",
         ];
         var colored = ModuleCatalog.AllFlatKeys.Where(k => ParamTrackBrushes.For(k) is not null).ToHashSet();
-        // 10 個一般參數 + 8 色相帶 × (色相, 飽和, 明度)
+        // 13 個一般參數 + 8 色相帶 × (色相, 飽和, 明度)
         Assert.Equal(expected.Length + 24, colored.Count);
         Assert.All(expected, k => Assert.Contains(k, colored));
         Assert.Null(ParamTrackBrushes.For("basic.contrast"));
@@ -58,11 +59,12 @@ public class ColorSliderTests
         [
             "basic.temperature", "basic.tint", "basic.saturation", "film.warmth", "halation.hue",
             "light_leak.red", "light_leak.yellow", "light_leak.blue", "light_leak.hue",
-            "tone.shadow_hue", "film.hue_red_h", "film.hue_red_s", "film.hue_red_l", "basic.contrast",
+            "tone.shadow_hue", "film.hue_red_h", "film.hue_red_s", "film.hue_red_l",
+            "skin.ref_red", "skin.ref_green", "skin.ref_blue", "basic.contrast",
         ];
         var panel = new StackPanel { Spacing = 6, Margin = new(16) };
         foreach (var k in keys) panel.Children.Add(new ParamRow { DataContext = Param(k) });
-        var window = new Window { Width = 360, Height = 760, Content = panel, Background = Brushes.Black };
+        var window = new Window { Width = 360, Height = 920, Content = panel, Background = Brushes.Black };
         window.Show();
 
         var frame = window.CaptureRenderedFrame();

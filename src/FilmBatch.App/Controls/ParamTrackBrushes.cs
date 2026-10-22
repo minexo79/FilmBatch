@@ -35,6 +35,10 @@ public static class ParamTrackBrushes
         ["light_leak.yellow"] = Gradient((0, Off), (1, Color.Parse("#F0D58A"))),
         ["light_leak.blue"] = Gradient((0, Off), (1, Color.Parse("#3F6FE0"))),
         ["light_leak.hue"] = HueWheel,
+        // 膚色參考增益 0.25–4（預設 1 約在 20% 處）：預設點為中性灰，往右該色變強
+        ["skin.ref_red"] = Gain(Color.Parse("#E04848")),
+        ["skin.ref_green"] = Gain(Color.Parse("#4CB050")),
+        ["skin.ref_blue"] = Gain(Color.Parse("#3F6FE0")),
         ["tone.shadow_hue"] = HueWheel,
         ["tone.highlight_hue"] = HueWheel,
         ["photo_plate.tint_hue"] = HueWheel,
@@ -76,6 +80,10 @@ public static class ParamTrackBrushes
             return (t, HsvColor.ToRgb(hue, saturation, value));
         })]);
     }
+
+    /// <summary>RGB 增益（0.25–4，1 為中性）：暗灰 → 中性灰（預設值位置）→ 該色。</summary>
+    private static IBrush Gain(Color color) =>
+        Gradient((0, Color.Parse("#333333")), ((1 - 0.25) / (4 - 0.25), Color.Parse("#6A6A6A")), (1, color));
 
     private static IBrush Gradient(params (double Offset, Color Color)[] stops) => new ImmutableLinearGradientBrush(
         [.. stops.Select(s => new ImmutableGradientStop(s.Offset, s.Color))],
