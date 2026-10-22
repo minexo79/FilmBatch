@@ -757,8 +757,19 @@ public static class CpuPipeline
         var sMax = 0.5f * (MathF.Abs(dirX) + MathF.Abs(dirY));
         var range = sMax * 2f;
 
+        // 三色電漿改編自 danielzeller/LightLeaksUnity（MIT, (c) 2016 Daniel Zeller），Assets/LightLeaks/LightLeaks.shader；
+        // 以種子決定的「時間」取代動畫時間，原黃 (1, .9, .63) 轉為線性光 ≈ (1, .787, .355)。須與 light_leak.wgsl 逐式一致。
+        var time = 8f + 56f * SeedHash.ToUnitFloat(SeedHash.Pcg(seed + 4099u));
+        var cosT = MathF.Cos(time);
+        var sinT = MathF.Sin(time);
+        var red = p.LeakRed / 100f;
+        var yellow = p.LeakYellow / 100f;
+        var blue = p.LeakBlue / 100f;
+        var blend = p.LeakBlend;
+
         Parallel.For(0, h, y =>
         {
+            var v = (y + 0.5f) / h;
             for (var x = 0; x < w; x++)
             {
                 var cu = (x + 0.5f) / w - 0.5f;
@@ -783,16 +794,39 @@ public static class CpuPipeline
                 }
                 if (leak <= 0) continue;
                 leak = MathF.Min(1f, leak);
-                var (lr, lg, lb) = HsvToRgb(hue, 0.9f, 1f);
+                // 三色電漿：黃、紅、藍各一組低頻正弦場
+                // 各場 -2..2 映到 0..1 再 smoothstep 拉對比（原 shader 直接截負值，部分種子會整片無光）
+                var u = (x + 0.5f) / w;
+                var yp = MathF.Sin(u * cosT * 6f * MathF.Cos(v * time / 232f)) + MathF.Sin(v * sinT * 3f * MathF.Cos(u * time / 212f));
+                var rp = MathF.Cos(u * sinT * 5f * MathF.Cos(v * time / 211f)) + MathF.Sin(v * sinT * 6f * MathF.Cos(u * time / 234f));
+                var bp = MathF.Cos(u * cosT * 4f * MathF.Cos(v * time / 311f)) + MathF.Sin(v * sinT * 7f * MathF.Cos(u * time / 321f));
+                var yw = SmoothStep(0.1f, 0.9f, yp * 0.25f + 0.5f) * yellow;
+                var rw = SmoothStep(0.1f, 0.9f, rp * 0.25f + 0.5f) * red;
+                var bw = SmoothStep(0.1f, 0.9f, bp * 0.25f + 0.5f) * blue;
+                var lr = yw + rw;
+                var lg = 0.787f * yw;
+                var lb = 0.355f * yw + bw;
+                if (hue != 0)
+                {
+                    var hsv = RgbToHsv(lr, lg, lb);
+                    (lr, lg, lb) = HsvToRgb(hsv.H + hue, hsv.S, hsv.V);
+                }
+                lr *= leak; lg *= leak; lb *= leak;
                 var i = (y * w + x) * 4;
-                // 線性光中「增加曝光」：以 add 為主，亮處趨白
-                var k = amount * leak;
-                buf[i] += (0.85f + 0.15f * lr) * k * 0.6f;
-                buf[i + 1] += (0.85f + 0.15f * lg) * k * 0.55f;
-                buf[i + 2] += (0.85f + 0.15f * lb) * k * 0.5f;
+                buf[i] = BlendLeak(buf[i], lr, amount, blend);
+                buf[i + 1] = BlendLeak(buf[i + 1], lg, amount, blend);
+                buf[i + 2] = BlendLeak(buf[i + 2], lb, amount, blend);
             }
         });
     }
+
+    /// <summary>漏光層混合（線性光）：0 screen / 1 add / 2 lighten；k 為強度。</summary>
+    private static float BlendLeak(float c, float l, float k, int blend) => blend switch
+    {
+        1 => c + k * l,
+        2 => c + k * MathF.Max(l - c, 0f),
+        _ => c + k * l * (1f - MathF.Min(c, 1f)),
+    };
 
     private static void TextureOverlay(float[] pixels, int width, int height, ModuleParams p, bool leak)
     {
@@ -832,10 +866,10 @@ public static class CpuPipeline
                         var hsv = RgbToHsv(r, g, b);
                         (r, g, b) = HsvToRgb(hsv.H + p.LeakHue, hsv.S, hsv.V);
                         var noise = 1 - p.LeakIrregularity / 100f * ValueNoise2(rx * 4, ry * 4, p.SeedLightLeak + (uint)n);
-                        var strength = amount * alpha * noise;
-                        pixels[i] = 1 - (1 - pixels[i]) * (1 - r * strength);
-                        pixels[i + 1] = 1 - (1 - pixels[i + 1]) * (1 - g * strength);
-                        pixels[i + 2] = 1 - (1 - pixels[i + 2]) * (1 - b * strength);
+                        var cover = alpha * noise;
+                        pixels[i] = BlendLeak(pixels[i], r * cover, amount, p.LeakBlend);
+                        pixels[i + 1] = BlendLeak(pixels[i + 1], g * cover, amount, p.LeakBlend);
+                        pixels[i + 2] = BlendLeak(pixels[i + 2], b * cover, amount, p.LeakBlend);
                     }
                     else
                     {

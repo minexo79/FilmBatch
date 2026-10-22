@@ -444,6 +444,13 @@ Clear overrides: use the new preset entirely.</value></data>
   <data name="Param.light_leak.size" xml:space="preserve"><value>Extent</value></data>
   <data name="Param.light_leak.irregularity" xml:space="preserve"><value>Irregularity</value></data>
   <data name="Param.light_leak.count" xml:space="preserve"><value>Count</value></data>
+  <data name="Param.light_leak.blend" xml:space="preserve"><value>Blend</value></data>
+  <data name="Choice.light_leak.blend.screen" xml:space="preserve"><value>Screen</value></data>
+  <data name="Choice.light_leak.blend.add" xml:space="preserve"><value>Add</value></data>
+  <data name="Choice.light_leak.blend.lighten" xml:space="preserve"><value>Lighten</value></data>
+  <data name="Param.light_leak.red" xml:space="preserve"><value>Red</value></data>
+  <data name="Param.light_leak.yellow" xml:space="preserve"><value>Yellow</value></data>
+  <data name="Param.light_leak.blue" xml:space="preserve"><value>Blue</value></data>
   <data name="Param.film.strength" xml:space="preserve"><value>Effect Mix</value></data>
   <data name="Param.photo_plate.plate_type" xml:space="preserve"><value>Plate</value></data>
   <data name="Choice.photo_plate.plate_type.tintype" xml:space="preserve"><value>Tintype</value></data>

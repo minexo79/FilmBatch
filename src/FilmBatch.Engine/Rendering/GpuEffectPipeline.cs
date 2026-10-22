@@ -295,7 +295,8 @@ internal sealed class GpuEffectPipeline : IDisposable
             current = leak is null
                 ? Apply(_leak, new LeakUniforms(0, p.LeakAmount / 100, p.LeakAngle * MathF.PI / 180,
                     p.LeakSize / 100, p.LeakHue, p.LeakIrregularity / 100, p.LeakCount, p.SeedLightLeak,
-                    _width / (float)_height, shortSide, 0, 0))
+                    _width / (float)_height, shortSide, p.LeakBlend, p.LeakRed / 100, p.LeakYellow / 100,
+                    p.LeakBlue / 100, 0, 0))
                 : Apply(_texture, OverlayUniforms(p, leak, true), leak);
         if (p.FilmOn && p.FilmLut is not null && p.FilmStrength > 0)
             current = Apply(_look, p.FilmLook, LutTexture(p.FilmLut));
@@ -348,7 +349,7 @@ internal sealed class GpuEffectPipeline : IDisposable
             (leak ? p.LeakAmount : p.DirtStrength) / 100, MathF.Cos(angle), MathF.Sin(angle),
             p.LeakHue, p.LeakIrregularity / 100, (p.DirtDust + p.DirtScratches + p.DirtHairs) / 300,
             Math.Min(_width, _height), leak ? Math.Clamp(p.LeakCount, 1, 3) : 1, p.Polarity,
-            leak ? p.SeedLightLeak : p.SeedDirt, leak ? 1 : 0);
+            leak ? p.SeedLightLeak : p.SeedDirt, leak ? 1 : 0, p.LeakBlend, 0, 0, 0);
     }
 
     private GpuTexture Blur(GpuCommandList commands, GpuTexture input, int radius, GpuTexture? reserve = null, float? sigma = null)
@@ -560,7 +561,7 @@ internal sealed class GpuEffectPipeline : IDisposable
     [StructLayout(LayoutKind.Sequential)] private readonly record struct MotionUniforms(float Angle, float Length, float Protect, float X, float Y, float Size, float ShortSide, float Pad);
     [StructLayout(LayoutKind.Sequential)] private readonly record struct VignetteUniforms(float Amount, float Size, float Roundness, float Feather, float X, float Y, float Aspect, float Pad);
     [StructLayout(LayoutKind.Sequential)] private readonly record struct HalationUniforms(float Amount, float Threshold, float Radius, float Hue, float ShortSide, float Pad0, float Pad1, float Pad2);
-    [StructLayout(LayoutKind.Sequential)] private readonly record struct LeakUniforms(int Mode, float Amount, float Angle, float Size, float Hue, float Irregularity, int Count, uint Seed, float Aspect, float ShortSide, uint Pad0, uint Pad1);
+    [StructLayout(LayoutKind.Sequential)] private readonly record struct LeakUniforms(int Mode, float Amount, float Angle, float Size, float Hue, float Irregularity, int Count, uint Seed, float Aspect, float ShortSide, int Blend, float Red, float Yellow, float Blue, uint Pad0, uint Pad1);
     [StructLayout(LayoutKind.Sequential)] private readonly record struct PlateUniforms(int Type, float Strength, float Ortho, float Hue, float Tint, float Erosion, float Stains, float Uneven, uint Seed, float Aspect, uint Pad0, uint Pad1);
     [StructLayout(LayoutKind.Sequential)] private readonly record struct BasicUniforms(float Brightness, float Contrast, float Highlights, float Shadows, float Saturation, float Structure, float ShortSide, float Pad);
     [StructLayout(LayoutKind.Sequential)] private readonly record struct ToneUniforms(float ShadowHue, float ShadowAmount, float HighlightHue, float HighlightAmount, float Balance, float Pad0, float Pad1, float Pad2);
@@ -568,7 +569,7 @@ internal sealed class GpuEffectPipeline : IDisposable
 
     /// <summary>surface/grain.wgsl：A 為效果參數、B 為光學模型常數、MapX/MapY 為輸出→來源參考仿射（w 欄放 r0）、Tone 為亮度帶權重＋像素足跡；96 位元組。</summary>
     [StructLayout(LayoutKind.Sequential)] private readonly record struct GrainUniforms(Vector4 A, Vector4 B, Vector4 MapX, Vector4 MapY, uint Seed, uint Model, uint Samples, uint RoughQ, Vector4 Tone);
-    [StructLayout(LayoutKind.Sequential)] private readonly record struct TextureUniforms(float Scale, float Amount, float Cosine, float Sine, float Hue, float Irregularity, float Density, float ShortSide, int Count, int Polarity, uint Seed, int Leak);
+    [StructLayout(LayoutKind.Sequential)] private readonly record struct TextureUniforms(float Scale, float Amount, float Cosine, float Sine, float Hue, float Irregularity, float Density, float ShortSide, int Count, int Polarity, uint Seed, int Leak, int Blend, uint Pad0, uint Pad1, uint Pad2);
     [StructLayout(LayoutKind.Sequential)] private readonly record struct MultiUniforms(int Layout, float Divider, Vector2 Pad, Vector4 Cell0, Vector4 Tint0, Vector4 Cell1, Vector4 Tint1, Vector4 Cell2, Vector4 Tint2, Vector4 Cell3, Vector4 Tint3)
     {
         public static MultiUniforms From(ModuleParams p)

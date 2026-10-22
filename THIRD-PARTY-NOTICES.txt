@@ -35,6 +35,10 @@ rawtoaces-data v1.1.0（相機光譜靈敏度） Apache-2.0 https://github.com/A
 CIE 1931 色彩配對函數 CC BY 4.0 https://creativecommons.org/licenses/by/4.0/
   © CIE（International Commission on Illumination），隨 rawtoaces-data 發佈；只用來擬合上列相機矩陣（修改：
   FilmBatch 不含原始資料）。
+LightLeaksUnity（程序化漏光） MIT https://github.com/danielzeller/LightLeaksUnity
+  Copyright (c) 2016 Daniel Zeller。src/FilmBatch.Engine/Rendering/CpuPipeline.cs 的 LightLeak 與
+  optical/light_leak.wgsl 的三色電漿改編自 Assets/LightLeaks/LightLeaks.shader（已修改：以種子取代動畫時間、
+  黃色轉線性光、各場重新映射並以 smoothstep 提高對比、加入色相旋轉、逐色權重與 screen/add/lighten 混合，並以既有邊緣包絡遮罩）。
 
 MIT License (LightCraft)
 Copyright (c) 2026 ArtCraft Team and the LightCraft contributors
@@ -59,6 +63,27 @@ SOFTWARE.
 
 MIT License (zune-jpeg)
 Copyright (c) zune-image developers
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+MIT License (LightLeaksUnity)
+Copyright (c) 2016 Daniel Zeller
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

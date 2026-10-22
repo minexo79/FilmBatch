@@ -493,6 +493,109 @@ public sealed class EffectPipelineTests
         }
     }
 
+    /// <summary>三色電漿測試用：程序化、大範圍、色相不旋轉，紅／黃／藍與混合方式由呼叫端指定。</summary>
+    private static Settings PlasmaLeak(double red, double yellow, double blue, string blend = "screen") =>
+        LeakSettings(30, size: 100)
+            .With("light_leak.hue", 0.0)
+            .With("light_leak.blend", blend)
+            .With("light_leak.red", red)
+            .With("light_leak.yellow", yellow)
+            .With("light_leak.blue", blue);
+
+    /// <summary>各通道相對灰階來源的線性光平均增量。</summary>
+    private static (double R, double G, double B) ChannelGains(ushort[] px, ushort source)
+    {
+        var linIn = CpuPipeline.SrgbToLinear(source / 65535f);
+        double r = 0, g = 0, b = 0;
+        var n = px.Length / 4;
+        for (var p = 0; p < n; p++)
+        {
+            r += CpuPipeline.SrgbToLinear(px[p * 4] / 65535f) - linIn;
+            g += CpuPipeline.SrgbToLinear(px[p * 4 + 1] / 65535f) - linIn;
+            b += CpuPipeline.SrgbToLinear(px[p * 4 + 2] / 65535f) - linIn;
+        }
+        return (r / n, g / n, b / n);
+    }
+
+    [Fact]
+    public void LightLeak_RedOnly_IsReddish()
+    {
+        const ushort gray = 20000;
+        var src = Flat(32, 32, gray);
+        using var cpu = new CpuFakeRenderer();
+        var gain = ChannelGains(cpu.Render16(src, PlasmaLeak(100, 0, 0), TestContext.Current.CancellationToken).Rgba16, gray);
+        Assert.True(gain.R > 0.01, $"紅色漏光幾乎無增亮（R={gain.R:F4}）");
+        Assert.True(gain.G < gain.R * 0.1 && gain.B < gain.R * 0.1, $"紅色漏光應偏紅（R={gain.R:F4} G={gain.G:F4} B={gain.B:F4}）");
+    }
+
+    [Fact]
+    public void LightLeak_BlueOnly_IsBluish()
+    {
+        const ushort gray = 20000;
+        var src = Flat(32, 32, gray);
+        using var cpu = new CpuFakeRenderer();
+        var gain = ChannelGains(cpu.Render16(src, PlasmaLeak(0, 0, 100), TestContext.Current.CancellationToken).Rgba16, gray);
+        Assert.True(gain.B > 0.01, $"藍色漏光幾乎無增亮（B={gain.B:F4}）");
+        Assert.True(gain.R < gain.B * 0.1 && gain.G < gain.B * 0.1, $"藍色漏光應偏藍（R={gain.R:F4} G={gain.G:F4} B={gain.B:F4}）");
+    }
+
+    [Fact]
+    public void LightLeak_Defaults_AreWarmNotWhite()
+    {
+        // 預設紅 100／黃 100／藍 30、色相 0：漏光應帶暖色，紅色增量明顯大於藍色。
+        const ushort gray = 20000;
+        var src = Flat(32, 32, gray);
+        var settings = ModuleCatalog.Defaults
+            .With("light_leak.enabled", true)
+            .With("light_leak.mode", "procedural")
+            .With("light_leak.amount", 100.0)
+            .With("light_leak.size", 100.0)
+            .With("light_leak.seed", 7.0);
+        using var cpu = new CpuFakeRenderer();
+        var gain = ChannelGains(cpu.Render16(src, settings, TestContext.Current.CancellationToken).Rgba16, gray);
+        Assert.True(gain.R > 0.01, $"預設漏光幾乎無增亮（R={gain.R:F4}）");
+        Assert.True(gain.R > gain.B * 1.2, $"預設漏光不應接近白色（R={gain.R:F4} B={gain.B:F4}）");
+    }
+
+    [Fact]
+    public void LightLeak_BlendModes_DifferAndNeverDarken()
+    {
+        // 單一通道 L <= 1（黃為 0）時：add >= screen >= 原圖、lighten >= 原圖、lighten <= screen。
+        const ushort gray = 20000;
+        var src = Flat(32, 32, gray);
+        using var cpu = new CpuFakeRenderer();
+        var ct = TestContext.Current.CancellationToken;
+        var screen = cpu.Render16(src, PlasmaLeak(100, 0, 100, "screen"), ct).Rgba16;
+        var add = cpu.Render16(src, PlasmaLeak(100, 0, 100, "add"), ct).Rgba16;
+        var lighten = cpu.Render16(src, PlasmaLeak(100, 0, 100, "lighten"), ct).Rgba16;
+        Assert.True(MaxAbsDiff(screen, add) > 64, "濾色與相加應不同");
+        Assert.True(MaxAbsDiff(screen, lighten) > 64, "濾色與變亮應不同");
+        Assert.True(MaxAbsDiff(add, lighten) > 64, "相加與變亮應不同");
+        const int tol = 2;
+        for (var i = 0; i < screen.Length; i++)
+        {
+            if (i % 4 == 3) continue;
+            Assert.True(screen[i] >= gray - tol, $"濾色使像素變暗（{i}: {screen[i]}）");
+            Assert.True(lighten[i] >= gray - tol, $"變亮使像素變暗（{i}: {lighten[i]}）");
+            Assert.True(add[i] >= screen[i] - tol, $"相加應不小於濾色（{i}: {add[i]} < {screen[i]}）");
+            Assert.True(lighten[i] <= screen[i] + tol, $"變亮不應超過濾色（{i}: {lighten[i]} > {screen[i]}）");
+        }
+    }
+
+    [Fact]
+    public void LightLeak_ZeroColors_LeaveImageUnchanged()
+    {
+        var src = Flat(32, 32, 20000);
+        using var cpu = new CpuFakeRenderer();
+        var ct = TestContext.Current.CancellationToken;
+        var baseline = cpu.Render16(src, ModuleCatalog.Defaults, ct).Rgba16;
+        foreach (var blend in new[] { "screen", "add", "lighten" })
+        {
+            var got = cpu.Render16(src, PlasmaLeak(0, 0, 0, blend), ct).Rgba16;
+            Assert.True(MaxAbsDiff(baseline, got) <= 1, $"紅黃藍皆為 0 時（{blend}）不應改變影像，最大差 {MaxAbsDiff(baseline, got)}");
+        }
+    }
+
     [Fact]
     public void LightLeak_Texture_RotatesOnPortrait_Past180()
     {
