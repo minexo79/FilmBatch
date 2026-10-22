@@ -199,6 +199,59 @@ public sealed class OpcodesTests
     }
 
     [Fact]
+    public void GainMapPreservesPitchedAreaPlaneOffsetsAndClampedInterpolation()
+    {
+        const int w = 8, h = 8, cpp = 4;
+        var pixels = new float[w * h * cpp];
+        for (var i = 0; i < pixels.Length; i += cpp)
+        {
+            pixels[i] = 2; pixels[i + 1] = 3; pixels[i + 2] = 5; pixels[i + 3] = 7;
+        }
+        var map = new GainMap(new Area(1, 1, 12, 12, 1, 3, 2, 2),
+            2, 2, [.5, .5], [.125, .125], 2, [1, 2, 3, 6, 5, 10, 7, 14]);
+        OpcodeOps.ApplyList([map], pixels, w, h, cpp, null, 1f);
+        // Coordinates 1,3,5,7 sample 0,1/2,1,1 on each grid axis.
+        float[,] gains = { { 1, 2, 3, 3 }, { 3, 4, 5, 5 }, { 5, 6, 7, 7 }, { 5, 6, 7, 7 } };
+        for (var y = 0; y < h; y++)
+            for (var x = 0; x < w; x++)
+            {
+                var offset = (y * w + x) * cpp;
+                var selected = x % 2 == 1 && y % 2 == 1;
+                var gain = selected ? gains[y / 2, x / 2] : 1f;
+                Assert.Equal(2f, pixels[offset]);
+                Assert.Equal(3f * gain, pixels[offset + 1]);
+                Assert.Equal(5f * gain * (selected ? 2f : 1f), pixels[offset + 2]);
+                Assert.Equal(7f * gain * (selected ? 2f : 1f), pixels[offset + 3]);
+            }
+    }
+
+    [Theory]
+    [InlineData(0d)]
+    [InlineData(-1d)]
+    public void GainMapNonpositiveSpacingUsesFirstGridCoordinate(double spacing)
+    {
+        float[] pixels = [1, 2, 3, 4];
+        var map = new GainMap(new Area(0, 0, 2, 2, 0, 0, 0, 0),
+            2, 2, [spacing, spacing], [.25, .25], 1, [2, 7, 11, 13]);
+        OpcodeOps.ApplyList([map], pixels, 2, 2, 1, null, 1f);
+        Assert.Equal(new float[] { 2, 4, 6, 8 }, pixels);
+    }
+
+    [Theory]
+    [InlineData(4u, 0u, 0u)]
+    [InlineData(0u, 4u, 0u)]
+    [InlineData(0u, 0u, 1u)]
+    [InlineData(uint.MaxValue, 0u, 0u)]
+    public void GainMapOutsideImageOrPlanesLeavesSamplesUntouched(uint top, uint left, uint plane)
+    {
+        float[] pixels = [1, 2, 3, 4];
+        var map = new GainMap(new Area(top, left, 9, 9, plane, 1, 1, 1),
+            1, 1, [1, 1], [0, 0], 1, [9]);
+        OpcodeOps.ApplyList([map], pixels, 2, 2, 1, null, 1f);
+        Assert.Equal(new float[] { 1, 2, 3, 4 }, pixels);
+    }
+
+    [Fact]
     public void MapTableRawScaleAndBadPixels()
     {
         var t = Concat(AreaBytes(0, 0, 2, 2, 0, 1, 1, 1), BeU32(3), BeU16(0, 30000, 65535));
