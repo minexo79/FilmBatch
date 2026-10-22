@@ -232,6 +232,17 @@ public static class EffectFootprint
         }
     }
 
+    /// <summary>來源正規化座標 → 輸出正規化座標（套用設定中的裁切）。沒有來源尺寸時視為沒有裁切。</summary>
+    public static Vector2 SourceToOutput(Settings settings, int sourceWidth, int sourceHeight, Vector2 source) =>
+        SourceMap.Create(settings, sourceWidth, sourceHeight, 1, 1).ToOutput(source.X, source.Y);
+
+    /// <summary>輸出正規化座標 → 來源正規化座標（<see cref="SourceToOutput"/> 的反向）。</summary>
+    public static Vector2 OutputToSource(Settings settings, int sourceWidth, int sourceHeight, Vector2 output)
+    {
+        var (x, y) = SourceMap.Create(settings, sourceWidth, sourceHeight, 1, 1).ToSource(output);
+        return new Vector2((float)x, (float)y);
+    }
+
     // ───────────── 拖曳輪廓 ─────────────
 
     /// <summary>

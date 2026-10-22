@@ -6,8 +6,11 @@ public enum ModuleGroup { Basic, Geometry, Optical, Film, Surface }
 /// <summary>選擇性貼上對話框的分類。</summary>
 public enum PasteCategory { Color, Optical, Surface, Crop }
 
-/// <summary>畫布控制點對應的參數（完整鍵）；<paramref name="ToggleKey"/> 為 false 時控制點不顯示。</summary>
-public sealed record CanvasPointKeys(string XKey, string YKey, string? ToggleKey);
+/// <summary>
+/// 畫布控制點對應的參數（完整鍵）；<paramref name="ToggleKey"/> 為 false 時控制點不顯示。
+/// <paramref name="InSource"/>：座標是裁切前的來源正規化座標（局部膚色），畫布顯示前要經過裁切換算。
+/// </summary>
+public sealed record CanvasPointKeys(string XKey, string YKey, string? ToggleKey, bool InSource = false);
 
 public sealed record ModuleSchema(
     string Key,
@@ -26,12 +29,14 @@ public sealed record ModuleSchema(
 
     /// <summary>
     /// 預覽畫布上可拖曳的控制點：<c>center_x/center_y</c>（散景、放射旋轉、暗角），或動態模糊這類
-    /// 以 <c>protect_x/protect_y</c> 定位、並由 <c>protect_enabled</c> 開關的保護區。都沒有則為 null。
+    /// 以 <c>protect_x/protect_y</c> 定位、並由 <c>protect_enabled</c> 開關的保護區，或局部膚色以來源座標
+    /// <c>region_cx/region_cy</c> 定位的區域中心。都沒有則為 null。
     /// </summary>
     public CanvasPointKeys? CanvasPoint =>
         Has("center_x") && Has("center_y") ? new CanvasPointKeys(FlatKey("center_x"), FlatKey("center_y"), null)
         : Has("protect_x") && Has("protect_y") ? new CanvasPointKeys(FlatKey("protect_x"), FlatKey("protect_y"),
             Has("protect_enabled") ? FlatKey("protect_enabled") : null)
+        : Has("region_cx") && Has("region_cy") ? new CanvasPointKeys(FlatKey("region_cx"), FlatKey("region_cy"), null, InSource: true)
         : null;
 
     public bool HasCanvasPoint => CanvasPoint is not null;

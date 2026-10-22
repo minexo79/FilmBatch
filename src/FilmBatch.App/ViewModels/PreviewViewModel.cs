@@ -275,9 +275,30 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
         _controlSettings = moduleKey is not null ? settings : null;
         _controlKeys = moduleKey is not null && ModuleCatalog.TryGetModule(moduleKey, out var schema) ? schema.CanvasPoint : null;
         ControlPoint = _controlKeys is { } keys && settings is not null && (keys.ToggleKey is null || settings.Bool(keys.ToggleKey))
-            ? new Point(settings.Number(keys.XKey), settings.Number(keys.YKey))
+            ? ToCanvas(keys, settings, new Point(settings.Number(keys.XKey), settings.Number(keys.YKey)))
             : null;
         UpdateFootprint();
+    }
+
+    /// <summary>參數座標 → 畫布（輸出）正規化座標：來源座標的控制點（局部膚色）經過裁切換算。</summary>
+    private Point ToCanvas(CanvasPointKeys keys, Settings settings, Point value)
+    {
+        if (!keys.InSource) return value;
+        var p = EffectFootprint.SourceToOutput(settings, Source?.Width ?? 0, Source?.Height ?? 0,
+            new System.Numerics.Vector2((float)value.X, (float)value.Y));
+        return new Point(p.X, p.Y);
+    }
+
+    /// <summary>畫布（輸出）正規化座標 → 參數座標，夾在參數範圍 0–1 內。</summary>
+    private Point FromCanvas(CanvasPointKeys keys, Settings? settings, Point canvas)
+    {
+        if (keys.InSource && settings is not null)
+        {
+            var p = EffectFootprint.OutputToSource(settings, Source?.Width ?? 0, Source?.Height ?? 0,
+                new System.Numerics.Vector2((float)canvas.X, (float)canvas.Y));
+            canvas = new Point(p.X, p.Y);
+        }
+        return new Point(Math.Clamp(canvas.X, 0, 1), Math.Clamp(canvas.Y, 0, 1));
     }
 
     /// <summary>拖曳控制點：即時更新預覽，放開時記為一筆復原紀錄。控制點已收起時不再修改，放開只結束編輯。</summary>
@@ -286,8 +307,8 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
         if (_controlModule is not null && _controlKeys is { } keys && main.Service is not null)
         {
             _editSession ??= $"cp:{_controlModule}:{Guid.NewGuid():N}";
-            var p = new Point(Math.Clamp(normalized.X, 0, 1), Math.Clamp(normalized.Y, 0, 1));
-            ControlPoint = p;
+            var p = FromCanvas(keys, _controlSettings, normalized);
+            ControlPoint = _controlSettings is { } current ? ToCanvas(keys, current, p) : p;
             // 範圍跟著控制點走，不等設定變更繞回來
             _controlSettings = _controlSettings?.With(keys.XKey, p.X).With(keys.YKey, p.Y);
             UpdateFootprint();
@@ -298,20 +319,25 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
     }
 
     /// <summary>
-    /// 拖曳範圍輪廓：把 <paramref name="dragKey"/>（大小、過渡、羽化）設成拖到的位置，即時更新預覽；
-    /// 與拖曳控制點共用同一套編輯紀錄規則（放開記為一筆復原紀錄）。輪廓不屬於目前模組時不修改。
+    /// 拖曳範圍輪廓或把手：把 <paramref name="dragKey"/> 對應的參數（大小、過渡、羽化、半寬／半高）設成拖到的位置，
+    /// 即時更新預覽；與拖曳控制點共用同一套編輯紀錄規則（放開記為一筆復原紀錄）。輪廓不屬於目前模組時不修改。
     /// </summary>
     public void DragFootprint(string dragKey, Point normalized, bool completed)
     {
         if (_controlModule is { } module && dragKey.StartsWith(module + ".", StringComparison.Ordinal)
             && _controlSettings is { } settings && main.Service is not null && (Image ?? Original)?.PixelSize is { } px
-            && EffectFootprint.DragValue(dragKey, settings, px.Width, px.Height,
-                new System.Numerics.Vector2((float)normalized.X, (float)normalized.Y)) is { } value)
+            && EffectFootprint.Drag(dragKey, settings, px.Width, px.Height,
+                new System.Numerics.Vector2((float)normalized.X, (float)normalized.Y), Source?.Width ?? 0, Source?.Height ?? 0) is { } values)
         {
             _editSession ??= $"fp:{dragKey}:{Guid.NewGuid():N}";
-            _controlSettings = settings.With(dragKey, value);
+            foreach (var (key, value) in values) settings = settings.With(key, value);
+            _controlSettings = settings;
             UpdateFootprint();
-            main.Service.SetValue(main.Selection, dragKey, value, _editSession);
+            if (values.Count == 1)
+                main.Service.SetValue(main.Selection, values[0].Key, values[0].Value, _editSession);
+            else // 等比縮放：半寬與半高一次寫入，不經過只改了一半的狀態
+                main.Service.SetValues(main.Selection, new Settings(values.Select(kv => KeyValuePair.Create(kv.Key, ParamValue.Of(kv.Value)))),
+                    $"調整 {ModuleCatalog.Module(module).Label}", _editSession);
         }
         if (completed) EndControlPointEdit();
     }
@@ -328,7 +354,7 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
     {
         var size = (Image ?? Original)?.PixelSize;
         Footprint = _controlModule is { } module && _controlSettings is { } settings && size is { } px
-            ? EffectFootprint.For(module, settings, px.Width, px.Height)
+            ? EffectFootprint.For(module, settings, px.Width, px.Height, Source?.Width ?? 0, Source?.Height ?? 0)
             : [];
     }
 
