@@ -185,3 +185,44 @@ TWINS: searched `(ushort)(r / n)` and `dst[o] = ... r / n` - found 0 other sites
 | `35f4373` | Denoise preview materialization, exact tiled Gaussian and shader-entry validation |
 
 All four implementation commits were pushed successfully to `origin/dev-ai-denoising` without force. GitHub additionally reported two existing default-branch dependency alerts (one high, one moderate); those alerts were not investigated or changed by this scoped performance repair. The evidence/documentation commit follows these observed implementation receipts; its final push acknowledgement is the delivery receipt, not an inference from this text.
+
+## Subsequent Sigma and preview branch integration
+
+The supplied Sigma BF DNG removed the earlier missing-input blocker. The [completed BF investigation](../../sigma-bf-raw-performance.md) records the general GainMap row-parallel repair, unchanged sensor/scene/display hashes, measured costs and native PNG16 export. Research commits `e61090f` and `91827cb` were pushed, then the research branch was formally merged into `dev-ai-denoising`.
+
+The user additionally requested merging `origin/dev-preview-enhanced`; the fetched tip is `4996977` (nine incoming commits). Preserve the shared desktop/mobile editor, deferred gesture persistence, AI/mask/denoise behavior, source ownership and the Sigma repair while integrating RAW white balance in Basic, color tracks, skin-region handles, film-effect grouping, plasma light leaks and application-level Lensfun preferences.
+
+| Integration acceptance | State | Evidence / required check |
+|---|---|---|
+| Preserve both branches' editing and export contracts | verified | Shared-editor conflict resolution plus the final Core/App regressions; mask, denoise, warning metadata and transient gesture ownership retained |
+| RAW WB and skin handles commit atomically and undo | verified | Native pointer press/move/release: zero saves during each drag, one release commit, atomic undo; RAW WB reuses the source |
+| Light-leak CPU/GPU behavior and color tracks | verified | Core/App regressions; all 36 expanded WGSL entries pass; native screen/add/lighten modes produce distinct outputs and shared color tracks render |
+| Lensfun preferences, CLI options and warned fallback | verified | Preference/cache/export regressions; native preference save/runtime update/clear; packaged CLI accepts both `--denoise 0` and `--lens-database` and exports PNG16 |
+| BF RAW load and full-size PNG16 remain valid | verified | Same local DNG; native scene-linear 1504×1003 preview, 6016×4012 PNG16 export; preview and reloaded export hashes match the verified pre-merge output |
+| Final merged Release suite and packaged macOS smoke | verified | RAW 636 passed/293 skipped, Core 679 passed/27 skipped, App 243 passed; total 1558 passed, zero failed, 320 skipped; 25 packaged native smoke checks pass |
+| Commit and push the completed integration | pending | Normal push acknowledgement; no force, tags or original photos |
+
+Consumer coverage: desktop and mobile share the edited ViewModels/controls; macOS native UI and CLI are exercised after integration. CPU/GPU rendering, cached sources, project/undo persistence, export metadata and existing documentation are in scope. Windows/iOS native execution, broader BF samples and independent decoder/perceptual comparisons remain explicit untested boundaries.
+
+### Windows Gaussian timeout repair and final verification
+
+The user supplied `dist/build_105_step_106_container_0.txt` for the failure introduced after `35f4373280197927bb44049ddd8088041a2ba4e0`. It reports one Core failure in `GpuGaussianTests.HalationAndClarity_LargeRadius_MatchesCpuOnOddSizeWithTransparentEdges`: queue-completion timeout through `GpuEffectPipeline.Finish` / readback. It is not a compiler failure. The actual adapter is absent from that evidence; attributing it to WARP would be speculation.
+
+`GpuEffectPipeline.BlurPass` now bounds cumulative Gaussian work across axes/effects to 64 Mi output samples per submission. Both exact shaders accept a flattened `first_group`; the command list submits and waits before restarting recording and reusing completed uniform buffers. Weights, tap order, clamp behavior, radius, test dimensions and the existing 10-second device deadline are unchanged. No CPU fallback or weakened precision threshold was introduced.
+
+- Four new radius-320/321, horizontal/vertical partial-workgroup cases failed before batch addressing was added and passed afterward. All 12 Gaussian cases pass on Metal, including the unchanged 2049×1665 case reported by Windows CI.
+- Final Release TRX results agree with console totals: **1558 passed, 0 failed, 320 skipped**. Skips include missing external RAW/oracle inputs and Windows-only checks. This runner leaves `Counters.notExecuted` at zero, so skipped totals are counted from individual `UnitTestResult` outcomes.
+- Naga validates all **36** expanded shader entry points. An intermediate WGSL signed/unsigned constructor error was corrected before these final checks; that earlier failing suite is not counted as a pass.
+- Actual CLI spike at 2049×1665 uses Apple M3 Metal: warm adjustment 6.8 ms, adjustment plus blur 15.9 ms, maximum CPU-reference difference 1/255. These are local smoke measurements, not Windows timing predictions.
+- Packaged CLI exports the isolated BF copy with both merged options (`--denoise 0`, `--lens-database`): one success, 1600×1067, PNG bit depth 16 / color type 6, Metal. The unsupported harness argument `--format png16` was rejected; the documented value `--format png` succeeds.
+- macOS packaging and all **25** native smoke checks pass; the application is ad-hoc signed, not notarized. Windows cross-publish plus ZIP succeeds; GUI and CLI are PE32+ x86-64 binaries.
+- An additional 6000×4000 CLI spike was rejected by the existing benchmark memory budget before rendering. The guard was not changed. The original Gaussian regression remains 2049×1665; full-size BF GUI export is checked separately.
+- **Untested boundary:** no local Windows runtime or configured SSH host is available, and `gh auth status` reports no authenticated host. Windows execution/CI is not claimed by Metal tests or cross-publishing. iOS native execution was not repeated for this merge.
+
+Consumer coverage: both Gaussian shader variants, production blur callers, multi-effect accumulation, partial workgroups and alpha/edge preservation are covered by the Gaussian suite; GUI and CLI rendering/export are exercised on Metal. Desktop/mobile color styles now live under the shared editor resource assembly, with no desktop-only alias. Existing project formats and parameter values are unchanged; docs and verification routes are updated.
+
+TWINS: searched `Dispatch2D(..._blur`, `Dispatch(..._blur`, and `"common/gaussian(_tile)?"` - found 0 other production dispatch sites: none. Both shader registrations use the single bounded `BlurPass` dispatch.
+
+The final native BF run also reads the GUI export log and asserts `Device=Apple M3 · Metal` and `IsSoftwareRenderer=false`; the full-size PNG16's reloaded RGBA16 SHA-256 remains `8d38398287f500c2295debe49f7eccd76fd0a0b8f28af71dbd9e57ff06f1833a`. Original and isolated-copy DNG SHA-256 both remain `277235132dce1e228cc9fc1ee0d24033ddddd1dbf021bc44ac85dfa669369c7e`.
+
+Local verification archive: `artifacts/verification/2026-10-22-preview-merge.tar.gz` (ignored, not pushed), SHA-256 `2d0732614fe0a40f84174063bd0ab6cb613561f76c3885e774ae8f6695b8d8e1`; gzip integrity passes. It contains the final native driver, TRX/result summaries, shader/red-regression/build receipts, supplied Windows failure log, isolated export metadata and native/package captures. Original DNGs, exported photo files, model weights and build outputs are excluded. The disposable driver emits two obsolete `Bitmap.Save` warnings; these are harness warnings, not suppressed product failures.

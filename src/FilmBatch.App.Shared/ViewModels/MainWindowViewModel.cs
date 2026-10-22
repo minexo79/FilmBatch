@@ -50,16 +50,17 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private EditSession? _edit;
 
     /// <summary>
-    /// 進行中的連續編輯（滑桿拖曳／滾輪、曲線拖曳）。擁有者（服務＋選取的照片）在手勢第一次修改時固定；
+    /// 進行中的連續編輯（滑桿拖曳／滾輪、曲線拖曳、畫布拖曳）。擁有者（服務＋選取的照片）在手勢第一次修改時固定；
     /// <c>Pending</c> 是尚未寫入專案的 transient 值，只用於預覽與面板顯示。
+    /// 單 key 手勢（<see cref="PreviewEdit"/>）與多 key 手勢（<see cref="PreviewEditValues"/>）共用同一個工作區：
+    /// 同一手勢可以先寫入多個 key 再逐 key 追蹤，放開時合併為一筆復原紀錄。
     /// </summary>
-    private sealed class EditSession(string id, string key, ProjectService service, string[] files)
+    private sealed class EditSession(string id, ProjectService service, string[] files)
     {
         public string Id { get; } = id;
-        public string Key { get; } = key;
         public ProjectService Service { get; } = service;
         public string[] Files { get; } = files;
-        public ParamValue? Pending { get; set; }
+        public Dictionary<string, ParamValue> Pending { get; } = new(StringComparer.Ordinal);
         /// <summary>選取或專案已切換：已寫入的部分留在原照片，之後同一手勢的修改一律丟棄。</summary>
         public bool Interrupted { get; set; }
     }
@@ -152,6 +153,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     public MainWindowViewModel(AppSettings settings, IDialogService dialogs, Func<IPreviewRenderer> rendererFactory, Action<Action> post)
     {
         Settings = settings;
+        RawLoadOptions.LensDatabaseDirectory = settings.LensDatabaseFolder;
         Dialogs = dialogs;
         _post = post;
         Library = PresetLibrary.Load();
@@ -401,6 +403,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             }
             Preview.SetOriginal(source);
             BackgroundRemoval.RefreshContext();
+            ReportLensDatabaseWarning(source);
             Inspector.Refresh();
             PhotoTools.UpdateContext(service, file, source, EditingSettings(file));
             if (Sidebar.IsCrop) CropTool.ResumeBegin();
@@ -417,6 +420,18 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             Inspector.Refresh();
             Denoise.RefreshContext();
         }
+    }
+
+    /// <summary>上次以提示顯示過的鏡頭資料庫錯誤；同一錯誤換照片時不重複提示，偏好設定變更後重設。</summary>
+    private string? _shownLensWarning;
+
+    /// <summary>外部鏡頭資料庫讀取失敗時，來源已退回不校正：提示一次並寫入記錄。</summary>
+    private void ReportLensDatabaseWarning(SourceImage source)
+    {
+        if (source.LensDatabaseWarning is not { } warning || warning == _shownLensWarning) return;
+        _shownLensWarning = warning;
+        AppLog.Warn($"外部鏡頭資料庫無法讀取，已略過鏡頭校正：{warning}");
+        Toast.Show(Loc.Format("Raw.LensDatabaseWarning", warning));
     }
 
     /// <summary>以目前呈現的參數（含連續手勢的 transient 值）重算預覽；拖曳中每次修改都會呼叫，排程器只保留最新請求。</summary>
@@ -545,20 +560,27 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         foreach (var f in files) Filmstrip.RequestThumbnail(f);
     }
 
-    // ───────────── 連續編輯（滑桿拖曳／滾輪、曲線拖曳） ─────────────
+    // ───────────── 連續編輯（滑桿拖曳／滾輪、曲線拖曳、畫布多欄位拖曳） ─────────────
 
     /// <summary>
     /// 連續手勢的一次修改：只更新 transient 預覽與面板，不寫入專案、不觸發 EntriesChanged、不進復原堆疊。
     /// 手勢的擁有者（服務＋照片）在第一次修改時固定；選取或專案切換後同一手勢的修改一律丟棄，絕不轉移到新照片。
     /// </summary>
-    internal void PreviewEdit(string session, string key, ParamValue value)
+    internal void PreviewEdit(string session, string key, ParamValue value) =>
+        PreviewEditValues(session, new Dictionary<string, ParamValue> { [key] = value });
+
+    /// <summary>
+    /// 連續手勢的一次多欄位修改（RAW 白平衡切自訂、畫布控制點／範圍拖曳）：語意與 <see cref="PreviewEdit"/> 相同，
+    /// 只是同一次修改帶多個 key。同一手勢可混用單 key 與多 key 修改，放開時合併為一筆復原紀錄。
+    /// </summary>
+    internal void PreviewEditValues(string session, IReadOnlyDictionary<string, ParamValue> values)
     {
         if (_disposed || Service is null || Selection.Count == 0) return;
-        if (_edit is { } current && (current.Id != session || current.Key != key)) EndEdit();
-        _edit ??= new EditSession(session, key, Service, [.. Selection]);
+        if (_edit is { } current && current.Id != session) EndEdit();
+        _edit ??= new EditSession(session, Service, [.. Selection]);
         if (_edit.Interrupted) return;
-        var first = _edit.Pending is null;
-        _edit.Pending = value;
+        var first = _edit.Pending.Count == 0;
+        foreach (var (key, value) in values) _edit.Pending[key] = value;
         if (first) UndoCommand.NotifyCanExecuteChanged();
         RefreshEditPreview();
     }
@@ -585,18 +607,23 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// <returns>是否寫入了專案。</returns>
     internal bool FlushEdit()
     {
-        if (_disposed || _edit is not { Pending: { } value } edit) return false;
-        edit.Pending = null;
+        if (_disposed || _edit is not { } edit || edit.Pending.Count == 0) return false;
+        var pending = new Settings(edit.Pending);
+        var firstKey = pending.Keys.First();
+        edit.Pending.Clear();
         var written = false;
         var failed = true;
         try
         {
-            written = edit.Service.SetValue(edit.Files, edit.Key, value, edit.Id);
+            // 單 key 走 SetValue（沿用「調整 {label}」描述），多 key 以一筆 SetValues 寫入（一次還原全部欄位）。
+            written = pending.Count == 1
+                ? edit.Service.SetValue(edit.Files, firstKey, pending[firstKey], edit.Id)
+                : edit.Service.SetValues(edit.Files, pending, DescribeMultiFieldEdit(pending.Keys), edit.Id);
             failed = false;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            AppLog.Error($"無法儲存調整：{edit.Key}", error);
+            AppLog.Error($"無法儲存調整：{firstKey}", error);
             Toast.Show(Loc.Format("Toast.UnhandledError", error.Message));
         }
         finally
@@ -618,14 +645,26 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         return written;
     }
 
+    /// <summary>多欄位手勢提交時的復原描述：RAW 白平衡沿用白平衡描述，其餘沿用所屬模組的「調整 {模組}」。</summary>
+    private static string DescribeMultiFieldEdit(IEnumerable<string> keys)
+    {
+        var list = keys.ToList();
+        if (list.Any(RawWbParamViewModel.FlatKeys.Contains)) return Loc.Get("Raw.WbEdit");
+        return list.Select(ModuleSchema.ModuleOf).Distinct(StringComparer.Ordinal).SingleOrDefault() is { } module
+            && ModuleCatalog.TryGetModule(module, out var schema)
+            ? $"調整 {schema.Label}"
+            : Loc.Get("Raw.MaskEdit");
+    }
+
     /// <summary>照片目前在編輯器中呈現的項目：已保存的項目加上進行中手勢的 transient 值；專案本身不變。</summary>
     internal PhotoEntry EditingEntry(string file)
     {
         var service = Service!;
         var entry = service.Project[file];
-        return _edit is { Pending: { } value } edit && edit.Service == service && edit.Files.Contains(file)
-            ? PhotoOperations.SetValue(entry, edit.Key, value, service.BaseFor(entry.PresetId))
-            : entry;
+        if (_edit is not { } edit || edit.Service != service || !edit.Files.Contains(file) || edit.Pending.Count == 0)
+            return entry;
+        var presetBase = service.BaseFor(entry.PresetId);
+        return edit.Pending.Aggregate(entry, (current, kv) => PhotoOperations.SetValue(current, kv.Key, kv.Value, presetBase));
     }
 
     /// <summary>照片目前在編輯器中呈現的最終參數（<see cref="EditingEntry"/> 的三層合併）。</summary>
@@ -753,7 +792,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     // ───────────── 編輯 ─────────────
 
-    private bool CanUndo() => BackgroundRemoval.IsEditing ? BackgroundRemoval.CanUndo : _edit?.Pending is not null || Stack.CanUndo;
+    private bool CanUndo() => BackgroundRemoval.IsEditing ? BackgroundRemoval.CanUndo : _edit is { Pending.Count: > 0 } || Stack.CanUndo;
     private bool CanRedo() => BackgroundRemoval.IsEditing ? BackgroundRemoval.CanRedo : Stack.CanRedo;
 
     [RelayCommand(CanExecute = nameof(CanUndo))]
@@ -1011,6 +1050,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     public void ApplyRenderPreferences()
     {
         Settings.Save();
+        RawLoadOptions.LensDatabaseDirectory = Settings.LensDatabaseFolder;
+        _shownLensWarning = null;
         RendererFactory = PreviewService.GpuFactory(Settings);
         Renderer.Reconfigure(RendererFactory,
             Settings.ForceSoftwareGpu ? null : () => PreviewService.CreateCpuRenderer(Settings));
@@ -1020,6 +1061,22 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         FilmLook.InvalidateThumbnails();
         RequestPreview();
         _ = LoadPreviewAsync();
+        if (Service is { } service)
+            foreach (var file in service.Project.FileNames) Filmstrip.RequestThumbnail(file);
+    }
+
+    /// <summary>
+    /// 偏好設定變更外部 Lensfun 資料夾：屬於 RAW 來源選項，不需重建算圖器，
+    /// 但目前照片、縮圖與預設／底片預覽都要以新選項重新解碼（舊來源的 RawOptions 不再相符）。
+    /// </summary>
+    public void ApplyLensDatabase()
+    {
+        Settings.Save();
+        RawLoadOptions.LensDatabaseDirectory = Settings.LensDatabaseFolder;
+        _shownLensWarning = null;
+        Presets.Hover.InvalidateCache();
+        FilmLook.InvalidateThumbnails();
+        RequestPreview();
         if (Service is { } service)
             foreach (var file in service.Project.FileNames) Filmstrip.RequestThumbnail(file);
     }

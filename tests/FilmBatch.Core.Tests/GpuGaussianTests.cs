@@ -2,6 +2,8 @@ using FilmBatch.Core.Params;
 using FilmBatch.Engine.Imaging;
 using FilmBatch.Engine.Rendering;
 using FilmBatch.Gpu.Device;
+using FilmBatch.Gpu.Resources;
+using FilmBatch.Gpu.ShaderSystem;
 
 namespace FilmBatch.Core.Tests;
 
@@ -50,6 +52,80 @@ public sealed class GpuGaussianTests
         }
         Assert.True(maxRgb <= MaxRgbCodes, $"GPU/CPU RGB 差異 {maxRgb}/65535（容許 {MaxRgbCodes}）");
         Assert.True(maxAlpha <= MaxAlphaCodes, $"GPU/CPU alpha 差異 {maxAlpha}/65535（容許 {MaxAlphaCodes}）");
+    }
+
+    [Theory]
+    [InlineData(320, true)]
+    [InlineData(320, false)]
+    [InlineData(321, true)]
+    [InlineData(321, false)]
+    public void GaussianBatches_PreservePixelsAcrossPartialWorkgroups(int radius, bool horizontal)
+    {
+        using var device = DeviceOrSkip();
+        const int width = 273, height = 19;
+        var pixels = new float[width * height * 4];
+        for (var y = 0; y < height; y++)
+        for (var x = 0; x < width; x++)
+        for (var c = 0; c < 4; c++)
+            pixels[(y * width + x) * 4 + c] = ((x * 7 + y * 11 + c * 13) % 101) / 100f;
+        var taps = GaussianWeights.Get(radius, radius / 3f);
+        using var input = device.CreateTexture(width, height, GpuTextureFormat.Rgba32Float,
+            GpuTextureUsage.Sampled | GpuTextureUsage.CopyDst);
+        using var output = device.CreateTexture(width, height, GpuTextureFormat.Rgba32Float,
+            GpuTextureUsage.Storage | GpuTextureUsage.Sampled);
+        using var parameters = device.CreateBuffer(16, GpuBufferUsage.Uniform | GpuBufferUsage.CopyDst);
+        using var weights = device.CreateBuffer((ulong)taps.Length * 4, GpuBufferUsage.Storage | GpuBufferUsage.CopyDst);
+        device.WriteTexture<float>(input, pixels);
+        device.WriteBuffer<float>(weights, taps);
+        var tiled = radius <= 320;
+        using var blur = device.CreateKernel(new ShaderLibrary().Load(
+            tiled ? "common/gaussian_tile.wgsl" : "common/gaussian.wgsl"), "main",
+            [BindingSpec.TextureFloat, BindingSpec.StorageTexture(GpuTextureFormat.Rgba32Float),
+                BindingSpec.Uniform, BindingSpec.StorageRead]);
+        var major = horizontal ? width : height;
+        var minor = horizontal ? height : width;
+        var groups = tiled ? (major + 255) / 256 * minor : (width + 15) / 16 * ((height + 15) / 16);
+        // Five groups deliberately cross scanlines and leave a partial final batch.
+        for (var first = 0; first < groups; first += 5)
+        {
+            device.WriteBuffer<int>(parameters, new[] { horizontal ? 1 : 0, horizontal ? 0 : 1, radius, first });
+            using var batch = device.BeginCommands();
+            batch.Dispatch(blur, [input, output, parameters, weights], (uint)Math.Min(5, groups - first), 1);
+            batch.Submit();
+            device.WaitIdle();
+        }
+        using var pack = device.CreateKernel("""
+            @group(0) @binding(0) var src: texture_2d<f32>;
+            @group(0) @binding(1) var<storage, read_write> pixels: array<vec4f>;
+            @compute @workgroup_size(16, 16) fn main(@builtin(global_invocation_id) id: vec3u) {
+                let size = textureDimensions(src);
+                if (any(id.xy >= size)) { return; }
+                pixels[id.y * size.x + id.x] = textureLoad(src, vec2i(id.xy), 0);
+            }
+            """, "main", [BindingSpec.TextureFloat, BindingSpec.Storage]);
+        using var packed = device.CreateBuffer((ulong)pixels.Length * 4, GpuBufferUsage.Storage | GpuBufferUsage.CopySrc);
+        using var readback = device.CreateBuffer(packed.Size, GpuBufferUsage.MapRead | GpuBufferUsage.CopyDst);
+        using (var commands = device.BeginCommands())
+        {
+            commands.Dispatch2D(pack, [output, packed], width, height);
+            commands.CopyBuffer(packed, readback, packed.Size);
+            commands.Submit();
+        }
+        var actual = new float[pixels.Length];
+        device.ReadBuffer(readback, actual);
+        for (var y = 0; y < height; y++)
+        for (var x = 0; x < width; x++)
+        for (var c = 0; c < 4; c++)
+        {
+            var expected = 0f;
+            for (var offset = -radius; offset <= radius; offset++)
+            {
+                var sx = horizontal ? Math.Clamp(x + offset, 0, width - 1) : x;
+                var sy = horizontal ? y : Math.Clamp(y + offset, 0, height - 1);
+                expected += pixels[(sy * width + sx) * 4 + c] * taps[offset + radius];
+            }
+            Assert.InRange(Math.Abs(actual[(y * width + x) * 4 + c] - expected), 0, 0.00001f);
+        }
     }
 
     [Fact]

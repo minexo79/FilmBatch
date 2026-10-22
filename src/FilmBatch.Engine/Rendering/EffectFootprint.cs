@@ -3,33 +3,45 @@ using FilmBatch.Core.Params;
 
 namespace FilmBatch.Engine.Rendering;
 
-/// <summary>範圍輪廓的種類：內圈＝效果開始生效、外圈＝效果完全生效、導引＝方向等非範圍資訊。</summary>
-public enum FootprintStroke { Inner, Outer, Guide }
+/// <summary>
+/// 範圍輪廓的種類：內圈與外圈之間是效果的漸變帶、導引＝方向等非範圍資訊、
+/// 把手＝單一點的拖曳把手（膚色區域的半寬／半高）。
+/// </summary>
+public enum FootprintStroke { Inner, Outer, Guide, Handle }
 
 /// <summary>
 /// 一條範圍輪廓；座標為輸出影像的正規化座標（0–1，可超出影像）。
-/// <paramref name="DragKey"/> 非 null 時可在畫布上拖曳，拖曳改變的參數（完整鍵）由 <see cref="EffectFootprint.DragValue"/> 換算。
+/// <paramref name="DragKey"/> 非 null 時可在畫布上拖曳，拖曳改變的參數由 <see cref="EffectFootprint.Drag"/> 換算
+/// （通常是參數的完整鍵；膚色區域內圈的等比縮放用 <see cref="EffectFootprint.SkinScaleKey"/>）。
 /// </summary>
 public sealed record FootprintPath(FootprintStroke Stroke, IReadOnlyList<Vector2> Points, bool Closed, string? DragKey = null);
 
 /// <summary>
-/// 散景、放射旋轉模糊、動態模糊與暗角在預覽上的影響範圍輪廓。公式逐一對應 <see cref="CpuPipeline"/>
-/// （GPU 著色器與之一致）：內圈是遮罩剛離開 0 的位置，外圈是遮罩到達 1 的位置。
+/// 散景、放射旋轉模糊、動態模糊、暗角與局部膚色在預覽上的影響範圍輪廓。公式逐一對應 <see cref="CpuPipeline"/>
+/// 與 <see cref="PhotoAdjustments"/>（GPU 著色器與之一致）：模糊類的內圈是遮罩剛離開 0、外圈是到達 1；
+/// 膚色則相反，內圈內全強度、外圈（羽化結束）外不受影響。
+/// 膚色區域錨定在裁切前的來源座標，輪廓與拖曳都經過裁切仿射換算；其餘模組本來就在輸出座標。
 /// 模組未啟用時不產生輪廓。
 /// </summary>
 public static class EffectFootprint
 {
     private const int Segments = 96;
 
+    /// <summary>膚色區域內圈的拖曳鍵：半寬與半高等比縮放（不是單一參數）。</summary>
+    public const string SkinScaleKey = "skin.radius";
+
     /// <summary>有範圍輪廓的模組。</summary>
     public static bool Supports(string moduleKey) =>
-        moduleKey is "bokeh" or "zoom_rotate_blur" or "motion_blur" or "vignette";
+        moduleKey is "bokeh" or "zoom_rotate_blur" or "motion_blur" or "vignette" or "skin";
 
     /// <param name="moduleKey">模組 key。</param>
-    /// <param name="settings">已解析的設定（缺少的鍵以系統預設補上）。</param>
+    /// <param name="settings">已解析的設定（缺少的鍵以系統預設補上；裁切也從這裡讀）。</param>
     /// <param name="width">輸出影像寬（像素，任意比例尺皆可，只用來決定長寬比與短邊）。</param>
     /// <param name="height">輸出影像高。</param>
-    public static IReadOnlyList<FootprintPath> For(string moduleKey, Settings settings, double width, double height)
+    /// <param name="sourceWidth">裁切前來源寬（與算圖用的來源同一比例尺）；0 表示與輸出相同、沒有裁切。只有膚色區域使用。</param>
+    /// <param name="sourceHeight">裁切前來源高。</param>
+    public static IReadOnlyList<FootprintPath> For(string moduleKey, Settings settings, double width, double height,
+        int sourceWidth = 0, int sourceHeight = 0)
     {
         if (width <= 0 || height <= 0 || !Supports(moduleKey) || !Bool(settings, moduleKey + ".enabled")) return [];
         var w = (float)width;
@@ -40,6 +52,7 @@ public static class EffectFootprint
             "zoom_rotate_blur" => ZoomRotate(settings, w, h),
             "motion_blur" => Motion(settings, w, h),
             "vignette" => Vignette(settings, w, h),
+            "skin" => Skin(settings, SourceMap.Create(settings, sourceWidth, sourceHeight, width, height)),
             _ => [],
         };
     }
@@ -151,7 +164,127 @@ public static class EffectFootprint
         return paths;
     }
 
+    // ───────────── 局部膚色：來源座標的軸向羽化橢圓（PhotoAdjustments.SkinWeight） ─────────────
+
+    private static List<FootprintPath> Skin(Settings s, SourceMap map)
+    {
+        var cx = Num(s, "skin.region_cx");
+        var cy = Num(s, "skin.region_cy");
+        var rx = Num(s, "skin.radius_x");
+        var ry = Num(s, "skin.radius_y");
+        if (rx <= 0 || ry <= 0) return [];
+        var feather = Math.Clamp(Num(s, "skin.feather") / 100f, 0, 1);
+        var paths = new List<FootprintPath>
+        {
+            new(FootprintStroke.Inner, Ring(t => map.ToOutput(cx + rx * MathF.Cos(t), cy + ry * MathF.Sin(t))), true, SkinScaleKey),
+        };
+        if (feather > 0)
+        {
+            var d = 1 + feather;
+            paths.Add(new FootprintPath(FootprintStroke.Outer,
+                Ring(t => map.ToOutput(cx + d * rx * MathF.Cos(t), cy + d * ry * MathF.Sin(t))), true, "skin.feather"));
+        }
+        // 把手在來源橢圓的軸端點：左右調半寬、上下調半高（裁切旋轉後跟著轉）
+        foreach (var (dx, dy, key) in new[] { (-1, 0, "skin.radius_x"), (1, 0, "skin.radius_x"), (0, -1, "skin.radius_y"), (0, 1, "skin.radius_y") })
+            paths.Add(new FootprintPath(FootprintStroke.Handle, [map.ToOutput(cx + dx * rx, cy + dy * ry)], false, key));
+        return paths;
+    }
+
+    /// <summary>
+    /// 輸出正規化座標 ↔ 裁切前來源正規化座標，與 <see cref="PhotoAdjustments"/> 相同：
+    /// 輸出像素 →（CropTransform.OutToSource）→ 來源像素 → 除以來源尺寸。
+    /// </summary>
+    private readonly struct SourceMap
+    {
+        private readonly Affine2 _outToSource, _sourceToOut;
+        private readonly double _outW, _outH, _srcW, _srcH;
+
+        private SourceMap(CropTransform t, double srcW, double srcH)
+        {
+            _outToSource = t.OutToSource;
+            _sourceToOut = t.OutToSource.Inverse();
+            _outW = t.OutWidth; _outH = t.OutHeight;
+            _srcW = srcW; _srcH = srcH;
+        }
+
+        public static SourceMap Create(Settings s, int sourceWidth, int sourceHeight, double width, double height)
+        {
+            if (sourceWidth <= 0 || sourceHeight <= 0)
+            {
+                // 沒有來源尺寸：視為沒有裁切，來源就是輸出
+                var w = Math.Max(1, (int)Math.Round(width));
+                var h = Math.Max(1, (int)Math.Round(height));
+                return new SourceMap(new CropTransform(w, h, Affine2.Identity, Affine2.Identity, w, h), w, h);
+            }
+            return new SourceMap(CropGeometry.Compute(sourceWidth, sourceHeight, CropGeometry.FromSettings(s)), sourceWidth, sourceHeight);
+        }
+
+        public Vector2 ToOutput(float sx, float sy)
+        {
+            var (ox, oy) = _sourceToOut.Apply(sx * _srcW, sy * _srcH);
+            return new Vector2((float)(ox / _outW), (float)(oy / _outH));
+        }
+
+        public (double X, double Y) ToSource(Vector2 output)
+        {
+            var (x, y) = _outToSource.Apply(output.X * _outW, output.Y * _outH);
+            return (x / _srcW, y / _srcH);
+        }
+    }
+
+    /// <summary>來源正規化座標 → 輸出正規化座標（套用設定中的裁切）。沒有來源尺寸時視為沒有裁切。</summary>
+    public static Vector2 SourceToOutput(Settings settings, int sourceWidth, int sourceHeight, Vector2 source) =>
+        SourceMap.Create(settings, sourceWidth, sourceHeight, 1, 1).ToOutput(source.X, source.Y);
+
+    /// <summary>輸出正規化座標 → 來源正規化座標（<see cref="SourceToOutput"/> 的反向）。</summary>
+    public static Vector2 OutputToSource(Settings settings, int sourceWidth, int sourceHeight, Vector2 output)
+    {
+        var (x, y) = SourceMap.Create(settings, sourceWidth, sourceHeight, 1, 1).ToSource(output);
+        return new Vector2((float)x, (float)y);
+    }
+
     // ───────────── 拖曳輪廓 ─────────────
+
+    /// <summary>
+    /// 把 <paramref name="dragKey"/> 的輪廓拖到 <paramref name="point"/>（輸出正規化座標）時要寫入的參數。
+    /// 一般輪廓只改一個參數（見 <see cref="DragValue"/>）；膚色區域內圈等比縮放會同時改半寬與半高。
+    /// 值依參數範圍夾限並取到步進；不支援的鍵回傳 null。
+    /// </summary>
+    public static IReadOnlyList<KeyValuePair<string, double>>? Drag(string dragKey, Settings settings, double width, double height,
+        Vector2 point, int sourceWidth = 0, int sourceHeight = 0)
+    {
+        if (width <= 0 || height <= 0) return null;
+        if (dragKey.StartsWith("skin.", StringComparison.Ordinal))
+            return SkinDrag(dragKey, settings, SourceMap.Create(settings, sourceWidth, sourceHeight, width, height), point);
+        return DragValue(dragKey, settings, width, height, point) is { } value ? [new(dragKey, value)] : null;
+    }
+
+    private static IReadOnlyList<KeyValuePair<string, double>>? SkinDrag(string dragKey, Settings s, SourceMap map, Vector2 point)
+    {
+        var (x, y) = map.ToSource(point);
+        var dx = x - Num(s, "skin.region_cx");
+        var dy = y - Num(s, "skin.region_cy");
+        var rx = (double)Num(s, "skin.radius_x");
+        var ry = (double)Num(s, "skin.radius_y");
+        if (rx <= 0 || ry <= 0) return null;
+        // 與 SkinWeight 相同的橢圓距離：1 = 內圈、1 + 羽化 = 外圈
+        var d = Math.Sqrt(dx * dx / (rx * rx) + dy * dy / (ry * ry));
+        return dragKey switch
+        {
+            "skin.radius_x" => [Snapped("skin.radius_x", Math.Abs(dx))],
+            "skin.radius_y" => [Snapped("skin.radius_y", Math.Abs(dy))],
+            SkinScaleKey => [Snapped("skin.radius_x", rx * d), Snapped("skin.radius_y", ry * d)],
+            "skin.feather" => [Snapped("skin.feather", (d - 1) * 100)],
+            _ => null,
+        };
+    }
+
+    private static KeyValuePair<string, double> Snapped(string key, double value)
+    {
+        var def = ModuleCatalog.Param(key)!;
+        var step = def.Step > 0 ? def.Step : 1;
+        return new(key, Math.Clamp(Math.Round(value / step) * step, def.Min, def.Max));
+    }
 
     /// <summary>
     /// 把輪廓拖到 <paramref name="point"/>（正規化座標）時，<paramref name="dragKey"/> 參數的新值：
@@ -160,7 +293,7 @@ public static class EffectFootprint
     /// </summary>
     public static double? DragValue(string dragKey, Settings settings, double width, double height, Vector2 point)
     {
-        if (width <= 0 || height <= 0 || ModuleCatalog.Param(dragKey) is not { } def) return null;
+        if (width <= 0 || height <= 0 || ModuleCatalog.Param(dragKey) is null) return null;
         var w = (float)width;
         var h = (float)height;
         var shortSide = MathF.Min(w, h);
@@ -176,9 +309,7 @@ public static class EffectFootprint
             "vignette.feather" => (VignetteDistance(settings, w, h, point) - Num(settings, "vignette.size") / 100f * .7f) / .5f * 100,
             _ => null,
         };
-        if (raw is not { } value) return null;
-        var step = def.Step > 0 ? def.Step : 1;
-        return Math.Clamp(Math.Round(value / step) * step, def.Min, def.Max);
+        return raw is { } value ? Snapped(dragKey, value).Value : null;
     }
 
     /// <summary>散景遮罩的距離（短邊單位、旋轉加長寬比），與 CpuPipeline.Bokeh 相同。</summary>

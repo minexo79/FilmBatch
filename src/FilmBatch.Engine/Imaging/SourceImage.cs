@@ -116,8 +116,12 @@ public sealed class SourceImage
             ReferenceWidth = ReferenceWidth, ReferenceHeight = ReferenceHeight,
             FilePath = FilePath, RawOptions = RawOptions, RawInfo = RawInfo,
             SemanticMasks = SemanticMasks, Denoise = Denoise, ForegroundMask = mask,
+            LensDatabaseWarning = LensDatabaseWarning,
         };
     }
+
+    /// <summary>外部鏡頭資料庫無法讀取時的錯誤訊息（此來源已退回不使用外部校正）；正常時為 <see langword="null"/>。</summary>
+    public string? LensDatabaseWarning { get; init; }
 
     /// <summary>縮小（box filter），用於縮圖或拖曳中的降解析度預覽。RAW 來源在場景域縮放並保留中繼資料。</summary>
     public SourceImage Downscale(int maxLongEdge)
@@ -140,7 +144,7 @@ public sealed class SourceImage
             {
                 FilePath = FilePath, RawOptions = RawOptions, RawInfo = RawInfo, SemanticMasks = SemanticMasks,
                 ReferenceWidth = ReferenceWidth, ReferenceHeight = ReferenceHeight,
-                Denoise = Denoise, ForegroundMask = ForegroundMask,
+                Denoise = Denoise, ForegroundMask = ForegroundMask, LensDatabaseWarning = LensDatabaseWarning,
             };
         }
         var dst = new ushort[w * h * 4];
@@ -180,7 +184,7 @@ public sealed class SourceImage
         {
             FilePath = FilePath, RawOptions = RawOptions, RawInfo = RawInfo, SemanticMasks = SemanticMasks,
             ReferenceWidth = ReferenceWidth, ReferenceHeight = ReferenceHeight,
-            Denoise = Denoise, ForegroundMask = ForegroundMask,
+            Denoise = Denoise, ForegroundMask = ForegroundMask, LensDatabaseWarning = LensDatabaseWarning,
         };
     }
 }

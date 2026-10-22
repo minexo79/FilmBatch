@@ -150,7 +150,7 @@ public static class BatchExporter
             try
             {
                 // 同一執行緒直接處理（算圖器親和性；GUI 端已在背景 Task 內）
-                var (w, h, metadataWarning, rawDevice, denoise) = ProcessOne(job, outputs[i], options, renderer, ct);
+                var (w, h, metadataWarning, rawDevice, denoise, lensWarning) = ProcessOne(job, outputs[i], options, renderer, ct);
                 deviceName = renderer.DeviceName;
                 isSoftware |= renderer.IsSoftware;
                 // RAW 與效果共用同一條完整管線，記錄這張實際採用的 GPU／CPU 路徑。
@@ -159,6 +159,7 @@ public static class BatchExporter
                 entries[i] = LogEntry(job, outputs[i], options, entryDevice, w, h, "ok", null);
                 entries[i].MetadataWarning = metadataWarning;
                 entries[i].Denoise = denoise;
+                entries[i].LensDatabaseWarning = lensWarning;
             }
             catch (OperationCanceledException)
             {
@@ -216,7 +217,7 @@ public static class BatchExporter
         Error = error,
     };
 
-    private static (int Width, int Height, string? MetadataWarning, string? RawDevice, DenoiseReport? Denoise) ProcessOne(
+    private static (int Width, int Height, string? MetadataWarning, string? RawDevice, DenoiseReport? Denoise, string? LensDatabaseWarning) ProcessOne(
         ExportJob job, string outputPath, ExportOptions options, IPreviewRenderer renderer, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
@@ -241,7 +242,7 @@ public static class BatchExporter
 
         // 4. 編碼寫檔（原子寫入；絕不覆寫既有檔；取消時刪除未完成暫存）
         var metadataWarning = Encode(sized, job, outputPath, options, ct);
-        return (sized.Width, sized.Height, metadataWarning, rawDevice, rendered.Denoise);
+        return (sized.Width, sized.Height, metadataWarning, rawDevice, rendered.Denoise, source.LensDatabaseWarning);
     }
 
     internal static SourceImage DownscaleLongEdge(SourceImage image, int longEdge, CancellationToken ct)
@@ -304,7 +305,7 @@ public static class BatchExporter
         {
             FilePath = image.FilePath, RawOptions = image.RawOptions,
             RawInfo = image.RawInfo, SemanticMasks = image.SemanticMasks,
-            Denoise = image.Denoise,
+            Denoise = image.Denoise, LensDatabaseWarning = image.LensDatabaseWarning,
         };
     }
 

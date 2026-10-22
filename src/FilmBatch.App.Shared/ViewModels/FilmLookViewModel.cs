@@ -4,6 +4,7 @@ using Avalonia.Media.Imaging;
 using Avalonia.Media.Immutable;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using FilmBatch.App.Controls;
 using FilmBatch.App.Localization;
 using FilmBatch.Core.Film;
 using FilmBatch.Core.Params;
@@ -47,8 +48,7 @@ public sealed partial class HueBandViewModel(int index, IBrush swatch, ParamView
 public sealed partial class FilmLookViewModel : ObservableObject
 {
     // 色塊顏色只是辨識用的示意色（各色相帶中心附近），與主題無關。
-    private static readonly IBrush[] Swatches = [.. new[] { "#E04848", "#F08A3C", "#E8CF3A", "#4CB050", "#3EC1C9", "#3F6FE0", "#8A55D6", "#D64FA8" }
-        .Select(c => new ImmutableSolidColorBrush(Color.Parse(c)))];
+    private static readonly IBrush[] Swatches = [.. ParamTrackBrushes.BandColors.Select(c => new ImmutableSolidColorBrush(c))];
     private readonly MainWindowViewModel _main;
     private bool _expanded;
     private string? _lastFocus;

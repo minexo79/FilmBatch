@@ -182,11 +182,105 @@ public sealed class EffectFootprintTests
     public void Drag_values_are_clamped_to_the_parameter_range() =>
         Assert.Equal(0, EffectFootprint.DragValue("bokeh.transition", ModuleCatalog.Defaults.With("bokeh.focus_size", 60), W, H, new Vector2(.5f, .5f)));
 
+    // ───────────── 局部膚色：來源座標，經裁切仿射 ─────────────
+
+    private const int SrcW = 150, SrcH = 100;
+
+    public static TheoryData<Settings> SkinCases()
+    {
+        var skin = ModuleCatalog.Defaults.With("skin.enabled", true).With("skin.temperature", 60)
+            .With("skin.region_cx", .45).With("skin.region_cy", .4).With("skin.radius_x", .18).With("skin.radius_y", .12)
+            .With("skin.feather", 40);
+        return new()
+        {
+            skin,
+            // 拉直 12°、順時針 90°、水平翻轉，裁一個偏移的框
+            skin.With("crop.enabled", true).With("crop.angle", 12).With("crop.quarter", 1).With("crop.flip_h", true)
+                .With("crop.rect_cx", .48).With("crop.rect_cy", .45).With("crop.rect_w", .7).With("crop.rect_h", .75),
+        };
+    }
+
+    /// <summary>算圖的對應：輸出正規化點 → OutToSource → 來源正規化，再套 ApplySample 取得調整後的灰色。</summary>
+    private static (double R, double G, double B) SkinAt(ModuleParams p, Vector2 output)
+    {
+        var t = p.CropT;
+        var (sx, sy) = t.OutToSource.Apply(output.X * t.OutWidth, output.Y * t.OutHeight);
+        return PhotoAdjustments.ApplySample(.4, .4, .4, sx / SrcW, sy / SrcH, p);
+    }
+
+    [Theory]
+    [MemberData(nameof(SkinCases))]
+    public void Skin_contours_follow_the_crop_and_match_the_adjustment_weight(Settings s)
+    {
+        var p = ModuleParams.From(new SourceImage(SrcW, SrcH, new ushort[SrcW * SrcH * 4]), s);
+        var paths = EffectFootprint.For("skin", s, p.CropT.OutWidth, p.CropT.OutHeight, SrcW, SrcH);
+        // 內圈的中心＝四個把手的中點（仿射保持中點）
+        var handles = paths.Where(x => x.Stroke == FootprintStroke.Handle).Select(x => x.Points[0]).ToList();
+        Assert.Equal(4, handles.Count);
+        var center = (handles[0] + handles[1]) / 2;
+        var full = SkinAt(p, center);
+        Assert.NotEqual(.4, full.R, 3);
+
+        foreach (var point in paths.Single(x => x.Stroke == FootprintStroke.Inner).Points)
+        {
+            var inside = SkinAt(p, center + (point - center) * .95f);
+            Assert.Equal(full.R, inside.R, 9);
+            Assert.Equal(full.B, inside.B, 9);
+        }
+        foreach (var point in paths.Single(x => x.Stroke == FootprintStroke.Outer).Points)
+        {
+            var outside = SkinAt(p, center + (point - center) * 1.05f);
+            Assert.Equal(.4, outside.R, 9);
+            Assert.Equal(.4, outside.B, 9);
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(SkinCases))]
+    public void Skin_drags_round_trip_through_the_crop(Settings s)
+    {
+        var p = ModuleParams.From(new SourceImage(SrcW, SrcH, new ushort[SrcW * SrcH * 4]), s);
+        var (w, h) = (p.CropT.OutWidth, p.CropT.OutHeight);
+        var paths = EffectFootprint.For("skin", s, w, h, SrcW, SrcH);
+        IReadOnlyList<KeyValuePair<string, double>> Drag(FootprintPath path, Vector2 at) =>
+            EffectFootprint.Drag(path.DragKey!, s, w, h, at, SrcW, SrcH)!;
+
+        foreach (var path in paths)
+        {
+            // 拖到輪廓本身：值不變
+            foreach (var (key, value) in Drag(path, path.Points[path.Points.Count / 3]))
+                Assert.Equal(s.Number(key), value, 6);
+        }
+
+        var handles = paths.Where(x => x.Stroke == FootprintStroke.Handle).ToList();
+        var center = (handles[0].Points[0] + handles[1].Points[0]) / 2;
+        var right = handles.First(x => x.DragKey == "skin.radius_x").Points[0];
+        // 半寬把手往外拉 1.5 倍：只有半寬變
+        Assert.Equal([new("skin.radius_x", .27)], Drag(handles.First(x => x.DragKey == "skin.radius_x"), center + (right - center) * 1.5f));
+        // 內圈等比放大 1.5 倍：半寬、半高一起變
+        var inner = paths.Single(x => x.Stroke == FootprintStroke.Inner);
+        var scaled = Drag(inner, center + (inner.Points[10] - center) * 1.5f).ToDictionary();
+        Assert.Equal(.27, scaled["skin.radius_x"], 6);
+        Assert.Equal(.18, scaled["skin.radius_y"], 6);
+        // 外圈拉到內圈上：羽化歸零
+        Assert.Equal(0, Drag(paths.Single(x => x.Stroke == FootprintStroke.Outer), inner.Points[5]).Single().Value, 6);
+    }
+
+    [Fact]
+    public void Skin_without_feather_has_no_outer_contour()
+    {
+        var s = ModuleCatalog.Defaults.With("skin.enabled", true).With("skin.feather", 0);
+        var paths = EffectFootprint.For("skin", s, SrcW, SrcH, SrcW, SrcH);
+        Assert.DoesNotContain(paths, x => x.Stroke == FootprintStroke.Outer);
+        Assert.Contains(paths, x => x.Stroke == FootprintStroke.Inner);
+    }
+
     [Theory]
     [InlineData("bokeh")]
     [InlineData("zoom_rotate_blur")]
     [InlineData("motion_blur")]
     [InlineData("vignette")]
+    [InlineData("skin")]
     public void Disabled_modules_have_no_footprint(string module) =>
         Assert.Empty(EffectFootprint.For(module, ModuleCatalog.Defaults.With(module + ".enabled", false), W, H));
 }

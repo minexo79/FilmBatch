@@ -19,7 +19,7 @@ namespace FilmBatch.App.Controls;
 /// <item>原圖對比：<see cref="ShowOriginal"/>（按住空白鍵）、<see cref="IsSplit"/> 左右分割（分割線可拖曳）。</item>
 /// <item>控制點：與影像一起繪製，命中測試自行計算；拖曳時即時回報（<see cref="ControlPointDragged"/>）。</item>
 /// <item>影響範圍（<see cref="Footprint"/>）：內圈實線＝效果開始、外圈虛線＝效果完全套用，畫在控制點之下並裁在影像內；
-/// 可拖曳的輪廓拖曳時即時回報（<see cref="FootprintDragged"/>），控制點優先。</item>
+/// 可拖曳的輪廓與把手拖曳時即時回報（<see cref="FootprintDragged"/>），優先順序：控制點 → 把手 → 輪廓。</item>
 /// <item>畫布工具：<see cref="ActiveTool"/>（裁切框等）畫在影像之上，指標事件優先交給工具；畫面上的對比分割線例外，仍可拖曳。</item>
 /// <item>拖曳在放開、失去指標擷取、視窗失去焦點、畫布離開畫面、工具被換掉或控制點消失時結束，並恢復高品質取樣。</item>
 /// <item>算圖中於右上角顯示細小的旋轉指示，不遮擋畫面、不鎖住操作。</item>
@@ -77,6 +77,10 @@ public class PreviewCanvas : Control
     private static readonly IPen FootprintInner = new Pen(new SolidColorBrush(Color.FromArgb(0xE6, 0xFF, 0xFF, 0xFF)), 1.25, lineCap: PenLineCap.Round);
     private static readonly IPen FootprintOuter = new Pen(new SolidColorBrush(Color.FromArgb(0xC0, 0xFF, 0xFF, 0xFF)), 1.25, new DashStyle([4, 3], 0));
     private static readonly IPen FootprintGuide = new Pen(new SolidColorBrush(Color.FromArgb(0xE6, 0xFF, 0xFF, 0xFF)), 1.5, lineCap: PenLineCap.Round);
+    /// <summary>範圍把手（局部膚色的半寬／半高）：白色小方塊。</summary>
+    private const double HandleHalf = 3.5;
+    private static readonly IBrush HandleFill = Brushes.White;
+
     private static readonly IPen SplitPen = new Pen(Brushes.White, 1);
     private static readonly IPen SplitShadow = new Pen(new SolidColorBrush(Color.FromArgb(0xA0, 0, 0, 0)), 3);
     private static readonly IBrush OverlayBackground = new SolidColorBrush(Color.FromArgb(0xB0, 0x1A, 0x1A, 0x1A));
@@ -297,6 +301,13 @@ public class PreviewCanvas : Control
                 _ => FootprintInner,
             }, geo);
         }
+        // 把手畫在輪廓之上
+        foreach (var path in footprint)
+        {
+            if (path.Stroke != FootprintStroke.Handle || path.Points.Count == 0) continue;
+            var c = new Point(dest.X + path.Points[0].X * dest.Width, dest.Y + path.Points[0].Y * dest.Height);
+            ctx.DrawRectangle(HandleFill, PointPen, new Rect(c.X - HandleHalf, c.Y - HandleHalf, HandleHalf * 2, HandleHalf * 2));
+        }
     }
 
     private void DrawLabel(DrawingContext ctx, string text, Point at, bool alignRight)
@@ -339,8 +350,19 @@ public class PreviewCanvas : Control
         if (ShowOriginal || Footprint is not { Count: > 0 } footprint || Displayed is not { } img) return null;
         var dest = ImageRect(img.Size);
         if (!dest.Inflate(HitRadius).Contains(pos)) return null;
+        Point Screen(System.Numerics.Vector2 p) => new(dest.X + p.X * dest.Width, dest.Y + p.Y * dest.Height);
         string? best = null;
         var bestDistance = HitRadius;
+        // 把手比輪廓優先：把手就落在內圈上
+        foreach (var path in footprint)
+        {
+            if (path.Stroke != FootprintStroke.Handle || path.DragKey is null || path.Points.Count == 0) continue;
+            var d = Distance(pos, Screen(path.Points[0]));
+            if (d > bestDistance) continue;
+            bestDistance = d;
+            best = path.DragKey;
+        }
+        if (best is not null) return best;
         foreach (var path in footprint)
         {
             if (path.DragKey is null || path.Points.Count < 2) continue;

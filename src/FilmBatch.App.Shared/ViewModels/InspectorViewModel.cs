@@ -84,7 +84,7 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
         FilmLook = schemas.Any(s => s.Key == "film") ? new FilmLookViewModel(main) : null;
         Modules = schemas
             .Select(s => new ModuleSectionViewModel(s, this,
-                m => { _main.FlushEdit(); if (_main.Service is { } svc) svc.ResetModule(_main.Selection, m.Key); },
+                ResetModule,
                 m => _main.CopyModuleOnly(m.Key), FilmLook) { IsVisible = s.Key != "raw" })
             .ToList();
         foreach (var m in Modules) m.ExpandedChanged += OnModuleExpanded;
@@ -149,6 +149,7 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
             OverrideText = "";
             HasOverrides = false;
             if (Modules.FirstOrDefault(m => m.Key == "raw") is { } raw) { raw.IsVisible = false; raw.SetRawSource(null); }
+            Modules.FirstOrDefault(m => m.Key == "basic")?.SetRawSource(null);
             if (IsActive) _main.Preview.ShowControlPoint(null, null);
             FilmLook?.OnSettingsChanged();
             return;
@@ -170,12 +171,12 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
         foreach (var m in Modules)
         {
             m.Load(resolved, entry.Overrides, HideDisabledModules);
-            if (m.Key == "raw")
+            if (m.Key is "raw" or "basic")
             {
                 var source = _main.Preview.Source;
                 if (source?.FilePath != svc.Project.PathOf(file)) source = null;
                 m.SetRawSource(source);
-                if (source?.RawInfo is null) m.IsVisible = false;
+                if (m.Key == "raw" && source?.RawInfo is null) m.IsVisible = false;
             }
         }
         FilmLook?.OnSettingsChanged();
@@ -210,20 +211,32 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
     public void SetValues(IReadOnlyDictionary<string, ParamValue> values, string? mergeKey)
     {
         if (_main.Service is null || _main.Selection.Count == 0) return;
-        _main.FlushEdit();
-        _main.Service.SetValues(_main.Selection, new Settings(values), Loc.Get("Raw.MaskEdit"));
+        if (mergeKey is null)
+        {
+            _main.FlushEdit();
+            var description = values.Keys.Any(RawWbParamViewModel.FlatKeys.Contains) ? Loc.Get("Raw.WbEdit") : Loc.Get("Raw.MaskEdit");
+            _main.Service.SetValues(_main.Selection, new Settings(values), description);
+        }
+        else _main.PreviewEditValues(mergeKey, values);
     }
 
-    public async Task<string?> PickFolderAsync(string? current)
+    public void ResetParams(IReadOnlyList<string> flatKeys)
     {
-        var service = _main.Service;
-        if (service is null) return null;
-        var selection = _main.Selection.ToArray();
-        var start = string.IsNullOrWhiteSpace(current) ? service.Project.Folder
-            : Path.GetFullPath(current, service.Project.Folder);
-        var picked = await _main.Dialogs.PickFolderAsync(Directory.Exists(start) ? start : service.Project.Folder);
-        // A modal picker may outlive a project/photo change; never apply its result elsewhere.
-        return _main.Service == service && selection.SequenceEqual(_main.Selection) ? picked : null;
+        if (_main.Service is null) return;
+        _main.FlushEdit();
+        _main.Service.ResetParams(_main.Selection, flatKeys, Loc.Get("Raw.WbReset"));
+    }
+
+    /// <summary>重設模組；RAW 照片的「基本調整」連同顯示在其中的 RAW 白平衡一起重設（一筆復原紀錄）。</summary>
+    private void ResetModule(ModuleSectionViewModel m)
+    {
+        _main.FlushEdit();
+        if (_main.Service is not { } svc) return;
+        if (m.ShowsRawWhiteBalance)
+            svc.ResetParams(_main.Selection, [.. m.Schema.FlatKeys, .. RawWbParamViewModel.FlatKeys],
+                Loc.Format("Inspector.ResetModuleNamed", m.Label));
+        else
+            svc.ResetModule(_main.Selection, m.Key);
     }
 
     public void ResetParam(string flatKey)

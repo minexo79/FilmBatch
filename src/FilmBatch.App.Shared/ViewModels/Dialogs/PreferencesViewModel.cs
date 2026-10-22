@@ -94,6 +94,10 @@ public sealed partial class PreferencesViewModel : ObservableObject
     [ObservableProperty]
     private string _texturesFolder;
 
+    /// <summary>外部 Lensfun 資料夾；空字串表示跟隨 FILMBATCH_LENSFUN_DIR（未設定則不使用）。</summary>
+    [ObservableProperty]
+    private string _lensDatabaseFolder;
+
     [ObservableProperty]
     private Option<string> _language;
 
@@ -116,6 +120,7 @@ public sealed partial class PreferencesViewModel : ObservableObject
         _gpuMemoryLimitMb = s.GpuMemoryLimitMb;
         _backgroundCpuPercent = s.BackgroundCpuPercent;
         _texturesFolder = s.TexturesFolder ?? Core.AppPaths.Textures;
+        _lensDatabaseFolder = s.LensDatabaseFolder ?? "";
         _language = Languages.First(l => l.Value == s.EffectiveLanguage);
         _ = LoadAdaptersAsync();
     }
@@ -144,6 +149,16 @@ public sealed partial class PreferencesViewModel : ObservableObject
         var picked = await _main.Dialogs.PickFolderAsync(Directory.Exists(TexturesFolder) ? TexturesFolder : null);
         if (picked is not null) TexturesFolder = picked;
     }
+
+    [RelayCommand]
+    private async Task BrowseLensDatabase()
+    {
+        var picked = await _main.Dialogs.PickFolderAsync(Directory.Exists(LensDatabaseFolder) ? LensDatabaseFolder : null);
+        if (picked is not null) LensDatabaseFolder = picked;
+    }
+
+    [RelayCommand]
+    private void ClearLensDatabase() => LensDatabaseFolder = "";
 
     partial void OnBackgroundChanged(Option<PreviewBackground> value) => _main.ApplyPreviewBackground(value.Value);
 
@@ -181,10 +196,15 @@ public sealed partial class PreferencesViewModel : ObservableObject
         s.ForceSoftwareGpu = forceSoftware;
         s.GpuMemoryLimitMb = GpuMemoryLimitMb;
         s.TexturesFolder = TexturesFolder;
+        var lensDatabase = string.IsNullOrWhiteSpace(LensDatabaseFolder) ? null : LensDatabaseFolder.Trim();
+        var lensChanged = s.LensDatabaseFolder != lensDatabase;
+        s.LensDatabaseFolder = lensDatabase;
         ApplyError = null;
         try
         {
+            // 算圖器重建本身就會重新載入來源與縮圖，鏡頭資料庫一併生效。
             if (renderChanged) _main.ApplyRenderPreferences();
+            else if (lensChanged) _main.ApplyLensDatabase();
             else s.Save();
             return true;
         }

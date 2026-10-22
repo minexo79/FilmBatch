@@ -9,7 +9,7 @@ namespace FilmBatch.Gpu.Resources;
 public sealed class GpuCommandList : IDisposable
 {
     private readonly GpuDevice _gpu;
-    private readonly CommandEncoder _encoder;
+    private CommandEncoder _encoder;
     private bool _submitted;
 
     internal GpuCommandList(GpuDevice gpu)
@@ -77,6 +77,16 @@ public sealed class GpuCommandList : IDisposable
         _submitted = true;
         var (status, message) = _gpu.Device.PopErrorScopeSync(10_000_000_000);
         if (!string.IsNullOrEmpty(message)) throw new GpuException(GpuText.Format("Gpu.CommandError", status, message));
+    }
+
+    /// <summary>提交並等待目前批次完成，再繼續錄製；供高成本運算分批，完成後可重用 uniform 緩衝區。</summary>
+    public void Flush()
+    {
+        Submit();
+        _gpu.WaitIdle();
+        _gpu.Device.PushErrorScope(ErrorFilter.Validation);
+        _submitted = false;
+        _encoder = _gpu.Device.CreateCommandEncoder();
     }
 
     /// <summary>平衡建構時的 validation error scope；未 Submit 就丟棄時也要 pop，否則 scope 會殘留在裝置堆疊上。</summary>

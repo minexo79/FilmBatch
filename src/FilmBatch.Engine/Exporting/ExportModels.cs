@@ -85,6 +85,8 @@ public sealed class ExportLogEntry
     /// <summary>Pixels were exported, but source EXIF was omitted or reduced; null when preserved.</summary>
     public string? MetadataWarning { get; set; }
     public DenoiseReport? Denoise { get; set; }
+    /// <summary>Pixels were exported without external Lensfun corrections because the database could not be read; null otherwise.</summary>
+    public string? LensDatabaseWarning { get; set; }
 }
 
 public sealed class ExportLogDocument

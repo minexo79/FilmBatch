@@ -21,6 +21,16 @@ public class RetiredParamsTests
     }
 
     [Fact]
+    public void Json_DropsRetiredLensDatabase_KeepsOtherRawKeys()
+    {
+        const string json = """{"raw.enabled":true,"raw.embedded_lens":false,"raw.lens_database":"profiles/lensfun"}""";
+        var settings = JsonSerializer.Deserialize<Settings>(json, Options)!;
+        Assert.True(settings.Bool("raw.enabled"));
+        Assert.False(settings.Bool("raw.embedded_lens"));
+        Assert.False(settings.ContainsKey("raw.lens_database"));
+    }
+
+    [Fact]
     public void Json_StillRejectsUnknownNonRetiredKey()
     {
         Assert.ThrowsAny<Exception>(() => JsonSerializer.Deserialize<Settings>("""{"film.bogus":1}""", Options));

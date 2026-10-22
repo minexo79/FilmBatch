@@ -25,6 +25,7 @@
     <c:ParamSlider Grid.Row="1" Grid.ColumnSpan="2" Name="Slider" Height="20" MinHeight="0" VerticalAlignment="Center"
                    Classes.temperature="{Binding IsTemperature}"
                    Classes.tint="{Binding IsTint}"
+                   TrackBrush="{Binding TrackBrush}"
                    Minimum="{Binding Minimum}" Maximum="{Binding Maximum}"
                    SmallChange="{Binding Step}" TickFrequency="{Binding Step}"
                    AutomationProperties.Name="{Binding Label}"

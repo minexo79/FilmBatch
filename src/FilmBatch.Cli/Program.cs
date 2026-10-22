@@ -59,13 +59,14 @@ var presetsFolderOption = new Option<string?>("--presets-folder") { Description 
 var embeddedLensOption = new Option<bool>("--embedded-lens") { Description = "啟用 RAW 內嵌鏡頭校正（只影響本次匯出）" };
 var cameraLocalToneOption = new Option<bool>("--camera-local-tone") { Description = "啟用 DNG 相機局部色調（只影響本次匯出）" };
 var denoiseOption = new Option<double?>("--denoise") { Description = "本次匯出的 AI 降噪強度 0–100（省略則沿用專案；須先安裝模型）" };
+var lensDatabaseOption = new Option<string?>("--lens-database") { Description = "外部 Lensfun 鏡頭資料庫資料夾（RAW 無內嵌校正時使用；預設讀 FILMBATCH_LENSFUN_DIR）" };
 
 var export = new Command("export", "批次匯出（與 GUI 共用匯出器）")
 {
     exportFolder, outOption, formatOption, qualityOption, longEdgeOption,
     presetOption, onlyUnassignedOption, presetsFolderOption,
     backendOption, softwareOption, lowPowerOption,
-    embeddedLensOption, cameraLocalToneOption, denoiseOption,
+    embeddedLensOption, cameraLocalToneOption, denoiseOption, lensDatabaseOption,
 };
 export.SetAction(async (r, ct) =>
 {
@@ -91,6 +92,16 @@ export.SetAction(async (r, ct) =>
     {
         Console.Error.WriteLine(ex.Message);
         return 2;
+    }
+    if (r.GetValue(lensDatabaseOption) is { Length: > 0 } lensDatabase)
+    {
+        lensDatabase = Path.GetFullPath(lensDatabase);
+        if (!Directory.Exists(lensDatabase))
+        {
+            Console.Error.WriteLine($"找不到鏡頭資料庫資料夾：{lensDatabase}");
+            return 2;
+        }
+        RawLoadOptions.LensDatabaseDirectory = lensDatabase;
     }
     var quality = r.GetValue(qualityOption);
     var longEdge = r.GetValue(longEdgeOption);

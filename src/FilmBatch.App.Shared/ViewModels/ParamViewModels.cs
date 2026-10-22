@@ -1,7 +1,9 @@
 using System.Collections.ObjectModel;
 using FilmBatch.Raw;
+using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using FilmBatch.App.Controls;
 using FilmBatch.App.Localization;
 using FilmBatch.Core.Params;
 
@@ -19,10 +21,13 @@ public interface IParamHost
         foreach (var (key, value) in values) SetValue(key, value, mergeKey);
     }
     void ResetParam(string flatKey);
+    /// <summary>一筆可復原的多欄位重設。預設逐 key 呼叫 <see cref="ResetParam"/>；專案實作以單一命令重設。</summary>
+    void ResetParams(IReadOnlyList<string> flatKeys)
+    {
+        foreach (var key in flatKeys) ResetParam(key);
+    }
     /// <summary>提交連續編輯（放開滑桿），並結束復原紀錄的合併。</summary>
     void EndEdit();
-    /// <summary>目錄參數的瀏覽；<paramref name="current"/> 為目前設定值。預設不支援（回傳 null）。</summary>
-    Task<string?> PickFolderAsync(string? current) => Task.FromResult<string?>(null);
 }
 
 /// <summary>
@@ -52,7 +57,12 @@ public abstract partial class ParamViewModel(string moduleKey, ParamDef def, IPa
 
     /// <summary>雙擊名稱：重設回預設值。</summary>
     [RelayCommand]
-    private void Reset() => Host.ResetParam(FlatKey);
+    private void Reset() => OnReset();
+
+    protected virtual void OnReset() => Host.ResetParam(FlatKey);
+
+    /// <summary>正在從設定載入顯示值（此時的屬性變更不可寫回）。</summary>
+    protected bool IsLoading => _loading;
 
     /// <summary>從照片的最終參數載入（不觸發修改）。</summary>
     public void Load(ParamValue value, bool overridden)
@@ -94,7 +104,7 @@ public abstract partial class ParamViewModel(string moduleKey, ParamDef def, IPa
 }
 
 /// <summary>數值參數：滑桿 + 數值框。</summary>
-public sealed partial class SliderParamViewModel(string moduleKey, ParamDef def, IParamHost host) : ParamViewModel(moduleKey, def, host)
+public partial class SliderParamViewModel(string moduleKey, ParamDef def, IParamHost host) : ParamViewModel(moduleKey, def, host)
 {
     private double _value;
     private string? _editSession;
@@ -105,9 +115,12 @@ public sealed partial class SliderParamViewModel(string moduleKey, ParamDef def,
     public string Unit => Def.Unit;
     public string FormatString => Def.Step >= 1 ? "0" : Def.Step >= 0.1 ? "0.0" : "0.00";
 
-    /// <summary>讓參數列可套用與色彩語意相符的滑桿軌道樣式。</summary>
-    public bool IsTemperature => string.Equals(Def.Key, "temperature", StringComparison.Ordinal);
-    public bool IsTint => string.Equals(Def.Key, "tint", StringComparison.Ordinal);
+    /// <summary>讓參數列可套用與色彩語意相符的滑桿軌道樣式：冷暖軸（含遮罩色溫、底片暖色）與綠洋紅軸。</summary>
+    public bool IsTemperature => Def.Key is "temperature" or "mask_temperature" or "warmth";
+    public bool IsTint => Def.Key is "tint" or "mask_tint";
+
+    /// <summary>其他具色彩語意的軌道漸層（色相、各色強度、色相帶）；null 表示一般軌道。</summary>
+    public IBrush? TrackBrush => ParamTrackBrushes.For(FlatKey);
 
     public double Value
     {
@@ -116,9 +129,11 @@ public sealed partial class SliderParamViewModel(string moduleKey, ParamDef def,
         {
             if (!SetProperty(ref _value, value)) return;
             OnPropertyChanged(nameof(NumericValue));
-            Push(value, _editSession);
+            PushValue(value, _editSession);
         }
     }
+
+    protected virtual void PushValue(double value, string? editSession) => Push(value, editSession);
 
     /// <summary>給 NumericUpDown（decimal?）使用。</summary>
     public decimal? NumericValue
@@ -165,8 +180,16 @@ public partial class ChoiceParamViewModel(string moduleKey, ParamDef def, IParam
         set
         {
             if (value is null || !SetProperty(ref _selected, value)) return;
-            Push(value.Key);
+            PushChoice(value);
         }
+    }
+
+    protected virtual void PushChoice(ChoiceItem value) => Push(value.Key);
+
+    /// <summary>不寫回地改變目前選項（寫入已由其他列一併送出時同步顯示）。</summary>
+    protected void ShowChoice(string key)
+    {
+        if (Options.FirstOrDefault(o => o.Key == key) is { } match) SetProperty(ref _selected, match, nameof(Selected));
     }
 
     /// <summary>目前值不在選項中時顯示原文（例如已移除的底片 key）。</summary>
@@ -212,13 +235,10 @@ public sealed partial class ToggleParamViewModel(string moduleKey, ParamDef def,
     protected override void OnLoad(ParamValue value) => SetProperty(ref _value, value.AsBool, nameof(Value));
 }
 
-/// <summary>文字／路徑參數（相對路徑）。<see cref="ParamDef.IsDirectory"/> 時提供資料夾瀏覽。</summary>
+/// <summary>文字／路徑參數（相對路徑）。</summary>
 public sealed partial class TextParamViewModel(string moduleKey, ParamDef def, IParamHost host) : ParamViewModel(moduleKey, def, host)
 {
     private string _value = "";
-
-    /// <summary>目錄參數顯示「瀏覽」按鈕。</summary>
-    public bool CanBrowse => Def.Kind == ParamKind.Path && Def.IsDirectory;
 
     public string Value
     {
@@ -227,13 +247,6 @@ public sealed partial class TextParamViewModel(string moduleKey, ParamDef def, I
         {
             if (SetProperty(ref _value, value ?? "")) Push(_value);
         }
-    }
-
-    /// <summary>瀏覽資料夾：挑選結果直接成為新值（絕對路徑由 ProjectService 轉回專案相對）。</summary>
-    [RelayCommand]
-    private async Task Browse()
-    {
-        if (await Host.PickFolderAsync(_value) is { } picked) Value = picked;
     }
 
     protected override void OnLoad(ParamValue value) => SetProperty(ref _value, value.AsText, nameof(Value));
@@ -252,13 +265,58 @@ public sealed class SemanticMaskOption(string name, string instance, string labe
 
 /// <summary>
 /// raw.wb_mode（拍攝值｜自訂）下拉：額外在同一列顯示來源的拍攝白平衡（As Shot）。
-/// 行為沿用 <see cref="ChoiceParamViewModel"/>。
+/// RAW 照片時與 <see cref="RawWbSliderParamViewModel"/> 一起顯示在「基本調整」的色溫／色調位置；
+/// 由拍攝值切到自訂時，以目前顯示的拍攝值作為起點一併寫入（不跳回 schema 預設 6500 K）。
 /// </summary>
 public sealed partial class RawWbParamViewModel(string moduleKey, ParamDef def, IParamHost host)
     : ChoiceParamViewModel(moduleKey, def, host)
 {
+    public const string Custom = "custom";
+    public static readonly string[] FlatKeys = ["raw.wb_mode", "raw.temperature", "raw.tint"];
+
     private double? _lastTemperature;
     private double? _lastTint;
+
+    /// <summary>同區塊的 Kelvin 色溫與色調列（由 <see cref="ModuleSectionViewModel"/> 連結）。</summary>
+    internal RawWbSliderParamViewModel? Temperature { get; set; }
+    internal RawWbSliderParamViewModel? Tint { get; set; }
+
+    public bool IsCustom => Selected?.Key == Custom;
+
+    /// <summary>來源的拍攝白平衡（未知時為 null）。</summary>
+    internal (double Temperature, double Tint)? AsShot =>
+        _lastTemperature is { } t ? (t, _lastTint ?? 0) : null;
+
+    protected override void PushChoice(ChoiceItem value)
+    {
+        if (IsLoading) return;
+        if (value.Key == Custom && !IsCustomStored && Temperature is { } t && Tint is { } ti && AsShot is not null)
+            Host.SetValues(new Dictionary<string, ParamValue>
+            {
+                ["raw.wb_mode"] = ParamValue.Of(Custom),
+                [t.FlatKey] = ParamValue.Of(t.Value),
+                [ti.FlatKey] = ParamValue.Of(ti.Value),
+            }, null);
+        else
+            base.PushChoice(value);
+        IsCustomStored = value.Key == Custom;
+    }
+
+    /// <summary>設定中目前的模式是否為自訂（下拉的顯示值在寫入前可能已先變更）。</summary>
+    internal bool IsCustomStored { get; private set; }
+
+    protected override void OnLoad(ParamValue value)
+    {
+        base.OnLoad(value);
+        IsCustomStored = value.AsText == Custom;
+    }
+
+    /// <summary>色溫／色調列已把模式一併寫成自訂：同步顯示，之後的拖曳只寫該列。</summary>
+    internal void MarkCustom()
+    {
+        ShowChoice(Custom);
+        IsCustomStored = true;
+    }
 
     /// <summary>「拍攝值 5500K・色偏 +8」；來源尚未解碼或不含白平衡資料時為空。</summary>
     public string AsShotText { get; private set; } = "";
@@ -422,4 +480,38 @@ public sealed partial class RawMaskParamViewModel : ParamViewModel
     /// <summary>保留來源完整名稱，並以實例識別消歧；不以顯示標籤回推設定值。</summary>
     private static string DisplayLabel(SemanticMask mask) =>
         mask.InstanceId is { Length: > 0 } id ? $"{mask.Name} · {id}" : mask.Name;
+}
+
+/// <summary>
+/// raw.temperature（K）／raw.tint：RAW 照片時取代「基本調整」的相對色溫／色調。
+/// 拍攝值模式下顯示來源拍攝值；拖曳時把模式＋色溫＋色調一起寫成自訂（同一筆復原紀錄），
+/// 雙擊名稱則三者一起重設回拍攝值。
+/// </summary>
+public sealed class RawWbSliderParamViewModel(string moduleKey, ParamDef def, IParamHost host)
+    : SliderParamViewModel(moduleKey, def, host)
+{
+    /// <summary>白平衡模式列（由 <see cref="ModuleSectionViewModel"/> 連結）。</summary>
+    internal RawWbParamViewModel? Mode { get; set; }
+
+    /// <summary>另一個白平衡軸（色溫 ↔ 色調）。</summary>
+    internal RawWbSliderParamViewModel? Partner { get; set; }
+
+    protected override void PushValue(double value, string? editSession)
+    {
+        if (IsLoading) return;
+        if (Mode is not { IsCustomStored: false } mode || Partner is not { } partner)
+        {
+            base.PushValue(value, editSession);
+            return;
+        }
+        Host.SetValues(new Dictionary<string, ParamValue>
+        {
+            ["raw.wb_mode"] = ParamValue.Of(RawWbParamViewModel.Custom),
+            [FlatKey] = ParamValue.Of(value),
+            [partner.FlatKey] = ParamValue.Of(partner.Value),
+        }, editSession);
+        mode.MarkCustom();
+    }
+
+    protected override void OnReset() => Host.ResetParams(RawWbParamViewModel.FlatKeys);
 }

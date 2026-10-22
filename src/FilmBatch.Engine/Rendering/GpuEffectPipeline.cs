@@ -34,6 +34,7 @@ internal sealed class GpuEffectPipeline : IDisposable
     private GpuBuffer? _output, _readback, _band;
     private uint _width, _height, _bandRows;
     private int _uniformIndex;
+    private ulong _pendingBlurSamples;
     private readonly RawDisplayGpu _rawDisplay;
     private readonly ComputeKernel _rawWhiteBalance, _rawSemantic;
     private GpuTexture? _maskTexture;
@@ -192,6 +193,7 @@ internal sealed class GpuEffectPipeline : IDisposable
         var leak = p.LeakAsset is null ? null : Acquire(p.LeakAsset.Image);
         var dirt = p.DirtAsset is null ? null : Acquire(p.DirtAsset.Image);
         _uniformIndex = 0;
+        _pendingBlurSamples = 0;
         using var commands = _gpu.BeginCommands();
         var current = Process(commands, input, second, leak, dirt, mask, source, p, token);
         Finish(commands, current, destination, token);
@@ -203,6 +205,7 @@ internal sealed class GpuEffectPipeline : IDisposable
         EnsureWorkspace((uint)source.Width, (uint)source.Height);
         var input = Acquire(source);
         _uniformIndex = 0;
+        _pendingBlurSamples = 0;
         using var commands = _gpu.BeginCommands();
         var current = Next(input);
         Dispatch(commands, _spike, [input, current, Uniform(new Vector4(p.Exposure, p.Brightness, p.Saturation, 0))]);
@@ -229,7 +232,7 @@ internal sealed class GpuEffectPipeline : IDisposable
         }
         GpuTexture Sharpen(float radiusScale, float amount, GpuTexture? reserve = null)
         {
-            var blurred = Blur(commands, current, Math.Max(1, (int)MathF.Round(shortSide * radiusScale)), reserve);
+            var blurred = Blur(commands, current, Math.Max(1, (int)MathF.Round(shortSide * radiusScale)), reserve, token: token);
             return Apply(_detail, new Vector4(amount, 0, 0, 0), blurred, reserve);
         }
         // 裁切：來源尺寸的線性紋理 → 輸出尺寸的工作紋理（關閉時不多一個 pass）
@@ -297,14 +300,15 @@ internal sealed class GpuEffectPipeline : IDisposable
         {
             var values = new HalationUniforms(p.HalAmount / 100, p.HalThreshold / 100, p.HalRadius / 100, p.HalHue, shortSide, 0, 0, 0);
             var extracted = Apply(_halExtract, values);
-            var glow = Blur(commands, extracted, Math.Max(1, (int)MathF.Round(shortSide * p.HalRadius / 100 * .08f)), current);
+            var glow = Blur(commands, extracted, Math.Max(1, (int)MathF.Round(shortSide * p.HalRadius / 100 * .08f)), current, token: token);
             current = Apply(_halAdd, values, glow);
         }
         if (p.LeakOn && p.LeakAmount > 0)
             current = leak is null
                 ? Apply(_leak, new LeakUniforms(0, p.LeakAmount / 100, p.LeakAngle * MathF.PI / 180,
                     p.LeakSize / 100, p.LeakHue, p.LeakIrregularity / 100, p.LeakCount, p.SeedLightLeak,
-                    _width / (float)_height, shortSide, 0, 0))
+                    _width / (float)_height, shortSide, p.LeakBlend, p.LeakRed / 100, p.LeakYellow / 100,
+                    p.LeakBlue / 100, 0, 0))
                 : Apply(_texture, OverlayUniforms(p, leak, true), leak);
         if (p.FilmOn && p.FilmLut is not null && p.FilmStrength > 0)
             current = Apply(_look, p.FilmLook, LutTexture(p.FilmLut));
@@ -319,7 +323,7 @@ internal sealed class GpuEffectPipeline : IDisposable
         current = display;
         if (p.BasicOn)
         {
-            var basis = p.Structure == 0 ? current : Blur(commands, current, Math.Max(1, (int)MathF.Round(shortSide * .012f)));
+            var basis = p.Structure == 0 ? current : Blur(commands, current, Math.Max(1, (int)MathF.Round(shortSide * .012f)), token: token);
             current = Apply(_basicDisplay, new BasicUniforms(p.Brightness / 100, p.Contrast / 100,
                 p.Highlights / 100, p.Shadows / 100, p.Saturation / 100, p.Structure / 100, shortSide, 0), basis);
         }
@@ -337,7 +341,7 @@ internal sealed class GpuEffectPipeline : IDisposable
         {
             var d = CpuPipeline.DeriveGrain(p, (int)_width, (int)_height);
             var soft = CpuPipeline.GrainSoftBlur(d.Geom.RefShort, p.GrainSoftness / 100, d.Geom.PixelScale);
-            var blurred = soft is { } b ? Blur(commands, current, b.Radius, sigma: b.Sigma) : current;
+            var blurred = soft is { } b ? Blur(commands, current, b.Radius, sigma: b.Sigma, token: token) : current;
             current = Apply(_grain, new GrainUniforms(
                 new Vector4(p.GrainAmount / 100, p.GrainColor / 100, soft is null ? 0 : p.GrainSoftness / 100, d.CorrGain),
                 new Vector4(d.SigmaOpt, d.CellOpt, Math.Clamp(p.GrainRadiusSpread, 0, 1), d.CorrScale),
@@ -357,7 +361,7 @@ internal sealed class GpuEffectPipeline : IDisposable
             (leak ? p.LeakAmount : p.DirtStrength) / 100, MathF.Cos(angle), MathF.Sin(angle),
             p.LeakHue, p.LeakIrregularity / 100, (p.DirtDust + p.DirtScratches + p.DirtHairs) / 300,
             Math.Min(_width, _height), leak ? Math.Clamp(p.LeakCount, 1, 3) : 1, p.Polarity,
-            leak ? p.SeedLightLeak : p.SeedDirt, leak ? 1 : 0);
+            leak ? p.SeedLightLeak : p.SeedDirt, leak ? 1 : 0, p.LeakBlend, 0, 0, 0);
     }
 
     /// <summary>
@@ -392,8 +396,12 @@ internal sealed class GpuEffectPipeline : IDisposable
 
     /// <summary>平鋪式高斯的半徑上限：workgroup 記憶體容納 256＋2×r 個 vec4 時的界線（見 gaussian_tile.wgsl）。</summary>
     private const int TileBlurMaxRadius = 320;
+    // Bound cumulative Gaussian work between queue waits, including consecutive axes/effects.
+    // Keep the normal 10-second device deadline; do not turn a whole image into one unbounded submission.
+    private const ulong BlurSamplesPerSubmission = 64UL * 1024 * 1024;
 
-    private GpuTexture Blur(GpuCommandList commands, GpuTexture input, int radius, GpuTexture? reserve = null, float? sigma = null)
+    private GpuTexture Blur(GpuCommandList commands, GpuTexture input, int radius, GpuTexture? reserve = null,
+        float? sigma = null, CancellationToken token = default)
     {
         var key = (radius, sigma ?? MathF.Max(.5f, radius / 3f));
         if (!_gaussians.TryGetValue(key, out var weights))
@@ -405,28 +413,42 @@ internal sealed class GpuEffectPipeline : IDisposable
         }
         var temp = Next(input, reserve);
         var result = Next(input, temp, reserve);
-        BlurPass(commands, input, temp, weights, horizontal: true, radius);
-        BlurPass(commands, temp, result, weights, horizontal: false, radius);
+        BlurPass(commands, input, temp, weights, horizontal: true, radius, token);
+        BlurPass(commands, temp, result, weights, horizontal: false, radius, token);
         return result;
     }
 
     /// <summary>
-    /// 單向高斯 pass：tile 半徑內用平鋪協作載入（與直接版相同的權重、clamp 邊界與 tap 順序），
-    /// 超出 tile 上限改派直接版；兩者的 uniform 與 binding 配置相同。
+    /// 單向高斯 pass：tile 半徑內用平鋪協作載入，超出上限改派直接版；
+    /// 兩者都以展平的 workgroup 起點分批，不改權重、clamp 邊界與逐像素 tap 順序。
     /// </summary>
     private void BlurPass(GpuCommandList commands, GpuTexture input, GpuTexture output,
-        GpuBuffer weights, bool horizontal, int radius)
+        GpuBuffer weights, bool horizontal, int radius, CancellationToken token)
     {
-        var uniform = Uniform(new BlurUniforms(horizontal ? 1 : 0, horizontal ? 0 : 1, radius, 0));
-        if (radius > TileBlurMaxRadius)
-        {
-            Dispatch(commands, _blur, [input, output, uniform, weights]);
-            return;
-        }
-        // tile 版 workgroup 為 256（1D）：x 為沿模糊軸的 tile 數，y 為行／列數。
+        var tiled = radius <= TileBlurMaxRadius;
         var major = horizontal ? _width : _height;
         var minor = horizontal ? _height : _width;
-        commands.Dispatch(_blurTile, [input, output, uniform, weights], (major + 255) / 256, minor);
+        var totalGroups = tiled ? (major + 255) / 256 * minor : (_width + 15) / 16 * ((_height + 15) / 16);
+        var samplesPerGroup = 256UL * (ulong)(2 * radius + 1);
+        // Both kernels have 256 lanes. Also respect WebGPU's baseline per-dimension dispatch limit.
+        var maxGroups = (uint)Math.Clamp(BlurSamplesPerSubmission / samplesPerGroup, 1UL, 65535UL);
+        for (uint first = 0; first < totalGroups;)
+        {
+            token.ThrowIfCancellationRequested();
+            var groups = Math.Min(maxGroups, totalGroups - first);
+            var samples = groups * samplesPerGroup;
+            if (_pendingBlurSamples + samples > BlurSamplesPerSubmission)
+            {
+                commands.Flush();
+                _pendingBlurSamples = 0;
+                _uniformIndex = 0; // Every previous user of these buffers has completed.
+                token.ThrowIfCancellationRequested();
+            }
+            var uniform = Uniform(new BlurUniforms(horizontal ? 1 : 0, horizontal ? 0 : 1, radius, first));
+            commands.Dispatch(tiled ? _blurTile : _blur, [input, output, uniform, weights], groups, 1);
+            _pendingBlurSamples += samples;
+            first += groups;
+        }
     }
 
     private GpuTexture LutTexture(FilmLut lut)
@@ -632,7 +654,7 @@ internal sealed class GpuEffectPipeline : IDisposable
     [StructLayout(LayoutKind.Sequential)] private readonly record struct BandUniforms(uint Row, uint Rows, uint Pad0, uint Pad1);
     /// <summary>geometry/crop.wgsl：OutToSource 仿射（列主序）＋ 來源尺寸，32 位元組。</summary>
     [StructLayout(LayoutKind.Sequential)] private readonly record struct CropUniforms(float M00, float M01, float M02, float SrcW, float M10, float M11, float M12, float SrcH);
-    [StructLayout(LayoutKind.Sequential)] private readonly record struct BlurUniforms(int X, int Y, int Radius, float Pad);
+    [StructLayout(LayoutKind.Sequential)] private readonly record struct BlurUniforms(int X, int Y, int Radius, uint FirstGroup);
     [StructLayout(LayoutKind.Sequential)] private readonly record struct LensUniforms(float Amount, float Chromatic, float Soften, float Crop, float Aspect, float ShortSide, float Pad0, float Pad1);
     [StructLayout(LayoutKind.Sequential)] private readonly record struct DoubleUniforms(int Source, int Blend, int Mirror, float Opacity, float X, float Y, float Scale, float Rotation, float Exposure, float Pad0, float Pad1, float Pad2);
     [StructLayout(LayoutKind.Sequential)] private readonly record struct BokehUniforms(float X, float Y, float Focus, float Aspect, float Cosine, float Sine, float Transition, float Radius, float Boost, float ShortSide, int FocusShape, int Shape);
@@ -640,7 +662,7 @@ internal sealed class GpuEffectPipeline : IDisposable
     [StructLayout(LayoutKind.Sequential)] private readonly record struct MotionUniforms(float Angle, float Length, float Protect, float X, float Y, float Size, float ShortSide, float Pad);
     [StructLayout(LayoutKind.Sequential)] private readonly record struct VignetteUniforms(float Amount, float Size, float Roundness, float Feather, float X, float Y, float Aspect, float Pad);
     [StructLayout(LayoutKind.Sequential)] private readonly record struct HalationUniforms(float Amount, float Threshold, float Radius, float Hue, float ShortSide, float Pad0, float Pad1, float Pad2);
-    [StructLayout(LayoutKind.Sequential)] private readonly record struct LeakUniforms(int Mode, float Amount, float Angle, float Size, float Hue, float Irregularity, int Count, uint Seed, float Aspect, float ShortSide, uint Pad0, uint Pad1);
+    [StructLayout(LayoutKind.Sequential)] private readonly record struct LeakUniforms(int Mode, float Amount, float Angle, float Size, float Hue, float Irregularity, int Count, uint Seed, float Aspect, float ShortSide, int Blend, float Red, float Yellow, float Blue, uint Pad0, uint Pad1);
     [StructLayout(LayoutKind.Sequential)] private readonly record struct PlateUniforms(int Type, float Strength, float Ortho, float Hue, float Tint, float Erosion, float Stains, float Uneven, uint Seed, float Aspect, uint Pad0, uint Pad1);
     [StructLayout(LayoutKind.Sequential)] private readonly record struct BasicUniforms(float Brightness, float Contrast, float Highlights, float Shadows, float Saturation, float Structure, float ShortSide, float Pad);
     [StructLayout(LayoutKind.Sequential)] private readonly record struct ToneUniforms(float ShadowHue, float ShadowAmount, float HighlightHue, float HighlightAmount, float Balance, float Pad0, float Pad1, float Pad2);
@@ -648,7 +670,7 @@ internal sealed class GpuEffectPipeline : IDisposable
 
     /// <summary>surface/grain.wgsl：A 為效果參數、B 為光學模型常數、MapX/MapY 為輸出→來源參考仿射（w 欄放 r0）、Tone 為亮度帶權重＋像素足跡；96 位元組。</summary>
     [StructLayout(LayoutKind.Sequential)] private readonly record struct GrainUniforms(Vector4 A, Vector4 B, Vector4 MapX, Vector4 MapY, uint Seed, uint Model, uint Samples, uint RoughQ, Vector4 Tone);
-    [StructLayout(LayoutKind.Sequential)] private readonly record struct TextureUniforms(float Scale, float Amount, float Cosine, float Sine, float Hue, float Irregularity, float Density, float ShortSide, int Count, int Polarity, uint Seed, int Leak);
+    [StructLayout(LayoutKind.Sequential)] private readonly record struct TextureUniforms(float Scale, float Amount, float Cosine, float Sine, float Hue, float Irregularity, float Density, float ShortSide, int Count, int Polarity, uint Seed, int Leak, int Blend, uint Pad0, uint Pad1, uint Pad2);
     [StructLayout(LayoutKind.Sequential)] private readonly record struct MultiUniforms(int Layout, float Divider, Vector2 Pad, Vector4 Cell0, Vector4 Tint0, Vector4 Cell1, Vector4 Tint1, Vector4 Cell2, Vector4 Tint2, Vector4 Cell3, Vector4 Tint3)
     {
         public static MultiUniforms From(ModuleParams p)

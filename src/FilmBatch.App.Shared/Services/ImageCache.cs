@@ -81,8 +81,7 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
         lock (_stateLock)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            if (_thumbs.TryGetValue(path, out var cur) && cur.Options == rawOptions
-                && !cur.Task.IsFaulted && !cur.Task.IsCanceled)
+            if (_thumbs.TryGetValue(path, out var cur) && cur.Options == rawOptions && IsReusable(cur.Task))
             {
                 TouchThumbLocked(path);
                 shared = cur.Task;
@@ -148,7 +147,7 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             var key = (Path: path, Edge: _previewLongEdge, Options: rawOptions);
-            if (_previews.TryGetValue(key, out var cur) && !cur.Task.IsFaulted && !cur.Task.IsCanceled)
+            if (_previews.TryGetValue(key, out var cur) && IsReusable(cur.Task))
             {
                 _previewOrder.Remove(key);
                 _previewOrder.AddFirst(key);
@@ -178,6 +177,13 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
         }
         return ApplyWaiter(shared, cancellationToken);
     }
+
+    /// <summary>
+    /// 失敗／取消的結果不重用；外部鏡頭資料庫讀取失敗而退回不校正的來源也不重用，
+    /// 讓使用者修好資料夾內容（路徑不變）後下次載入就會重新比對。
+    /// </summary>
+    private static bool IsReusable(Task<SourceImage> task) =>
+        !task.IsFaulted && !task.IsCanceled && !(task.IsCompletedSuccessfully && task.Result.LensDatabaseWarning is not null);
 
     private static Task<SourceImage> ApplyWaiter(Task<SourceImage> shared, CancellationToken cancellationToken)
     {

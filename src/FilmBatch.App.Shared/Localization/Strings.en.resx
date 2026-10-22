@@ -69,6 +69,7 @@
   <data name="Inspector.UpdatePreset" xml:space="preserve"><value>Update Preset</value></data>
   <data name="Inspector.HideDisabled" xml:space="preserve"><value>Hide disabled modules</value></data>
   <data name="Inspector.ResetModule" xml:space="preserve"><value>Reset Module</value></data>
+  <data name="Inspector.ResetModuleNamed" xml:space="preserve"><value>Reset {0}</value></data>
   <data name="Inspector.CopyModule" xml:space="preserve"><value>Copy This Module Only</value></data>
   <data name="Filmstrip.All" xml:space="preserve"><value>All</value></data>
   <data name="Filmstrip.OverridesOnly" xml:space="preserve"><value>With overrides</value></data>
@@ -154,6 +155,10 @@
   <data name="Pref.BackgroundCpu.Desc" xml:space="preserve"><value>Adjust thumbnail background work immediately; default 70%, 100% adds no throttling. Uses process CPU across all logical cores and yields between jobs. This is not a hard cap: a single RAW/native decode may briefly exceed it. Interactive previews and exports are not limited by this target.</value></data>
   <data name="Pref.Textures" xml:space="preserve"><value>Texture Library Folder</value></data>
   <data name="Pref.Textures.Desc" xml:space="preserve"><value>Textures for light leaks, dust &amp; scratches and photo plates; procedural effects are used when empty</value></data>
+  <data name="Pref.LensDatabase" xml:space="preserve"><value>External Lensfun Lens Database</value></data>
+  <data name="Pref.LensDatabase.Desc" xml:space="preserve"><value>Lensfun XML in this folder is matched by camera and lens when a RAW file has no embedded lens corrections; when empty, FILMBATCH_LENSFUN_DIR is used if set (no database is downloaded)</value></data>
+  <data name="Pref.LensDatabase.None" xml:space="preserve"><value>Not set</value></data>
+  <data name="Pref.Clear" xml:space="preserve"><value>Clear</value></data>
   <data name="Pref.Browse" xml:space="preserve"><value>Browse…</value></data>
   <data name="Pref.ApplyNote" xml:space="preserve"><value>The background CPU target applies immediately; other processing settings apply on close. Changed GPU settings rebuild the renderer in the background.</value></data>
   <data name="Filmstrip.OpenHint" xml:space="preserve"><value>Double-click here to choose a photo folder</value></data>
@@ -445,6 +450,13 @@ Clear overrides: use the new preset entirely.</value></data>
   <data name="Param.light_leak.size" xml:space="preserve"><value>Extent</value></data>
   <data name="Param.light_leak.irregularity" xml:space="preserve"><value>Irregularity</value></data>
   <data name="Param.light_leak.count" xml:space="preserve"><value>Count</value></data>
+  <data name="Param.light_leak.blend" xml:space="preserve"><value>Blend</value></data>
+  <data name="Choice.light_leak.blend.screen" xml:space="preserve"><value>Screen</value></data>
+  <data name="Choice.light_leak.blend.add" xml:space="preserve"><value>Add</value></data>
+  <data name="Choice.light_leak.blend.lighten" xml:space="preserve"><value>Lighten</value></data>
+  <data name="Param.light_leak.red" xml:space="preserve"><value>Red</value></data>
+  <data name="Param.light_leak.yellow" xml:space="preserve"><value>Yellow</value></data>
+  <data name="Param.light_leak.blue" xml:space="preserve"><value>Blue</value></data>
   <data name="Param.film.strength" xml:space="preserve"><value>Effect Mix</value></data>
   <data name="Param.photo_plate.plate_type" xml:space="preserve"><value>Plate</value></data>
   <data name="Choice.photo_plate.plate_type.tintype" xml:space="preserve"><value>Tintype</value></data>
@@ -531,7 +543,6 @@ Clear overrides: use the new preset entirely.</value></data>
   <data name="Param.film.hue_magenta_h" xml:space="preserve"><value>Magenta Hue</value></data>
   <data name="Param.film.hue_magenta_s" xml:space="preserve"><value>Magenta Saturation</value></data>
   <data name="Param.film.hue_magenta_l" xml:space="preserve"><value>Magenta Luminance</value></data>
-  <data name="Param.raw.lens_database" xml:space="preserve"><value>External Lensfun Folder</value></data>
   <data name="Param.raw.wb_mode" xml:space="preserve"><value>White Balance</value></data>
   <data name="Param.raw.temperature" xml:space="preserve"><value>Temperature</value></data>
   <data name="Param.raw.tint" xml:space="preserve"><value>Tint</value></data>
@@ -547,13 +558,15 @@ Clear overrides: use the new preset entirely.</value></data>
   <data name="Param.raw.mask_saturation" xml:space="preserve"><value>Local Saturation</value></data>
   <data name="Choice.raw.wb_mode.as-shot" xml:space="preserve"><value>As Shot</value></data>
   <data name="Choice.raw.wb_mode.custom" xml:space="preserve"><value>Custom</value></data>
+  <data name="Raw.LensDatabaseWarning" xml:space="preserve"><value>The external lens database could not be read; lens corrections were skipped (the photo is still editable): {0}</value></data>
   <data name="Raw.AsShot" xml:space="preserve"><value>As Shot: {0} K</value></data>
   <data name="Raw.AsShotTint" xml:space="preserve"><value>As Shot: {0} K · Tint {1:+0;-0;0}</value></data>
   <data name="Raw.MaskNone" xml:space="preserve"><value>None</value></data>
   <data name="Raw.MaskUnavailable" xml:space="preserve"><value>Selected mask unavailable in this photo: {0}</value></data>
   <data name="Raw.NoMasks" xml:space="preserve"><value>This photo has no embedded semantic masks</value></data>
   <data name="Raw.MaskEdit" xml:space="preserve"><value>Adjust semantic mask</value></data>
-  <data name="Raw.BrowseFolder" xml:space="preserve"><value>Browse Folder…</value></data>
+  <data name="Raw.WbEdit" xml:space="preserve"><value>Adjust white balance</value></data>
+  <data name="Raw.WbReset" xml:space="preserve"><value>Reset white balance to As Shot</value></data>
   <data name="Module.skin" xml:space="preserve"><value>Skin Tone Assist</value></data>
   <data name="Module.zone" xml:space="preserve"><value>Zone Metering &amp; Tone</value></data>
   <data name="Module.shadow_recovery" xml:space="preserve"><value>Shadow Recovery</value></data>

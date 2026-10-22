@@ -67,7 +67,9 @@ public sealed class ModuleParams
     public bool LeakOn;
     public int LeakMode;
     public string LeakTexture = "";
+    public int LeakBlend; // 0 screen / 1 add / 2 lighten
     public float LeakAmount, LeakAngle, LeakSize, LeakHue, LeakIrregularity;
+    public float LeakRed, LeakYellow, LeakBlue;
     public int LeakCount;
     // film（底片風格：LUT ＋ 色相帶；FilmLut 為 null 時不套用）
     public bool FilmOn;
@@ -244,10 +246,14 @@ public sealed class ModuleParams
             LeakOn = B(s, "light_leak.enabled", false),
             LeakMode = C("light_leak.mode"),
             LeakTexture = T(s, "light_leak.texture", "random"),
+            LeakBlend = C("light_leak.blend"),
             LeakAmount = N(s, "light_leak.amount", 35),
             LeakAngle = N(s, "light_leak.angle", 30),
             LeakSize = N(s, "light_leak.size", 40),
-            LeakHue = N(s, "light_leak.hue", 25),
+            LeakHue = N(s, "light_leak.hue", 0),
+            LeakRed = N(s, "light_leak.red", 100),
+            LeakYellow = N(s, "light_leak.yellow", 100),
+            LeakBlue = N(s, "light_leak.blue", 30),
             LeakIrregularity = N(s, "light_leak.irregularity", 50),
             LeakCount = I(s, "light_leak.count", 1),
             // film：底片風格（docs/film-looks.md）
@@ -313,9 +319,19 @@ public sealed class ModuleParams
         m.RawWhiteBalanceMatrix = m.RawProcessingOn && m.RawCustomWhiteBalance
             ? source.WhiteBalance?.MatrixFor(m.RawTemperature, m.RawTint)
             : null;
+        // RAW 白平衡接手「基本調整」的色溫／色調：相對值保留在設定中，但只在非 RAW（或 RAW 處理停用）時生效。
+        if (UsesRawWhiteBalance(source, s)) { m.Temperature = 0; m.Tint = 0; }
         return m;
     }
 
+
+    /// <summary>
+    /// 這張照片的色溫／色調是否由 RAW 白平衡（Kelvin）負責：場景線性來源、具白平衡模型且 RAW 處理啟用。
+    /// 成立時 basic.temperature/tint 不套用；面板也以同一條件把基本調整的色溫／色調換成 RAW 白平衡。
+    /// </summary>
+    public static bool UsesRawWhiteBalance(SourceImage? source, Settings s) =>
+        source is { Scene: not null, WhiteBalance: not null }
+        && s.ContainsKey("raw.enabled") && s.Bool("raw.enabled");
 
     /// <summary>是否需要任何 spatial（非逐像素）pass——供尺寸/記憶體規劃與分塊 apron 估算。</summary>
     public bool HasSpatialPasses =>

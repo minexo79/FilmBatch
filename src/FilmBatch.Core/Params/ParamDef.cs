@@ -27,8 +27,6 @@ public sealed record ParamDef
     /// <summary>位置以 0 為中心（例如位移 −0.5 ~ 0.5），鏡像時取負值；否則以 1 − x 鏡像。</summary>
     public bool IsCenteredOffset { get; init; }
     public IReadOnlyList<ChoiceOption> Choices { get; init; } = [];
-    /// <summary>路徑是資料夾（UI 顯示瀏覽按鈕）；<see cref="ParamKind.Text"/> 的自由文字永遠為 false。</summary>
-    public bool IsDirectory { get; init; }
 
     public static ParamDef Bool(string key, string label, bool def = false) =>
         new() { Key = key, Label = label, Kind = ParamKind.Bool, Default = def, Max = 1 };
@@ -59,10 +57,6 @@ public sealed record ParamDef
 
     public static ParamDef Path(string key, string label) =>
         new() { Key = key, Label = label, Kind = ParamKind.Path, Default = "" };
-
-    /// <summary>資料夾路徑：相對路徑以專案資料夾解析，UI 提供瀏覽按鈕。</summary>
-    public static ParamDef Directory(string key, string label) =>
-        new() { Key = key, Label = label, Kind = ParamKind.Path, Default = "", IsDirectory = true };
 
     public static ParamDef Seed(string key = "seed", string label = "種子") =>
         new() { Key = key, Label = label, Kind = ParamKind.Seed, Default = 0.0, Min = 0, Max = 9999 };

@@ -39,6 +39,12 @@
 - [raw.pixls.us Sigma 公開索引](https://raw.pixls.us/data/Sigma/)當次包含 DP／SD／fp／fp L，沒有 BF 目錄。本機常用照片目錄的 DNG 搜尋也未找到 BF 輸入。
 - 圖庫聲明版權保留；此處只記錄來源連結，不重分發原圖。不把行銷規格或研究摘要中的 compression／OpcodeList 推測當作實檔 EXIF。
 
+### 使用者補充的樣本來源
+
+2026-10-22 補充的 [Sigma BF vacation photo challenge 圖庫](https://www.dpreview.com/sample-galleries/4538867102)已透過一般 Chromium 開啟。第一張「Day 1: Gloucester」的 RAW 按鈕指向 [9609219312.dng](https://www.dpreview.com/wp-content/uploads/sample_galleries/L-4538867102/9609219312.dng)，與本次固定輸入同檔名；頁面標示 Richard Butler、Sigma BF、Sigma 35mm F2 DG DN、35mm、1/500 秒、f/2、ISO 200、−0.3 EV。頁面展示圖標示「Processed using Adobe Camera Raw」，不能把展示 JPEG 當作感光樣本或未加工的相機外觀基準。
+
+該原檔 URL 的直接下載仍回傳 HTTP 403，因此這次只確認圖庫連結與頁面歸屬，未取得遠端位元組來比對 SHA-256。後續合併驗證沿用使用者提供的本機 DNG，不混換輸入；此圖庫沒有擴張下述單一 BF 檔案的量測結論，也不重分發照片。
+
 ## 原研究階段：程式分歧與待檢驗假設
 
 | 路徑 | 來源中的規則 | 取得 BF 後如何判斷 |

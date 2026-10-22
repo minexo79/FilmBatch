@@ -433,7 +433,7 @@ filmbatch-cli raw masks "/path/input.dng"
 - RAW 的預覽與匯出均從浮點場景來源執行白平衡、局部遮罩與既有效果，再完成顯示收尾；解碼與 demosaic 由 CPU 執行，Metal 路徑不把 CPU 算好的圖冒充 GPU。超過裝置尺寸／記憶體限制時明確改用 CPU。
 - 每筆 RAW `export_log.json` 的 `Renderer` 會附上 `RAW GPU` 或 `RAW CPU`，降級時保留原因；一般影像維持原有裝置標示。精度、量測與 Halide AOT 取捨見 [ADR 0003](adr/0003-gpu-stack-decision.md)。
 - AI 降噪另記於每筆匯出紀錄的 `Denoise`：模型身分與 SHA-256、實際推論 provider、推論時間、tile 數及快取命中。效果 renderer 的 GPU 名稱不代表神經網路全部在同一裝置執行。
-- RAW 面板提供 As Shot／自訂 2500–9900 K＋色偏與實際內嵌語意遮罩；沒有對應遮罩的照片保留設定但不全圖套用。外部 Lensfun-format 目錄可從面板瀏覽指定，儲存為專案相對路徑；也可使用 `FILMBATCH_LENSFUN_DIR`。不會下載資料庫。
+- RAW 處理啟用時，「基本調整」提供 As Shot／自訂 2500–9900 K＋色偏，取代相對色溫／色偏；RAW 面板仍提供實際內嵌語意遮罩，沒有對應遮罩的照片保留設定但不全圖套用。外部 Lensfun-format 目錄在「偏好設定 → 資料夾」指定（存於 settings.json，全部專案共用）；CLI 匯出用 `--lens-database`，兩者皆未設定時使用 `FILMBATCH_LENSFUN_DIR`。不會下載資料庫。
 - Lensfun 校正以 RAW 的預設裁切區（`DefaultCrop`）建立光學中心與半徑，再換算至完整感光區（`ActiveArea`）座標；非置中裁切的變形與暗角共用相同映射。
 - `raw convert` 補上可用的相機色彩矩陣、hue/saturation table 與 tone，保留感光樣本、幾何及標準拍攝中繼資料；沒有可用色彩描述或目的檔已存在時拒絕寫入。標準 DNG profile 無法完整表示檔案內 JPEG 擬合外觀的逐像素亮度還原／chroma 曲線，不能宣稱轉前與轉後逐像素相同；相同色彩模型的對照與此限制分開記錄。
 
@@ -604,7 +604,18 @@ GPU／平台或外部 RAW 語料略過不算通過。全圖診斷為另驗全尺
 
 完整 Release 回歸與重新封裝的 Apple Silicon App 已實跑，原生視窗另外操作拖曳／放開／復原、跨專案中斷，以及 400 張照片的縮圖捲回重載；不是以 Headless 取代原生驗證。發行包在 `dist/osx-arm64/FilmBatch.app`，CLI 在 `dist/osx-arm64/cli/filmbatch-cli`，本次為本機 ad-hoc 簽章，未公證。
 
-前後量測、輸入雜湊、精度差異、完整測試數與重跑命令見[本輪驗證紀錄](superpowers/plans/2026-10-22-performance-correctness.md#observed-results--2026-10-22)。JPEG 預覽不是逐位元相同；Fuji 完整解碼在本次量測反而較慢，記憶體改善不等同所有路徑加速。Windows／iOS、未下載的 RAW 語料、人工畫質排名與 Sigma BF 根因均未由本輪結果驗收；Sigma 的獨立研究分支仍缺可讀取的原始 DNG。
+前後量測、輸入雜湊、精度差異、完整測試數與重跑命令見[本輪驗證紀錄](superpowers/plans/2026-10-22-performance-correctness.md#observed-results--2026-10-22)。JPEG 預覽不是逐位元相同；Fuji 完整解碼在本次量測反而較慢，記憶體改善不等同所有路徑加速。後續已用使用者提供的 Sigma BF DNG 完成[獨立研究與精確 GainMap 修正](sigma-bf-raw-performance.md)，並正式合併研究分支；Windows／iOS 原生執行、未下載的 RAW 語料與人工畫質排名仍不在本輪驗收範圍。
+
+### Windows Gaussian 逾時修正
+
+使用者提供的 `build_105_step_106_container_0.txt` 顯示，`35f4373` 後失敗的是 `GpuGaussianTests.HalationAndClarity_LargeRadius_MatchesCpuOnOddSizeWithTransparentEdges` 的 `OnSubmittedWorkDoneSync` 逾時，不是編譯錯誤。記錄不足以辨識實際 adapter，不能推定為 WARP。修正將累積高斯工作分批提交並等待，完成後才重用 uniform 緩衝區；保留原 2049×1665 測例、半徑、像素精度與 10 秒期限，不以 CPU fallback 或縮小測試掩蓋問題。
+
+```bash
+dotnet test tests/FilmBatch.Core.Tests/FilmBatch.Core.Tests.csproj -c Release --filter FullyQualifiedName~GpuGaussianTests
+dotnet run build/CheckShaders.cs -- --naga /path/to/naga
+```
+
+半徑 320／321、水平／垂直與不完整 workgroup 的四項分批回歸先失敗、修正後在 Metal 通過；原大型案例也在 Metal 通過。Windows 交叉發佈不等於 Windows 執行結果；本機無 Windows runtime，GitHub CLI 未登入，實際 Windows CI 結果仍待遠端確認。合併與最終驗證收據見[整合紀錄](superpowers/plans/2026-10-22-performance-correctness.md#subsequent-sigma-and-preview-branch-integration)。
 
 ## 資料位置
 

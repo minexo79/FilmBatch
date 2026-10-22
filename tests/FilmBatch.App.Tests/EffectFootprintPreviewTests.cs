@@ -67,6 +67,49 @@ public sealed class EffectFootprintPreviewTests
         Assert.Contains(vm.Preview.Footprint, p => p.Stroke == FootprintStroke.Inner);
     }
 
+    [AvaloniaFact]
+    public async Task Skin_region_point_and_rings_follow_the_crop()
+    {
+        using var vm = TestEnv.CreateViewModel();
+        await TestEnv.OpenSamplesAsync(vm);
+        TestEnv.PumpUntil(() => vm.Preview.Image is not null);
+        vm.Service!.SetValues(vm.Selection, Settings.Empty.With("crop.enabled", true).With("crop.quarter", 1)
+            .With("crop.rect_cx", 0.4).With("crop.rect_w", 0.7), "crop");
+        TestEnv.PumpUntil(() => !vm.Preview.IsBusy && !vm.Renderer.IsBusy);
+        vm.Inspector.Modules.Single(m => m.Key == "skin").IsExpanded = true;
+        Set(vm, "skin.enabled", true);
+        Set(vm, "skin.region_cx", 0.3);
+        Set(vm, "skin.region_cy", 0.6);
+
+        var source = vm.Preview.Source!;
+        var expected = EffectFootprint.SourceToOutput(vm.FocusedResolved, source.Width, source.Height, new(0.3f, 0.6f));
+        Assert.Equal(expected.X, vm.Preview.ControlPoint!.Value.X, 5);
+        Assert.Equal(expected.Y, vm.Preview.ControlPoint!.Value.Y, 5);
+        // 順時針轉 90° 之後，來源的 (0.3, 0.6) 不會還在輸出的 (0.3, 0.6)
+        Assert.True(Math.Abs(expected.X - 0.3) > 0.05 || Math.Abs(expected.Y - 0.6) > 0.05);
+        Assert.Equal(4, vm.Preview.Footprint.Count(p => p.Stroke == FootprintStroke.Handle));
+
+        vm.Stack.Clear();
+        vm.Preview.MoveControlPoint(new Point(0.5, 0.5), completed: true);
+        var moved = EffectFootprint.OutputToSource(vm.FocusedResolved, source.Width, source.Height, new(0.5f, 0.5f));
+        Assert.Equal(moved.X, vm.FocusedResolved.Number("skin.region_cx"), 5);
+        Assert.Equal(moved.Y, vm.FocusedResolved.Number("skin.region_cy"), 5);
+
+        // 內圈等比放大：半寬與半高一起變，一筆復原
+        var rx = vm.FocusedResolved.Number("skin.radius_x");
+        var ry = vm.FocusedResolved.Number("skin.radius_y");
+        vm.Stack.Clear();
+        var inner = vm.Preview.Footprint.Single(p => p.Stroke == FootprintStroke.Inner).Points[0];
+        var center = new System.Numerics.Vector2(0.5f, 0.5f);
+        var target = center + (inner - center) * 2;
+        vm.Preview.DragFootprint(EffectFootprint.SkinScaleKey, new Point(target.X, target.Y), completed: true);
+        Assert.Equal(rx * 2, vm.FocusedResolved.Number("skin.radius_x"), 2);
+        Assert.Equal(ry * 2, vm.FocusedResolved.Number("skin.radius_y"), 2);
+        vm.UndoCommand.Execute(null);
+        Assert.Equal(rx, vm.FocusedResolved.Number("skin.radius_x"), 6);
+        Assert.Equal(ry, vm.FocusedResolved.Number("skin.radius_y"), 6);
+    }
+
     private static System.Numerics.Vector2 Centroid(FootprintPath path) =>
         path.Points.Aggregate(System.Numerics.Vector2.Zero, (a, b) => a + b) / path.Points.Count;
 }

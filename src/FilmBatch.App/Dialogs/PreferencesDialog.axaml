@@ -153,6 +153,19 @@
               </Grid>
             </StackPanel>
           </Border>
+          <Border Classes="settings-card">
+            <StackPanel Classes="settings-row-block">
+              <StackPanel Classes="settings-label">
+                <TextBlock Text="{l:Tr Pref.LensDatabase}" />
+                <TextBlock Classes="settings-desc" Text="{l:Tr Pref.LensDatabase.Desc}" TextWrapping="Wrap" />
+              </StackPanel>
+              <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                <TextBox Text="{Binding LensDatabaseFolder}" PlaceholderText="{l:Tr Pref.LensDatabase.None}" />
+                <Button Grid.Column="1" Classes="outline" Content="{l:Tr Pref.Browse}" Command="{Binding BrowseLensDatabaseCommand}" />
+                <Button Grid.Column="2" Classes="outline" Content="{l:Tr Pref.Clear}" Command="{Binding ClearLensDatabaseCommand}" />
+              </Grid>
+            </StackPanel>
+          </Border>
         </StackPanel>
       </Panel>
     </ScrollViewer>

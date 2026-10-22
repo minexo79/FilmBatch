@@ -854,4 +854,5 @@
   <Style Selector="HyperlinkButton">
     <Setter Property="Foreground" Value="{DynamicResource FB.LinkBrush}" />
   </Style>
+  <StyleInclude Source="avares://FilmBatch.App.Shared/Themes/ColorSliderStyles.axaml" />
 </Styles>

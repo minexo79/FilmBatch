@@ -69,6 +69,7 @@
   <data name="Inspector.UpdatePreset" xml:space="preserve"><value>更新回預設</value></data>
   <data name="Inspector.HideDisabled" xml:space="preserve"><value>隱藏未啟用模組</value></data>
   <data name="Inspector.ResetModule" xml:space="preserve"><value>重設此模組</value></data>
+  <data name="Inspector.ResetModuleNamed" xml:space="preserve"><value>重設 {0}</value></data>
   <data name="Inspector.CopyModule" xml:space="preserve"><value>只複製此模組</value></data>
   <data name="Filmstrip.All" xml:space="preserve"><value>全部</value></data>
   <data name="Filmstrip.OverridesOnly" xml:space="preserve"><value>只顯示有覆寫</value></data>
@@ -154,6 +155,10 @@
   <data name="Pref.BackgroundCpu.Desc" xml:space="preserve"><value>即時調整縮圖背景工作的速度，預設 70%；100% 不主動節流。以全部邏輯核心的程序 CPU 用量為基準，在工作之間讓出時間；不是硬性上限，單張 RAW／原生解碼可能短暫超出。互動預覽與匯出不受此目標限制。</value></data>
   <data name="Pref.Textures" xml:space="preserve"><value>材質庫資料夾</value></data>
   <data name="Pref.Textures.Desc" xml:space="preserve"><value>漏光、灰塵與刮痕、古典版材使用的材質；沒有材質時改用程序化效果</value></data>
+  <data name="Pref.LensDatabase" xml:space="preserve"><value>外部 Lensfun 鏡頭資料庫</value></data>
+  <data name="Pref.LensDatabase.Desc" xml:space="preserve"><value>RAW 檔沒有內嵌鏡頭校正時，從此資料夾的 Lensfun XML 比對相機與鏡頭；留空時使用 FILMBATCH_LENSFUN_DIR（若有設定），不會自動下載資料庫</value></data>
+  <data name="Pref.LensDatabase.None" xml:space="preserve"><value>未設定</value></data>
+  <data name="Pref.Clear" xml:space="preserve"><value>清除</value></data>
   <data name="Pref.Browse" xml:space="preserve"><value>瀏覽…</value></data>
   <data name="Pref.ApplyNote" xml:space="preserve"><value>背景載入 CPU 目標即時生效；其餘運算設定於關閉時套用，變更 GPU 設定會在背景重建算圖器。</value></data>
   <data name="Filmstrip.OpenHint" xml:space="preserve"><value>在這裡按兩下以選擇照片資料夾</value></data>
@@ -338,7 +343,6 @@
   <data name="Film.Hue.golden" xml:space="preserve"><value>金黃秋色</value></data>
   <data name="Film.Hue.teal-orange" xml:space="preserve"><value>冷暖對比</value></data>
   <data name="Film.Hue.muted" xml:space="preserve"><value>低彩度</value></data>
-  <data name="Param.raw.lens_database" xml:space="preserve"><value>外部 Lensfun 資料夾</value></data>
   <data name="Param.raw.wb_mode" xml:space="preserve"><value>白平衡</value></data>
   <data name="Param.raw.temperature" xml:space="preserve"><value>色溫</value></data>
   <data name="Param.raw.tint" xml:space="preserve"><value>色偏</value></data>
@@ -354,13 +358,15 @@
   <data name="Param.raw.mask_saturation" xml:space="preserve"><value>局部飽和度</value></data>
   <data name="Choice.raw.wb_mode.as-shot" xml:space="preserve"><value>拍攝值</value></data>
   <data name="Choice.raw.wb_mode.custom" xml:space="preserve"><value>自訂</value></data>
+  <data name="Raw.LensDatabaseWarning" xml:space="preserve"><value>外部鏡頭資料庫無法讀取，已略過鏡頭校正（照片仍可編輯）：{0}</value></data>
   <data name="Raw.AsShot" xml:space="preserve"><value>拍攝值：{0} K</value></data>
   <data name="Raw.AsShotTint" xml:space="preserve"><value>拍攝值：{0} K・色偏 {1:+0;-0;0}</value></data>
   <data name="Raw.MaskNone" xml:space="preserve"><value>不使用</value></data>
   <data name="Raw.MaskUnavailable" xml:space="preserve"><value>此照片無法使用已選遮罩：{0}</value></data>
   <data name="Raw.NoMasks" xml:space="preserve"><value>此照片沒有內嵌語意遮罩</value></data>
   <data name="Raw.MaskEdit" xml:space="preserve"><value>調整語意遮罩</value></data>
-  <data name="Raw.BrowseFolder" xml:space="preserve"><value>瀏覽資料夾…</value></data>
+  <data name="Raw.WbEdit" xml:space="preserve"><value>調整白平衡</value></data>
+  <data name="Raw.WbReset" xml:space="preserve"><value>白平衡重設為拍攝值</value></data>
   <data name="Module.skin" xml:space="preserve"><value>局部膚色輔助</value></data>
   <data name="Module.zone" xml:space="preserve"><value>Zone 測光與階調</value></data>
   <data name="Module.shadow_recovery" xml:space="preserve"><value>暗部還原</value></data>

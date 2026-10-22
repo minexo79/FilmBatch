@@ -15,13 +15,14 @@ public static class ModuleCatalog
     [
         // RAW：來源現像（效果處理之前的來源開發），排在管線最前面。
         // wb_mode/temperature/tint 與 mask_* 是算圖設定（不進 RawLoadOptions、不重新解碼）；
-        // lens_database 屬於來源快取鍵。basic 的相對色溫/色調仍是獨立的藝術效果，不換單位。
+        // 外部 Lensfun 資料庫是應用程式偏好設定（RawLoadOptions.LensDatabaseDirectory），不是照片設定。
+        // RAW 處理啟用時，面板把 wb_mode/temperature/tint 顯示在「基本調整」
+        // 取代 basic 的相對色溫/色調（相對值保留在設定中但不套用，見 ModuleParams.UsesRawWhiteBalance）。
         new("raw", "RAW 原廠處理", ModuleGroup.Basic, PasteCategory.Color,
         [
             Bool(ModuleSchema.EnabledKey, "啟用"),
             Bool("embedded_lens", "內嵌鏡頭校正", true),
             Bool("camera_local_tone", "相機局部色調"),
-            Directory("lens_database", "外部鏡頭資料庫"),
             Choice("wb_mode", "白平衡", O("as-shot", "拍攝值"), O("custom", "自訂")),
             Float("temperature", "色溫（K）", 6500, 2500, 9900, 50, "K"),
             Float("tint", "色調（WB）", 0, -150, 150),
@@ -126,7 +127,7 @@ public static class ModuleCatalog
             Float("divider", "分隔線柔和度", 0, 0, 100),
             Seed(),
         ]),
-        new("double_exposure", "雙重曝光", ModuleGroup.Optical, PasteCategory.Optical,
+        new("double_exposure", "雙重曝光", ModuleGroup.Film, PasteCategory.Optical,
         [
             Bool(ModuleSchema.EnabledKey, "啟用"),
             Choice("source", "來源", O("self", "本張自己"), O("photo", "專案內另一張"), O("file", "外部檔案")),
@@ -192,15 +193,20 @@ public static class ModuleCatalog
             Float("radius", "半徑", 30, 1, 100),
             Float("hue", "色相", 10, 0, 60, 1, "°"),
         ]),
-        new("light_leak", "漏光", ModuleGroup.Optical, PasteCategory.Optical,
+        new("light_leak", "漏光", ModuleGroup.Film, PasteCategory.Optical,
         [
             Bool(ModuleSchema.EnabledKey, "啟用"),
             Choice("mode", "模式", O("procedural", "程序化"), O("texture", "材質")),
             Choice("texture", "材質", O("random", "隨機")),
+            // 三色電漿（danielzeller/LightLeaksUnity，MIT）：紅／黃／藍各自的貢獻量與混合方式
+            Choice("blend", "混合", O("screen", "濾色"), O("add", "相加"), O("lighten", "變亮")),
             Float("amount", "強度", 35, 0, 100),
             Float("angle", "角度", 30, 0, 360, 1, "°"),
             Float("size", "範圍", 40, 5, 100),
-            Float("hue", "色相", 25, 0, 360, 1, "°"),
+            Float("red", "紅", 100, 0, 100),
+            Float("yellow", "黃", 100, 0, 100),
+            Float("blue", "藍", 30, 0, 100),
+            Float("hue", "色相", 0, 0, 360, 1, "°"),
             Float("irregularity", "不規則度", 50, 0, 100),
             Int("count", "數量", 1, 1, 3),
             Seed(),

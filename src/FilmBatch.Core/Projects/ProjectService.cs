@@ -66,14 +66,14 @@ public sealed class ProjectService
     /// 一筆可復原的多欄位操作，例如套用一組色相修正預設、裁切工具一次寫入所有 <c>crop.*</c>。
     /// 每個值依 schema 夾限（與 <see cref="SetValue"/> 相同）；與基準相同的值移除覆寫。
     /// </summary>
-    public bool SetValues(IReadOnlyCollection<string> fileNames, Settings values, string description)
+    public bool SetValues(IReadOnlyCollection<string> fileNames, Settings values, string description, string? mergeKey = null)
     {
         var coerced = new Settings(values.Select(kv => KeyValuePair.Create(kv.Key,
             (ModuleCatalog.Param(kv.Key) ?? throw new ArgumentException($"未知的參數：{kv.Key}")).Coerce(kv.Value))));
         return Apply(description, fileNames, entry => entry with
         {
             Overrides = PhotoOperations.Clean(entry.Overrides.Overlay(coerced), BaseFor(entry.PresetId)),
-        });
+        }, mergeKey);
     }
 
     /// <summary>套用或移除焦點照片的去背遮罩；與其他編輯共用原子保存與復原。</summary>
@@ -92,6 +92,10 @@ public sealed class ProjectService
 
     public bool ResetParam(IReadOnlyCollection<string> fileNames, string key) =>
         Apply($"重設 {ModuleCatalog.Param(key)?.Label ?? key}", fileNames, e => PhotoOperations.ResetParam(e, key));
+
+    /// <summary>一筆可復原的多欄位重設（例如 RAW 白平衡的模式＋色溫＋色調一起回到拍攝值）。</summary>
+    public bool ResetParams(IReadOnlyCollection<string> fileNames, IReadOnlyCollection<string> keys, string description) =>
+        Apply(description, fileNames, e => e with { Overrides = e.Overrides.WithoutRange(keys) });
 
     public bool ResetModule(IReadOnlyCollection<string> fileNames, string moduleKey) =>
         Apply($"重設 {ModuleCatalog.Module(moduleKey).Label}", fileNames, e => PhotoOperations.ResetModule(e, moduleKey));
