@@ -114,13 +114,10 @@ sequenceDiagram
 
     V->>PVM: Value 改變（雙向繫結）
     PVM->>I: SetValue("vignette.amount", v, mergeKey)
-    I->>S: SetValue(選取的照片, key, v, mergeKey)
-    S->>S: PhotoOperations.SetValue<br/>與預設相同就移除覆寫
-    S->>CS: Execute(PhotoEditCommand)
-    CS->>P: Replace(新的 PhotoEntry)<br/>自動存檔 .filmbatch/
-    P-->>M: EntriesChanged(檔名)
-    M->>M: Inspector.Refresh()、更新縮圖標記
-    M->>PS: RequestPreview(檔名, 代理圖, 最終參數)
+    I->>M: 更新手勢暫存值，綁定原 Service／選取照片
+    Note over M,P: 拖曳中不改 PhotoEntry、不寫專案、不加入 undo
+    M->>M: EditingSettings 合併暫存值並更新面板
+    M->>PS: RequestPreview(檔名, 代理圖, 暫存參數)
     PS->>RS: RequestPreview(..., generation)
     Note over RS: 只保留最新一筆預覽請求<br/>預覽優先於縮圖
     RS->>R: Render(source, settings)
@@ -129,13 +126,18 @@ sequenceDiagram
     PS-->>M: post 回 UI 執行緒<br/>核對來源世代與交付順序；同來源可送達已完成影格
     M->>M: Preview.SetResult → 畫面更新
     V->>I: 放開滑桿 → EndEdit()
-    I->>CS: CloseMerge()<br/>這次拖曳合併為一筆復原紀錄
+    I->>M: FlushEdit()
+    M->>S: SetValue(原選取照片, key, 最終值)
+    S->>CS: Execute(PhotoEditCommand)
+    CS->>P: Replace(新的 PhotoEntry)<br/>成功保存後才發布修改
+    P-->>M: EntriesChanged(檔名)
+    M->>CS: CloseMerge()<br/>一次拖曳、一筆保存、一筆復原
 ```
 
 讀懂這張圖後，記住三個原則：
 
-1. **UI 不直接改資料**：任何修改都經 `ProjectService` 包成命令，才能復原。
-2. **資料改了就發事件**：`Project.EntriesChanged` 是「照片設定變了」的唯一通知來源，預覽、縮圖、面板都由它觸發更新。
+1. **暫存與保存分開**：滑桿先改編輯器的暫存值；正式修改仍經 `ProjectService` 命令，不能繞過保存與復原。
+2. **正式資料改了才發事件**：`Project.EntriesChanged` 通知已保存的照片設定；暫存預覽由 `MainWindowViewModel` 直接排程，不假造保存事件。
 3. **算圖請求可以隨便送**：排程器只保留最新的待算預覽；同來源已完成的影格仍依序交付，避免持續拖曳時一直丟棄結果。換照片／來源、取消或重建算圖器後，不採用舊影格。
 
 ---
@@ -270,10 +272,10 @@ flowchart LR
 | `IPreviewRenderer` | `IPreviewRenderer.cs` | 算圖器介面：`Render`（預覽，8-bit BGRA）、`Render16`（匯出，16-bit RGBA）、`DeviceName`、`IsSoftware` |
 | `ModuleParams` | `ModuleParams.cs` | 把 `Settings` 解析成一個個欄位（`VignetteOn`、`VigAmount`…），並計算各模組的種子。**CPU 與 GPU 共用同一份解析結果**，保證兩端讀到相同的值 |
 | `CpuPipeline` | `CpuPipeline.cs` | CPU 完整管線，`Process` 依序執行模組；RGBA 算術、模糊累積與量化使用 `Vector128`，sRGB 曲線與 gamma 保留純量 `MathF.Pow` |
-| `GpuEffectPipeline` | `GpuEffectPipeline.cs` | GPU 管線。建構子以 `K("optical/vignette", …)` 載入每支 shader；`Process` 依序派送 pass；檔案底部是各 shader 的 uniform 結構（例如 `VignetteUniforms`） |
+| `GpuEffectPipeline` | `GpuEffectPipeline.cs` | GPU 管線；高斯模糊沿用相同權重、tap 順序與 clamp 邊界，半徑 ≤320 用 14 KiB workgroup tile 共讀來源，較大半徑走直接核心；不替換成近似模糊 |
 | `GpuSpikeRenderer` | `GpuSpikeRenderer.cs` | **正式的 GPU 算圖器**（名稱沿用自 M0 技術驗證）。超過 GPU 紋理上限或顯示記憶體不足時，自動改走 CPU 並在 `DeviceName` 標示原因 |
 | `CpuFakeRenderer` | `CpuFakeRenderer.cs` | **正式的 CPU 算圖器**（名稱同樣是歷史遺留），內部呼叫 `CpuPipeline`；無 GPU 或使用者強制軟體模式時使用 |
-| `DenoiseProcessor` | `Denoising/` | CPU／GPU 共用的效果前來源階段；自動選擇 RawNIND 線性或 NAFNet 顯示 RGB 模型，全解析度先推論，再混合與縮小預覽；模型／快取／取消契約見 [ADR 0002](adr/0002-ai-denoise.md) |
+| `DenoiseProcessor` | `Denoising/` | CPU／GPU 共用的效果前來源階段；全解析度先推論。RAW 快取代理輸入後混合；sRGB 串流逐像素混合／量化並直接縮小，避免全圖暫存；匯出仍用完整神經結果，見 [ADR 0002](adr/0002-ai-denoise.md) |
 | `FilmLookProcessing` | `FilmLookProcessing.cs` | 底片風格的 CPU 參考實作：LUT → 八色相帶（OKLCh）→ 暖色 → 褪色 → 依效果比例混合；`BandWeight` 為色相帶權重 |
 | `FilmLookUniforms` | `FilmLookUniforms.cs` | 傳給 `film/look.wgsl` 的 uniform（`Mix`、`Flags`、`Band0`…`Band7`，與 WGSL `struct LookParams` 對齊） |
 | `PhotoAdjustments` | `PhotoAdjustments.cs` | BasicLinear 後的羽化膚色與單調 Zone 亮度曲線；CPU 逐像素與有界分析共用純量數學，GPU 對應 `linear/photo_adjustments.wgsl` |
@@ -323,6 +325,8 @@ RAW 來源保持未夾取的浮點線性 Rec.2020，`Rgba16` 只在原圖比較�
 
 App 端由 `FilmBatch.App.Shared/Services/PreviewService.cs` 包裝：核對來源世代、遞增的交付順序與算圖器 `Epoch`，把事件 post 回 UI 執行緒，並計算直方圖。同一來源的參數調整允許先顯示已完成影格，再接續最新結果；取消、來源更換與裝置重建會封鎖先前交付。
 
+排程器只在鎖內判斷資格並擷取事件委派，解鎖後才呼叫訂閱者／計算直方圖。預覽、縮圖、失敗、通知與裝置就緒的 payload 都帶「原要求的 Epoch」，`PreviewService` 在計算後及 UI 投遞時再次驗證；不可在回呼入口重新讀取目前 Epoch，否則舊結果可能被誤標為新世代。
+
 失敗事件的 `PreviewGeneration` 只有預覽要求有值；縮圖及 `$init` 初始化診斷為空。預覽失敗只結束自己的世代，不消耗較新的預覽，也不替照片縮圖記失敗；背景失敗不得清掉等待中的前景影格。縮圖重算失敗時可以保留舊點陣圖，但仍須完成該筆交付等待，讓下一張繼續；初始化錯誤不能讓已取出的縮圖要求無聲消失。
 
 **陷阱**：`RenderScheduler` 的事件**在 GPU 執行緒上觸發**。在 Engine 以外訂閱時，不要直接更新 UI。
@@ -335,6 +339,7 @@ App 端由 `FilmBatch.App.Shared/Services/PreviewService.cs` 包裝：核對來�
 | `Imaging/AppleImageCodec` | iOS RID 的原生影像 I/O：ImageIO／CoreGraphics／ColorSync 解碼與 ICC 轉換、JPEG／PNG16／TIFF16 編碼、串流 EXIF 擷取；macOS 回歸可直接呼叫此後端，不代表桌面已切換 codec |
 | `Imaging/Raw/RawSourceLoader` | RAW 解碼、起始外觀、分箱／去馬賽克、高光重建與色彩處理，產生浮點 Rec.2020 場景來源；有 gain table 的 DNG 不額外擬合全域 JPEG tone。CPU／GPU 共用晚期 RAW 收尾，來源載入不提前量化成 SDR |
 | `Imaging/SourceImage` | 一般影像保存 `Rgba16`；RAW 保存場景像素、相機色調／白平衡、共用幾何與語意遮罩。`Downscale` 在場景域縮放，保留原始已定向的 `ReferenceWidth/Height`；算圖不改寫來源 |
+| `Imaging/MagickImageCodec` | 桌面 JPEG 預覽先讀尺寸；兩軸都大於兩倍預覽長邊才使用既有 decoder-size hint，避免小圖／窄圖反而被 decoder 放大。保留方向、原始參考尺寸與 ICC；完整載入／匯出不使用提示 |
 | `Imaging/ImageHistogram` | 直方圖與裁切比例 |
 | `Imaging/SampleImages` | 產生「開啟範例照片」用的測試圖 |
 | `Imaging/PhotoAnalysis`／`ZonePlacement` | 至多 4096 點的工作線性 RGB 穩健取樣、相對參考色、候選白平衡正向擬合與 Zone 算術；重用有界取樣緩衝區，不建立全圖遮罩／顯示副本。WB 候選先於 semantic／Basic／局部調整套用，再聚合與計算殘差 |
@@ -370,6 +375,7 @@ RAW 中繼資料的標頭辨識與感光解碼一致：RW2 的 `0x0055`、ORF �
 - 輸出是已轉正的 sRGB 影像：重建尺寸、方向與 Interop `R98`／`0100`，不要沿用來源 Adobe RGB 的 `R03` 或失效指標。Photoshop `ImageSourceData`（37724）等原圖圖層不屬於新算出的影像，不能一併搬入。
 - iOS 的 JPEG／PNG16／TIFF16 由 ImageIO 編碼；`ImageBackend` 於編譯時依 iOS RID 選用，桌面仍使用 Magick.NET。TIFF metadata append 支援大小端序，不重寫或重壓縮影像條帶；來源 EXIF／GPS 重新正規化後取代編碼器自行產生的 EXIF 指標。DNG 仍走共用 managed 寫入器。
 - 完整尺寸的 Apple 影像不經縮圖解碼器；已辨識為完整 sRGB 空間時不再透過量化 ICC TRC 做一次 identity 轉換。方向、straight alpha、低有效位元及 Adobe RGB 轉換由 `AppleImageCodecTests`／`AppleImagingTests` 覆蓋。
+- Box／Lanczos 縮小以 alpha 加權 RGB，濾波後再轉回 straight RGBA；全透明輸出清空 RGB，隱藏色不能污染可見邊緣。桌面 PNG16 明確寫成 16-bit RGBA（PNG64），避免編碼器把少色影像改成調色盤而將 alpha 量化為 8-bit。
 
 去背遮罩以 `SourceImage.WithForegroundMask` 附加，共享原始像素與 RAW 的延遲顯示副本；原圖比較仍使用未遮罩來源。降噪重新建立來源時也必須傳遞遮罩。`ForegroundAlpha` 在解碼後、所有幾何之前以來源像素中心雙線性取樣遮罩，只乘 alpha 一次，RGB 保持 straight；CPU／GPU、預覽 BGRA8 與 PNG16／TIFF16 使用同一透明度語意。已去背 RAW 的縮圖略過可能有不同裁切的相機 JPEG，從現像預覽產生。`ExportJob` 捕捉當時遮罩，批次中繼續編輯不改已排入工作；有透明像素時拒絕 JPEG／DNG。
 
@@ -448,7 +454,7 @@ flowchart TB
 | 型別 | 說明 |
 |---|---|
 | `MainWindowViewModel` | 建立所有子 ViewModel 與服務；開啟資料夾（`OpenFolderAsync`）、選取改變（`OnSelectionChanged`）、`RequestPreview`、複製貼上、指定預設、復原重做。**多數功能從這裡追起** |
-| `InspectorViewModel` | 實作 `IParamHost`：修改經 `SetValue` / `SetValues` / `ResetParam` / `EndEdit` 送到 `ProjectService`；`Refresh()` 從焦點照片重新載入所有參數 |
+| `InspectorViewModel` | 實作 `IParamHost`；連續手勢交給 `MainWindowViewModel` 暫存，離散修改先 `FlushEdit` 再送 `ProjectService`；`Refresh()` 顯示目前焦點的暫存／已保存參數 |
 | `ModuleSectionViewModel` | 一個模組區塊：開關、折疊、覆寫數、`⋯` 選單 |
 | `ParamViewModel` 系列 | `ParamViewModel.Create` 依 `ParamKind` 產生對應子類別，`InspectorView.axaml` 依型別套用 `DataTemplate`，所以**新增參數不需要寫 XAML** |
 | `FilmstripViewModel` | 縮圖清單、多選、篩選、縮圖背景載入、覆寫 / 預設更新標記 |
@@ -459,6 +465,7 @@ flowchart TB
 
 #### 編輯生命週期
 
+- 連續滑桿拖曳、按鍵／滾輪手勢以 `mergeKey` 辨識；預覽即時更新，結束才保存一次。暫存捕捉原 `Service` 與照片集合；切換選取／專案先結束舊手勢，晚到的釋放事件不得改新照片。儲存、undo、其他修改、匯出快照與關閉會先 flush；保存失敗不發布正式照片修改或消耗 undo。
 - 裁切的 Cancel／Esc 放棄未套用的修改並結束工具，留在裁切分頁顯示「編輯裁切」；來源尚未解碼時，Esc 也會取消延後的進入請求。套用或取消後，同照片的 RAW／偏好設定重載、重新選取不會重新開啟工具；明確進入或換照片才建立新的裁切編輯。
 - 開啟資料夾先驗證目標專案，再以舊 `Service`／焦點照片／復原堆疊套用舊裁切，最後才切換專案。若提交了裁切，同一個 UI 工作內重新讀取目標，避免重開同一資料夾或別名時採用提交前的設定與磁碟版本；不改寫原始照片。
 - 畫布失去指標擷取、視窗失焦、工具／控制點移除或畫布卸載時，都結束拖曳並恢復繪圖品質；控制點的復原合併區間也一併結束。可見的分割比較線優先接收拖曳，不交給裁切工具；命中與拖曳均透過 `CanvasMapping.ToImage` 逆向換算，拉直旋轉後也不會誤改裁切。
@@ -479,6 +486,7 @@ flowchart TB
 - `OpenFolderAsync` 在背景列舉檔名，先顯示掃描狀態；安裝有效專案後才開始縮圖工作。主視窗持續顯示完成張數／總數、失敗數與耗時；成功送達點陣圖或處理失敗才計入終態，不以佇列長度冒充進度。
 - `FilmstripViewModel` 使用一個有界工作泵，依「目前照片 → 可見範圍 → 明確重算要求 → 資料夾順序」取下一張；等待算圖交付後才繼續，不為每張照片建立等待中的解碼工作。可見範圍取自虛擬清單的實現索引；未顯示的照片最終仍會載入。
 - `ImageCache` 分開前景預覽與單槽背景解碼的入場控制；同鍵共享解碼，不讓單一呼叫端取消毒化共享結果。預覽 LRU 以路徑、尺寸與 RAW 選項為鍵，所有選項合計保留最多八筆，復原可重用先前來源；逐出時取消尚未開始的解碼。
+- 已完成的縮圖來源另有 64 筆 LRU；飛行中的共享解碼不因逐出而取消，完成時再修剪。縮圖列的點陣圖／來源以 64 筆為保留目標，焦點、可見與飛行中項目受保護；離開保留集就釋放像素，捲回時重載。終態計數不依賴像素是否仍在記憶體，重載不重複增加完成數。
 - 背景 CPU 目標可在背景工作浮出面板或「GPU 與效能」偏好設定即時調整並保存，範圍 10–100%、預設 70%；100% 停用額外等待。採程序 CPU 時間 ÷（經過時間 × 邏輯核心數），在背景工作間合作式讓出時間；不是單核心百分比，也不是系統整體或單次 RAW／原生解碼的硬性上限。前景預覽與匯出不受此節流控制，不更動全域執行緒池或 RAW 演算法。
 - 取消只停止自動背景掃描／縮圖，保留目前專案、照片、編輯與已完成縮圖；後續明確的編輯仍可更新相關縮圖，不會悄悄恢復整批掃描。資料夾換代會取消舊排隊與配速等待，舊成功／錯誤均不得污染新專案。已開始的同步解碼不能硬殺，但回傳後會核對換代；取消不算壞檔。
 
