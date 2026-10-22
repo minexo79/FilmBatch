@@ -80,6 +80,38 @@ public static partial class OpcodeOps
         return top + (bot - top) * ty;
     }
 
+    private static void ApplyGainMap(GainMap map, float[] buf, int w, int h, int cpp)
+    {
+        var area = map.Area;
+        var (top, left) = ((int)area.Top, (int)area.Left);
+        var bottom = Math.Min((int)area.Bottom, h);
+        var right = Math.Min((int)area.Right, w);
+        var firstPlane = (int)area.Plane;
+        var endPlane = Math.Min(firstPlane + Math.Max((int)area.Planes, 1), cpp);
+        if (top < 0 || left < 0 || firstPlane < 0 ||
+            bottom <= top || right <= left || endPlane <= firstPlane) return;
+        var rowPitch = Math.Max((int)area.RowPitch, 1);
+        var colPitch = Math.Max((int)area.ColPitch, 1);
+        var rows = 1 + (bottom - 1 - top) / rowPitch;
+        var columns = 1 + (right - 1 - left) / colPitch;
+        // Rows are disjoint; finish this opcode before the next one sees the buffer.
+        Parallel.For(0, rows, row =>
+        {
+            var y = top + row * rowPitch;
+            var rv = y / (double)h;
+            var rowBase = y * w * cpp;
+            for (var column = 0; column < columns; column++)
+            {
+                var x = left + column * colPitch;
+                var rh = x / (double)w;
+                var offset = rowBase + x * cpp;
+                for (var p = firstPlane; p < endPlane; p++)
+                    buf[offset + p] *= GainAt(map.PointsV, map.PointsH, map.Spacing,
+                        map.Origin, map.MapPlanes, map.Gains, rv, rh, p - firstPlane);
+            }
+        });
+    }
+
     /// <summary>
     /// 把清單套用到 w × h × cpp 的交錯緩衝區。馬賽克資料時 cfa 供壞點運算碼使用；
     /// scale 是緩衝區中 1.0 的值（清單 1 為 65535，清單 2／3 為 1）。
@@ -116,8 +148,7 @@ public static partial class OpcodeOps
                 }
                 case GainMap gm:
                 {
-                    foreach (var (x, y, p) in AreaIter(gm.Area, w, h, cpp))
-                        buf[(y * w + x) * cpp + p] *= GainAt(gm.PointsV, gm.PointsH, gm.Spacing, gm.Origin, gm.MapPlanes, gm.Gains, y / (double)h, x / (double)w, p - (int)gm.Area.Plane);
+                    ApplyGainMap(gm, buf, w, h, cpp);
                     break;
                 }
                 case DeltaPerRow dr:
