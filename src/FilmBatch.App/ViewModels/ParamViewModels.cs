@@ -1,7 +1,9 @@
 using System.Collections.ObjectModel;
 using FilmBatch.Raw;
+using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using FilmBatch.App.Controls;
 using FilmBatch.App.Localization;
 using FilmBatch.Core.Params;
 
@@ -105,9 +107,12 @@ public sealed partial class SliderParamViewModel(string moduleKey, ParamDef def,
     public string Unit => Def.Unit;
     public string FormatString => Def.Step >= 1 ? "0" : Def.Step >= 0.1 ? "0.0" : "0.00";
 
-    /// <summary>讓參數列可套用與色彩語意相符的滑桿軌道樣式。</summary>
-    public bool IsTemperature => string.Equals(Def.Key, "temperature", StringComparison.Ordinal);
-    public bool IsTint => string.Equals(Def.Key, "tint", StringComparison.Ordinal);
+    /// <summary>讓參數列可套用與色彩語意相符的滑桿軌道樣式：冷暖軸（含遮罩色溫、底片暖色）與綠洋紅軸。</summary>
+    public bool IsTemperature => Def.Key is "temperature" or "mask_temperature" or "warmth";
+    public bool IsTint => Def.Key is "tint" or "mask_tint";
+
+    /// <summary>其他具色彩語意的軌道漸層（色相、各色強度、色相帶）；null 表示一般軌道。</summary>
+    public IBrush? TrackBrush => ParamTrackBrushes.For(FlatKey);
 
     public double Value
     {

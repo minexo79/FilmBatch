@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Media;
 using Avalonia.Threading;
 
 namespace FilmBatch.App.Controls;
@@ -29,6 +30,22 @@ public class ParamSlider : Slider
     private DispatcherTimer? _wheelIdle;
 
     protected override Type StyleKeyOverride => typeof(Slider);
+
+    /// <summary>具色彩語意的軌道漸層（<see cref="ParamTrackBrushes"/>）；null 時使用一般軌道。</summary>
+    public static readonly StyledProperty<IBrush?> TrackBrushProperty =
+        AvaloniaProperty.Register<ParamSlider, IBrush?>(nameof(TrackBrush));
+
+    public IBrush? TrackBrush
+    {
+        get => GetValue(TrackBrushProperty);
+        set => SetValue(TrackBrushProperty, value);
+    }
+
+    static ParamSlider()
+    {
+        // 有漸層時加上 :colored，由 ColorSliderStyles.axaml 把軌道換成此漸層
+        TrackBrushProperty.Changed.AddClassHandler<ParamSlider>((s, e) => s.PseudoClasses.Set(":colored", e.NewValue is not null));
+    }
 
     /// <summary>開始一次連續編輯（拖曳或滾輪）。</summary>
     public event EventHandler? EditStarted;
