@@ -107,7 +107,7 @@ public static class ModuleCatalog
             Float("divider", "分隔線柔和度", 0, 0, 100),
             Seed(),
         ]),
-        new("double_exposure", "雙重曝光", ModuleGroup.Optical, PasteCategory.Optical,
+        new("double_exposure", "雙重曝光", ModuleGroup.Film, PasteCategory.Optical,
         [
             Bool(ModuleSchema.EnabledKey, "啟用"),
             Choice("source", "來源", O("self", "本張自己"), O("photo", "專案內另一張"), O("file", "外部檔案")),
@@ -173,7 +173,7 @@ public static class ModuleCatalog
             Float("radius", "半徑", 30, 1, 100),
             Float("hue", "色相", 10, 0, 60, 1, "°"),
         ]),
-        new("light_leak", "漏光", ModuleGroup.Optical, PasteCategory.Optical,
+        new("light_leak", "漏光", ModuleGroup.Film, PasteCategory.Optical,
         [
             Bool(ModuleSchema.EnabledKey, "啟用"),
             Choice("mode", "模式", O("procedural", "程序化"), O("texture", "材質")),
