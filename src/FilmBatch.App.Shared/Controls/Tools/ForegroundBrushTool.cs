@@ -21,13 +21,43 @@ internal sealed class ForegroundBrushTool : ICanvasTool, IDisposable
     private readonly int _width;
     private readonly int _height;
     private readonly ForegroundMask? _initial;
-    private bool _changed;
+    private const int TileSide = 32;
+    private const int HistoryLimit = 200;
+    private const long HistoryBytesLimit = 32 * 1024 * 1024;
+    private readonly LinkedList<MaskEdit> _undo = new();
+    private readonly Stack<LinkedListNode<MaskEdit>> _redo = new();
+    private Dictionary<int, TileDelta>? _stroke;
+    private long _historyBytes;
+    private long _state;
+    private long _nextState;
     private Point? _last;
     private Point? _cursor;
     public WriteableBitmap Bitmap { get; }
     public bool KeepForeground { get; set; }
     public double BrushSize { get; set; } = 5;
     public event Action? Invalidated;
+    public event Action? HistoryChanged;
+    public bool CanUndo => _undo.Count > 0 || _stroke is { Count: > 0 };
+    public bool CanRedo => _redo.Count > 0 && _stroke is null;
+
+    private sealed record MaskEdit(long Before, long After, TileDelta[]? Tiles, long Bytes);
+
+    private sealed class TileDelta
+    {
+        public readonly int X;
+        public readonly int Y;
+        public readonly int Width;
+        public readonly int Height;
+        public readonly ushort[] Values;
+
+        public TileDelta(int x, int y, int width, int height, int stride, ushort[] values)
+        {
+            X = x; Y = y; Width = width; Height = height;
+            Values = new ushort[width * height];
+            for (var row = 0; row < height; row++)
+                values.AsSpan((y + row) * stride + x, width).CopyTo(Values.AsSpan(row * width, width));
+        }
+    }
 
     public ForegroundBrushTool(SourceImage source, ForegroundMask? mask)
     {
@@ -81,21 +111,125 @@ internal sealed class ForegroundBrushTool : ICanvasTool, IDisposable
         return y * _source.Width + x;
     }
 
-    public ForegroundMask? Snapshot() => !_changed ? _initial
-        : new(_width, _height, _source.ReferenceWidth, _source.ReferenceHeight, _values);
+    public ForegroundMask? Snapshot()
+    {
+        CompleteStroke();
+        return _state == 0 ? _initial
+            : new(_width, _height, _source.ReferenceWidth, _source.ReferenceHeight, _values);
+    }
 
     public void Invert()
     {
-        _changed = true;
-        for (var i = 0; i < _values.Length; i++) _values[i] = (ushort)(65535 - _values[i]);
-        UpdatePixels(0, 0, _width - 1, _height - 1);
+        CompleteStroke();
+        var edit = new MaskEdit(_state, ++_nextState, null, 0);
+        Toggle(edit);
+        PushEdit(edit);
+    }
+
+    public void Undo()
+    {
+        CompleteStroke();
+        if (_undo.Last is not { } node) return;
+        Toggle(node.Value);
+        _state = node.Value.Before;
+        _undo.Remove(node);
+        _redo.Push(node);
+        HistoryChanged?.Invoke();
         Invalidated?.Invoke();
+    }
+
+    public void Redo()
+    {
+        CompleteStroke();
+        if (!_redo.TryPop(out var node)) return;
+        Toggle(node.Value);
+        _state = node.Value.After;
+        _undo.AddLast(node);
+        HistoryChanged?.Invoke();
+        Invalidated?.Invoke();
+    }
+
+    private void RememberTile(int x, int y)
+    {
+        _stroke ??= new();
+        var tx = x / TileSide;
+        var ty = y / TileSide;
+        var key = ty * ((_width + TileSide - 1) / TileSide) + tx;
+        if (_stroke.ContainsKey(key)) return;
+        var x0 = tx * TileSide;
+        var y0 = ty * TileSide;
+        _stroke.Add(key, new TileDelta(x0, y0, Math.Min(TileSide, _width - x0),
+            Math.Min(TileSide, _height - y0), _width, _values));
+    }
+
+    private void CompleteStroke()
+    {
+        _last = null;
+        if (_stroke is null) return;
+        var tiles = _stroke.Values.ToArray();
+        _stroke = null;
+        var count = 0;
+        long bytes = 0;
+        foreach (var tile in tiles)
+        {
+            var differs = false;
+            for (var row = 0; row < tile.Height && !differs; row++)
+                differs = !_values.AsSpan((tile.Y + row) * _width + tile.X, tile.Width)
+                    .SequenceEqual(tile.Values.AsSpan(row * tile.Width, tile.Width));
+            if (!differs) continue;
+            tiles[count++] = tile;
+            bytes += tile.Values.Length * sizeof(ushort);
+        }
+        if (count == 0)
+        {
+            HistoryChanged?.Invoke();
+            return;
+        }
+        if (count != tiles.Length) Array.Resize(ref tiles, count);
+        PushEdit(new MaskEdit(_state, ++_nextState, tiles, bytes));
+    }
+
+    private void PushEdit(MaskEdit edit)
+    {
+        while (_redo.TryPop(out var abandoned)) _historyBytes -= abandoned.Value.Bytes;
+        _undo.AddLast(edit);
+        _state = edit.After;
+        _historyBytes += edit.Bytes;
+        while (_undo.Count > HistoryLimit || _historyBytes > HistoryBytesLimit)
+        {
+            _historyBytes -= _undo.First!.Value.Bytes;
+            _undo.RemoveFirst();
+        }
+        HistoryChanged?.Invoke();
+        Invalidated?.Invoke();
+    }
+
+    private void Toggle(MaskEdit edit)
+    {
+        if (edit.Tiles is null)
+        {
+            for (var i = 0; i < _values.Length; i++) _values[i] = (ushort)(65535 - _values[i]);
+            UpdatePixels(0, 0, _width - 1, _height - 1);
+            return;
+        }
+        foreach (var tile in edit.Tiles)
+        {
+            for (var row = 0; row < tile.Height; row++)
+            for (var column = 0; column < tile.Width; column++)
+            {
+                var index = (tile.Y + row) * _width + tile.X + column;
+                var local = row * tile.Width + column;
+                (_values[index], tile.Values[local]) = (tile.Values[local], _values[index]);
+            }
+            UpdatePixels(tile.X, tile.Y, tile.X + tile.Width - 1, tile.Y + tile.Height - 1);
+        }
     }
 
     private double Radius => Math.Clamp(double.IsFinite(BrushSize) ? BrushSize : 5, 1, 30) * Math.Min(_width, _height) / 200;
 
     public bool OnPressed(Point canvas, CanvasMapping map, KeyModifiers mods)
     {
+        CompleteStroke();
         var point = map.ToImage(canvas);
         if (point.X < 0 || point.X > 1 || point.Y < 0 || point.Y > 1) return false;
         _last = new Point(point.X * _width, point.Y * _height);
@@ -122,7 +256,7 @@ internal sealed class ForegroundBrushTool : ICanvasTool, IDisposable
         if (_last is not { } previous) return;
         var image = map.ToImage(canvas);
         Paint(previous, new Point(image.X * _width, image.Y * _height));
-        _last = null;
+        CompleteStroke();
     }
 
     private void Paint(Point start, Point end)
@@ -136,6 +270,7 @@ internal sealed class ForegroundBrushTool : ICanvasTool, IDisposable
         var dx = end.X - start.X;
         var dy = end.Y - start.Y;
         var lengthSquared = dx * dx + dy * dy;
+        var changed = false;
         for (var y = y0; y <= y1; y++)
         for (var x = x0; x <= x1; x++)
         {
@@ -147,11 +282,15 @@ internal sealed class ForegroundBrushTool : ICanvasTool, IDisposable
             var value = KeepForeground
                 ? Math.Max(_values[index], (ushort)Math.Floor(65535 * coverage + 0.5))
                 : Math.Min(_values[index], (ushort)Math.Floor(65535 * (1 - coverage) + 0.5));
-            _changed |= value != _values[index];
+            if (value == _values[index]) continue;
+            RememberTile(x, y);
+            changed = true;
             _values[index] = value;
         }
+        if (!changed) return;
         UpdatePixels(x0, y0, x1, y1);
         Invalidated?.Invoke();
+        HistoryChanged?.Invoke();
     }
 
     private void UpdatePixels(int x0, int y0, int x1, int y1)
@@ -181,5 +320,11 @@ internal sealed class ForegroundBrushTool : ICanvasTool, IDisposable
         context.DrawEllipse(null, Outline, cursor, radius, radius);
     }
 
-    public void Dispose() => Bitmap.Dispose();
+    public void Dispose()
+    {
+        _stroke = null;
+        _undo.Clear();
+        _redo.Clear();
+        Bitmap.Dispose();
+    }
 }

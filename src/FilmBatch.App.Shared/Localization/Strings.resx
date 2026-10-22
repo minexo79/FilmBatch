@@ -363,6 +363,11 @@
   <data name="Raw.BrowseFolder" xml:space="preserve"><value>瀏覽資料夾…</value></data>
   <data name="Module.skin" xml:space="preserve"><value>局部膚色輔助</value></data>
   <data name="Module.zone" xml:space="preserve"><value>Zone 測光與階調</value></data>
+  <data name="Module.shadow_recovery" xml:space="preserve"><value>暗部還原</value></data>
+  <data name="Param.shadow_recovery.exposure" xml:space="preserve"><value>暗部提亮</value></data>
+  <data name="Param.shadow_recovery.radius" xml:space="preserve"><value>局部範圍</value></data>
+  <data name="Param.shadow_recovery.luminance" xml:space="preserve"><value>亮度降噪</value></data>
+  <data name="Param.shadow_recovery.chroma" xml:space="preserve"><value>色度降噪</value></data>
   <data name="Param.skin.region_cx" xml:space="preserve"><value>區域中心 X</value></data>
   <data name="Param.skin.region_cy" xml:space="preserve"><value>區域中心 Y</value></data>
   <data name="Param.skin.radius_x" xml:space="preserve"><value>區域半寬</value></data>
@@ -472,8 +477,8 @@
   <data name="BackgroundRemoval.Remove" xml:space="preserve"><value>移除筆刷</value></data>
   <data name="BackgroundRemoval.BrushSize" xml:space="preserve"><value>筆刷大小</value></data>
   <data name="BackgroundRemoval.Invert" xml:space="preserve"><value>反轉遮罩</value></data>
-  <data name="BackgroundRemoval.Hint" xml:space="preserve"><value>Apple Vision 本機主體選取，不上傳照片。只調整焦點照片的透明度，不生成背景；遮罩不會複製到其他照片或預設。透明匯出請選 PNG 或 TIFF。</value></data>
-  <data name="BackgroundRemoval.Unsupported" xml:space="preserve"><value>AI 主體選取需要 macOS 14 以上；此平台仍可使用筆刷手動去背。只調整焦點照片，透明匯出請選 PNG 或 TIFF。</value></data>
+  <data name="BackgroundRemoval.Hint" xml:space="preserve"><value>Apple Vision 本機主體選取，不上傳照片、不生成背景。單張選取可先修正；批次逐張處理選取的照片，保留既有遮罩，完成後可一次復原。透明匯出請選 PNG 或 TIFF。</value></data>
+  <data name="BackgroundRemoval.Unsupported" xml:space="preserve"><value>AI 主體選取需要 macOS 14 以上；此平台仍可用筆刷修正焦點照片，草稿支援逐筆復原／重做。透明匯出請選 PNG 或 TIFF。</value></data>
   <data name="BackgroundRemoval.Selecting" xml:space="preserve"><value>正在以 Apple Vision 選取主體…</value></data>
   <data name="BackgroundRemoval.NoSubject" xml:space="preserve"><value>沒有找到可分離的主體，未修改照片。可改用筆刷手動去背。</value></data>
   <data name="BackgroundRemoval.Draft" xml:space="preserve"><value>草稿顯示未裁切來源；以筆刷修正後套用，或取消。套用前不會變更專案。</value></data>
@@ -481,4 +486,10 @@
   <data name="BackgroundRemoval.AppliedLabel" xml:space="preserve"><value>已套用去背</value></data>
   <data name="BackgroundRemoval.Restored" xml:space="preserve"><value>背景已還原，可復原此操作。</value></data>
   <data name="BackgroundRemoval.Failed" xml:space="preserve"><value>去背失敗：{0}</value></data>
+  <data name="BackgroundRemoval.GenerateSelected" xml:space="preserve"><value>批次去背選取照片</value></data>
+  <data name="BackgroundRemoval.BatchProgress" xml:space="preserve"><value>產生遮罩 {0}/{1}：{2}；完成後一起保存。</value></data>
+  <data name="BackgroundRemoval.BatchComplete" xml:space="preserve"><value>批次完成：共 {0} 張，套用 {1}、略過 {2}、無主體 {3}、失敗 {4}。</value></data>
+  <data name="BackgroundRemoval.BatchCancelled" xml:space="preserve"><value>批次已取消：共 {0} 張，套用 {1}、略過 {2}、無主體 {3}、失敗 {4}、未完成 {5}。</value></data>
+  <data name="BackgroundRemoval.BatchCancelling" xml:space="preserve"><value>正在取消；將保存已完成的遮罩，不接受目前尚未完成的結果。</value></data>
+  <data name="BackgroundRemoval.BatchCancelledWithoutApply" xml:space="preserve"><value>批次已取消，未套用本次結果。</value></data>
 </root>

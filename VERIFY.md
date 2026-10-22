@@ -3,7 +3,7 @@
 此頁讓沒有對話歷史的開發者從現有測試與真正的 App／CLI 驗證程式。領域契約仍在[文件地圖](docs/README.md)指向的原文件；本頁不建立第二套功能規格、驗收 runner 或治理 runtime。
 
 - 初始稽核基準：`6e3291a5cbe33d267ec33b9d42054efde9bd82f3`，2026-10-18。
-- 初始結果、輸入範圍與未知項：[有日期的稽核記錄](docs/superpowers/plans/2026-10-18-governed-verification-and-knowledge.md#current-observations)。後續去背功能的來源回歸、原生視窗限制與重跑命令另見 [2026-10-21 去背現況](docs/building.md#去背驗證現況2026-10-21)，不把舊基準當目前版本永遠有效的綠燈。
+- 初始結果、輸入範圍與未知項：[有日期的稽核記錄](docs/superpowers/plans/2026-10-18-governed-verification-and-knowledge.md#current-observations)。後續去背功能的來源回歸、批次／逐筆操作、原生視窗限制與重跑命令另見 [2026-10-22 去背現況](docs/building.md#去背驗證現況2026-10-22)，不把舊基準當目前版本永遠有效的綠燈。
 - 改動相關來源、相依庫、輸入、設定或驗收條件後，重跑涵蓋該改動的檢查；更新記錄，不改期望值來迎合產品。
 
 ## 範圍與權限
@@ -51,16 +51,18 @@ dotnet test FilmBatch.sln -c Release --logger trx --results-directory "$work/tes
 | 參數、持久化、貼上、匯出快照 | `PhotoOperationsTests`、`ProjectServiceTests`、`PersistenceTests`、`BatchExporterTests` | [Core 與復原](docs/architecture.md#41-core參數-schemaparams) |
 | RAW 場景域、白平衡、語意遮罩、鏡頭、DNG | `RawSceneIntegrationTests`、`RawWhiteBalanceTests`、`RawWhiteBalanceRangeTests`、`RawSemanticRenderingTests`、`LensProfileTests`、`RawDngConversionTests` | [RAW／匯出](docs/architecture.md#48-engine影像讀取與批次匯出imaging--exporting) |
 | CPU／GPU 行為、精度與排程失敗 | `EffectPipelineTests`、`GpuSpikeTests`、`RawGpuDisplayTests`、`RenderSchedulerTests`、`RenderSchedulerReconfigureTests` | [算圖管線](docs/architecture.md#46-engine算圖管線rendering)、[排程](docs/architecture.md#47-engine算圖排程scheduling)、[ADR 0003](docs/adr/0003-gpu-stack-decision.md) |
+| 暗部提亮、黑點／HDR／alpha、降噪與舊外觀不變 | `ShadowRecoveryTests`；實際 RAW、Metal、共用介面與匯出另跑端到端 smoke | [操作、回歸命令與實測邊界](docs/building.md#局部暗部還原)、[CPU／GPU 契約](docs/architecture.md#46-engine算圖管線rendering)；測試略過、Headless 與單張 RAW 不代替跨平台或人工畫質驗收 |
 | 非同步來源、裁切取消、undo、視窗狀態 | `EditorLifecycleTests`、`PreviewInteractionTests`、`WindowLifecycleTests`、`RawControlsTests`、`RawSourceLifecycleTests` | [編輯生命週期](docs/architecture.md#410-app介面層) |
 | 大量照片載入、前景／可見縮圖優先、即時 CPU 與預覽交付 | `BulkLoadingTests`、`CacheAdmissionTests`、`FilmstripLoadingTests`、`BackgroundLoadingPreferencesTests`、`PreviewDeliveryTests` | [載入與背景 CPU](docs/architecture.md#大量照片載入與背景-cpu)、[回歸與桌面檢查](docs/building.md#大量照片載入與即時預覽回歸) |
 | 底片 LUT、色相帶、舊設定移除 | `FilmLutTests`、`FilmLookTests`、`RetiredParamsTests` | [底片契約與來源](docs/film-looks.md) |
 | 顆粒座標／足跡、局部膚色、白平衡提案與 Zone | `GrainModelTests`、`SurveyRenderingTests`、`PhotoAdjustmentTests`、`PhotoAnalysisTests`、`PhotoToolsTests` | [現行操作與限制](docs/grain-white-balance-survey.md#目前實作與操作)、[實作及原生驗收](docs/superpowers/plans/2026-10-19-grain-neutral-zone.md) |
 | AI 分塊／混合、模型完整性、快取、取消與 UI 狀態 | `DenoisingTests`、`DenoiseViewModelTests`、`RenderSchedulerTests`；真實權重另走原生實拍 smoke | [AI 資料域與授權](docs/adr/0002-ai-denoise.md)、[端到端驗收](docs/superpowers/plans/2026-10-19-ai-denoising.md) |
-| 去背原生選取、逐張遮罩、透明度、保存衝突與編輯草稿 | `ForegroundSelectionTests`、`ForegroundPersistenceTests`、`ForegroundAlphaTests`、`BackgroundRemovalTests`、`DenoisingOrtTests.PreparedSource_StillRendersForegroundCoverageAfterDenoising` | [去背操作、可重跑命令與驗證邊界](docs/building.md#本機-ai-去背)、[專案格式與復原](docs/architecture.md#42-core專案與照片設定projects)；Headless 不代替原生視窗或人類畫質驗收 |
+| 去背原生選取、逐張／批次遮罩、取消、保存衝突及草稿逐筆復原 | `ForegroundSelectionTests`、`ForegroundPersistenceTests`、`ForegroundAlphaTests`、`ForegroundBatchTests`、`BackgroundRemovalTests`、`ForegroundBatchUiTests`、`ForegroundHistoryTests`、`DenoisingOrtTests.PreparedSource_StillRendersForegroundCoverageAfterDenoising` | [去背操作、CLI 結束碼、可重跑命令與驗證邊界](docs/building.md#本機-ai-去背)、[專案格式與復原](docs/architecture.md#42-core專案與照片設定projects)；Headless 不代替原生視窗或人類畫質驗收 |
 | JPEG XL ABI、樣本與錯誤路徑 | `PortableJxlTests`、`JpegXlTests` | [發佈閉包](docs/building.md#macos)、[native manifest](src/FilmBatch.Raw/Native/Jxl/provenance.json) |
-| Apple ImageIO、方向／16-bit／ICC、來源 EXIF 與 TIFF 目錄 | `AppleImageCodecTests`、`AppleImagingTests`、`TiffMetadataTests` | [影像與匯出契約](docs/architecture.md#48-engine影像讀取與批次匯出imaging--exporting)、[iOS 原生驗證邊界](docs/building.md#驗證邊界) |
+| Apple ImageIO、方向／16-bit／ICC、來源 EXIF 與 TIFF 目錄 | `AppleImageCodecTests`、`AppleImagingTests`、`TiffMetadataTests` | [影像與匯出契約](docs/architecture.md#48-engine影像讀取與批次匯出imaging--exporting)、[iOS 原生驗證邊界](docs/building.md#驗證邊界)、[JPEG 原生預覽／匯出及獨立 CMS 核對](docs/building.md#ios-jpeg-色彩核對2026-10-22)；合成輸入未重現不等於使用者原檔已修復 |
 | 共用觸控標題、滑桿與背景時的編輯入場 | `ModuleSectionTests`、`ParamSliderTests`、`BulkLoadingTests` | [行動版操作與資料所有權](docs/building.md#操作與資料所有權)；Headless／Mac 結果不代替 iOS 原生操作 |
 | iOS 主要編輯器的實際 Files／Photos、編輯、輸出與取消 | `src/FilmBatch.Mobile.iOS` 的實際 Release app；原生 XCTest 操作及獨立輸出解碼 | [建置／操作](docs/building.md#ios-行動版)、[本輪實測與證據邊界](docs/building.md#本輪實測2026-10-20)；不以診斷 app、Headless 或 Mac 的 pass 代替 |
+| 暗部研究、局部 tone mapping 與獨立感光解碼比較 | [輸入 SHA-256、工具版本與重播順序](docs/shadow-recovery-survey.md#可重現的高反差-raw-比較)、[三相機受控解碼比較](docs/shadow-recovery-survey.md#獨立感光解碼比較2026-10-22) | 早期原型、現有產品功能及外部 oracle 分列；`V1` 綠燈不證明 Lightroom 優劣、相機噪聲校準或其他相機的解碼一致 |
 
 需要縮小範圍時，用 `--filter FullyQualifiedName~類別名稱`；先確認實際執行了預期測試，不能把沒有匹配 case 的 exit 當 pass。外部語料取得與釘選參考輸出見 [raw-oracle](tools/raw-oracle/README.md)。
 

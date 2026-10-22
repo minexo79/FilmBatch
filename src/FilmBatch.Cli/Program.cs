@@ -10,8 +10,8 @@ using FilmBatch.Engine.Rendering;
 using FilmBatch.Gpu.Device;
 
 // filmbatch 命令列：與 GUI 共用 Core / Engine（計畫書第 10 章）。
-// export 子命令使用已持久化的 Project.Open + PresetLibrary.Load；
-// CLI 只讀取快照匯出，絕不靜默更新預設快照。
+// export 子命令使用已持久化的 Project.Open + PresetLibrary.Load，只讀取快照匯出，絕不靜默更新預設快照。
+// remove-background 子命令批次產生本機 AI 去背遮罩並保存到專案；不匯出圖片檔，不同步預設。
 
 var backendOption = new Option<GpuBackend>("--backend") { Description = "GPU 後端：Auto、Dx12、Vulkan、Metal", DefaultValueFactory = _ => GpuBackend.Auto };
 var softwareOption = new Option<bool>("--software") { Description = "強制使用軟體介面卡" };
@@ -212,5 +212,5 @@ static Func<IPreviewRenderer> CreateExportFactory(GpuDeviceOptions deviceOptions
     }
 }
 
-var root = new RootCommand("FilmBatch 命令列") { gpuInfo, spike, samples, export, RawCommands.Create(), DenoiseCommands.Create() };
+var root = new RootCommand("FilmBatch 命令列") { gpuInfo, spike, samples, export, RawCommands.Create(), DenoiseCommands.Create(), ForegroundCommands.Create() };
 return root.Parse(args).Invoke();

@@ -54,6 +54,9 @@ public static class CpuPipeline
             BasicLinear(cur, n, p);
         if (p.SkinOn || p.ZoneOn) PhotoAdjustments.Apply(cur, w, h, p, ct);
         ct.ThrowIfCancellationRequested();
+        // 場景線性暗部還原（局部增益＋增益前亮度／色度降噪）：曝光／膚色／Zone 之後、幾何與顯示映射之前
+        if (p.ShadowRecoveryOn && ShadowRecovery.Apply(cur, a, b, w, h, p, ct)) (cur, a) = (a, cur);
+        ct.ThrowIfCancellationRequested();
 
         // ① 幾何（線性）：鏡頭變形 → 多格分鏡
         if (p.LensOn) { LensDistortion(cur, a, w, h, p); (cur, a) = (a, cur); }

@@ -98,6 +98,15 @@ public static class ModuleCatalog
             Float("slope", "曝光跨度", 1, 0.25, 4, 0.01),
             Float("offset", "曝光位移", 0, -8, 8, 0.05, "EV"),
         ]),
+        // 場景線性局部增益與暗部降噪；獨立於舊 basic.shadows，避免改變既有照片外觀。
+        new("shadow_recovery", "暗部還原", ModuleGroup.Basic, PasteCategory.Color,
+        [
+            Bool(ModuleSchema.EnabledKey, "啟用"),
+            Float("exposure", "暗部提亮", 3, 0, 5, 0.05, "EV"),
+            Float("radius", "局部範圍", 2, 0.25, 10, 0.25, "%"),
+            Float("luminance", "亮度降噪", 35, 0, 100, 1, "%"),
+            Float("chroma", "色度降噪", 80, 0, 100, 1, "%"),
+        ]),
         new("lens_distortion", "鏡頭變形", ModuleGroup.Geometry, PasteCategory.Optical,
         [
             Bool(ModuleSchema.EnabledKey, "啟用"),

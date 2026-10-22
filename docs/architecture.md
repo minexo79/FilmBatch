@@ -191,7 +191,7 @@ flowchart LR
 - 覆寫只存「與預設不同」的欄位。`PhotoOperations.Clean` 會移除與基準相同的值，所以修改預設時，沒被覆寫的欄位自然跟著變。
 - **預設快照**：專案會把用到的預設存一份在 `PresetSnapshots`。重新開啟舊專案時，即使預設庫裡的預設被改過，照片仍維持原樣，直到使用者在對話框中選擇同步（`Project.PendingPresetUpdates` / `ResolvePresetUpdate`）。
 - 每次 `Project.Replace` 都會自動存檔，不需要另外呼叫儲存。
-- 去背透過 `ProjectService.SetForegroundMask` 形成單張照片命令。專案格式 3 在每張照片內保存 zlib 壓縮、little-endian 16-bit 覆蓋率；讀取接受格式 1／2，寫入升為 3，舊版不得覆寫新格式。解壓依尺寸限定長度，遮罩最多 16,777,216 個樣本；上限不限制來源照片本身的像素數。
+- 去背透過 `ProjectService.SetForegroundMask` 形成單張照片命令；`SetForegroundMasks` 把一批不同遮罩保存成同一個 `PhotoEditCommand`，成功後才加入復原堆疊。專案格式 3 在每張照片內保存 zlib 壓縮、little-endian 16-bit 覆蓋率；讀取接受格式 1／2，寫入升為 3，舊版不得覆寫新格式。解壓依尺寸限定長度，遮罩最多 16,777,216 個樣本；上限不限制來源照片本身的像素數。
 
 **規則與陷阱**
 
@@ -215,6 +215,8 @@ flowchart LR
 儲存失敗時不能消耗復原紀錄：`Undo`／`Redo` 在命令成功之後才移動堆疊節點；專案 revision 衝突保留原磁碟內容、目前照片與可重試的歷史。
 
 複合操作要走一次 `ProjectService.SetValues`：例如裁切的一組欄位、語意遮罩的名稱＋實例，undo 一次應還原整組。`InspectorViewModel.SetValues` 提供這個專案契約；`IParamHost` 的預設實作只是逐 key 轉送，不保證其他 host 也有原子復原語意。
+
+去背草稿不使用專案 `CommandStack`。`ForegroundBrushTool` 以 32×32 區塊保存受影響的原始覆蓋率，undo／redo 交換相同緩衝區；每次按下／移動／放開是一筆，反轉另是一筆，不變的筆畫不清除 redo。保留最多 200 筆及 32 MiB 區塊樣本 payload，超過時丟棄最舊紀錄；這不是整個工具的 RAM 上限。編輯草稿期間，共用 Undo／Redo 一律路由到草稿，即使本地歷史為空也不能消耗既有照片歷史。套用只將目前覆蓋率存成一筆照片命令，取消丟棄草稿；中斷捕捉／雙指接手沿 `PreviewCanvas.EndDrag` 的 `OnReleased` 收尾。
 
 ### 4.4 Core．預設庫（Presets）
 
@@ -275,6 +277,7 @@ flowchart LR
 | `FilmLookProcessing` | `FilmLookProcessing.cs` | 底片風格的 CPU 參考實作：LUT → 八色相帶（OKLCh）→ 暖色 → 褪色 → 依效果比例混合；`BandWeight` 為色相帶權重 |
 | `FilmLookUniforms` | `FilmLookUniforms.cs` | 傳給 `film/look.wgsl` 的 uniform（`Mix`、`Flags`、`Band0`…`Band7`，與 WGSL `struct LookParams` 對齊） |
 | `PhotoAdjustments` | `PhotoAdjustments.cs` | BasicLinear 後的羽化膚色與單調 Zone 亮度曲線；CPU 逐像素與有界分析共用純量數學，GPU 對應 `linear/photo_adjustments.wgsl` |
+| `ShadowRecovery` | `ShadowRecovery.cs` | 場景線性局部暗部增益與增益前亮度／色度降噪；覆蓋率加權 guided 基底、共享 `ShadowLayout` 與 CPU／GPU uniforms；GPU 對應 `linear/shadow_stats.wgsl`、`shadow_box.wgsl`、`shadow_apply.wgsl` 與共用 `shadow_common.wgsl` |
 | `Oklab` | `Oklab.cs` | 線性 sRGB ↔ OKLab 轉換（與 `look.wgsl` 的 `to_oklab`／`from_oklab` 同係數） |
 | `EffectAssets` | `EffectAssets.cs` | 解析外部素材：雙重曝光的第二張照片、漏光與灰塵的材質檔。材質庫為空時改用程序化效果 |
 
@@ -285,7 +288,7 @@ RAW 來源保持未夾取的浮點線性 Rec.2020，`Rgba16` 只在原圖比較�
 | 階段 | 色彩空間 | 模組 |
 |---|---|---|
 | ⓪ 來源（選用） | RAW 線性 Rec.2020／一般顯示 sRGB | 固定模型分塊 AI 降噪 → 亮度／色彩混合 → 需要時縮小；兩個 renderer 共用同一實作，不重複一份神經網路 shader |
-| ① 幾何 | 線性光 | 基本調整（曝光、色溫、色調）→ 局部膚色 → Zone 曲線（僅場景來源）→ 鏡頭變形 → 多格分鏡 |
+| ① 幾何 | 線性光 | 基本調整（曝光、色溫、色調）→ 局部膚色 → Zone 曲線（僅場景來源）→ 暗部還原（選用）→ 鏡頭變形 → 多格分鏡 |
 | ② 光學 | 線性光 | 雙重曝光 → 散景 → 縮放旋轉模糊 → 動態模糊 → 暗角 → 光暈 → 漏光 |
 | ③ 底片 | 線性光 | 底片風格 → 古典版材 |
 | — | 線性 → sRGB | `linear_to_display` |
@@ -300,6 +303,10 @@ RAW 來源保持未夾取的浮點線性 Rec.2020，`Rgba16` 只在原圖比較�
 - GPU 只有 4 張工作紋理輪流使用（`Next(...)` 會避開正在讀的紋理）；新增需要多張中間結果的 pass 時要用 `reserve` 參數保護。
 - 半徑、大小類參數以**短邊比例**計算，預覽代理圖與原尺寸匯出的外觀才會一致。
 - 顆粒例外地以來源參考平面的短邊決定粒徑：`SourceImage.ReferenceWidth/Height` 穿過代理圖，輸出像素經裁切逆仿射回到該平面；三種模型共用座標、seed、明暗響應與像素足跡濾波。光學圓盤數截斷於每格 8，最大 λ=1.6 時截斷尾機率低於 0.0046%；不是精確片種或化學模擬。
+
+**暗部還原契約**：獨立的 `shadow_recovery` 模組預設關閉，不重定義顯示域的 `basic.shadows`。在未夾取的工作線性 sRGB 上，以 `log2((max(Y,0)+2⁻⁷)/0.18)` 作導引，按 alpha 加權的代理格統計與分數盒狀 guided filter 求局部基底，再把亮度／色度降噪與共同 RGB 增益套回來源。增益曲線不加黑位偏移，基底階調斜率下限 0.3；高於膝點的基底增益為 1，不在此處裁掉 HDR。alpha 不變，完全透明的隱藏 RGB 不進鄰域；純黑仍為黑。一般 RGB 來源先按既有流程線性化。
+
+局部半徑按裁切後短邊比例；降噪 σ 按 `ReferenceWidth/Height` 的來源像素足跡換算，因此縮小預覽可能減弱／跳過次像素降噪，不宣稱和全圖逐像素相同。CPU 重用既有兩張暫存，GPU 重用工作紋理；有效曝光與兩種降噪均為零時直接跳過，不讀取未寫入的暫存。取消在各 pass／列間檢查。`PhotoSamplingSettings` 暫停此局部算子，避免白平衡／Zone 取樣納入創意映射；參數沿用 Settings、預設、貼上、undo 與匯出快照，專案格式仍為 3。實際操作與測試入口見[建置說明](building.md#局部暗部還原)，研究／解碼比較的證據與產品驗收分列於[暗部研究](shadow-recovery-survey.md)。
 
 ### 4.7 Engine．算圖排程（Scheduling）
 
@@ -365,6 +372,10 @@ RAW 中繼資料的標頭辨識與感光解碼一致：RW2 的 `0x0055`、ORF �
 - 完整尺寸的 Apple 影像不經縮圖解碼器；已辨識為完整 sRGB 空間時不再透過量化 ICC TRC 做一次 identity 轉換。方向、straight alpha、低有效位元及 Adobe RGB 轉換由 `AppleImageCodecTests`／`AppleImagingTests` 覆蓋。
 
 去背遮罩以 `SourceImage.WithForegroundMask` 附加，共享原始像素與 RAW 的延遲顯示副本；原圖比較仍使用未遮罩來源。降噪重新建立來源時也必須傳遞遮罩。`ForegroundAlpha` 在解碼後、所有幾何之前以來源像素中心雙線性取樣遮罩，只乘 alpha 一次，RGB 保持 straight；CPU／GPU、預覽 BGRA8 與 PNG16／TIFF16 使用同一透明度語意。已去背 RAW 的縮圖略過可能有不同裁切的相機 JPEG，從現像預覽產生。`ExportJob` 捕捉當時遮罩，批次中繼續編輯不改已排入工作；有透明像素時拒絕 JPEG／DNG。
+
+批次去背採兩階段：`ForegroundBatch.BuildJobs` 捕捉去重選取、來源路徑、照片與解析後設定；`RunAsync` 依序載入長邊至多 2048 的現像代理圖，略過既有遮罩，無主體／損毀／取消逐張記錄，不修改 live project。`Apply` 在呼叫端驗證路徑、照片與設定仍相符，拒絕覆寫期間新增的遮罩，經 `SetForegroundMasks` 一起保存。使用者取消仍可保存已完成項目；換專案／暫停／dispose 由 `BackgroundRemovalViewModel` 的 generation＋service 身分丟棄整批過期投遞。CLI 使用同一組 API，不另建推論流程。
+
+現行 `basic.shadows` 是顯示轉換後的加法，不是場景域邊緣保留局部 tone mapping。[暗部還原研究](shadow-recovery-survey.md)記錄原型、RAW 對照及候選插入點；未改既有曲線、預設或 CPU／GPU 算圖順序。
 
 ### 4.9 Gpu．WebGPU 薄封裝與 Shader
 
@@ -444,6 +455,7 @@ flowchart TB
 | `PreviewViewModel` | 預覽影像、縮放、兩個畫布共用的平移位置、分割對比、控制點、直方圖資料、右下角拍攝資訊（EXIF 跟著每次解碼的來源重讀，重開資料夾不沿用舊資訊） |
 | `FilmLookViewModel` | film 模組的底片縮圖格、色相修正預設縮圖格與色相帶編輯器（`Controls/FilmLookControl.axaml`）。縮圖由 `FilmLookThumbnails` 以焦點照片算出，只在模組展開時計算，鍵前綴 `film-look/`，與縮圖列共用低優先佇列 |
 | `Tools/PhotoToolsViewModel`／`PhotoRegionTool` | 基本參數頂端的照片工具；裁切逆仿射區域取樣、WB／膚色提案、同專案相對參考色與 Zone 錨點。背景只求解，UI 更新及一次 `SetValues` 接受都在 UI 執行緒 |
+| `Tools/BackgroundRemovalViewModel`／`ForegroundBrushTool` | 單張 Vision 草稿、多選批次、筆刷逐筆復原／重做；共用桌面／行動按鈕與桌面快捷鍵路由，同步保存與生命週期隔離。AI 仍依平台停用，Mac／Headless 結果不是 iOS 原生驗收 |
 
 #### 編輯生命週期
 

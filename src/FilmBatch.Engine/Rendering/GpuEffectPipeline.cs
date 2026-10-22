@@ -54,7 +54,7 @@ internal sealed class GpuEffectPipeline : IDisposable
         return texture;
     }
     private readonly ComputeKernel _decode, _encode8, _encode16, _display, _spike, _blur, _box,
-        _crop, _basicLinear, _photoAdjust, _lens, _multi, _double, _bokeh, _zoom, _motion, _vignette,
+        _crop, _basicLinear, _photoAdjust, _shadowStats, _shadowBox, _shadowApply, _lens, _multi, _double, _bokeh, _zoom, _motion, _vignette,
         _halExtract, _halAdd, _leak, _look, _plate, _foreground,
         _basicDisplay, _tone, _detail, _dirt, _grain, _texture;
 
@@ -87,6 +87,9 @@ internal sealed class GpuEffectPipeline : IDisposable
         _crop = K("geometry/crop", tex, storage, uniform);
         _basicLinear = K("linear/basic_linear", tex, storage, uniform);
         _photoAdjust = K("linear/photo_adjustments", tex, storage, uniform);
+        _shadowStats = K("linear/shadow_stats", tex, storage, uniform);
+        _shadowBox = K("linear/shadow_box", tex, storage, uniform);
+        _shadowApply = K("linear/shadow_apply", tex, tex, storage, uniform);
         _lens = K("geometry/lens_distortion", tex, tex, storage, uniform);
         _multi = K("geometry/multi_lens", tex, storage, uniform);
         _double = K("optical/double_exposure", tex, tex, storage, uniform);
@@ -249,6 +252,7 @@ internal sealed class GpuEffectPipeline : IDisposable
         if (p.BasicOn && (p.Exposure != 0 || p.Temperature != 0 || p.Tint != 0))
             current = Apply(_basicLinear, new Vector4(p.Exposure, p.Temperature / 100, p.Tint / 100, 0));
         if (p.SkinOn || p.ZoneOn) current = Apply(_photoAdjust, PhotoAdjustments.Uniforms(p));
+        if (p.ShadowRecoveryOn) current = RecoverShadows(commands, current, p, token);
         if (p.LensOn)
         {
             var soft = current;
@@ -353,6 +357,36 @@ internal sealed class GpuEffectPipeline : IDisposable
             p.LeakHue, p.LeakIrregularity / 100, (p.DirtDust + p.DirtScratches + p.DirtHairs) / 300,
             Math.Min(_width, _height), leak ? Math.Clamp(p.LeakCount, 1, 3) : 1, p.Polarity,
             leak ? p.SeedLightLeak : p.SeedDirt, leak ? 1 : 0);
+    }
+
+    /// <summary>
+    /// 暗部還原（ShadowRecovery 同式）：區塊統計 → 代理格盒狀平均／係數（H、V+係數、H、V）→ 全解析度套用。
+    /// 代理格寫在既有工作紋理左上區域（代理格 ≤ 輸出尺寸），不配置新紋理、不改記憶體預算；
+    /// 每個 pass 的讀取與寫入分屬不同紋理，pass 之間檢查取消。
+    /// </summary>
+    private GpuTexture RecoverShadows(GpuCommandList commands, GpuTexture current, ModuleParams p, CancellationToken token)
+    {
+        var layout = ShadowRecovery.Layout(p, (int)_width, (int)_height);
+        uint pw = (uint)layout.ProxyWidth, ph = (uint)layout.ProxyHeight;
+        token.ThrowIfCancellationRequested();
+        if (layout.Exposure == 0f && layout.Luma == 0f && layout.Chroma == 0f) return current;
+        var stats = Next(current);
+        var temp = Next(current, stats);
+        commands.Dispatch2D(_shadowStats, [current, stats, Uniform(ShadowRecovery.StatsUniforms(layout))], pw, ph);
+        void Box(GpuTexture from, GpuTexture to, bool horizontal, bool coefficients)
+        {
+            token.ThrowIfCancellationRequested();
+            commands.Dispatch2D(_shadowBox,
+                [from, to, Uniform(ShadowRecovery.BoxUniforms(layout, horizontal, coefficients))], pw, ph);
+        }
+        Box(stats, temp, horizontal: true, coefficients: false);
+        Box(temp, stats, horizontal: false, coefficients: true);
+        Box(stats, temp, horizontal: true, coefficients: false);
+        Box(temp, stats, horizontal: false, coefficients: false);
+        token.ThrowIfCancellationRequested();
+        var output = Next(current, stats);
+        Dispatch(commands, _shadowApply, [current, stats, output, Uniform(ShadowRecovery.ApplyUniforms(layout))]);
+        return output;
     }
 
     private GpuTexture Blur(GpuCommandList commands, GpuTexture input, int radius, GpuTexture? reserve = null, float? sigma = null)

@@ -218,4 +218,142 @@ public sealed class AppleImageCodecTests
         }
         finally { Directory.Delete(folder, recursive: true); }
     }
+    // iOS JPEG 紅偏回歸（2026-10-22 使用者回報）：不對稱 RGB＋中性灰 4×2 拼塊，
+    // 以 Magick q100/444 寫出 untagged／sRGB／Display P3／AdobeRGB 四種 JPEG，
+    // P3/Adobe 內嵌 Apple stock ICC（base64 固定位元組，與 /System/Library/ColorSync/Profiles
+    // 的 Display P3.icc／AdobeRGB1998.icc 逐位元組一致）。期望為獨立 LittleCMS
+    // （Pillow ImageCms RELATIVE_COLORIMETRIC）對實際 JPEG 位元組的轉換值，
+    // 見 local://ios-jpeg-color/oracle.py；不經受測 codec 計算。
+    // 中性灰容差 ±2（16-bit ±514 內取 ±600）；彩色容差 ±4（16-bit ±1200）。
+    // 另以 irrespective-of-encoder 的方向性斷言鎖定：P3 紅拼塊的 R 必須上升、
+    // Adobe 深灰必須變暗（gamma 2.2 線性化），防止整體通道錯位被容差掩蓋。
+    private const string StockDisplayP3Icc =
+        "AAACGGFwcGwEAAAAbW50clJHQiBYWVogB+YAAQABAAAAAAAAYWNzcEFQUEwAAAAAQVBQTAAAAAAAAAAAAAAAAAAAAAAAAPbWAAEA" +
+        "AAAA0y1hcHBsAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKZGVzYwAAAPwAAAAwY3BydAAA" +
+        "ASwAAABQd3RwdAAAAXwAAAAUclhZWgAAAZAAAAAUZ1hZWgAAAaQAAAAUYlhZWgAAAbgAAAAUclRSQwAAAcwAAAAgY2hhZAAAAewAAA" +
+        "AsYlRSQwAAAcwAAAAgZ1RSQwAAAcwAAAAgbWx1YwAAAAAAAAABAAAADGVuVVMAAAAUAAAAHABEAGkAcwBwAGwAYQB5ACAAUAAzbWx1" +
+        "YwAAAAAAAAABAAAADGVuVVMAAAA0AAAAHABDAG8AcAB5AHIAaQBnAGgAdAAgAEEAcABwAGwAZQAgAEkAbgBjAC4ALAAgADIAMAAyAD" +
+        "JYWVogAAAAAAAA9tUAAQAAAADTLFhZWiAAAAAAAACD3wAAPb////+7WFlaIAAAAAAAAEq/AACxNwAACrlYWVogAAAAAAAAKDgAABE" +
+        "LAADIuXBhcmEAAAAAAAMAAAACZmYAAPKnAAANWQAAE9AAAApbc2YzMgAAAAAAAQxCAAAF3v//8yYAAAeTAAD9kP//+6L///2jAAAD3" +
+        "AAAwG4=";
+    private const string StockAdobeRgbIcc =
+        "AAACMEFEQkUCEAAAbW50clJHQiBYWVogB9AACAALABMAMwA7YWNzcEFQUEwAAAAAbm9uZQAAAAAAAAAAAAAAAAAAAAAAAPbWAAEA" +
+        "AAAA0y1BREJFAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAKY3BydAAAAPwAAAAyZGVzYwAA" +
+        "ATAAAABrd3RwdAAAAZwAAAAUYmtwdAAAAbAAAAAUclRSQwAAAcQAAAAOZ1RSQwAAAdQAAAAOYlRSQwAAAeQAAAAOclhZWgAAAfQA" +
+        "AAAUZ1hZWgAAAggAAAAUYlhZWgAAAhwAAAAUdGV4dAAAAABDb3B5cmlnaHQgMjAwMCBBZG9iZSBTeXN0ZW1zIEluY29ycG9yYXRl" +
+        "ZAAAAGRlc2MAAAAAAAAAEUFkb2JlIFJHQiAoMTk5OCkAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" +
+        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFhZWiAAAAAAAADzUQABAAAAARbMWFlaIAAAAAAAAAAAAAAAAAAA" +
+        "AABjdXJ2AAAAAAAAAAECMwAAY3VydgAAAAAAAAABAjMAAGN1cnYAAAAAAAAAAQIzAABYWVogAAAAAAAAnBgAAE+lAAAE/FhZWiAA" +
+        "AAAAAAA0jQAAoCwAAA+VWFlaIAAAAAAAACYxAAAQLwAAvpw=";
+
+    private static byte[] PatchJpeg(string? iccBase64)
+    {
+        using var image = new MagickImage();
+        byte[] rgb =
+        [
+            200, 30, 60,
+            10, 220, 90,
+            40, 80, 210,
+            128, 128, 128,
+            235, 235, 235,
+            16, 16, 16,
+            255, 180, 40,
+            90, 40, 170,
+        ];
+        image.ReadPixels(rgb, new PixelReadSettings(4, 2, StorageType.Char, PixelMapping.RGB));
+        if (iccBase64 is not null)
+            image.SetProfile(new ColorProfile(Convert.FromBase64String(iccBase64)));
+        image.Quality = 100;
+        image.Format = MagickFormat.Jpeg;
+        image.Settings.SetDefines(new ImageMagick.Formats.JpegWriteDefines
+            { SamplingFactor = ImageMagick.Formats.JpegSamplingFactor.Ratio444 });
+        return image.ToByteArray();
+    }
+
+    private static void AssertPatch(ushort[] actual, int pixel, int r, int g, int b, int tol16)
+    {
+        Assert.InRange((int)actual[pixel * 4], r - tol16, r + tol16);
+        Assert.InRange((int)actual[pixel * 4 + 1], g - tol16, g + tol16);
+        Assert.InRange((int)actual[pixel * 4 + 2], b - tol16, b + tol16);
+        Assert.Equal(ushort.MaxValue, actual[pixel * 4 + 3]);
+    }
+
+    [Fact]
+    public void Decode_JpegUntaggedAndSrgb_AreNeutralWithChannelOrder()
+    {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "Requires real Apple ImageIO.");
+        var folder = Directory.CreateTempSubdirectory("filmbatch-apple-jpeg-neutral-").FullName;
+        try
+        {
+            // untagged JPEG：ImageIO 視為 sRGB；灰階必須保持中性（R≈G≈B），彩色保持通道順序。
+            var plain = Path.Combine(folder, "plain.jpg");
+            File.WriteAllBytes(plain, PatchJpeg(null));
+            var decoded = AppleImageCodec.Load(plain, int.MaxValue, default);
+            Assert.Equal((4, 2), (decoded.Width, decoded.Height));
+            // 獨立期望：JPEG 位元組本身（PIL 解碼 (200,30,59)…）；16-bit＝8-bit×257，容差 ±2。
+            AssertPatch(decoded.Rgba16, 0, 51400, 7710, 15163, 600);
+            AssertPatch(decoded.Rgba16, 3, 32896, 32896, 33410, 600);
+            AssertPatch(decoded.Rgba16, 4, 60652, 60652, 60652, 600);
+            AssertPatch(decoded.Rgba16, 5, 4112, 4112, 4112, 600);
+            // sRGB ICC 標記的同一拼塊必須與 untagged 一致（±2 8-bit 內）：identity 不得重複轉換。
+            // 註：此處重寫 JPEG 會引入 ±2 的 DCT 重編碼差（實測 px4.B 236→238），故容差取 ±2 而非 ±1；
+            // 一致性比較的是 codec 身分路徑，而非 JPEG 編碼器確定性。
+            var tagged = Path.Combine(folder, "srgb.jpg");
+            using (var image = new MagickImage(PatchJpeg(null)))
+            {
+                image.SetProfile(ColorProfiles.SRGB);
+                image.Write(tagged, MagickFormat.Jpeg);
+            }
+            var decodedTagged = AppleImageCodec.Load(tagged, int.MaxValue, default);
+            for (var i = 0; i < decoded.Rgba16.Length; i++)
+                Assert.InRange((int)decodedTagged.Rgba16[i], (int)decoded.Rgba16[i] - 600, (int)decoded.Rgba16[i] + 600);
+        }
+        finally { Directory.Delete(folder, recursive: true); }
+    }
+
+    [Fact]
+    public void Decode_JpegDisplayP3_MatchesIndependentCms()
+    {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "Requires real Apple ImageIO.");
+        var folder = Directory.CreateTempSubdirectory("filmbatch-apple-jpeg-p3-").FullName;
+        try
+        {
+            var path = Path.Combine(folder, "p3.jpg");
+            File.WriteAllBytes(path, PatchJpeg(StockDisplayP3Icc));
+            var decoded = AppleImageCodec.Load(path, int.MaxValue, default);
+            // 獨立期望：LittleCMS P3→sRGB（lcms8×257）：紅 (218,0,53)、綠 (0,224,67)、藍 (22,81,219)。
+            AssertPatch(decoded.Rgba16, 0, 56026, 0, 13621, 1200);
+            AssertPatch(decoded.Rgba16, 1, 0, 57568, 17219, 1200);
+            AssertPatch(decoded.Rgba16, 2, 5654, 20817, 56283, 1200);
+            AssertPatch(decoded.Rgba16, 3, 32896, 32896, 33410, 600);
+            AssertPatch(decoded.Rgba16, 4, 60652, 60652, 60652, 600);
+            AssertPatch(decoded.Rgba16, 5, 4112, 4112, 4112, 600);
+            // 方向性：P3 紅拼塊經轉換後 R 必須高於來源位元組（200→218），排除整體通道錯位。
+            Assert.True(decoded.Rgba16[0] > 51400, "P3 red patch must gain red through P3→sRGB conversion.");
+        }
+        finally { Directory.Delete(folder, recursive: true); }
+    }
+
+    [Fact]
+    public void Decode_JpegAdobeRgb_MatchesIndependentCms()
+    {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "Requires real Apple ImageIO.");
+        var folder = Directory.CreateTempSubdirectory("filmbatch-apple-jpeg-adobe-").FullName;
+        try
+        {
+            var path = Path.Combine(folder, "adobe.jpg");
+            File.WriteAllBytes(path, PatchJpeg(StockAdobeRgbIcc));
+            var decoded = AppleImageCodec.Load(path, int.MaxValue, default);
+            // 獨立期望：LittleCMS AdobeRGB→sRGB（lcms8×257）：紅 (233,24,57)、綠 (0,221,77)、藍 (0,79,216)。
+            AssertPatch(decoded.Rgba16, 0, 59881, 6168, 14649, 1200);
+            AssertPatch(decoded.Rgba16, 1, 0, 56797, 19789, 1200);
+            AssertPatch(decoded.Rgba16, 2, 0, 20303, 55512, 1200);
+            AssertPatch(decoded.Rgba16, 3, 33153, 33153, 33667, 1200);
+            AssertPatch(decoded.Rgba16, 4, 60909, 60909, 60909, 1200);
+            // 方向性：gamma 2.2 線性化使深灰 16 明顯變暗（16→7），淺灰微升（236→237）。
+            AssertPatch(decoded.Rgba16, 5, 1799, 1799, 1799, 1200);
+            Assert.True(decoded.Rgba16[5 * 4] < 4112, "AdobeRGB dark gray must darken through gamma 2.2 linearization.");
+        }
+        finally { Directory.Delete(folder, recursive: true); }
+    }
 }

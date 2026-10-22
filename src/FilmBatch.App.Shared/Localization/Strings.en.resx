@@ -556,6 +556,11 @@ Clear overrides: use the new preset entirely.</value></data>
   <data name="Raw.BrowseFolder" xml:space="preserve"><value>Browse Folder…</value></data>
   <data name="Module.skin" xml:space="preserve"><value>Skin Tone Assist</value></data>
   <data name="Module.zone" xml:space="preserve"><value>Zone Metering &amp; Tone</value></data>
+  <data name="Module.shadow_recovery" xml:space="preserve"><value>Shadow Recovery</value></data>
+  <data name="Param.shadow_recovery.exposure" xml:space="preserve"><value>Shadow Lift</value></data>
+  <data name="Param.shadow_recovery.radius" xml:space="preserve"><value>Local Range</value></data>
+  <data name="Param.shadow_recovery.luminance" xml:space="preserve"><value>Luminance Denoise</value></data>
+  <data name="Param.shadow_recovery.chroma" xml:space="preserve"><value>Chroma Denoise</value></data>
   <data name="Param.skin.region_cx" xml:space="preserve"><value>Region Center X</value></data>
   <data name="Param.skin.region_cy" xml:space="preserve"><value>Region Center Y</value></data>
   <data name="Param.skin.radius_x" xml:space="preserve"><value>Region Radius X</value></data>
@@ -665,8 +670,8 @@ Clear overrides: use the new preset entirely.</value></data>
   <data name="BackgroundRemoval.Remove" xml:space="preserve"><value>Remove Brush</value></data>
   <data name="BackgroundRemoval.BrushSize" xml:space="preserve"><value>Brush Size</value></data>
   <data name="BackgroundRemoval.Invert" xml:space="preserve"><value>Invert Mask</value></data>
-  <data name="BackgroundRemoval.Hint" xml:space="preserve"><value>Apple Vision selects subjects locally without uploading photos. Changes transparency only, not background generation. Applies only to the focused photo; masks are not copied to other photos or presets. Choose PNG or TIFF for transparency.</value></data>
-  <data name="BackgroundRemoval.Unsupported" xml:space="preserve"><value>AI subject selection requires macOS 14 or later. Manual mask brushes remain available on this platform. Applies only to the focused photo; choose PNG or TIFF for transparency.</value></data>
+  <data name="BackgroundRemoval.Hint" xml:space="preserve"><value>Apple Vision selects subjects locally without uploads or background generation. Refine a single-photo draft, or process selected photos in a batch that preserves existing masks and can be undone together. Choose PNG or TIFF for transparency.</value></data>
+  <data name="BackgroundRemoval.Unsupported" xml:space="preserve"><value>AI subject selection requires macOS 14 or later. Manual mask brushes with stroke undo/redo remain available for the focused photo. Choose PNG or TIFF for transparency.</value></data>
   <data name="BackgroundRemoval.Selecting" xml:space="preserve"><value>Selecting subjects with Apple Vision…</value></data>
   <data name="BackgroundRemoval.NoSubject" xml:space="preserve"><value>No separable subject found; the photo was not changed. You can edit the mask manually.</value></data>
   <data name="BackgroundRemoval.Draft" xml:space="preserve"><value>The draft shows the uncropped source. Refine with brushes, then apply or cancel. The project is unchanged until you apply.</value></data>
@@ -674,4 +679,10 @@ Clear overrides: use the new preset entirely.</value></data>
   <data name="BackgroundRemoval.AppliedLabel" xml:space="preserve"><value>Background removed</value></data>
   <data name="BackgroundRemoval.Restored" xml:space="preserve"><value>Background restored; undo is available.</value></data>
   <data name="BackgroundRemoval.Failed" xml:space="preserve"><value>Background removal failed: {0}</value></data>
+  <data name="BackgroundRemoval.GenerateSelected" xml:space="preserve"><value>Remove Backgrounds in Selection</value></data>
+  <data name="BackgroundRemoval.BatchProgress" xml:space="preserve"><value>Generating masks {0}/{1}: {2}; results are saved together after processing.</value></data>
+  <data name="BackgroundRemoval.BatchComplete" xml:space="preserve"><value>Batch complete: {0} photos; applied {1}, skipped {2}, no subject {3}, failed {4}.</value></data>
+  <data name="BackgroundRemoval.BatchCancelled" xml:space="preserve"><value>Batch cancelled: {0} photos; applied {1}, skipped {2}, no subject {3}, failed {4}, unfinished {5}.</value></data>
+  <data name="BackgroundRemoval.BatchCancelling" xml:space="preserve"><value>Cancelling; completed masks will be saved, but the unfinished result will not be accepted.</value></data>
+  <data name="BackgroundRemoval.BatchCancelledWithoutApply" xml:space="preserve"><value>Batch cancelled without applying these results.</value></data>
 </root>

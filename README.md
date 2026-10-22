@@ -10,11 +10,12 @@
 - **底片色彩 & 類比效果**：底片顏色模擬，內附 36 卷底片 LUT（來自 [RawTherapee Film Simulation Collection](http://rawtherapee.com/shared/HaldCLUT.zip)，CC BY-SA 4.0），可調效果比例、暖色、褪色與八色相帶修正，並以目前照片的縮圖挑選；搭配顆粒、光暈、漏光、暗角、焦外、動態模糊、鏡頭變形、雙重曝光、多格分鏡、灰塵刮痕等，以 GPU 即時預覽。
 - **非破壞性編輯**：原始檔永不修改；匯出 JPEG／16-bit TIFF／16-bit PNG，保留 EXIF 並嵌入 sRGB ICC。
 - **直接編輯 RAW**：支援 Sony、Canon（CR2／CR3）、Nikon、Fujifilm、Panasonic、Olympus、Pentax、Samsung、Leica、Hasselblad、Epson、Mamiya 與 DNG（解碼移植自 [LightCraft](https://github.com/storytold/lightcraft)）。保留場景線性高光供曝光調整，提供相機白平衡／自訂 2500–9900 K＋色偏、內嵌語意遮罩局部調整與鏡頭校正；一般幅度的白平衡調整即更新預覽。含 JPEG XL 的 DNG 使用隨附解碼器，不需安裝系統函式庫。不支援的 RAW 直接回報，不以內嵌預覽代替。
+- **局部暗部還原**：獨立、預設關閉的「暗部還原」在浮點線性域提亮，保留黑點與局部對比，並分開調整亮度／色度降噪；支援 CPU／GPU 預覽、復原與批次匯出，不更動舊「陰影」滑桿。操作、代理圖與驗證限制見[局部暗部還原](docs/building.md#局部暗部還原)。
 - **本機 AI 降噪**：RAW 使用線性 Rec.2020 RawNIND，一般 RGB 照片使用 NAFNet-SIDD；先對全解析度推論，再產生預覽。強度、亮度與色彩可分開混合，支援取消、復原與 16-bit 匯出；模型須明確下載／匯入，推論不連線。署名、模型資料域與驗證邊界見 [AI 降噪決策](docs/adr/0002-ai-denoise.md)。
-- **AI 去背與遮罩修正**：在 macOS 使用 Apple Vision 本機選取主體，不上傳照片、不生成背景；可用保留／移除筆刷與反轉遮罩修正，再套用、復原或還原背景。遮罩逐張存入專案，重開與批次匯出不需再次推論；透明輸出請選 PNG／TIFF。操作、平台相容性與已驗證範圍見[本機 AI 去背](docs/building.md#本機-ai-去背)。
+- **AI 去背與遮罩修正**：在 macOS 使用 Apple Vision 本機選取主體，不上傳照片、不生成背景；可批次處理選取照片，略過既有遮罩，完成後一次復原。保留／移除筆刷與反轉支援草稿逐筆復原／重做，套用前不改專案。遮罩逐張保存，重開與透明 PNG／TIFF 匯出不需再次推論；操作與平台限制見[本機 AI 去背](docs/building.md#本機-ai-去背)。
 - **可重現的顆粒**：團塊、多尺度相關場、2D 光學統計三種模型；可調 seed、暗部／中間調／高光響應與光學取樣品質。裁切與旋轉不重新隨機化，縮小預覽會濾除次像素顆粒；不是特定片種／ISO 的量測重建。
 - **照片取樣工具**：在基本參數頂端展開「照片工具」，圈選中性區求白平衡、擷取跨照片的相對參考色，或只調整羽化區域的膚色。RAW 可取樣 Zone 並放置到 III／V／VIII，或以暗部／高光雙錨點擬合階調。提案預覽不存檔，接受後可一次復原；取樣時暫停創意效果，取消後恢復。限制與操作見[顆粒、白平衡與 Zone](docs/grain-white-balance-survey.md#目前實作與操作)。
-- **命令列批次輸出**：`filmbatch-cli` 可在腳本中直接套用已保存的設定匯出。
+- **命令列批次處理**：`filmbatch-cli remove-background` 在支援的 macOS 產生並保存遮罩；`export` 套用已保存的設定與遮罩匯出。取消保留已完成遮罩，無主體或失敗有明確結束碼。
 
 另有重用相同編輯邏輯的 **iOS 行動編輯器**：原生 Files／Photos 匯入、app 內專案、觸控編輯、預設、裁切、復原與批次匯出，已在官方 Simulator 的實際 Release app 操作驗證。目前使用 CPU 算圖；實機部署／效能、iOS GPU、JPEG XL 與另一分支的 AI 降噪未納入支援承諾。建置、資料所有權及實測邊界見 [iOS 行動版](docs/building.md#ios-行動版)。
 
@@ -81,5 +82,6 @@ iOS 的共用編輯器、Simulator 建置與實機限制另見 [iOS 行動版](d
 - [docs/building.md](docs/building.md)：建置、測試、CI、發佈與 CLI 用法
 - [docs/adr/0003-gpu-stack-decision.md](docs/adr/0003-gpu-stack-decision.md)：CPU SIMD、RAW GPU 收尾與 Halide AOT 選型紀錄
 - [docs/film-looks.md](docs/film-looks.md)：底片風格的 LUT 來源與授權、演算法與新增底片流程
+- [RAW 暗部還原研究](docs/shadow-recovery-survey.md)：現行加法曲線的限制、線性局部原型、darktable 實跑與雜訊／紋理取捨；不是已整合功能或 Lightroom 比較結論
 - [docs/plan.md](docs/plan.md)：歷史產品設計稿；現行行為以架構與驗證文件為準
 - [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt)：第三方元件授權

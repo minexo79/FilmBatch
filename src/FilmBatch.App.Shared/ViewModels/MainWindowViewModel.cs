@@ -279,7 +279,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 // A same-folder/alias target must include the crop just committed to disk.
                 if (changed) project = Project.Open(folder, SamplePresets.Neutral);
             }
-            BackgroundRemoval.Invalidate();
+            BackgroundRemoval.OnProjectChanging();
             Renderer.CancelThumbnails();
             Presets.Hover.InvalidateCache();
             FilmLook.InvalidateThumbnails();
@@ -622,14 +622,22 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     // ───────────── 編輯 ─────────────
 
-    private bool CanUndo() => Stack.CanUndo;
-    private bool CanRedo() => Stack.CanRedo;
+    private bool CanUndo() => BackgroundRemoval.IsEditing ? BackgroundRemoval.CanUndo : Stack.CanUndo;
+    private bool CanRedo() => BackgroundRemoval.IsEditing ? BackgroundRemoval.CanRedo : Stack.CanRedo;
 
     [RelayCommand(CanExecute = nameof(CanUndo))]
-    private void Undo() => Stack.Undo();
+    private void Undo()
+    {
+        if (BackgroundRemoval.IsEditing) BackgroundRemoval.UndoCommand.Execute(null);
+        else Stack.Undo();
+    }
 
     [RelayCommand(CanExecute = nameof(CanRedo))]
-    private void Redo() => Stack.Redo();
+    private void Redo()
+    {
+        if (BackgroundRemoval.IsEditing) BackgroundRemoval.RedoCommand.Execute(null);
+        else Stack.Redo();
+    }
 
     private bool CanEditSelection() => Service is not null && Selection.Count > 0;
 

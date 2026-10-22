@@ -60,6 +60,7 @@
                 <TextBlock Classes="secondary small" TextWrapping="Wrap" Text="{Binding Hint}" />
                 <WrapPanel ItemSpacing="6" LineSpacing="6">
                   <Button Classes="outline" AutomationProperties.AutomationId="BackgroundRemoval.Generate" Command="{Binding GenerateCommand}" Content="{l:Tr BackgroundRemoval.Generate}" />
+                  <Button Classes="outline" AutomationProperties.AutomationId="BackgroundRemoval.GenerateSelected" Command="{Binding GenerateSelectedCommand}" Content="{l:Tr BackgroundRemoval.GenerateSelected}" />
                   <Button Classes="outline" AutomationProperties.AutomationId="BackgroundRemoval.Edit" Command="{Binding BeginEditCommand}" Content="{l:Tr BackgroundRemoval.Edit}" />
                   <Button Classes="outline" AutomationProperties.AutomationId="BackgroundRemoval.Restore" Command="{Binding RestoreCommand}" Content="{l:Tr BackgroundRemoval.Restore}" IsVisible="{Binding HasAppliedMask}" />
                 </WrapPanel>
@@ -73,6 +74,8 @@
                     <Slider Grid.Row="1" Grid.ColumnSpan="2" Minimum="1" Maximum="30" SmallChange="1" Value="{Binding BrushSize}" />
                   </Grid>
                   <WrapPanel ItemSpacing="6" LineSpacing="6">
+                    <Button Classes="outline" AutomationProperties.AutomationId="BackgroundRemoval.Undo" Command="{Binding UndoCommand}" Content="{l:Tr Cmd.Undo}" />
+                    <Button Classes="outline" AutomationProperties.AutomationId="BackgroundRemoval.Redo" Command="{Binding RedoCommand}" Content="{l:Tr Cmd.Redo}" />
                     <Button Classes="outline" AutomationProperties.AutomationId="BackgroundRemoval.Invert" Command="{Binding InvertCommand}" Content="{l:Tr BackgroundRemoval.Invert}" />
                     <Button Classes="outline" AutomationProperties.AutomationId="BackgroundRemoval.Apply" Command="{Binding ApplyCommand}" Content="{l:Tr Tool.Crop.Apply}" />
                   </WrapPanel>

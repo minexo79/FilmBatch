@@ -41,6 +41,8 @@ iOS 專案刻意不加入桌面 solution／CI。Engine 依 iOS RID 在編譯時�
 
 本機的 Xcode 27.1／iOS 27.1 實驗使用隔離的 .NET iOS SDK `27.0.10722`；該 SDK 官方要求 Xcode 27.0。只有明確選擇此實驗組合時，才對單次命令加 `-p:ValidateXcodeVersion=false`。這不是正式相容性宣告，不修改 `global.json`、SDK 內部檔案或全機 Xcode selection。Xcode 27 的可見裝置介面為 Device Hub；啟動 CoreSimulator 並不等於已開啟裝置視窗。完整先前工具鏈與 prototype 證據見 [Simulator 記錄](superpowers/plans/2026-10-19-ios-simulator-prototype.md)。
 
+2026-10-22 的 JPEG 偏紅調查已在目前來源的主要編輯器補跑原生預覽、編輯／復原及實際匯出；[輸入、獨立色彩參考與未重現範圍](#ios-jpeg-色彩核對2026-10-22)另列，不沿用較早 binary 的結果。
+
 ### 真機 IPA 與重簽側載
 
 必須使用完整的 iOS workload，包含對應主機的 `ios-arm64` cross-AOT 編譯器及 Mono runtime。以下命令在 repository 根目錄執行，使用獨立產物目錄，避免改寫桌面專案的 NuGet restore 結果：
@@ -471,35 +473,130 @@ macOS Auto 嘗試 CoreML，Windows Auto 嘗試 DirectML；初始化失敗才明�
 
 AI／新草稿的工作影像長邊最多 2048，遮罩以來源參考尺寸對齊完整影像，不先放大保存；已存的較高解析度遮罩不因打開較小預覽而降解析度。CPU／GPU 在裁切與幾何之前，只將覆蓋率乘進原始 alpha 一次；RAW 仍保留場景線性 RGB。Vision 可能把多個物體一起選取或選錯邊緣，必須檢視並修正；這是去背，不是重建被遮擋背景，[生成式物件移除](object-removal-design.md) 的 NO-GO 與 T1–T5 不變。
 
-#### 去背驗證現況（2026-10-21）
+#### 批次去背與草稿逐筆復原
+
+在縮圖列選取多張，點選「批次去背選取照片」：以開始時的選取與設定快照逐張推論，不跟隨後來的焦點改變。已有遮罩的照片原樣略過；全部處理後一起保存成一筆可復原操作，原始照片、曝光與其他設定不改變。完成摘要分別列出套用、略過、無主體與失敗，錯誤檔名另列出。
+
+- 點選「取消」後，只保存已完成的遮罩，不接受進行中的結果；未開始項目標為取消。換專案、暫停或關閉則丟棄整批過期投遞，不能把結果或復原紀錄寫到新專案。推論期間修改過的照片／設定不被舊快照覆寫，保存衝突也不消耗 undo。
+- 修正單張遮罩時，按下／移動／放開是一筆草稿操作；反轉另是一筆，重疊筆畫能還原原本的 16-bit 部分覆蓋率。草稿區提供「復原／重做」，共用快捷鍵為 macOS ⌘Z／⌘⇧Z，Windows 為 Ctrl+Z／Ctrl+Shift+Z；行動按鈕共用路由，但本輪沒有 iOS 原生驗收。
+- 草稿歷史即使為空，也不會穿透去復原較早的照片設定。「取消」保留已接受遮罩；「套用」只保存目前筆畫復原後的狀態，形成一筆照片命令。歷史以區塊差異保存，上限為 200 筆／32 MiB 樣本 payload，不逐筆複製整張遮罩。
+
+CLI 使用同一批次引擎，可直接產生遮罩，再沿用既有匯出：
+
+```bash
+filmbatch-cli remove-background "/path/to/photos" --presets-folder "/path/to/presets"
+filmbatch-cli export "/path/to/photos" --out "/path/to/cutouts" --format png --presets-folder "/path/to/presets"
+```
+
+也可從本次來源執行 `dotnet run --project src/FilmBatch.Cli -c Release -- remove-background "/path/to/photos"`；`--presets-folder` 可省略，省略時使用使用者預設庫。舊 `dist/` 二進位檔不會因來源變更自動取得新命令。重跑會略過既有遮罩，不再次推論；`remove-background` 只保存專案，不另外匯出 RGB。
+
+| CLI 結束碼 | 意義 |
+|---|---|
+| 0 | 可處理項目完成，含全部已有遮罩的 no-op |
+| 1 | 資料夾內沒有支援照片 |
+| 2 | 資料夾／預設／專案無效，或不支援原生 Vision 平台 |
+| 3 | 有無主體、逐張錯誤或保存失敗；其他成功項目仍可能已保存 |
+| 130 | 使用者取消，已完成項目仍可保存；未完成項目不接受 |
+
+
+#### 去背驗證現況（2026-10-22）
 
 目前完成的是來源程式的去背功能與下列驗證，不是新發行包或跨平台驗收：
 
 | 實際執行的檢查 | 結果與範圍 |
 |---|---|
 | Release solution build | 0 warnings／0 errors |
-| 完整 Release 回歸 | Core 594 passed／27 skipped；RAW 626 passed／293 skipped；App 207 passed／0 skipped；合計 1,427 passed／0 failed／320 skipped |
+| 完整 Release 回歸 | Core 611 passed／27 skipped；RAW 626 passed／293 skipped；App 215 passed／0 skipped；合計 1,452 passed／0 failed／320 skipped；外部 RAW 語料與平台略過不算通過 |
 | CPU／GPU 遮罩覆蓋率 | 兩條路徑均通過，GPU 案例實際編譯並執行遮罩 shader，未用 CPU fallback 冒充 |
-| 真實 Vision＋Headless Skia 共用桌面 | 20 項通過，含控制項、保留／移除筆刷、取消、套用、復原／重做、重開及 PNG 匯出 |
-| PNG16 獨立解碼 | 旋轉後 615,360 個 alpha 樣本零差異，來源檔案雜湊不變 |
-| CLI 重開已存專案 | 完整 RGBA16 與介面匯出相同，不需重新推論 |
+| 真實 Vision＋Headless Skia 共用桌面 | 本輪 17 項通過：三張選取中套用 2、略過既有遮罩 1；批次一次復原／重做、兩次筆畫與逐筆復原、共享快捷鍵、套用／重開、來源不變、PNG 匯出與取消進行中結果 |
+| GUI PNG16 獨立解碼 | 615,360 個 alpha 樣本與套用後遮罩完全相同，保留原有 12345 的部分覆蓋率 |
+| 真正 CLI 與 Ctrl-C | 9 項工作流程檢查通過；產生 2 張、重跑略過且專案雜湊不變，損毀／無主體為 3，空資料夾為 1，無效資料夾為 2；12 張案例在第一張完成後送 SIGINT，保存 1 張、其餘取消、exit 130 |
+| CLI PNG16 獨立解碼 | 兩張合計 1,164,480 個 alpha 樣本與專案 zlib 解壓遮罩零差異；來源照片雜湊不變 |
 
-完成本頁的還原／建置後，可從儲存庫根目錄重跑去背相關回歸；本次文件交付前實際執行為 Core 26、App 5 通過，0 failed／0 skipped：
+完成本頁的還原／建置後，可從儲存庫根目錄重跑去背相關回歸；本輪實際執行為 Core 43、App 13 通過，0 failed／0 skipped：
 
 ```bash
 dotnet test FilmBatch.sln -c Release --no-restore --nologo --filter 'FullyQualifiedName~Foreground|FullyQualifiedName~BackgroundRemoval|FullyQualifiedName~PreparedSource_StillRendersForegroundCoverageAfterDenoising'
 ```
 
-`ForegroundSelectionTests` 涵蓋原生取消與無主體結果；`ForegroundPersistenceTests` 涵蓋格式 1／2 遷移、格式 3 遮罩、損毀輸入及保存衝突下的 undo／redo；`ForegroundAlphaTests`、`BackgroundRemovalTests` 與上述降噪案例涵蓋透明度、操作生命週期及 RGB／RAW 來源重建。沒有匹配案例、平台或 GPU 略過均不得算通過。
+`ForegroundSelectionTests` 涵蓋原生取消與無主體結果；`ForegroundPersistenceTests` 涵蓋格式 1／2 遷移、格式 3 遮罩、損毀輸入及保存衝突下的 undo／redo；`ForegroundAlphaTests`、`BackgroundRemovalTests` 與降噪案例涵蓋透明度及 RGB／RAW 來源重建。`ForegroundBatchTests` 驗證不變來源／設定、獨立遮罩、已完成與取消分界、快照變更及一次保存；`ForegroundBatchUiTests` 驗證選取改變、專案替換、暫停與取消的所有權；`ForegroundHistoryTests` 驗證逐筆復原、重做分支、反轉、部分覆蓋率及不消耗照片歷史。沒有匹配案例、平台或 GPU 略過均不得算通過。
+
+其後暗部功能驗證已補齊 Naga 30.0.1，對產品實際嵌入的 35 個 WGSL 全部通過，包含去背 shader；詳見[暗部功能驗證](#暗部功能驗證2026-10-22)。此項靜態檢查不代替下列原生視窗／平台驗收。
 
 尚未驗證的項目：
 
-- 原生去背視窗操作：本輪桌面鎖定（`activeDisplays=0`），Avalonia.Native 啟動回傳 `-6661`。Headless 畫面不代替 `NSWindow` 驗收，未替換計時器或抑制例外；須在可用的桌面工作階段補跑。
+- 原生去背視窗操作：先前已觀察到桌面鎖定（`activeDisplays=0`）且 Avalonia.Native 啟動回傳 `-6661`，本輪未為確認相同限制而重試。Headless 畫面不代替 `NSWindow` 驗收，未替換計時器或抑制例外；須在可用的桌面工作階段補跑。
 - Windows／iOS 去背實機、神經網路硬體放置、人類畫質與髮絲級邊緣品質。
-- 獨立 Naga 檢查：本機未提供執行檔，屬於工具鏈未就緒；實際 GPU 遮罩案例通過不等於這項靜態檢查通過。
 - 包含本次去背變更的新 `.app`／Windows／iOS 發行包尚未重新封裝；先前版本的封裝或原生 smoke 結果不得延伸為本次新功能通過。
+- 獨立 OpenCV/libpng 讀取本輪 PNG 時仍回報既有 `iCCP: known incorrect sRGB profile` 警告；alpha 核對通過，但不是 ICC 無警告的證據。本輪未修改或忽略該色彩設定檔。
 
-一次性端到端驅動、TRX、畫面與 PNG／CLI 核對收據保留於儲存庫外的工作階段證據。四份驗證來源已封存為 `verification-harnesses.tar.gz`（SHA-256：`c914a5def6c6b990b2be2e279b42a1a48f570c142f20a888cd0c4e9a3b2cca99`），曾還原核對來源雜湊並重播離線 PNG／文件檢查；原始臨時腳本與其建置暫存已移除，既有研究資料未清除。fresh clone 不依賴這份暫存證據；永久回歸入口見上方命令及 [VERIFY V1](../VERIFY.md#v1)。
+一次性端到端驅動、TRX、畫面與 PNG／CLI 核對收據保留於儲存庫外的工作階段證據。2026-10-21 的四份驗證來源已封存為 `verification-harnesses.tar.gz`（SHA-256：`c914a5def6c6b990b2be2e279b42a1a48f570c142f20a888cd0c4e9a3b2cca99`），是上一輪單張去背的證據，不代替本輪批次／逐筆結果。本輪另保存實際驅動與來源封存，臨時驅動不成為產品依賴；既有照片／研究資料未清除。fresh clone 的永久入口為上方命令及 [VERIFY V1](../VERIFY.md#v1)。暗部研究與後續實作另見[局部暗部還原](#局部暗部還原)，不以去背驗證代替。
+
+## 局部暗部還原
+
+這是獨立的 `shadow_recovery` 模組，**預設關閉**；既有「陰影」／`basic.shadows` 的顯示域行為不變。適用於 RAW 與一般 RGB 來源，不需要 AI 模型、下載或 LibRaw 相依。最終 JPEG／PNG／TIFF 仍為既有的顯示輸出，不是 HDR 感光資料。
+
+1. 在基本參數的「暗部還原」展開並啟用；若找不到，先取消「隱藏已停用的模組」。
+2. 以「暗部提亮」調亮暗處，再調局部範圍；亮度降噪保守使用，以免抹掉紋理，彩色斑塊可另調色度降噪。
+3. 拖曳一次可整段復原／重做；設定沿用預設、複製貼上、逐張保存與批次匯出。專案格式仍為 3，不需遷移或重新解碼成另一種檔案。
+4. 比較細節請看 100%／實際匯出，不只看縮小預覽。白平衡／Zone 照片取樣會暫停此局部映射，接受提案後恢復。
+
+| 控制項 | 預設 | 範圍與含義 |
+|---|---|---|
+| 暗部提亮 | 3 EV | 0–5 EV；局部基底決定實際增益，不是整張固定曝光 |
+| 局部範圍 | 2% | 裁切後短邊的 0.25–10%；不是降噪視窗大小 |
+| 亮度降噪 | 35% | 0–100%；增益前混合暗部亮度差，可能犧牲細紋 |
+| 色度降噪 | 80% | 0–100%；增益前混合彩色差，與亮度強度分開 |
+
+演算法在未夾取的工作線性 sRGB 上，以覆蓋率加權 guided filter 求局部基底，先降噪再乘共同 RGB 增益；不加黑位偏移、不改 alpha，全透明隱藏色不污染鄰近像素。高光仍交原有顯示映射處理，不能恢復拍攝時已完全裁切的資訊。局部半徑按影像比例縮放，降噪按原始來源像素足跡縮放；很小的預覽可能減弱或跳過次像素降噪，並非和全圖逐像素相同。兩種有效降噪與提亮都為零時直接略過 CPU／GPU pass。
+
+### 暗部功能驗證（2026-10-22）
+
+本輪實際執行：
+
+| 檢查 | 已觀察結果 |
+|---|---|
+| 完整 Release 來源回歸 | Core 625 passed／27 skipped；RAW 626 passed／293 skipped；App 215 passed／0 skipped；合計 1,466 passed／0 failed／320 skipped |
+| `ShadowRecoveryTests` | 11 passed；黑點／暗部細節、亮度與色度抑噪、透明隱藏色隔離、HDR、高光分離、舊外觀、單軸影像與實際 GPU 容差 |
+| 真正 Sony A7S RAW 全圖 | 4240×2832；工作浮點含負值及 >1 的高光，來源雜湊不變；Apple M3／Metal 的 CPU／GPU RGBA16 最大差 1，未用 CPU fallback 冒充 GPU |
+| 空間／取消 smoke | 部分 alpha、旋轉／翻轉／裁切 RGB 最大差 1、alpha 差 0；零控制量與極小來源足跡完全恆等；進行中取消後同一算圖器可重用 |
+| 共用 Headless 桌面 | 11 項操作通過：真實 RAW、啟用／滑桿、整段復原／重做、重開、取樣排除、預設／貼上、英文標籤、PNG 匯出及原檔不變 |
+| GUI PNG16 獨立解碼 | OpenCV 讀取實際檔案，3,849,600 個 RGBA16 樣本與全圖 CPU 算圖再縮放的結果零差異 |
+| 真正 CLI 重新開啟專案匯出 | `export --format png --long-edge 1200 --software` 讀取已保存的暗部設定；3,849,600 個 RGBA16 樣本與 GUI 匯出完全相同，明示使用 CPU |
+| 產品嵌入 WGSL | Naga 30.0.1 驗證 35 個檔案通過，包含暗部統計／盒狀／套用與共用函式；不是只檢查儲存庫外副本 |
+
+取得 SDK、還原相依後，從根目錄重跑永久回歸：
+
+```bash
+dotnet test FilmBatch.sln -c Release --no-restore --nologo --filter 'FullyQualifiedName~ShadowRecoveryTests|FullyQualifiedName~AppleImageCodecTests|FullyQualifiedName~RawControlsTests'
+```
+
+GPU／平台或外部 RAW 語料略過不算通過。全圖診斷為另驗全尺寸預覽而明確提高為 2 GiB 預算；產品預設預覽預算未變，匯出仍走既有分段／不足時明示 CPU 的流程，這不是單一 pass 的效能或記憶體基準。Headless 圖片不代替原生 `NSWindow`；先前桌面鎖定回傳 `-6661` 的限制未重試。Windows／iOS 暗部實機、人工畫質盲評、其他相機／ISO 與 Lightroom 對照未取得。
+
+獨立 OpenCV/libpng 讀取 PNG 仍回報既有 `iCCP: known incorrect sRGB profile` 警告；像素核對通過，不代表 ICC 無警告，本輪沒有抑制警告或偷偷替換設定檔。一次性驅動、實際結果與可還原來源封存於儲存庫外，臨時驗證程式不成為產品相依；未 commit／push 或重新封裝發行包。[研究與三相機解碼比較](shadow-recovery-survey.md)另外區分感光數值、共同現像與無法判定的高光／黑白位資訊。
+
+### Sony RAW 控制項驗證
+
+使用公開 Sony A7S ARW2 實跑既有自訂 WB 控制：真正介面的 Kelvin／色偏變更會更新場景預覽及縮圖，停用／再啟用、拖曳復原／重做、專案重開與 PNG16 匯出皆通過；獨立解碼的 3,849,600 個 RGBA16 匯出樣本與預期結果相同，原檔雜湊不變。這個樣本未重現「Sony 調整全部無效」，未因此盲改 decoder 或加色偏補償，也不推廣到未提供的 Sony 機型／檔案。
+
+相機選項不是每種 RAW 都有資料：本樣本沒有可用的內嵌鏡頭修正表、DNG `ProfileGainTableMap` 或語意遮罩，因此切換這些選項是無效果；自訂白平衡則有可見差異。縮圖預設可能取相機內嵌 JPEG，不可用未經現像的內嵌預覽判定 RAW 設定是否生效；有自訂白平衡的本次縮圖路徑已另外驗證。
+
+### iOS JPEG 色彩核對（2026-10-22）
+
+使用目前來源的 `org.filmbatch.editor` Release，在 iOS 27.1 Simulator 執行；隔離 .NET SDK `10.0.402`、workload set `10.0.401.1`／iOS SDK `27.0.10722`，沿用上列明示的 Xcode 版本實驗，不修改全機 SDK 或 `global.json`。輸入是自有合成 JPEG：無 ICC、sRGB、Display P3、Adobe RGB 不對稱色塊，以及 4032×3024 的 P3／sRGB 漸層與中性灰卡，不是使用者回報的原檔。
+
+| 實際路徑 | 已觀察結果 |
+|---|---|
+| 主要編輯器預覽、縮圖、曝光編輯／復原及綁定匯出控制項 | 11 項檢查通過；6 張來源與縮圖完成、0 失敗，原始 JPEG 雜湊不變 |
+| PNG16 原尺寸匯出 | 6 張成功；OpenCV 獨立解碼並對 LittleCMS 色彩參考核對全圖，最大差 1 個 8-bit 色階，最大 RMSE 0.291 |
+| JPEG 原尺寸匯出 | 6 張成功；不對稱色塊與兩張大圖的灰卡通過，大圖灰卡均為 `(128,128,128)`；未以灰卡結果推論 JPEG 邊緣或全圖逐像素相同 |
+| 移除診斷驅動後的主要 App | 另建乾淨版本並安裝啟動，實際畫面有預覽及 7／7 縮圖、0 失敗；恢復原測試工作區設定並重定位安裝後的 container 路徑 |
+
+獨立 CMS 參考以另一個 iOS ImageIO 程式取得來源 JPEG 解碼後的 RGB，再由主機 LittleCMS 依輸入 ICC 轉為 sRGB。這將 JPEG 解碼差異與 ICC 轉換差異分開：最初直接用 Pillow 解碼的大圖 P3 比較在極端色階出現最大約 12.85／255 差異；分離解碼邊界後，原有像素容差未放寬，色彩核對通過。最初失敗與診斷保留，沒有據此替產品加色偏補償。
+
+完整操作由儲存庫外暫時編入的驅動呼叫真正共用編輯器及綁定控制項，並使用實際 iOS Engine 匯出；不是 Mac host 或另寫一套 encode。這不等於原生 AX／手指觸控驗收；此 Simulator 的 XCTest AX 查詢失敗已另留證據。驅動與乾淨版是不同的 linked bundle，不宣稱二進位完全相同；乾淨版另保留啟動畫面。
+
+結論限於這組輸入與 Simulator：**未重現系統性偏紅，未修改 JPEG 解碼或色彩管線，不宣稱已修好使用者原檔。**實機螢幕、True Tone／HDR JPEG、未知 ICC／相機及未提供的原檔仍未驗證。既有 Apple stock sRGB 的 libpng `iCCP` 警告仍可見，沒有抑制。原生輸出、截圖、獨立核對結果及可還原驅動封存在儲存庫外；不新增產品診斷相依或新版 IPA。
 
 ## 資料位置
 

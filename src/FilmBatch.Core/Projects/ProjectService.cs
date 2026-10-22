@@ -81,6 +81,15 @@ public sealed class ProjectService
         Apply(mask is null ? CoreText.T("還原背景", "Restore background") : CoreText.T("套用去背", "Apply background removal"),
             [fileName], entry => entry with { ForegroundMask = mask });
 
+    /// <summary>一次套用多張的去背遮罩；一筆命令、一次復原紀錄。保存失敗不套用也不佔用復原。</summary>
+    public bool SetForegroundMasks(IReadOnlyDictionary<string, ForegroundMask> masks)
+    {
+        ArgumentNullException.ThrowIfNull(masks);
+        if (masks.Count == 0) return false;
+        return Apply(CoreText.T("套用批次去背", "Apply batch background removal"),
+            masks.Keys, entry => masks.TryGetValue(entry.FileName, out var mask) ? entry with { ForegroundMask = mask } : entry);
+    }
+
     public bool ResetParam(IReadOnlyCollection<string> fileNames, string key) =>
         Apply($"重設 {ModuleCatalog.Param(key)?.Label ?? key}", fileNames, e => PhotoOperations.ResetParam(e, key));
 

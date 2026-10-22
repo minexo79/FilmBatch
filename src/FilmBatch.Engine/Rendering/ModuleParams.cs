@@ -32,6 +32,9 @@ public sealed class ModuleParams
     public bool SkinOn, ZoneOn;
     public float SkinCx, SkinCy, SkinRadiusX, SkinRadiusY, SkinFeather, SkinStrength, SkinTemperature, SkinTint;
     public float SkinRefRed, SkinRefGreen, SkinRefBlue, ZoneSlope, ZoneOffset;
+    // 場景線性暗部還原；半徑為裁切後短邊百分比，降噪為 0..1 混合量。
+    public bool ShadowRecoveryOn;
+    public float ShadowRecoveryExposure, ShadowRecoveryRadius, ShadowRecoveryLuminance, ShadowRecoveryChroma;
     // lens_distortion
     public bool LensOn, AutoCrop;
     public float LensAmount, Chromatic, EdgeSoften;
@@ -164,6 +167,11 @@ public sealed class ModuleParams
             SkinRefRed = N(s, "skin.ref_red", 1), SkinRefGreen = N(s, "skin.ref_green", 1), SkinRefBlue = N(s, "skin.ref_blue", 1),
             ZoneOn = source.Scene is not null && B(s, "zone.enabled", false),
             ZoneSlope = N(s, "zone.slope", 1), ZoneOffset = N(s, "zone.offset", 0),
+            ShadowRecoveryOn = B(s, "shadow_recovery.enabled", false),
+            ShadowRecoveryExposure = Math.Clamp(N(s, "shadow_recovery.exposure", 3), 0, 5),
+            ShadowRecoveryRadius = Math.Clamp(N(s, "shadow_recovery.radius", 2), 0.25f, 10),
+            ShadowRecoveryLuminance = Math.Clamp(N(s, "shadow_recovery.luminance", 35), 0, 100) / 100f,
+            ShadowRecoveryChroma = Math.Clamp(N(s, "shadow_recovery.chroma", 80), 0, 100) / 100f,
             // lens_distortion
             LensOn = B(s, "lens_distortion.enabled", false),
             LensAmount = N(s, "lens_distortion.amount", 0),
@@ -299,6 +307,7 @@ public sealed class ModuleParams
         };
 
         m.CropT = CropGeometry.Compute(source.Width, source.Height, m.Crop);
+        m.ShadowRecoveryOn &= m.ShadowRecoveryExposure > 0 || m.ShadowRecoveryLuminance > 0 || m.ShadowRecoveryChroma > 0;
         m.FilmLut = m.FilmOn ? FilmLookLibrary.TryLut(m.FilmLookKey) : null;
         m.FilmLook = FilmLookUniforms.From(m);
         m.RawWhiteBalanceMatrix = m.RawProcessingOn && m.RawCustomWhiteBalance
@@ -312,6 +321,7 @@ public sealed class ModuleParams
     public bool HasSpatialPasses =>
         Crop.On
         || (BasicOn && Structure != 0)
+        || ShadowRecoveryOn
         || LensOn || MultiOn || DoubleOn
         || (BokehOn && BokehBlur > 0)
         || (ZoomRotateOn && (Zoom != 0 || Rotate != 0))
