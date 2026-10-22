@@ -1,4 +1,5 @@
 using FilmBatch.Engine.Imaging;
+using FilmBatch.Engine.Rendering;
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -15,6 +16,9 @@ public sealed partial class ModuleSectionViewModel : ObservableObject
     private readonly Action<ModuleSectionViewModel> _onCopyOnly;
     private bool _loading;
     private bool _isModuleEnabled;
+    private SourceImage? _source;
+    private Settings? _resolved;
+    private Settings _overrides = Settings.Empty;
 
     public ModuleSchema Schema { get; }
     public string Key => Schema.Key;
@@ -52,7 +56,10 @@ public sealed partial class ModuleSectionViewModel : ObservableObject
         _onCopyOnly = onCopyOnly;
         _allParams = [.. schema.Params
             .Where(p => p.Key != ModuleSchema.EnabledKey)
+            // RAW 白平衡（模式／K／色調）顯示在「基本調整」的色溫／色調位置，不在 RAW 區塊重複。
+            .Where(p => schema.Key != "raw" || !RawWbParamViewModel.FlatKeys.Contains(schema.FlatKey(p.Key)))
             .Select(p => ParamViewModel.Create(schema.Key, p, host))];
+        if (schema.Key == "basic") InsertRawWhiteBalance(host);
         FilmLook = schema.Key == "film" ? filmLook : null;
         // film 模組：底片（look）由縮圖格選、24 個色相參數由色相帶編輯器顯示，一般參數列只留其餘欄位。
         Params = new((FilmLook is null ? _allParams : _allParams.Where(p => p.Def.Key != "look" && !IsHueParam(p)))
@@ -63,10 +70,62 @@ public sealed partial class ModuleSectionViewModel : ObservableObject
     /// <summary>原生 smoke 與面板共用的來源中繼資料入口；null 清除上一張照片資料。</summary>
     public void SetRawSource(SourceImage? source)
     {
-        if (Key != "raw") return;
+        if (Key == "raw")
+            _allParams.OfType<RawMaskParamViewModel>().Single().SetMasks(source?.RawInfo is null ? null : source.SemanticMasks);
+        if (Key != "basic") return;
+        _source = source;
         var wb = source?.WhiteBalance;
-        _allParams.OfType<RawWbParamViewModel>().Single().SetAsShot(wb?.AsShotTemperature, wb?.AsShotTint);
-        _allParams.OfType<RawMaskParamViewModel>().Single().SetMasks(source?.RawInfo is null ? null : source.SemanticMasks);
+        RawWbMode!.SetAsShot(wb?.AsShotTemperature, wb?.AsShotTint);
+        UpdateWhiteBalanceRows();
+    }
+
+    /// <summary>「基本調整」的 RAW 白平衡列（其他模組為 null）。</summary>
+    public RawWbParamViewModel? RawWbMode { get; private set; }
+
+    /// <summary>
+    /// 目前照片的色溫／色調是否由 RAW 白平衡負責（與算圖端 <see cref="ModuleParams.UsesRawWhiteBalance"/> 同條件）；
+    /// 成立時「基本調整」顯示 RAW 白平衡列、隱藏相對色溫／色調（相對值保留但不套用）。
+    /// </summary>
+    public bool ShowsRawWhiteBalance => Key == "basic" && _resolved is { } r && ModuleParams.UsesRawWhiteBalance(_source, r);
+
+    /// <summary>在相對色溫／色調之後插入 RAW 白平衡的模式、色溫（K）與色調列，並互相連結。</summary>
+    private void InsertRawWhiteBalance(IParamHost host)
+    {
+        var mode = (RawWbParamViewModel)ParamViewModel.Create("raw", ModuleCatalog.Param("raw.wb_mode")!, host);
+        var temperature = new RawWbSliderParamViewModel("raw", ModuleCatalog.Param("raw.temperature")!, host) { Mode = mode };
+        var tint = new RawWbSliderParamViewModel("raw", ModuleCatalog.Param("raw.tint")!, host) { Mode = mode, Partner = temperature };
+        temperature.Partner = tint;
+        mode.Temperature = temperature;
+        mode.Tint = tint;
+        RawWbMode = mode;
+        var at = _allParams.FindIndex(p => p.FlatKey == "basic.tint") + 1;
+        _allParams.InsertRange(at, [mode, temperature, tint]);
+    }
+
+    /// <summary>徽章計數跟著實際顯示的列：RAW 白平衡只在顯示於「基本調整」時算進去，永不算在 RAW 區塊。</summary>
+    private void UpdateOverrideCount()
+    {
+        var keys = Schema.FlatKeys;
+        if (Key == "raw") keys = keys.Except(RawWbParamViewModel.FlatKeys);
+        else if (ShowsRawWhiteBalance)
+            keys = keys.Except(["basic.temperature", "basic.tint"]).Concat(RawWbParamViewModel.FlatKeys);
+        OverrideCount = keys.Count(_overrides.ContainsKey);
+    }
+
+    /// <summary>依目前來源切換相對／RAW 白平衡列；拍攝值模式時滑桿顯示來源拍攝值（不寫入）。</summary>
+    private void UpdateWhiteBalanceRows()
+    {
+        if (RawWbMode is not { } mode || mode.Temperature is not { } temperature || mode.Tint is not { } tint) return;
+        var raw = ShowsRawWhiteBalance;
+        foreach (var p in _allParams)
+            if (p.FlatKey is "basic.temperature" or "basic.tint") p.IsVisible = !raw;
+        mode.IsVisible = temperature.IsVisible = tint.IsVisible = raw;
+        UpdateOverrideCount();
+        if (!mode.IsCustomStored && mode.AsShot is { } asShot)
+        {
+            temperature.Load(ParamValue.Of(asShot.Temperature), temperature.IsOverridden);
+            tint.Load(ParamValue.Of(asShot.Tint), tint.IsOverridden);
+        }
     }
 
     /// <summary>所有參數（含 film 模組由底片風格區塊顯示、不在 <see cref="Params"/> 中的參數）；載入與語言切換都以此為準。</summary>
@@ -107,22 +166,24 @@ public sealed partial class ModuleSectionViewModel : ObservableObject
         _loading = true;
         try
         {
+            _resolved = resolved;
             IsModuleEnabled = resolved.Bool(Schema.EnabledFlatKey);
             foreach (var p in _allParams)
                 p.Load(resolved.TryGetValue(p.FlatKey, out var v) ? v : p.Def.Default, overrides.ContainsKey(p.FlatKey));
+            UpdateWhiteBalanceRows();
             if (Key == "raw")
             {
                 foreach (var p in _allParams)
                     p.IsVisible = p.Def.Key switch
                     {
-                        "temperature" or "tint" => resolved.Text("raw.wb_mode") == "custom",
                         "mask_enabled" => true,
                         _ when p.Def.Key.StartsWith("mask_", StringComparison.Ordinal) => resolved.Bool("raw.mask_enabled"),
                         _ => true,
                     };
                 _allParams.OfType<RawMaskParamViewModel>().Single().ApplyInstance(resolved.Text("raw.mask_instance"));
             }
-            OverrideCount = Schema.FlatKeys.Count(overrides.ContainsKey);
+            _overrides = overrides;
+            UpdateOverrideCount();
             IsVisible = !hideDisabled || IsModuleEnabled;
         }
         finally

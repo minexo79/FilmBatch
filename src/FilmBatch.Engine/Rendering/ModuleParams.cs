@@ -310,9 +310,19 @@ public sealed class ModuleParams
         m.RawWhiteBalanceMatrix = m.RawProcessingOn && m.RawCustomWhiteBalance
             ? source.WhiteBalance?.MatrixFor(m.RawTemperature, m.RawTint)
             : null;
+        // RAW 白平衡接手「基本調整」的色溫／色調：相對值保留在設定中，但只在非 RAW（或 RAW 處理停用）時生效。
+        if (UsesRawWhiteBalance(source, s)) { m.Temperature = 0; m.Tint = 0; }
         return m;
     }
 
+
+    /// <summary>
+    /// 這張照片的色溫／色調是否由 RAW 白平衡（Kelvin）負責：場景線性來源、具白平衡模型且 RAW 處理啟用。
+    /// 成立時 basic.temperature/tint 不套用；面板也以同一條件把基本調整的色溫／色調換成 RAW 白平衡。
+    /// </summary>
+    public static bool UsesRawWhiteBalance(SourceImage? source, Settings s) =>
+        source is { Scene: not null, WhiteBalance: not null }
+        && s.ContainsKey("raw.enabled") && s.Bool("raw.enabled");
 
     /// <summary>是否需要任何 spatial（非逐像素）pass——供尺寸/記憶體規劃與分塊 apron 估算。</summary>
     public bool HasSpatialPasses =>

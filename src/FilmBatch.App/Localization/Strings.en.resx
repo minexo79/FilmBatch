@@ -69,6 +69,7 @@
   <data name="Inspector.UpdatePreset" xml:space="preserve"><value>Update Preset</value></data>
   <data name="Inspector.HideDisabled" xml:space="preserve"><value>Hide disabled modules</value></data>
   <data name="Inspector.ResetModule" xml:space="preserve"><value>Reset Module</value></data>
+  <data name="Inspector.ResetModuleNamed" xml:space="preserve"><value>Reset {0}</value></data>
   <data name="Inspector.CopyModule" xml:space="preserve"><value>Copy This Module Only</value></data>
   <data name="Filmstrip.All" xml:space="preserve"><value>All</value></data>
   <data name="Filmstrip.OverridesOnly" xml:space="preserve"><value>With overrides</value></data>
@@ -559,6 +560,8 @@ Clear overrides: use the new preset entirely.</value></data>
   <data name="Raw.MaskUnavailable" xml:space="preserve"><value>Selected mask unavailable in this photo: {0}</value></data>
   <data name="Raw.NoMasks" xml:space="preserve"><value>This photo has no embedded semantic masks</value></data>
   <data name="Raw.MaskEdit" xml:space="preserve"><value>Adjust semantic mask</value></data>
+  <data name="Raw.WbEdit" xml:space="preserve"><value>Adjust white balance</value></data>
+  <data name="Raw.WbReset" xml:space="preserve"><value>Reset white balance to As Shot</value></data>
   <data name="Raw.BrowseFolder" xml:space="preserve"><value>Browse Folder…</value></data>
   <data name="Module.skin" xml:space="preserve"><value>Skin Tone Assist</value></data>
   <data name="Module.zone" xml:space="preserve"><value>Zone Metering &amp; Tone</value></data>

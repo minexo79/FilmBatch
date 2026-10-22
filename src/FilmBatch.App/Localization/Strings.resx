@@ -69,6 +69,7 @@
   <data name="Inspector.UpdatePreset" xml:space="preserve"><value>更新回預設</value></data>
   <data name="Inspector.HideDisabled" xml:space="preserve"><value>隱藏未啟用模組</value></data>
   <data name="Inspector.ResetModule" xml:space="preserve"><value>重設此模組</value></data>
+  <data name="Inspector.ResetModuleNamed" xml:space="preserve"><value>重設 {0}</value></data>
   <data name="Inspector.CopyModule" xml:space="preserve"><value>只複製此模組</value></data>
   <data name="Filmstrip.All" xml:space="preserve"><value>全部</value></data>
   <data name="Filmstrip.OverridesOnly" xml:space="preserve"><value>只顯示有覆寫</value></data>
@@ -359,6 +360,8 @@
   <data name="Raw.MaskUnavailable" xml:space="preserve"><value>此照片無法使用已選遮罩：{0}</value></data>
   <data name="Raw.NoMasks" xml:space="preserve"><value>此照片沒有內嵌語意遮罩</value></data>
   <data name="Raw.MaskEdit" xml:space="preserve"><value>調整語意遮罩</value></data>
+  <data name="Raw.WbEdit" xml:space="preserve"><value>調整白平衡</value></data>
+  <data name="Raw.WbReset" xml:space="preserve"><value>白平衡重設為拍攝值</value></data>
   <data name="Raw.BrowseFolder" xml:space="preserve"><value>瀏覽資料夾…</value></data>
   <data name="Module.skin" xml:space="preserve"><value>局部膚色輔助</value></data>
   <data name="Module.zone" xml:space="preserve"><value>Zone 測光與階調</value></data>

@@ -212,33 +212,117 @@ public sealed class RawControlsTests
     }
 
     [Fact]
-    public void RawSection_GatesCustomKelvinAndMaskRows()
+    public void RawSection_GatesMaskRows_AndLeavesWhiteBalanceToBasic()
     {
         var host = new RecordingHost();
         var section = RawSection(host);
         var resolved = ModuleCatalog.Defaults
             .With("raw.enabled", true)
-            .With("raw.mask_enabled", false)
-            .With("raw.wb_mode", ParamValue.Of("as-shot"));
+            .With("raw.mask_enabled", false);
         section.Load(resolved, Settings.Empty, hideDisabled: false);
 
-        Assert.False(Row(section, "raw.temperature").IsVisible);
-        Assert.False(Row(section, "raw.tint").IsVisible);
         Assert.False(Row(section, "raw.mask_exposure").IsVisible);
         Assert.False(MaskParam(section).IsVisible);
 
-        resolved = resolved
-            .With("raw.wb_mode", ParamValue.Of("custom"))
-            .With("raw.mask_enabled", true);
-        section.Load(resolved, Settings.Empty, hideDisabled: false);
-        Assert.True(Row(section, "raw.temperature").IsVisible);
-        Assert.True(Row(section, "raw.tint").IsVisible);
+        section.Load(resolved.With("raw.mask_enabled", true), Settings.Empty, hideDisabled: false);
         Assert.True(Row(section, "raw.mask_exposure").IsVisible);
         Assert.True(MaskParam(section).IsVisible);
 
         // mask_instance 不渲染成獨立文字列（由選取器一併寫入）。
         Assert.DoesNotContain(section.Params, p => p.FlatKey == "raw.mask_instance");
-        Assert.True(Row(section, "raw.wb_mode").IsVisible);
+        // 白平衡（模式／K／色調）改由「基本調整」顯示，RAW 區塊不重複，徽章也不計入。
+        Assert.DoesNotContain(section.Params, p => RawWbParamViewModel.FlatKeys.Contains(p.FlatKey));
+        section.Load(resolved, Settings.Empty.With("raw.wb_mode", ParamValue.Of("custom")).With("raw.temperature", 3200.0),
+            hideDisabled: false);
+        Assert.Equal(0, section.OverrideCount);
+    }
+
+    // ───────────── 基本調整中的 RAW 白平衡 ─────────────
+
+    private static ModuleSectionViewModel BasicSection(RecordingHost host) =>
+        new(ModuleCatalog.Module("basic"), host, _ => { }, _ => { });
+
+    private static (RawWbParamViewModel Mode, RawWbSliderParamViewModel Temperature, RawWbSliderParamViewModel Tint)
+        WbRows(ModuleSectionViewModel basic) =>
+        (Assert.IsType<RawWbParamViewModel>(Row(basic, "raw.wb_mode")),
+            Assert.IsType<RawWbSliderParamViewModel>(Row(basic, "raw.temperature")),
+            Assert.IsType<RawWbSliderParamViewModel>(Row(basic, "raw.tint")));
+
+    [Fact]
+    public void BasicSection_PlacesRawWbRowsAfterRelativeTemperature_HiddenWithoutRawSource()
+    {
+        var basic = BasicSection(new RecordingHost());
+        var keys = basic.Params.Select(p => p.FlatKey).ToList();
+        var at = keys.IndexOf("basic.tint");
+        Assert.Equal(["raw.wb_mode", "raw.temperature", "raw.tint"], keys.Skip(at + 1).Take(3));
+
+        // 沒有 RAW 白平衡來源：維持相對色溫／色調。
+        basic.Load(ModuleCatalog.Defaults.With("raw.enabled", true), Settings.Empty, hideDisabled: false);
+        basic.SetRawSource(null);
+        Assert.False(basic.ShowsRawWhiteBalance);
+        Assert.True(Row(basic, "basic.temperature").IsVisible);
+        Assert.True(Row(basic, "basic.tint").IsVisible);
+        var (mode, temperature, tint) = WbRows(basic);
+        Assert.False(mode.IsVisible || temperature.IsVisible || tint.IsVisible);
+    }
+
+    [Fact]
+    public void WbSlider_FromAsShot_WritesModeAndBothAxesOnce_ThenOnlyItsKey()
+    {
+        var host = new RecordingHost();
+        var basic = BasicSection(host);
+        var (mode, temperature, tint) = WbRows(basic);
+        mode.SetAsShot(4921, 26);
+        basic.Load(ModuleCatalog.Defaults.With("raw.enabled", true), Settings.Empty, hideDisabled: false);
+
+        // 拍攝值模式：滑桿顯示來源拍攝值，不寫入。
+        Assert.Equal(4921, temperature.Value);
+        Assert.Equal(26, tint.Value);
+        Assert.Empty(host.Values);
+        Assert.Empty(host.Batches);
+
+        temperature.BeginEdit();
+        temperature.Value = 4500;
+        var batch = Assert.Single(host.Batches);
+        Assert.Equal("custom", batch["raw.wb_mode"].AsText);
+        Assert.Equal(4500, batch["raw.temperature"].AsNumber);
+        Assert.Equal(26, batch["raw.tint"].AsNumber);       // 色調從拍攝值起算，不跳回 0
+        Assert.True(mode.IsCustom);
+
+        temperature.Value = 4400;                            // 同一次拖曳：只寫自己的 key
+        Assert.Equal(("raw.temperature", ParamValue.Of(4400.0)), Assert.Single(host.Values));
+        Assert.Single(host.Batches);
+    }
+
+    [Fact]
+    public void WbMode_SwitchingToCustom_StartsFromAsShot()
+    {
+        var host = new RecordingHost();
+        var basic = BasicSection(host);
+        var (mode, _, _) = WbRows(basic);
+        mode.SetAsShot(5200, -8);
+        basic.Load(ModuleCatalog.Defaults.With("raw.enabled", true), Settings.Empty, hideDisabled: false);
+
+        mode.Selected = mode.Options.Single(o => o.Key == "custom");
+        var batch = Assert.Single(host.Batches);
+        Assert.Equal(5200, batch["raw.temperature"].AsNumber);
+        Assert.Equal(-8, batch["raw.tint"].AsNumber);
+
+        // 已是自訂：切回拍攝值只寫模式。
+        basic.Load(ModuleCatalog.Defaults.With("raw.enabled", true).Overlay(new Settings(batch)), Settings.Empty, hideDisabled: false);
+        mode.Selected = mode.Options.Single(o => o.Key == "as-shot");
+        Assert.Equal(("raw.wb_mode", ParamValue.Of("as-shot")), Assert.Single(host.Values));
+    }
+
+    [Fact]
+    public void WbSlider_Reset_RestoresAsShotAsOneEdit()
+    {
+        var host = new RecordingHost();
+        var (_, temperature, tint) = WbRows(BasicSection(host));
+        temperature.ResetCommand.Execute(null);
+        tint.ResetCommand.Execute(null);
+        Assert.All(host.Resets, keys => Assert.Equal(RawWbParamViewModel.FlatKeys, keys));
+        Assert.Equal(2, host.Resets.Count);
     }
 
     [Fact]
@@ -263,8 +347,7 @@ public sealed class RawControlsTests
     public void WbParam_ShowsAsShotReadout_OnlyWhenKnown()
     {
         var host = new RecordingHost();
-        var section = RawSection(host);
-        var wb = Assert.IsType<RawWbParamViewModel>(Row(section, "raw.wb_mode"));
+        var wb = WbRows(BasicSection(host)).Mode;
         wb.SetAsShot(5500, 8);
         Assert.False(string.IsNullOrEmpty(wb.AsShotText));
         wb.SetAsShot(null, null);
@@ -306,6 +389,12 @@ public sealed class RawControlsTests
             main.Inspector.SetValue("raw.enabled", true, null);
             WaitForSource(rawName);
             var source = main.Preview.Source!;
+
+            // 有 RAW 白平衡模型時，「基本調整」的色溫／色調換成 RAW 白平衡列。
+            var basic = main.Inspector.Modules.Single(m => m.Key == "basic");
+            Assert.Equal(source.WhiteBalance is not null, basic.ShowsRawWhiteBalance);
+            Assert.Equal(!basic.ShowsRawWhiteBalance, Row(basic, "basic.temperature").IsVisible);
+            Assert.Equal(basic.ShowsRawWhiteBalance, Row(basic, "raw.temperature").IsVisible);
 
             // Kelvin 自訂白平衡：算圖設定，不重新解碼來源。
             main.Inspector.SetValue("raw.wb_mode", ParamValue.Of("custom"), null);
@@ -376,6 +465,8 @@ public sealed class RawControlsTests
             main.PasteCommand.Execute(null);
             WaitForSource(otherName);
             Assert.False(main.Inspector.Modules.Single(m => m.Key == "raw").IsVisible);
+            Assert.False(basic.ShowsRawWhiteBalance);
+            Assert.True(Row(basic, "basic.temperature").IsVisible);
             Select(rawName);
             Assert.True(main.Inspector.Modules.Single(m => m.Key == "raw").IsVisible);
             Select(otherName);
@@ -409,10 +500,12 @@ public sealed class RawControlsTests
     {
         public List<(string Key, ParamValue Value)> Values { get; } = [];
         public List<IReadOnlyDictionary<string, ParamValue>> Batches { get; } = [];
+        public List<IReadOnlyList<string>> Resets { get; } = [];
 
         public void SetValue(string flatKey, ParamValue value, string? mergeKey) => Values.Add((flatKey, value));
         public void SetValues(IReadOnlyDictionary<string, ParamValue> values, string? mergeKey) => Batches.Add(values);
-        public void ResetParam(string flatKey) { }
+        public void ResetParam(string flatKey) => Resets.Add([flatKey]);
+        public void ResetParams(IReadOnlyList<string> flatKeys) => Resets.Add(flatKeys);
         public void EndEdit() { }
     }
 }

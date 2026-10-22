@@ -15,7 +15,8 @@ public static class ModuleCatalog
     [
         // RAW：來源現像（效果處理之前的來源開發），排在管線最前面。
         // wb_mode/temperature/tint 與 mask_* 是算圖設定（不進 RawLoadOptions、不重新解碼）；
-        // lens_database 屬於來源快取鍵。basic 的相對色溫/色調仍是獨立的藝術效果，不換單位。
+        // lens_database 屬於來源快取鍵。RAW 處理啟用時，面板把 wb_mode/temperature/tint 顯示在「基本調整」
+        // 取代 basic 的相對色溫/色調（相對值保留在設定中但不套用，見 ModuleParams.UsesRawWhiteBalance）。
         new("raw", "RAW 原廠處理", ModuleGroup.Basic, PasteCategory.Color,
         [
             Bool(ModuleSchema.EnabledKey, "啟用"),

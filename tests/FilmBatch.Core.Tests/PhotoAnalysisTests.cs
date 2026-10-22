@@ -198,6 +198,33 @@ public sealed class PhotoAnalysisTests
         Assert.NotNull(ZonePlacement.ZoneOf(sample.Luminance));
     }
 
+    // ---- RAW white balance replaces relative basic temperature/tint --------
+
+    [Fact]
+    public void RawWhiteBalanceSuppressesRelativeBasicTemperatureAndTint()
+    {
+        var settings = ModuleCatalog.Defaults
+            .With("raw.enabled", true).With("basic.temperature", 40.0).With("basic.tint", -20.0);
+        var raw = ModuleParams.From(SceneSource(4, 4, .2f, .2f, .2f, NeutralModel()), settings);
+        Assert.Equal(0, raw.Temperature);
+        Assert.Equal(0, raw.Tint);
+        Assert.True(ModuleParams.UsesRawWhiteBalance(SceneSource(4, 4, .2f, .2f, .2f, NeutralModel()), settings));
+
+        // RAW processing off, no WB model, or an SDR source: relative values still apply.
+        foreach (var (source, s) in new[]
+        {
+            (SceneSource(4, 4, .2f, .2f, .2f, NeutralModel()), settings.With("raw.enabled", false)),
+            (SceneSource(4, 4, .2f, .2f, .2f), settings),
+            (Sdr(4, 4, 30000, 30000, 30000), settings),
+        })
+        {
+            var p = ModuleParams.From(source, s);
+            Assert.Equal(40, p.Temperature);
+            Assert.Equal(-20, p.Tint);
+            Assert.False(ModuleParams.UsesRawWhiteBalance(source, s));
+        }
+    }
+
     // ---- applyAdjustments: pre-WB vs current edits -------------------------
 
     [Fact]
@@ -456,11 +483,9 @@ public sealed class PhotoAnalysisTests
                     (pixels[i], pixels[i + 1], pixels[i + 2]) = matrix.ApplyF32(pixels[i], pixels[i + 1], pixels[i + 2]);
             }
             RawSemanticAdjustments.Apply(pixels, source.Width, source.Height, source, p, TestContext.Current.CancellationToken);
-            // Hand-derived Basic gains for the fixed +65 warmth / -45 tint fixture.
-            for (var i = 0; i < pixels.Length; i += 4)
-            {
-                pixels[i] *= 1.117f; pixels[i + 1] *= .946f; pixels[i + 2] *= .883f;
-            }
+            // The fixture's +65 warmth / -45 tint stay in settings but are not applied: on a RAW
+            // source with a WB model the Kelvin white balance replaces relative basic temperature/tint.
+            Assert.Equal((0f, 0f), (p.Temperature, p.Tint));
             PhotoAdjustments.Apply(pixels, source.Width, source.Height, p, TestContext.Current.CancellationToken);
             double red = 0, green = 0, blue = 0;
             for (var i = 0; i < pixels.Length; i += 4)
