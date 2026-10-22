@@ -121,6 +121,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     public MainWindowViewModel(AppSettings settings, IDialogService dialogs, Func<IPreviewRenderer> rendererFactory, Action<Action> post)
     {
         Settings = settings;
+        RawLoadOptions.LensDatabaseDirectory = settings.LensDatabaseFolder;
         Dialogs = dialogs;
         _post = post;
         Library = PresetLibrary.Load();
@@ -342,6 +343,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 return;
             }
             Preview.SetOriginal(source);
+            ReportLensDatabaseWarning(source);
             Inspector.Refresh();
             PhotoTools.UpdateContext(service, file, source, service.SettingsFor(file));
             if (Sidebar.IsCrop) CropTool.ResumeBegin();
@@ -357,6 +359,18 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             Preview.Clear();
             Inspector.Refresh();
         }
+    }
+
+    /// <summary>上次以提示顯示過的鏡頭資料庫錯誤；同一錯誤換照片時不重複提示，偏好設定變更後重設。</summary>
+    private string? _shownLensWarning;
+
+    /// <summary>外部鏡頭資料庫讀取失敗時，來源已退回不校正：提示一次並寫入記錄。</summary>
+    private void ReportLensDatabaseWarning(SourceImage source)
+    {
+        if (source.LensDatabaseWarning is not { } warning || warning == _shownLensWarning) return;
+        _shownLensWarning = warning;
+        AppLog.Warn($"外部鏡頭資料庫無法讀取，已略過鏡頭校正：{warning}");
+        Toast.Show(Loc.Format("Raw.LensDatabaseWarning", warning));
     }
 
     /// <summary>以目前參數重算預覽（拖曳中每次修改都會呼叫；排程器只保留最新請求）。</summary>
@@ -774,6 +788,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     public void ApplyRenderPreferences()
     {
         Settings.Save();
+        RawLoadOptions.LensDatabaseDirectory = Settings.LensDatabaseFolder;
+        _shownLensWarning = null;
         RendererFactory = PreviewService.GpuFactory(Settings);
         Renderer.Reconfigure(RendererFactory,
             Settings.ForceSoftwareGpu ? null : () => PreviewService.CreateCpuRenderer(Settings));
@@ -783,6 +799,22 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         FilmLook.InvalidateThumbnails();
         RequestPreview();
         _ = LoadPreviewAsync();
+        if (Service is { } service)
+            foreach (var file in service.Project.FileNames) Filmstrip.RequestThumbnail(file);
+    }
+
+    /// <summary>
+    /// 偏好設定變更外部 Lensfun 資料夾：屬於 RAW 來源選項，不需重建算圖器，
+    /// 但目前照片、縮圖與預設／底片預覽都要以新選項重新解碼（舊來源的 RawOptions 不再相符）。
+    /// </summary>
+    public void ApplyLensDatabase()
+    {
+        Settings.Save();
+        RawLoadOptions.LensDatabaseDirectory = Settings.LensDatabaseFolder;
+        _shownLensWarning = null;
+        Presets.Hover.InvalidateCache();
+        FilmLook.InvalidateThumbnails();
+        RequestPreview();
         if (Service is { } service)
             foreach (var file in service.Project.FileNames) Filmstrip.RequestThumbnail(file);
     }

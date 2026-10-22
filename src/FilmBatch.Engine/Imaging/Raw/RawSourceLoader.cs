@@ -38,13 +38,13 @@ internal static class RawSourceLoader
         var directory = rawOptions.LensDatabasePath;
         if (!string.IsNullOrWhiteSpace(directory) && !Path.IsPathRooted(directory))
             directory = Path.GetFullPath(directory, Path.GetDirectoryName(Path.GetFullPath(path))!);
-        var scene = DevelopScene(raw, bytes, edge, rawOptions with { LensDatabasePath = directory });
+        var scene = DevelopScene(raw, bytes, edge, rawOptions with { LensDatabasePath = directory }, out var lensWarning);
         var (referenceWidth, referenceHeight) = info.DevelopedSize();
         if (info.Orientation.SwapsAxes()) (referenceWidth, referenceHeight) = (referenceHeight, referenceWidth);
         return new SourceImage(scene)
         {
             FilePath = Path.GetFullPath(path), RawOptions = rawOptions, RawInfo = info, SemanticMasks = masks,
-            ReferenceWidth = referenceWidth, ReferenceHeight = referenceHeight,
+            ReferenceWidth = referenceWidth, ReferenceHeight = referenceHeight, LensDatabaseWarning = lensWarning,
         };
     }
 
@@ -178,18 +178,38 @@ internal static class RawSourceLoader
     /// <summary>保留線性 Rec.2020,直到相機曲線與 sRGB 編碼;嵌入 JPEG 只用來估計相機外觀。</summary>
     internal static (RgbImage Image, CameraTone? Tone) DevelopLinear(RawImage raw, ReadOnlyMemory<byte> bytes, int edge, RawLoadOptions rawOptions = default)
     {
-        var scene = DevelopScene(raw, bytes, edge, rawOptions);
+        var scene = DevelopScene(raw, bytes, edge, rawOptions, out _);
         return (scene.Image, scene.Tone);
     }
 
-    private static RawSceneData DevelopScene(RawImage raw, ReadOnlyMemory<byte> bytes, int edge, RawLoadOptions rawOptions)
+    /// <summary>
+    /// 套用外部 Lensfun 備援。資料庫不存在、不可讀或格式錯誤時退回不校正並回傳警告：
+    /// 鏡頭資料庫是全域偏好設定，壞掉不能讓每張 RAW 都打不開。<see cref="LensProfiles.ApplyFallback"/>
+    /// 只在最後一次加入 opcode，失敗時 List3 保持原狀。
+    /// </summary>
+    private static string? TryApplyLensFallback(RawImage raw, string? directory)
+    {
+        try
+        {
+            LensProfiles.ApplyFallback(raw, directory);
+            return null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Xml.XmlException
+            or InvalidDataException or ArgumentException or NotSupportedException)
+        {
+            return ex.Message;
+        }
+    }
+
+    private static RawSceneData DevelopScene(RawImage raw, ReadOnlyMemory<byte> bytes, int edge, RawLoadOptions rawOptions,
+        out string? lensWarning)
     {
         var list3 = raw.Opcodes.List3;
         // Match against the original embedded corrections first: disabling them must not
         // cause an external profile to replace an embedded match or remove an external fallback.
         var disabled = !rawOptions.EmbeddedLensCorrections
             ? list3.Where(op => op.IsLensCorrection()).ToArray() : [];
-        LensProfiles.ApplyFallback(raw, rawOptions.LensDatabasePath);
+        lensWarning = TryApplyLensFallback(raw, rawOptions.LensDatabasePath);
         if (disabled.Length > 0) list3.RemoveAll(op => disabled.Any(original => ReferenceEquals(original, op)));
         var lens = CameraPreviewLens.LensGeometryOf(list3);
         var vignette = EmbeddedVignette.FromList3(list3, raw.ActiveArea, raw.Crop, raw.Orientation);

@@ -202,18 +202,6 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
             svc.ResetModule(_main.Selection, m.Key);
     }
 
-    public async Task<string?> PickFolderAsync(string? current)
-    {
-        var service = _main.Service;
-        if (service is null) return null;
-        var selection = _main.Selection.ToArray();
-        var start = string.IsNullOrWhiteSpace(current) ? service.Project.Folder
-            : Path.GetFullPath(current, service.Project.Folder);
-        var picked = await _main.Dialogs.PickFolderAsync(Directory.Exists(start) ? start : service.Project.Folder);
-        // A modal picker may outlive a project/photo change; never apply its result elsewhere.
-        return _main.Service == service && selection.SequenceEqual(_main.Selection) ? picked : null;
-    }
-
     public void ResetParam(string flatKey)
     {
         if (_main.Service is null) return;

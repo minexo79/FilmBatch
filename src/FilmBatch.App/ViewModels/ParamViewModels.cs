@@ -28,8 +28,6 @@ public interface IParamHost
     }
     /// <summary>連續編輯結束（放開滑桿）：結束復原紀錄的合併。</summary>
     void EndEdit();
-    /// <summary>目錄參數的瀏覽；<paramref name="current"/> 為目前設定值。預設不支援（回傳 null）。</summary>
-    Task<string?> PickFolderAsync(string? current) => Task.FromResult<string?>(null);
 }
 
 /// <summary>
@@ -237,13 +235,10 @@ public sealed partial class ToggleParamViewModel(string moduleKey, ParamDef def,
     protected override void OnLoad(ParamValue value) => SetProperty(ref _value, value.AsBool, nameof(Value));
 }
 
-/// <summary>文字／路徑參數（相對路徑）。<see cref="ParamDef.IsDirectory"/> 時提供資料夾瀏覽。</summary>
+/// <summary>文字／路徑參數（相對路徑）。</summary>
 public sealed partial class TextParamViewModel(string moduleKey, ParamDef def, IParamHost host) : ParamViewModel(moduleKey, def, host)
 {
     private string _value = "";
-
-    /// <summary>目錄參數顯示「瀏覽」按鈕。</summary>
-    public bool CanBrowse => Def.Kind == ParamKind.Path && Def.IsDirectory;
 
     public string Value
     {
@@ -252,13 +247,6 @@ public sealed partial class TextParamViewModel(string moduleKey, ParamDef def, I
         {
             if (SetProperty(ref _value, value ?? "")) Push(_value);
         }
-    }
-
-    /// <summary>瀏覽資料夾：挑選結果直接成為新值（絕對路徑由 ProjectService 轉回專案相對）。</summary>
-    [RelayCommand]
-    private async Task Browse()
-    {
-        if (await Host.PickFolderAsync(_value) is { } picked) Value = picked;
     }
 
     protected override void OnLoad(ParamValue value) => SetProperty(ref _value, value.AsText, nameof(Value));

@@ -277,7 +277,7 @@
                               <ToggleSwitch Grid.Column="1" Classes="compact" IsChecked="{Binding Value}" OnContent="" OffContent="" />
                             </Grid>
                           </DataTemplate>
-                          <!-- 文字／路徑：一般為單行「名稱 ｜ 輸入框」；資料夾參數改為兩行（同滑桿列），下行整寬輸入框＋瀏覽 -->
+                          <!-- 文字／路徑：單行「名稱 ｜ 輸入框」 -->
                           <DataTemplate DataType="vm:TextParamViewModel">
                             <StackPanel IsVisible="{Binding IsVisible}">
                               <Grid ColumnDefinitions="*,Auto" Classes="param-line">
@@ -287,12 +287,7 @@
                                   <Ellipse Classes="override-dot" IsVisible="{Binding IsOverridden}" />
                                 </StackPanel>
                                 <TextBox Grid.Column="1" Text="{Binding Value}" Width="150" VerticalAlignment="Center"
-                                         PlaceholderText="{l:Tr Inspector.RelativePath}" IsVisible="{Binding !CanBrowse}" />
-                              </Grid>
-                              <Grid ColumnDefinitions="*,Auto" Margin="0,-4,0,6" IsVisible="{Binding CanBrowse}">
-                                <TextBox Text="{Binding Value}" VerticalAlignment="Center" PlaceholderText="{l:Tr Inspector.RelativePath}" />
-                                <Button Grid.Column="1" Classes="outline" Margin="6,0,0,0" VerticalAlignment="Center"
-                                        Content="{l:Tr Raw.BrowseFolder}" Command="{Binding BrowseCommand}" />
+                                         PlaceholderText="{l:Tr Inspector.RelativePath}" />
                               </Grid>
                             </StackPanel>
                           </DataTemplate>

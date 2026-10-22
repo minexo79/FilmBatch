@@ -33,9 +33,12 @@ internal static partial class LensProfiles
             }
             total += memory.Length;
             memory.Position = 0;
+            // The official database starts every file with <!DOCTYPE lensdatabase SYSTEM "lensfun-database.dtd">.
+            // Ignore skips the DOCTYPE without resolving it (no resolver) or defining its entities,
+            // so entity references still fail as undeclared.
             var settings = new XmlReaderSettings
             {
-                DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null,
+                DtdProcessing = DtdProcessing.Ignore, XmlResolver = null,
                 MaxCharactersInDocument = MaxFileBytes, MaxCharactersFromEntities = 1024,
                 IgnoreComments = true, IgnoreProcessingInstructions = true,
             };

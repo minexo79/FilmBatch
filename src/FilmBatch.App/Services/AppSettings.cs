@@ -49,6 +49,8 @@ public sealed class AppSettings
     public bool ForceSoftwareGpu { get; set; }
     public int GpuMemoryLimitMb { get; set; } = 2048;
     public string? TexturesFolder { get; set; }
+    /// <summary>外部 Lensfun 格式鏡頭資料庫資料夾（RAW 無內嵌校正時的備援）；null 表示不使用。</summary>
+    public string? LensDatabaseFolder { get; set; }
     public AssignOverridesChoice AssignOverrides { get; set; } = AssignOverridesChoice.Ask;
     public bool HideDisabledModules { get; set; }
     public bool HistogramExpanded { get; set; } = true;

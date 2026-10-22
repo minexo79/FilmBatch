@@ -41,9 +41,9 @@ public sealed class RawControlsTests
         Assert.Equal("uuid-9", instance.Coerce(ParamValue.Of("uuid-9")).AsText);
         Assert.Equal("", name.Default.AsText);
 
-        var db = ModuleCatalog.Param("raw.lens_database")!;
-        Assert.Equal(ParamKind.Path, db.Kind);
-        Assert.Equal("", db.Default.AsText);
+        // 外部 Lensfun 資料夾是應用程式偏好設定，不再是照片參數；舊檔中的 key 靜默丟棄。
+        Assert.Null(ModuleCatalog.Param("raw.lens_database"));
+        Assert.True(RetiredParams.IsRetired("raw.lens_database"));
 
         Assert.Equal(ParamKind.Bool, ModuleCatalog.Param("raw.mask_enabled")!.Kind);
         var exposure = ModuleCatalog.Param("raw.mask_exposure")!;
@@ -67,8 +67,7 @@ public sealed class RawControlsTests
             .With("raw.mask_enabled", true).With("raw.mask_invert", true)
             .With("raw.mask_amount", 42.0).With("raw.mask_exposure", -1.25)
             .With("raw.mask_temperature", 12.0).With("raw.mask_tint", -7.0)
-            .With("raw.mask_contrast", 23.0).With("raw.mask_saturation", -20.0)
-            .With("raw.lens_database", ParamValue.Of("profiles/lensfun"));
+            .With("raw.mask_contrast", 23.0).With("raw.mask_saturation", -20.0);
         Assert.Equal(settings, JsonSerializer.Deserialize<Settings>(JsonSerializer.Serialize(settings)));
     }
 
@@ -79,22 +78,8 @@ public sealed class RawControlsTests
     {
         var settings = ModuleCatalog.Defaults
             .With("raw.enabled", false)
-            .With("raw.lens_database", ParamValue.Of("lensdb"));
+            .With("raw.embedded_lens", true);
         Assert.Equal(new RawLoadOptions(), RawLoadOptions.FromSettings(settings));
-    }
-
-    [Fact]
-    public void RawLoadOptions_EnabledRaw_ReadsMasksAndLensDirectory()
-    {
-        var settings = ModuleCatalog.Defaults
-            .With("raw.enabled", true)
-            .With("raw.embedded_lens", true)
-            .With("raw.lens_database", ParamValue.Of("vendor/lensfun"));
-        var options = RawLoadOptions.FromSettings(settings);
-        Assert.True(options.IncludeSemanticMasks);
-        Assert.True(options.EmbeddedLensCorrections);
-        Assert.False(options.CameraLocalTone);
-        Assert.Equal("vendor/lensfun", options.LensDatabasePath);
     }
 
     [Fact]
@@ -115,8 +100,8 @@ public sealed class RawControlsTests
             .With("raw.mask_name", ParamValue.Of("urn:example:person"));
         Assert.Equal(options, RawLoadOptions.FromSettings(edited));
         // 來源類選項才會使快取鍵失效。
-        var differentDir = RawLoadOptions.FromSettings(edited.With("raw.lens_database", ParamValue.Of("other")));
-        Assert.NotEqual(options, differentDir);
+        var localTone = RawLoadOptions.FromSettings(edited.With("raw.camera_local_tone", true));
+        Assert.NotEqual(options, localTone);
     }
 
     // ───────────── 遮罩選取 ViewModel（RecordingHost，不需視窗） ─────────────
@@ -354,27 +339,14 @@ public sealed class RawControlsTests
         Assert.Equal("", wb.AsShotText);
     }
 
-    [Fact]
-    public void LensDatabase_ExposesFolderBrowse_OtherPathsDoNot()
-    {
-        var host = new RecordingHost();
-        var section = RawSection(host);
-        var lens = Assert.IsType<TextParamViewModel>(Row(section, "raw.lens_database"));
-        Assert.True(lens.CanBrowse);
-        var source = Assert.IsType<TextParamViewModel>(
-            ParamViewModel.Create("double_exposure", ModuleCatalog.Param("double_exposure.source_path")!, host));
-        Assert.False(source.CanBrowse);
-    }
-
     // ───────────── 視窗整合（headless） ─────────────
 
     [AvaloniaFact]
-    public async Task RawWbAndMaskEdits_KeepSource_LensDirectory_Reloads_UndoSaveReopen()
+    public async Task RawWbAndMaskEdits_KeepSource_LocalTone_Reloads_UndoSaveReopen()
     {
         using var main = TestEnv.CreateViewModel();
         var folder = Path.Combine(AppPaths.Root, "raw-controls");
         Directory.CreateDirectory(folder);
-        Directory.CreateDirectory(Path.Combine(folder, "lensdb"));
         const string rawName = "photo.dng", otherName = "plain.tif";
         File.WriteAllBytes(Path.Combine(folder, rawName), DngWriter.WriteRenderedDng(16, 12,
             Enumerable.Repeat(0.18f, 16 * 12 * 3).ToArray(), ColorSpaces.Srgb,
@@ -436,10 +408,10 @@ public sealed class RawControlsTests
             main.CropTool.Angle = 3;
             var pendingCrop = main.CropTool.Working;
 
-            // 外部鏡頭資料庫是來源選項：改變必須重新解碼。
-            main.Inspector.SetValue("raw.lens_database", ParamValue.Of("lensdb"), null);
+            // 相機局部色調是來源選項：改變必須重新解碼。
+            main.Inspector.SetValue("raw.camera_local_tone", true, null);
             WaitForSource(rawName);
-            Assert.Equal("lensdb", main.Preview.Source!.RawOptions.LensDatabasePath);
+            Assert.True(main.Preview.Source!.RawOptions.CameraLocalTone);
             Assert.NotSame(source, main.Preview.Source);
             Assert.True(main.CropTool.IsActive);
             Assert.Equal(pendingCrop, main.CropTool.Working);
@@ -455,7 +427,7 @@ public sealed class RawControlsTests
             Assert.Equal("custom", again.Text("raw.wb_mode"));
             Assert.Equal(3200, again.Number("raw.temperature"));
             Assert.Equal("urn:example:sky", again.Text("raw.mask_name"));
-            Assert.Equal("lensdb", again.Text("raw.lens_database"));
+            Assert.True(again.Bool("raw.camera_local_tone"));
             Assert.Equal(-1.25, again.Number("raw.mask_exposure"));
 
             // 複製／貼上：RAW 遮罩設定跟隨模組到一般照片（不可用但不丟失）。
