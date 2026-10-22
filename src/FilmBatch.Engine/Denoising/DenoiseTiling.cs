@@ -173,13 +173,86 @@ internal static class DenoiseTiling
             }
             var or = original[o]; var og = original[o + 1]; var ob = original[o + 2];
             var dr = denoised[o]; var dg = denoised[o + 1]; var db = denoised[o + 2];
-            var yO = or * w0 + og * w1 + ob * w2;
-            var yD = dr * w0 + dg * w1 + db * w2;
-            var yMix = yO + al * (yD - yO);
-            denoised[o] = (or - yO) + ac * ((dr - yD) - (or - yO)) + yMix;
-            denoised[o + 1] = (og - yO) + ac * ((dg - yD) - (og - yO)) + yMix;
-            denoised[o + 2] = (ob - yO) + ac * ((db - yD) - (ob - yO)) + yMix;
+            MixPixel(or, og, ob, dr, dg, db, al, ac, w0, w1, w2,
+                out denoised[o], out denoised[o + 1], out denoised[o + 2]);
         }
+    }
+
+    /// <summary>
+    /// 單一像素的亮度／色度分離混合（與 <see cref="Mix"/> 迴圈完全相同的浮點運算順序；
+    /// 同時供 <see cref="MixDownscale16"/> 使用，確保融合路徑與逐像素混合位元一致）。
+    /// 對固定的 (al, ac, w) 而言，輸出是 (original, denoised) 的仿射函數。
+    /// </summary>
+    private static void MixPixel(float or, float og, float ob, float dr, float dg, float db,
+        float al, float ac, float w0, float w1, float w2,
+        out float mr, out float mg, out float mb)
+    {
+        var yO = or * w0 + og * w1 + ob * w2;
+        var yD = dr * w0 + dg * w1 + db * w2;
+        var yMix = yO + al * (yD - yO);
+        var t = or - yO;
+        mr = t + ac * ((dr - yD) - t) + yMix;
+        t = og - yO;
+        mg = t + ac * ((dg - yD) - t) + yMix;
+        t = ob - yO;
+        mb = t + ac * ((db - yD) - t) + yMix;
+    }
+
+    /// <summary>
+    /// SDR（16-bit sRGB）預覽路徑：逐個全解析度像素執行 <see cref="MixPixel"/>＋u16 量化，
+    /// 再以覆蓋率加權 box（與 <see cref="SourceImage.Resize"/> 相同的 straight-alpha 語意：
+    /// RGB 依累積 alpha 歸一、alpha 依像素數平均、零覆蓋 RGB 為 0）直接寫出預覽尺寸的
+    /// RGBA16。SDR 的夾取與量化必須在全解析度像素上發生——先降採樣再混合既非位元一致
+    /// （四捨五入順序不同），夾取案例更會大幅偏離。輸出與「全尺寸混合→<see cref="Interleave16"/>→
+    /// box 降採樣」完全相同，但不配置任何全解析度暫存。各輸出列互不相依，平行於列。
+    /// </summary>
+    internal static void MixDownscale16(ushort[] srcRgba16, int srcWidth, int srcHeight,
+        float[] denoised, float amount, float lum, float chr, float[] lumaW,
+        ushort[] dst, int dstWidth, int dstHeight, CancellationToken ct)
+    {
+        var a = Math.Clamp(amount, 0f, 1f);
+        var l = Math.Clamp(lum, 0f, 1f);
+        var c = Math.Clamp(chr, 0f, 1f);
+        var w0 = lumaW[0]; var w1 = lumaW[1]; var w2 = lumaW[2];
+        var al = a * l;
+        var ac = a * c;
+        Parallel.For(0, dstHeight, new ParallelOptions { CancellationToken = ct }, y =>
+        {
+            var y0 = y * srcHeight / dstHeight;
+            var y1 = Math.Max(y0 + 1, (y + 1) * srcHeight / dstHeight);
+            for (var x = 0; x < dstWidth; x++)
+            {
+                var x0 = x * srcWidth / dstWidth;
+                var x1 = Math.Max(x0 + 1, (x + 1) * srcWidth / dstWidth);
+                long r = 0, g = 0, b = 0, coverage = 0;
+                for (var sy = y0; sy < y1; sy++)
+                for (var sx = x0; sx < x1; sx++)
+                {
+                    var i = (sy * srcWidth + sx) * 4;
+                    var alpha = srcRgba16[i + 3];
+                    // alpha=0 的像素在覆蓋加權中權重為 0（其混合值不影響輸出），直接略過。
+                    if (alpha == 0) continue;
+                    var o = (sy * srcWidth + sx) * 3;
+                    MixPixel(srcRgba16[i] * (1f / 65535f), srcRgba16[i + 1] * (1f / 65535f),
+                        srcRgba16[i + 2] * (1f / 65535f),
+                        denoised[o], denoised[o + 1], denoised[o + 2], al, ac, w0, w1, w2,
+                        out var mr, out var mg, out var mb);
+                    r += (long)ToU16(mr) * alpha;
+                    g += (long)ToU16(mg) * alpha;
+                    b += (long)ToU16(mb) * alpha;
+                    coverage += alpha;
+                }
+                var n = (x1 - x0) * (y1 - y0);
+                var d4 = (y * dstWidth + x) * 4;
+                if (coverage != 0)
+                {
+                    dst[d4] = (ushort)(r / coverage);
+                    dst[d4 + 1] = (ushort)(g / coverage);
+                    dst[d4 + 2] = (ushort)(b / coverage);
+                }
+                dst[d4 + 3] = (ushort)(coverage / n);
+            }
+        });
     }
 
     /// <summary>從 ushort Rgba16 建出 float RGB 平面（[0,1]）與 alpha 平面。</summary>
@@ -208,9 +281,11 @@ internal static class DenoiseTiling
             dst[o + 2] = ToU16(rgb[s + 2]);
             dst[o + 3] = ToU16(alpha[i]);
         }
-        static ushort ToU16(float v) =>
-            !float.IsFinite(v) ? (ushort)0 : (ushort)Math.Clamp((int)MathF.Round(v * 65535f), 0, 65535);
     }
+
+    /// <summary>float→u16 量化：夾到 [0,1]、非有限→0（<see cref="MixDownscale16"/> 與 <see cref="Interleave16"/> 共用同一規則）。</summary>
+    private static ushort ToU16(float v) =>
+        !float.IsFinite(v) ? (ushort)0 : (ushort)Math.Clamp((int)MathF.Round(v * 65535f), 0, 65535);
 
     /// <summary>
     /// 透明像素 inpaint：把 alpha=0 像素的 RGB 換成「同行最近可見像素」（前向再反向填充），

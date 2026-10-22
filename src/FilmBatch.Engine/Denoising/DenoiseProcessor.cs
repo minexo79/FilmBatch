@@ -12,8 +12,10 @@ namespace FilmBatch.Engine.Denoising;
 /// 來源階段（effect 之前）的實際 ONNX 降噪入口。實作重點：
 /// • 模型選擇依來源域（RAW 場景線性→RawNIND linear，一般 sRGB→NAFNet-SIDD）。
 /// • 「全解析度先行」：代理來源（有 <see cref="SourceImage.FilePath"/> 且參考尺寸大於
-///   目前尺寸）先以相同 <see cref="RawLoadOptions"/> 重新載入全尺寸做神經推論；混合也
-///   在全尺寸域完成，最後才 box 縮回代理尺寸。
+///   目前尺寸）先以相同 <see cref="RawLoadOptions"/> 重新載入全尺寸做神經推論，神經結果
+///   以全解析度保留（匯出沿用）。預覽混合依域分路：場景線性先把原始／降噪輸入 box 到
+///   預覽尺寸再混合（仿射可交換、有界快取）；sRGB 逐像素「混合→u16 量化→覆蓋率 box」
+///   融合直寫預覽尺寸，與舊「全尺寸混合再降採樣」逐位元一致，兩者都不再配置全尺寸暫存。
 /// • 單一行程級推論閘門（所有實例共用）：全域一次只有一趟推論。
 /// • session 有界（最多兩個已知模型身分）；以 (模型路徑, 檔案戳記) 快取，啟用前驗證
 ///   固定 SHA-256，檔案被替換會偵測並重建 session。
@@ -135,8 +137,7 @@ public sealed class DenoiseProcessor : IDisposable
         if (cached is not null)
         {
             Report(source, spec, "complete", cached.TileCount, cached.TileCount, cached.Provider);
-            return Materialize(source, cached.FullSource, spec, cached.Rgb,
-                cached.Provider, cached.InferenceTime, cached.TileCount, cacheHit: true, ds, cancellationToken);
+            return Materialize(source, cached, spec, cacheHit: true, ds, cancellationToken);
         }
 
         Report(source, spec, "loading", 0, totalTiles, null);
@@ -155,16 +156,15 @@ public sealed class DenoiseProcessor : IDisposable
             lock (_sync)
                 cached = _cached is { } completed && completed.Key == key ? completed : null;
             if (cached is not null)
-                return Materialize(source, cached.FullSource, spec, cached.Rgb, cached.Provider,
-                    cached.InferenceTime, cached.TileCount, cacheHit: true, ds, cancellationToken);
+                return Materialize(source, cached, spec, cacheHit: true, ds, cancellationToken);
             var full = loadFull ? LoadFullSource(source, cancellationToken) : source;
             var session = GetSession(spec, modelPath, modelStamp);
             var inferredRgb = RunInference(spec, session, full, source, totalTiles, cancellationToken);
             var elapsed = sw.Elapsed;
             var neural = new NeuralResult(key, inferredRgb, full,
                 session.ProviderName, elapsed, totalTiles);
-            var result = Materialize(source, full, spec, neural.Rgb,
-                session.ProviderName, elapsed, totalTiles, cacheHit: false, ds, cancellationToken);
+            var result = Materialize(source, neural, spec,
+                cacheHit: false, ds, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             lock (_sync) _cached = neural;
             Report(source, spec, "complete", totalTiles, totalTiles, session.ProviderName);
@@ -257,39 +257,51 @@ public sealed class DenoiseProcessor : IDisposable
         }
     }
 
-    /// <summary>把快取的神經結果套上後神經混合並封裝成新的 SourceImage（含 report）。</summary>
-    private SourceImage Materialize(SourceImage source, SourceImage full, DenoiseModelSpec spec,
-        float[] neuralRgb, string provider, TimeSpan inferenceTime,
-        int totalTiles, bool cacheHit, DenoiseSettings ds, CancellationToken ct)
+    /// <summary>
+    /// 把快取的神經結果套上後神經混合並封裝成新的 SourceImage（含 report）。三種路徑：
+    /// • 匯出／同尺寸：全解析度混合→量化／寫回場景（與舊版逐位元相同，含透明像素
+    ///   保留原始 RGB）。
+    /// • 場景線性代理：mix 為逐像素仿射——先把原始／降噪輸入 box 到預覽尺寸（依尺寸
+    ///   有界快取於神經結果上）再混合；與「先混合再 box」在浮點精度內一致。
+    /// • sRGB 代理：量化與夾取必須在全解析度像素上發生——以
+    ///   <see cref="DenoiseTiling.MixDownscale16"/> 逐像素「混合→u16 量化→覆蓋率 box」
+    ///   直接寫出預覽尺寸；與舊鏈逐位元相同，但不配置全解析度暫存。
+    /// </summary>
+    private SourceImage Materialize(SourceImage source, NeuralResult neural,
+        DenoiseModelSpec spec, bool cacheHit, DenoiseSettings ds, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
-        var w = full.Width;
-        var h = full.Height;
-        var pixelCount = checked(w * h);
-        var original = full.Scene?.Image.Data ?? new float[checked(pixelCount * 3)];
-        float[]? alpha = null;
-        var mixed = new float[checked(pixelCount * 3)];
-        Array.Copy(neuralRgb, mixed, pixelCount * 3);
-        if (full.Scene is null)
-        {
-            alpha = new float[pixelCount];
-            DenoiseTiling.Deinterleave16(full.Rgba16, pixelCount, original, alpha);
-        }
+        var report = new DenoiseReport(spec.Id, spec.OnnxSha256, neural.Provider,
+            neural.InferenceTime, neural.TileCount, cacheHit);
+        var full = neural.FullSource;
         var luma = spec.SceneLinear
             ? FilmBatch.Raw.Color.ColorSpaces.Luma2020
             : FilmBatch.Raw.Color.ColorSpaces.Luma709;
-        DenoiseTiling.Mix(original, mixed, pixelCount, alpha,
-            ds.Amount / 100f, ds.Luminance / 100f, ds.Color / 100f, luma);
-        ct.ThrowIfCancellationRequested();
-
-        var report = new DenoiseReport(spec.Id, spec.OnnxSha256, provider,
-            inferenceTime, totalTiles, cacheHit);
-
-        var needsDownscale = w != source.Width || h != source.Height;
+        var needsDownscale = full.Width != source.Width || full.Height != source.Height;
         if (full.Scene is { } sceneData)
         {
-            var newScene = sceneData with { Image = new RgbImage(w, h, mixed) };
-            var prepared = new SourceImage(newScene)
+            RgbImage image;
+            if (needsDownscale)
+            {
+                var preview = PreviewInputs(neural, source.Width, source.Height, ct);
+                var pixels = checked(source.Width * source.Height);
+                var mixed = (float[])preview.Denoised.Clone();
+                DenoiseTiling.Mix(preview.Original, mixed, pixels, null,
+                    ds.Amount / 100f, ds.Luminance / 100f, ds.Color / 100f, luma);
+                ct.ThrowIfCancellationRequested();
+                image = new RgbImage(source.Width, source.Height, mixed);
+            }
+            else
+            {
+                var pixels = checked(full.Width * full.Height);
+                var mixed = new float[checked(pixels * 3)];
+                Array.Copy(neural.Rgb, mixed, pixels * 3);
+                DenoiseTiling.Mix(sceneData.Image.Data, mixed, pixels, null,
+                    ds.Amount / 100f, ds.Luminance / 100f, ds.Color / 100f, luma);
+                ct.ThrowIfCancellationRequested();
+                image = new RgbImage(full.Width, full.Height, mixed);
+            }
+            return new SourceImage(sceneData with { Image = image })
             {
                 FilePath = source.FilePath,
                 RawOptions = source.RawOptions,
@@ -300,11 +312,36 @@ public sealed class DenoiseProcessor : IDisposable
                 Denoise = report,
                 ForegroundMask = source.ForegroundMask,
             };
-            return needsDownscale ? prepared.Resize(source.Width, source.Height) : prepared;
         }
-        var rgba16 = new ushort[checked(pixelCount * 4)];
-        DenoiseTiling.Interleave16(mixed, alpha!, pixelCount, rgba16);
-        var preparedRgb = new SourceImage(w, h, rgba16)
+        int outW;
+        int outH;
+        ushort[] rgba16;
+        if (needsDownscale)
+        {
+            outW = source.Width;
+            outH = source.Height;
+            rgba16 = new ushort[checked(outW * outH * 4)];
+            DenoiseTiling.MixDownscale16(full.Rgba16, full.Width, full.Height, neural.Rgb,
+                ds.Amount / 100f, ds.Luminance / 100f, ds.Color / 100f, luma,
+                rgba16, outW, outH, ct);
+        }
+        else
+        {
+            outW = full.Width;
+            outH = full.Height;
+            var pixels = checked(outW * outH);
+            var original = new float[checked(pixels * 3)];
+            var alpha = new float[pixels];
+            var mixed = new float[checked(pixels * 3)];
+            Array.Copy(neural.Rgb, mixed, pixels * 3);
+            DenoiseTiling.Deinterleave16(full.Rgba16, pixels, original, alpha);
+            DenoiseTiling.Mix(original, mixed, pixels, alpha,
+                ds.Amount / 100f, ds.Luminance / 100f, ds.Color / 100f, luma);
+            ct.ThrowIfCancellationRequested();
+            rgba16 = new ushort[checked(pixels * 4)];
+            DenoiseTiling.Interleave16(mixed, alpha, pixels, rgba16);
+        }
+        return new SourceImage(outW, outH, rgba16)
         {
             FilePath = source.FilePath,
             RawOptions = source.RawOptions,
@@ -315,8 +352,47 @@ public sealed class DenoiseProcessor : IDisposable
             Denoise = report,
             ForegroundMask = source.ForegroundMask,
         };
-        return needsDownscale ? preparedRgb.Resize(source.Width, source.Height) : preparedRgb;
     }
+
+    /// <summary>
+    /// 場景線性代理的預覽尺寸混合輸入：把全尺寸原始與神經結果各自 box 到
+    /// (<paramref name="w"/>, <paramref name="h"/>)（與 <see cref="SourceImage.Resize"/> 相同的
+    /// 濾鏡），快取於神經結果上（最近 4 個尺寸，<see cref="_sync"/> 保護；神經結果失效時
+    /// 一併拋棄）。box 對混合是仿射可交換的——先降採樣再混合等價於先混合再降採樣。
+    /// </summary>
+    private ScenePreview PreviewInputs(NeuralResult neural, int w, int h, CancellationToken ct)
+    {
+        lock (_sync)
+        {
+            var list = neural.Previews;
+            if (list is not null)
+                for (var i = 0; i < list.Count; i++)
+                    if (list[i].Width == w && list[i].Height == h)
+                    {
+                        var found = list[i];
+                        list.RemoveAt(i);
+                        list.Insert(0, found);
+                        return found;
+                    }
+        }
+        var image = neural.FullSource.Scene!.Image;
+        var original = Resample.Resize(image, w, h, ResampleFilter.Box);
+        var denoised = Resample.Resize(new RgbImage(image.Width, image.Height, neural.Rgb),
+            w, h, ResampleFilter.Box);
+        ct.ThrowIfCancellationRequested();
+        var entry = new ScenePreview(w, h, original.Data, denoised.Data);
+        lock (_sync)
+        {
+            var list = neural.Previews ??= new List<ScenePreview>(4);
+            list.RemoveAll(e => e.Width == w && e.Height == h);
+            list.Insert(0, entry);
+            while (list.Count > 4) list.RemoveAt(list.Count - 1);
+        }
+        return entry;
+    }
+
+    /// <summary>預覽尺寸的 box 後原始／降噪輸入。</summary>
+    private sealed record ScenePreview(int Width, int Height, float[] Original, float[] Denoised);
 
     /// <summary>模型檔戳記：最後寫入時間＋長度；供快速鍵比對與檔案替換偵測。</summary>
     private static (long Ticks, long Length) ModelStamp(string path)
@@ -403,9 +479,14 @@ public sealed class DenoiseProcessor : IDisposable
     private sealed record CacheKey(object Identity, int RefW, int RefH, RawLoadOptions RawOptions,
         string ModelId, string ModelRoot, (long Ticks, long Length) ModelStamp);
 
-    /// <summary>快取的全解析度神經結果（未混合）與其來源。</summary>
+    /// <summary>快取的全解析度神經結果（未混合）與其來源；匯出以此做全尺寸混合。</summary>
     private sealed record NeuralResult(CacheKey Key, float[] Rgb,
-        SourceImage FullSource, string Provider, TimeSpan InferenceTime, int TileCount);
+        SourceImage FullSource, string Provider, TimeSpan InferenceTime, int TileCount)
+    {
+        /// <summary>場景線性代理的預覽尺寸 box 輸入（最近 4 個尺寸，MRU 在前）。
+        /// 依附於本結果：結果失效時一併拋棄，不需額外失效邏輯；由 <see cref="_sync"/> 保護。</summary>
+        internal List<ScenePreview>? Previews;
+    }
 
     /// <summary>單一模型的 ORT session 與可重用 tensor 平面。</summary>
     private sealed class SessionHolder : IDisposable

@@ -53,7 +53,7 @@ internal sealed class GpuEffectPipeline : IDisposable
         _maskTexture = texture; _maskAlpha = alpha;
         return texture;
     }
-    private readonly ComputeKernel _decode, _encode8, _encode16, _display, _spike, _blur, _box,
+    private readonly ComputeKernel _decode, _encode8, _encode16, _display, _spike, _blur, _blurTile, _box,
         _crop, _basicLinear, _photoAdjust, _shadowStats, _shadowBox, _shadowApply, _lens, _multi, _double, _bokeh, _zoom, _motion, _vignette,
         _halExtract, _halAdd, _leak, _look, _plate, _foreground,
         _basicDisplay, _tone, _detail, _dirt, _grain, _texture;
@@ -83,6 +83,7 @@ internal sealed class GpuEffectPipeline : IDisposable
         _display = K("io/linear_to_display", tex, storage);
         _spike = K("spike/adjust", tex, storage, uniform);
         _blur = K("common/gaussian", tex, storage, uniform, BindingSpec.StorageRead);
+        _blurTile = K("common/gaussian_tile", tex, storage, uniform, BindingSpec.StorageRead);
         _box = K("geometry/box_blur", tex, storage);
         _crop = K("geometry/crop", tex, storage, uniform);
         _basicLinear = K("linear/basic_linear", tex, storage, uniform);
@@ -389,6 +390,9 @@ internal sealed class GpuEffectPipeline : IDisposable
         return output;
     }
 
+    /// <summary>平鋪式高斯的半徑上限：workgroup 記憶體容納 256＋2×r 個 vec4 時的界線（見 gaussian_tile.wgsl）。</summary>
+    private const int TileBlurMaxRadius = 320;
+
     private GpuTexture Blur(GpuCommandList commands, GpuTexture input, int radius, GpuTexture? reserve = null, float? sigma = null)
     {
         var key = (radius, sigma ?? MathF.Max(.5f, radius / 3f));
@@ -401,9 +405,28 @@ internal sealed class GpuEffectPipeline : IDisposable
         }
         var temp = Next(input, reserve);
         var result = Next(input, temp, reserve);
-        Dispatch(commands, _blur, [input, temp, Uniform(new BlurUniforms(1, 0, radius, 0)), weights]);
-        Dispatch(commands, _blur, [temp, result, Uniform(new BlurUniforms(0, 1, radius, 0)), weights]);
+        BlurPass(commands, input, temp, weights, horizontal: true, radius);
+        BlurPass(commands, temp, result, weights, horizontal: false, radius);
         return result;
+    }
+
+    /// <summary>
+    /// 單向高斯 pass：tile 半徑內用平鋪協作載入（與直接版相同的權重、clamp 邊界與 tap 順序），
+    /// 超出 tile 上限改派直接版；兩者的 uniform 與 binding 配置相同。
+    /// </summary>
+    private void BlurPass(GpuCommandList commands, GpuTexture input, GpuTexture output,
+        GpuBuffer weights, bool horizontal, int radius)
+    {
+        var uniform = Uniform(new BlurUniforms(horizontal ? 1 : 0, horizontal ? 0 : 1, radius, 0));
+        if (radius > TileBlurMaxRadius)
+        {
+            Dispatch(commands, _blur, [input, output, uniform, weights]);
+            return;
+        }
+        // tile 版 workgroup 為 256（1D）：x 為沿模糊軸的 tile 數，y 為行／列數。
+        var major = horizontal ? _width : _height;
+        var minor = horizontal ? _height : _width;
+        commands.Dispatch(_blurTile, [input, output, uniform, weights], (major + 255) / 256, minor);
     }
 
     private GpuTexture LutTexture(FilmLut lut)

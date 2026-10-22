@@ -360,6 +360,270 @@ public class DenoisingOrtTests : IDisposable
         Assert.False(retry.Denoise!.CacheHit);
         Assert.Equal(new ushort[] { 5000, 10000, 15000, 65535 }, retry.Rgba16);
     }
+    // ---- 預覽代理混合（快取命中後的重複強度變更） --------------------------------
+    // FilePath 一律指向實際存在的檔案（tiny ONNX 本身）：全尺寸來源先跑推論，
+    // 代理呼叫才走「來源戳記相同」的快取命中路徑，不會真的去解碼該檔案。
+
+    [Fact]
+    public void Prepare_SceneProxy_BlendMatchesDownscaledFullResultAndKeepsMetadata()
+    {
+        var onnx = MakeNegOnnx(TinyTile);
+        var dir = Dir("scene-proxy");
+        var modelPath = Path.Combine(dir, "tiny.onnx");
+        File.WriteAllBytes(modelPath, onnx);
+        var spec = TinySpec("tiny-neg-scene-proxy", "tiny.onnx", onnx, matchGain: false)
+            with { SceneLinear = true };
+
+        // 96×72 場景線性：含 >1 的 HDR 與負值、非整數縮放。
+        const int fw = 96, fh = 72;
+        var data = new float[fw * fh * 3];
+        for (var i = 0; i < fw * fh; i++)
+        {
+            data[i * 3] = 0.35f + (i % 19) * 0.113f + (i % 7 == 0 ? 1.4f : 0f);
+            data[i * 3 + 1] = 0.12f + (i % 11) * 0.041f;
+            data[i * 3 + 2] = -0.22f + (i % 13) * 0.053f;
+        }
+        var options = new RawLoadOptions(EmbeddedLensCorrections: true);
+        var mask = new FilmBatch.Core.Projects.ForegroundMask(4, 3, fw, fh,
+            [0, 16384, 32768, 65535, 65535, 32768, 16384, 0, 8192, 8192, 8192, 8192]);
+        var full = new SourceImage(new RawSceneData(
+                new FilmBatch.Raw.Raster.RgbImage(fw, fh, data), null, null, DenoiseTestScene.Geometry(fw, fh)))
+            { FilePath = modelPath, RawOptions = options }
+            .WithForegroundMask(mask);
+        var proxy = full.Downscale(29); // 29×22
+        Assert.Equal((fw, fh), (proxy.ReferenceWidth, proxy.ReferenceHeight));
+
+        DenoiseSettings[] strengths =
+        [
+            new(true, 30f, 100f, 40f),
+            new(true, 85f, 60f, 100f),
+            new(true, 100f, 0f, 100f),
+            new(true, 12f, 50f, 0f),
+        ];
+        var infers = 0;
+        void Count(DenoiseProgress p)
+        {
+            if (p.ModelId == spec.Id && p.Stage == "infer" && p.Completed == 0) infers++;
+        }
+        DenoiseProcessor.ProgressChanged += Count;
+        try
+        {
+            using var processor = new DenoiseProcessor(dir, "CPU");
+            var first = processor.Prepare(full, spec, strengths[0], TestContext.Current.CancellationToken);
+            Assert.False(first.Denoise!.CacheHit);
+            foreach (var ds in strengths)
+            {
+                // 期望值＝舊演算法鏈：匯出用的全尺寸混合結果再做同樣的 box 降採樣。
+                var expected = processor.Prepare(full, spec, ds, TestContext.Current.CancellationToken)
+                    .Resize(proxy.Width, proxy.Height).Scene!.Image.Data;
+                var actual = processor.Prepare(proxy, spec, ds, TestContext.Current.CancellationToken);
+                Assert.True(actual.Denoise!.CacheHit);
+                Assert.Equal(first.Denoise!.TileCount, actual.Denoise!.TileCount);
+                Assert.Equal((proxy.Width, proxy.Height), (actual.Width, actual.Height));
+                Assert.Equal((fw, fh), (actual.ReferenceWidth, actual.ReferenceHeight));
+                Assert.Equal(modelPath, actual.FilePath);
+                Assert.Equal(options, actual.RawOptions);
+                Assert.Same(mask, actual.ForegroundMask);
+                Assert.Same(full.Scene!.Geometry, actual.Scene!.Geometry);
+                var got = actual.Scene!.Image.Data;
+                Assert.Equal(expected.Length, got.Length);
+                for (var i = 0; i < got.Length; i++)
+                    Assert.InRange(MathF.Abs(expected[i] - got[i]), 0f, 0.0001f);
+            }
+            Assert.Equal(1, infers); // 重複強度變更一律重用推論，不重跑
+        }
+        finally { DenoiseProcessor.ProgressChanged -= Count; }
+    }
+
+    [Fact]
+    public void Prepare_SceneProxy_StrengthChange_OnlyMaterializesAtPreviewScale()
+    {
+        var onnx = MakeNegOnnx(TinyTile);
+        var dir = Dir("scene-proxy-alloc");
+        var modelPath = Path.Combine(dir, "tiny.onnx");
+        File.WriteAllBytes(modelPath, onnx);
+        var spec = TinySpec("tiny-neg-scene-alloc", "tiny.onnx", onnx, matchGain: false)
+            with { SceneLinear = true };
+        const int fw = 512, fh = 384;
+        var data = new float[fw * fh * 3];
+        for (var i = 0; i < fw * fh; i++)
+        {
+            data[i * 3] = 0.3f + (i % 23) * 0.07f;
+            data[i * 3 + 1] = 0.1f + (i % 13) * 0.03f;
+            data[i * 3 + 2] = -0.1f + (i % 17) * 0.04f;
+        }
+        var full = new SourceImage(new RawSceneData(
+                new FilmBatch.Raw.Raster.RgbImage(fw, fh, data), null, null, DenoiseTestScene.Geometry(fw, fh)))
+            { FilePath = modelPath };
+        var proxy = full.Downscale(160);
+        using var processor = new DenoiseProcessor(dir, "CPU");
+        var ds1 = new DenoiseSettings(true, 50f, 100f, 100f);
+        var ds2 = new DenoiseSettings(true, 30f, 60f, 100f);
+        processor.Prepare(full, spec, ds1, TestContext.Current.CancellationToken);
+        processor.Prepare(proxy, spec, ds1, TestContext.Current.CancellationToken);
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        var next = processor.Prepare(proxy, spec, ds2, TestContext.Current.CancellationToken);
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.True(next.Denoise!.CacheHit);
+        Assert.True(allocated < (long)fw * fh * 3 * sizeof(float) / 4,
+            $"重複強度變更不應配置全解析度平面，實際 {allocated} bytes");
+    }
+
+    [Theory]
+    [InlineData(37)]
+    [InlineData(53)]
+    public void Prepare_RgbaProxy_BlendMatchesDownscaledFullResult_AlphaAndMaskSurvive(int edge)
+    {
+        var onnx = MakeNegOnnx(TinyTile);
+        var dir = Dir("rgba-proxy-" + edge);
+        var modelPath = Path.Combine(dir, "tiny.onnx");
+        File.WriteAllBytes(modelPath, onnx);
+        var spec = TinySpec("tiny-neg-rgba-proxy-" + edge, "tiny.onnx", onnx, matchGain: false);
+        const int fw = 96, fh = 72;
+        var rgba = new ushort[fw * fh * 4];
+        for (var y = 0; y < fh; y++)
+        for (var x = 0; x < fw; x++)
+        {
+            var i = (y * fw + x) * 4;
+            rgba[i] = (ushort)(8000 + (x * 41 + y * 97) % 58000);
+            rgba[i + 1] = (ushort)((x * 67 + y * 29) % 65536);
+            rgba[i + 2] = (ushort)(15000 + (x * 11 + y * 53) % 50000);
+            rgba[i + 3] = (ushort)(x < 8 && y < 6 ? 0 : (x + y) % 3 == 0 ? 8192 : 65535);
+        }
+        var options = new RawLoadOptions(IncludeSemanticMasks: true);
+        var mask = new FilmBatch.Core.Projects.ForegroundMask(4, 3, fw, fh,
+            [65535, 0, 32768, 8192, 0, 65535, 16384, 32768, 8192, 16384, 32768, 65535]);
+        var full = new SourceImage(fw, fh, rgba)
+            { FilePath = modelPath, RawOptions = options }
+            .WithForegroundMask(mask);
+        var proxy = full.Downscale(edge);
+        DenoiseSettings[] strengths =
+        [
+            new(true, 100f, 100f, 0f),   // lum-only：Neg 下部分通道出界→逐像素夾取
+            new(true, 100f, 0f, 100f),
+            new(true, 60f, 80f, 40f),
+            new(true, 25f, 100f, 100f),
+            new(true, 100f, 100f, 100f),
+            new(true, 45f, 0f, 0f),      // 有效混合為零仍走完整管線
+        ];
+        using var processor = new DenoiseProcessor(dir, "CPU");
+        var first = processor.Prepare(full, spec, strengths[0], TestContext.Current.CancellationToken);
+        Assert.False(first.Denoise!.CacheHit);
+        SourceImage? last = null;
+        foreach (var ds in strengths)
+        {
+            var expected = processor.Prepare(full, spec, ds, TestContext.Current.CancellationToken)
+                .Resize(proxy.Width, proxy.Height).Rgba16;
+            var actual = processor.Prepare(proxy, spec, ds, TestContext.Current.CancellationToken);
+            Assert.True(actual.Denoise!.CacheHit);
+            Assert.Equal((proxy.Width, proxy.Height), (actual.Width, actual.Height));
+            Assert.Equal((fw, fh), (actual.ReferenceWidth, actual.ReferenceHeight));
+            Assert.Equal(modelPath, actual.FilePath);
+            Assert.Equal(options, actual.RawOptions);
+            Assert.Same(mask, actual.ForegroundMask);
+            Assert.Equal(expected, actual.Rgba16); // 位元級等同舊鏈（含 alpha 與夾取）
+            last = actual;
+        }
+        // 左上角全透明 box：覆蓋為 0 → RGB 與 alpha 皆 0。
+        Assert.Equal(new ushort[] { 0, 0, 0, 0 }, last!.Rgba16.AsSpan(0, 4).ToArray());
+    }
+
+    [Fact]
+    public void Prepare_RgbaProxy_ClippingMatchesPerPixelQuantizeContract()
+    {
+        var onnx = MakeNegOnnx(TinyTile);
+        var dir = Dir("rgba-proxy-clip");
+        var modelPath = Path.Combine(dir, "tiny.onnx");
+        File.WriteAllBytes(modelPath, onnx);
+        var spec = TinySpec("tiny-neg-clip", "tiny.onnx", onnx, matchGain: false);
+        // 2×1 純紅＋純藍（皆不透明）。lum-only 全量混合：紅 R→0.5748、藍 R→−0.1444（夾 0）；
+        // round(0.5748×65535)=37670，逐像素夾取後平均 R=18835；先平均再混合約為 14103。
+        var full = new SourceImage(2, 1,
+            [65535, 0, 0, 65535, 0, 0, 65535, 65535]) { FilePath = modelPath };
+        var proxy = full.Downscale(1);
+        var ds = new DenoiseSettings(true, 100f, 100f, 0f);
+        using var processor = new DenoiseProcessor(dir, "CPU");
+        var fullOut = processor.Prepare(full, spec, ds, TestContext.Current.CancellationToken);
+        var actual = processor.Prepare(proxy, spec, ds, TestContext.Current.CancellationToken);
+        Assert.True(actual.Denoise!.CacheHit);
+        Assert.Equal(fullOut.Resize(1, 1).Rgba16, actual.Rgba16);
+        var px = actual.Rgba16;
+        Assert.Equal((ushort)18835, px[0]); // (37670+0)/2
+        Assert.Equal((ushort)0, px[1]);
+        Assert.InRange((int)px[2], 28035, 28037); // (0+56072)/2
+        Assert.Equal((ushort)65535, px[3]);
+        Assert.True(Math.Abs(px[0] - 14103) > 1000,
+            "代理輸出必須是逐像素夾取後平均，而非先平均再混合");
+    }
+
+    [Fact]
+    public void Prepare_RgbaProxy_StrengthChange_OnlyMaterializesAtPreviewScale()
+    {
+        var onnx = MakeNegOnnx(TinyTile);
+        var dir = Dir("rgba-proxy-alloc");
+        var modelPath = Path.Combine(dir, "tiny.onnx");
+        File.WriteAllBytes(modelPath, onnx);
+        var spec = TinySpec("tiny-neg-rgba-alloc", "tiny.onnx", onnx, matchGain: false);
+        const int fw = 256, fh = 192;
+        var rgba = new ushort[fw * fh * 4];
+        for (var i = 0; i < fw * fh; i++)
+        {
+            rgba[i * 4] = (ushort)(10000 + (i * 37) % 40000);
+            rgba[i * 4 + 1] = (ushort)(20000 + (i * 53) % 30000);
+            rgba[i * 4 + 2] = (ushort)(30000 + (i * 11) % 35000);
+            rgba[i * 4 + 3] = 65535;
+        }
+        var full = new SourceImage(fw, fh, rgba) { FilePath = modelPath };
+        var proxy = full.Downscale(24);
+        using var processor = new DenoiseProcessor(dir, "CPU");
+        var ds1 = new DenoiseSettings(true, 50f, 100f, 100f);
+        var ds2 = new DenoiseSettings(true, 30f, 60f, 100f);
+        processor.Prepare(full, spec, ds1, TestContext.Current.CancellationToken);
+        processor.Prepare(proxy, spec, ds1, TestContext.Current.CancellationToken);
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        var next = processor.Prepare(proxy, spec, ds2, TestContext.Current.CancellationToken);
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.True(next.Denoise!.CacheHit);
+        Assert.True(allocated < (long)fw * fh * 3 * sizeof(float) / 4,
+            $"重複強度變更不應配置全解析度平面，實際 {allocated} bytes");
+    }
+
+    [Fact]
+    public void Prepare_ProxyCacheHit_CancellationLeavesCacheUsable()
+    {
+        var onnx = MakeNegOnnx(TinyTile);
+        var dir = Dir("proxy-cancel");
+        var modelPath = Path.Combine(dir, "tiny.onnx");
+        File.WriteAllBytes(modelPath, onnx);
+        var spec = TinySpec("tiny-neg-proxy-cancel", "tiny.onnx", onnx, matchGain: false);
+        var rgba = new ushort[8 * 6 * 4];
+        for (var i = 0; i < 8 * 6; i++)
+        {
+            rgba[i * 4] = (ushort)(10000 + i * 100);
+            rgba[i * 4 + 1] = (ushort)(20000 + i * 50);
+            rgba[i * 4 + 2] = (ushort)(30000 + i * 30);
+            rgba[i * 4 + 3] = 65535;
+        }
+        var full = new SourceImage(8, 6, rgba) { FilePath = modelPath };
+        var proxy = full.Downscale(4);
+        using var processor = new DenoiseProcessor(dir, "CPU");
+        var ds = new DenoiseSettings(true, 25f, 100f, 100f);
+        processor.Prepare(full, spec, ds, TestContext.Current.CancellationToken);
+        var warm = processor.Prepare(proxy, spec, ds, TestContext.Current.CancellationToken);
+        Assert.True(warm.Denoise!.CacheHit);
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        Assert.Throws<OperationCanceledException>(() =>
+            processor.Prepare(proxy, spec, new DenoiseSettings(true, 50f, 100f, 100f), cts.Token));
+        // 取消不污染快取：再次成功仍重用推論、輸出與舊鏈一致。
+        var ds2 = new DenoiseSettings(true, 50f, 100f, 100f);
+        var retry = processor.Prepare(proxy, spec, ds2, TestContext.Current.CancellationToken);
+        Assert.True(retry.Denoise!.CacheHit);
+        var expected = processor.Prepare(full, spec, ds2, TestContext.Current.CancellationToken)
+            .Resize(proxy.Width, proxy.Height).Rgba16;
+        Assert.Equal(expected, retry.Rgba16);
+    }
+
 
     // ---- 輔助 --------------------------------------------------------------------
 
