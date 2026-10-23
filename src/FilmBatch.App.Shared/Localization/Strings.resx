@@ -17,6 +17,13 @@
   <data name="Cmd.ResetSelected" xml:space="preserve"><value>重設選取照片</value></data>
   <data name="Histogram.Title" xml:space="preserve"><value>直方圖 · RGB / 亮度</value></data>
   <data name="Histogram.Clipping" xml:space="preserve"><value>暗部裁切 {0:P1}　亮部裁切 {1:P1}</value></data>
+  <data name="Histogram.HoverTip" xml:space="preserve"><value>色階 {0}
+R {1:P2}　G {2:P2}　B {3:P2}　亮度 {4:P2}</value></data>
+  <data name="Histogram.Legend.Luminance" xml:space="preserve"><value>亮度</value></data>
+  <data name="Histogram.Legend.RedTip" xml:space="preserve"><value>紅色通道：各色階（0 暗 → 255 亮）的紅色像素分布</value></data>
+  <data name="Histogram.Legend.GreenTip" xml:space="preserve"><value>綠色通道：各色階（0 暗 → 255 亮）的綠色像素分布</value></data>
+  <data name="Histogram.Legend.BlueTip" xml:space="preserve"><value>藍色通道：各色階（0 暗 → 255 亮）的藍色像素分布</value></data>
+  <data name="Histogram.Legend.LuminanceTip" xml:space="preserve"><value>亮度：依人眼感光加權（Rec.709）的整體明暗分布，以白色曲線表示</value></data>
   <data name="Cmd.Preferences" xml:space="preserve"><value>偏好設定…</value></data>
   <data name="Cmd.Exit" xml:space="preserve"><value>結束</value></data>
   <data name="Cmd.Undo" xml:space="preserve"><value>復原</value></data>

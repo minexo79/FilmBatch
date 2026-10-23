@@ -17,6 +17,13 @@
   <data name="Cmd.ResetSelected" xml:space="preserve"><value>Reset Selected Photos</value></data>
   <data name="Histogram.Title" xml:space="preserve"><value>Histogram · RGB / Luminance</value></data>
   <data name="Histogram.Clipping" xml:space="preserve"><value>Shadow clipping {0:P1}  Highlight clipping {1:P1}</value></data>
+  <data name="Histogram.HoverTip" xml:space="preserve"><value>Level {0}
+R {1:P2}  G {2:P2}  B {3:P2}  Luma {4:P2}</value></data>
+  <data name="Histogram.Legend.Luminance" xml:space="preserve"><value>Luma</value></data>
+  <data name="Histogram.Legend.RedTip" xml:space="preserve"><value>Red channel: distribution of red values per tone level (0 dark → 255 bright)</value></data>
+  <data name="Histogram.Legend.GreenTip" xml:space="preserve"><value>Green channel: distribution of green values per tone level (0 dark → 255 bright)</value></data>
+  <data name="Histogram.Legend.BlueTip" xml:space="preserve"><value>Blue channel: distribution of blue values per tone level (0 dark → 255 bright)</value></data>
+  <data name="Histogram.Legend.LuminanceTip" xml:space="preserve"><value>Luminance: overall brightness weighted for human vision (Rec. 709), drawn as the white curve</value></data>
   <data name="Cmd.Preferences" xml:space="preserve"><value>Preferences…</value></data>
   <data name="Cmd.Exit" xml:space="preserve"><value>Exit</value></data>
   <data name="Cmd.Undo" xml:space="preserve"><value>Undo</value></data>

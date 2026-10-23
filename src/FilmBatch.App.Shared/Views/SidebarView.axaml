@@ -15,6 +15,25 @@
           <Border Background="{DynamicResource FB.WindowBrush}" Padding="4">
             <c:HistogramView Name="Histogram" Height="96" Histogram="{Binding Preview.Histogram}" />
           </Border>
+          <!-- 圖例：滑過各色塊說明該曲線；滑過直方圖本身則顯示游標所在色階的像素占比 -->
+          <StackPanel Orientation="Horizontal" Spacing="12" Margin="4,0">
+            <StackPanel Orientation="Horizontal" Spacing="4" Background="Transparent" ToolTip.Tip="{l:Tr Histogram.Legend.RedTip}">
+              <Border Width="10" Height="10" CornerRadius="2" VerticalAlignment="Center" Background="#B40000" />
+              <TextBlock Classes="secondary small" VerticalAlignment="Center" Text="R" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="4" Background="Transparent" ToolTip.Tip="{l:Tr Histogram.Legend.GreenTip}">
+              <Border Width="10" Height="10" CornerRadius="2" VerticalAlignment="Center" Background="#00B400" />
+              <TextBlock Classes="secondary small" VerticalAlignment="Center" Text="G" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="4" Background="Transparent" ToolTip.Tip="{l:Tr Histogram.Legend.BlueTip}">
+              <Border Width="10" Height="10" CornerRadius="2" VerticalAlignment="Center" Background="#0000B4" />
+              <TextBlock Classes="secondary small" VerticalAlignment="Center" Text="B" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="4" Background="Transparent" ToolTip.Tip="{l:Tr Histogram.Legend.LuminanceTip}">
+              <Border Width="10" Height="10" CornerRadius="2" VerticalAlignment="Center" Background="#1FFFFFFF" BorderBrush="#8CFFFFFF" BorderThickness="1" />
+              <TextBlock Classes="secondary small" VerticalAlignment="Center" Text="{l:Tr Histogram.Legend.Luminance}" />
+            </StackPanel>
+          </StackPanel>
           <TextBlock Classes="secondary small numeric" Text="{Binding Preview.HistogramClipping}" Margin="4,0,4,8" />
         </StackPanel>
       </Expander>
