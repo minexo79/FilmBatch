@@ -540,4 +540,5 @@ R {1:P2}　G {2:P2}　B {3:P2}　亮度 {4:P2}</value></data>
   <data name="Curves.Readout" xml:space="preserve"><value>輸入 {0:0} → 輸出 {1:0}</value></data>
   <data name="Curves.Edit" xml:space="preserve"><value>調整色調曲線</value></data>
   <data name="Curves.Hint" xml:space="preserve"><value>點選新增控制點，拖曳調整；雙擊中間點或拖出上下邊界可刪除。</value></data>
+  <data name="Param.RandomSeed" xml:space="preserve"><value>隨機產生種子</value></data>
 </root>

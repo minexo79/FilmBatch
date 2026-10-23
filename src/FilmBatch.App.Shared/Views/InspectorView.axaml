@@ -67,6 +67,22 @@
                          Text="{Binding MaskStatusText}" IsVisible="{Binding HasMaskStatus}" />
             </StackPanel>
           </DataTemplate>
+          <!-- 種子：數字輸入框＋隨機按鈕（必須排在一般滑桿樣板之前，因為種子繼承滑桿 VM） -->
+          <DataTemplate DataType="vm:SeedParamViewModel">
+            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6" Classes="param-line" IsVisible="{Binding IsVisible}">
+              <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                <TextBlock Classes="param-name" Classes.overridden="{Binding IsOverridden}" Text="{Binding Label}" />
+                <Ellipse Classes="override-dot" IsVisible="{Binding IsOverridden}" />
+              </StackPanel>
+              <NumericUpDown Grid.Column="1" Classes="seed" Value="{Binding NumericValue, Mode=TwoWay}" FormatString="0"
+                             Minimum="{Binding Minimum}" Maximum="{Binding Maximum}" Increment="1" ShowButtonSpinner="False"
+                             Width="84" VerticalAlignment="Center" AutomationProperties.Name="{Binding Label}" />
+              <Button Grid.Column="2" Classes="tool" Padding="5" VerticalAlignment="Center" Command="{Binding RandomizeCommand}"
+                      ToolTip.Tip="{l:Tr Param.RandomSeed}" AutomationProperties.Name="{l:Tr Param.RandomSeed}">
+                <PathIcon Data="{StaticResource Icon.Dice}" Width="14" Height="14" />
+              </Button>
+            </Grid>
+          </DataTemplate>
           <DataTemplate DataType="vm:SliderParamViewModel">
             <c:ParamRow IsVisible="{Binding IsVisible}" />
           </DataTemplate>

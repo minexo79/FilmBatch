@@ -99,6 +99,7 @@ public abstract partial class ParamViewModel(string moduleKey, ParamDef def, IPa
         ParamKind.Choice => new ChoiceParamViewModel(moduleKey, def, host),
         ParamKind.Path or ParamKind.Text => new TextParamViewModel(moduleKey, def, host),
         ParamKind.Curve => new CurveParamViewModel(moduleKey, def, host),
+        ParamKind.Seed => new SeedParamViewModel(moduleKey, def, host),
         _ => new SliderParamViewModel(moduleKey, def, host),
     };
 }
@@ -158,6 +159,24 @@ public partial class SliderParamViewModel(string moduleKey, ParamDef def, IParam
     {
         if (SetProperty(ref _value, value.AsNumber, nameof(Value)))
             OnPropertyChanged(nameof(NumericValue));
+    }
+}
+
+/// <summary>隨機種子：以數字輸入框編輯，另有按鈕在可接受範圍（<see cref="ParamDef.Min"/>–<see cref="ParamDef.Max"/>）內隨機產生。</summary>
+public sealed partial class SeedParamViewModel(string moduleKey, ParamDef def, IParamHost host) : SliderParamViewModel(moduleKey, def, host)
+{
+    /// <summary>測試可替換的亂數來源。</summary>
+    internal Func<int, int, int> Next { get; set; } = System.Random.Shared.Next;
+
+    /// <summary>產生與目前不同的整數種子（範圍只有一個值時維持原值）；一筆復原紀錄。</summary>
+    [RelayCommand]
+    private void Randomize()
+    {
+        int min = (int)Minimum, max = (int)Maximum;
+        if (max <= min) return;
+        var seed = Next(min, max);
+        if (seed >= (int)Value) seed++;
+        Value = seed;
     }
 }
 
