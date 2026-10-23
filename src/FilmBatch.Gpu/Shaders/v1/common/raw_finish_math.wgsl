@@ -210,6 +210,10 @@ fn raw_finish(c: vec3f, luma: vec3f) -> vec3f {
 
     // --- gamut map to sRGB（gamut_map_to，peak = 1）
     var r = vec3f(dot3_ordered(p.row0.xyz, d), dot3_ordered(p.row1.xyz, d), dot3_ordered(p.row2.xyz, d));
+    if (p.band.extended_srgb != 0u) {
+        // Keep negative/over-one sRGB channels until the final output-space conversion.
+        return sign(r) * vec3f(linear_to_srgb1(abs(r.r)), linear_to_srgb1(abs(r.g)), linear_to_srgb1(abs(r.b)));
+    }
     let yy = clamp_f(dot3_ordered(OUT_LUMA, r), 0.0, 1.0);
     var t2 = 1.0;
     if (r.r < 0.0) { t2 = min(t2, divide_rounded(yy, max(rounded(yy - r.r), 1e-9))); }

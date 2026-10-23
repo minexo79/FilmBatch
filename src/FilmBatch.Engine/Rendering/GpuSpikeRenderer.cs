@@ -33,12 +33,13 @@ public sealed class GpuSpikeRenderer : IPreviewRenderer
     public static GpuSpikeRenderer Create(GpuDeviceOptions? options = null, EffectRendererOptions? effectOptions = null) =>
         new(GpuDevice.Create(options), effectOptions: effectOptions);
 
-    public SourceImage Render16(SourceImage source, Settings settings, CancellationToken cancellationToken = default)
+    public SourceImage Render16(SourceImage source, Settings settings, CancellationToken cancellationToken = default,
+        RgbEncoding encoding = RgbEncoding.Srgb)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (DenoiseSettings.From(settings).IsActive)
             source = DenoiseProcessor.Shared.Prepare(source, settings, cancellationToken);
-        var parameters = ModuleParams.From(source, settings);
+        var parameters = ModuleParams.From(source, settings, encoding);
         _assets.Prepare(source, parameters);
         // 匯出不受預覽記憶體預算限制：只要不超過裝置紋理上限就用 GPU，
         // 實際配置顯示記憶體失敗時才改用 CPU 等效路徑（不靜默截斷）。
@@ -54,7 +55,7 @@ public sealed class GpuSpikeRenderer : IPreviewRenderer
             _cpuReason = CoreText.T($"GPU 顯示記憶體不足：{error}", $"not enough GPU memory: {error}");
             return CpuPipeline.Process(source, parameters, null, cancellationToken);
         }
-        return new SourceImage(parameters.OutWidth, parameters.OutHeight, output)
+        return new SourceImage(parameters.OutWidth, parameters.OutHeight, output, encoding)
         {
             FilePath = source.FilePath, RawOptions = source.RawOptions,
             RawInfo = source.RawInfo, SemanticMasks = source.SemanticMasks,

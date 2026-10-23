@@ -53,7 +53,17 @@ LightLeaksUnity（程序化漏光） MIT https://github.com/danielzeller/LightLe
   Copyright (c) 2016 Daniel Zeller。src/FilmBatch.Engine/Rendering/CpuPipeline.cs 的 LightLeak 與
   optical/light_leak.wgsl 的三色電漿改編自 Assets/LightLeaks/LightLeaks.shader（已修改：以種子取代動畫時間、
   黃色轉線性光、各場重新映射並以 smoothstep 提高對比、加入色相旋轉、逐色權重與 screen/add/lighten 混合，並以既有邊緣包絡遮罩）。
-
+FilmBatch ProPhoto output profile（自行產生的 ICC 位元組；非第三方散布物，工具鏈需聲明） https://www.littlecms.com/
+  src/FilmBatch.Engine/Imaging/Raw/Profiles/prophoto-gamma18.icc（784 bytes，
+  SHA-256 44ef82ec4a2b2539ca31862738f2b211f10ae1438a50e121ff58a1eea9a0253d）
+  由 tools/prophoto-icc/gen.c 以 Little CMS 2.17（MIT，Copyright (c) 2023 Marti Maria Saguer；
+  Homebrew little-cms2 2.17）自數值色度產生，未複製或下載任何廠商設定檔。
+  數值定義：三原色 (0.734699,0.265301)、(0.159597,0.840403)、(0.036598,0.000105)，
+  白點 (0.3457,0.3585)（與 src/FilmBatch.Raw/Color/ColorMath.cs 的 ColorSpaces.ProPhoto 一致），
+  三通道純 gamma 1.8（ICC v4.3 display，D50 PCS）。本設定檔無嚴格 ROMM 的低亮度線性段、
+  無參考 flare；三原色與白點與 ROMM 相同。TRC 使用 para type 0，以 s15Fixed16
+  儲存 gamma 1.8000030517578125；不使用 v2 單值 curv 的低精度 gamma。
+  下方附 Little CMS 的 MIT 授權全文（LCMS 函式庫本身不隨本工具連結進應用程式）。
 Optional external AI model data (not embedded in the application)
 ----------------------------------------------------------------
 Packages: darktable-ai nightly-5.7.0
@@ -143,6 +153,27 @@ SOFTWARE.
 
 MIT License (LightLeaksUnity)
 Copyright (c) 2016 Daniel Zeller
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+MIT License (Little CMS, ProPhoto profile generator toolchain only)
+Copyright (c) 2023 Marti Maria Saguer
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

@@ -15,6 +15,7 @@ namespace FilmBatch.Engine.Rendering;
 /// </summary>
 public sealed class ModuleParams
 {
+    public RgbEncoding OutputEncoding;
     // crop（管線最前面；之後所有模組都以裁切後的畫框 OutWidth × OutHeight 計算）
     public CropParams Crop;
     public CropTransform CropT;
@@ -108,8 +109,9 @@ public sealed class ModuleParams
     internal EffectImage? DoubleAsset, LeakAsset, DirtAsset;
 
 
-    public static ModuleParams From(SourceImage source, Settings s)
+    public static ModuleParams From(SourceImage source, Settings s, RgbEncoding encoding = RgbEncoding.Srgb)
     {
+        RgbEncodingInfo.Validate(encoding);
         string? fileName = null;
         if (source.FilePath is { Length: > 0 } p)
             fileName = Path.GetFileName(p);
@@ -139,6 +141,7 @@ public sealed class ModuleParams
         var rawTemperature = ModuleCatalog.Param("raw.temperature")!;
         var m = new ModuleParams
         {
+            OutputEncoding = encoding,
             // crop
             SourceWidth = source.Width, SourceHeight = source.Height,
             ReferenceWidth = source.ReferenceWidth, ReferenceHeight = source.ReferenceHeight,

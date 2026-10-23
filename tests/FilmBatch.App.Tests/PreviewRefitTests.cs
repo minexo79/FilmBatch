@@ -114,8 +114,9 @@ public sealed class PreviewRefitTests
             return _inner.Render(source, settings, cancellationToken);
         }
 
-        public SourceImage Render16(SourceImage source, Settings settings, CancellationToken cancellationToken = default) =>
-            _inner.Render16(source, settings, cancellationToken);
+        public SourceImage Render16(SourceImage source, Settings settings, CancellationToken cancellationToken = default,
+            RgbEncoding encoding = RgbEncoding.Srgb) =>
+            _inner.Render16(source, settings, cancellationToken, encoding);
 
         public void Dispose() { _inner.Dispose(); Hold.Dispose(); }
     }

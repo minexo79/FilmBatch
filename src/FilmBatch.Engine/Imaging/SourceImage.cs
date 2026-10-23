@@ -14,8 +14,8 @@ namespace FilmBatch.Engine.Imaging;
 internal sealed record RawSceneData(RgbImage Image, CameraTone? Tone, RawWhiteBalance? WhiteBalance, RawSourceGeometry Geometry);
 
 /// <summary>
-/// 解碼後的影像來源。一般影像保存 16-bit sRGB RGBA；RAW 來源保存未量化的場景線性
-/// <see cref="Scene"/>，<see cref="Rgba16"/> 僅為顯示用途的延遲編碼副本，絕不作為 RAW 編輯輸入。
+/// 解碼後的影像來源或已渲染輸出。一般影像保存 16-bit sRGB RGBA，輸出以 <see cref="Encoding"/> 標明編碼；
+/// RAW 來源保存未量化的場景線性 <see cref="Scene"/>，<see cref="Rgba16"/> 僅為顯示用途的延遲副本。
 /// 以參考相等作為 GPU 端來源紋理快取的鍵：同一個物件只上傳一次。
 /// </summary>
 public sealed class SourceImage
@@ -23,10 +23,12 @@ public sealed class SourceImage
     private readonly ushort[]? _rgba16;
     private readonly Lazy<ushort[]>? _display;
 
-    public SourceImage(int width, int height, ushort[] rgba16)
+    public SourceImage(int width, int height, ushort[] rgba16, RgbEncoding encoding = RgbEncoding.Srgb)
     {
         if (width <= 0 || height <= 0 || rgba16.Length != (long)width * height * 4)
             throw new ArgumentException("RGBA16 data length must be width × height × 4.", nameof(rgba16));
+        RgbEncodingInfo.Validate(encoding);
+        Encoding = encoding;
         Width = width;
         Height = height;
         ReferenceWidth = width;
@@ -54,6 +56,7 @@ public sealed class SourceImage
         Width = source.Width;
         Height = source.Height;
         Scene = source.Scene;
+        Encoding = source.Encoding;
         _rgba16 = source._rgba16;
         _display = source._display;
     }
@@ -66,9 +69,10 @@ public sealed class SourceImage
     public int ReferenceWidth { get; init; }
     public int ReferenceHeight { get; init; }
     public bool IsSceneLinear => Scene is not null;
+    public RgbEncoding Encoding { get; }
 
     /// <summary>
-    /// 每像素 4 個 ushort（R、G、B、A）的 16-bit sRGB 顯示表示。
+    /// 每像素 4 個 ushort（R、G、B、A）；RGB 依 <see cref="Encoding"/> 編碼，alpha 是線性覆蓋率。
     /// RAW 來源為延遲產生的顯示編碼（一次性相機色調／色域映射／sRGB 量化）；不得用於 RAW 編輯。
     /// </summary>
     public ushort[] Rgba16 => _rgba16 ?? _display!.Value;
@@ -212,7 +216,7 @@ public sealed class SourceImage
                 dst[o + 3] = (ushort)(a / n);
             }
         }
-        return new SourceImage(w, h, dst)
+        return new SourceImage(w, h, dst, Encoding)
         {
             FilePath = FilePath, RawOptions = RawOptions, RawInfo = RawInfo, SemanticMasks = SemanticMasks,
             ReferenceWidth = ReferenceWidth, ReferenceHeight = ReferenceHeight,

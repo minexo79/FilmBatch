@@ -35,6 +35,7 @@ internal sealed class GpuEffectPipeline : IDisposable
     private GpuBuffer? _output, _readback, _band;
     // 色調曲線查表（3 × ToneCurveSet.Size 個 float）：第一次用到曲線時才配置，之後每次算圖覆寫重用。
     private GpuBuffer? _curveTable;
+    private ComputeKernel? _proPhotoOutput;
     private uint _width, _height, _bandRows;
     private int _uniformIndex;
     private ulong _pendingBlurSamples;
@@ -84,7 +85,7 @@ internal sealed class GpuEffectPipeline : IDisposable
         _foreground = K("io/foreground_alpha", tex, tex, storage);
         _encode8 = K("io/encode_bgra8", tex, BindingSpec.Storage, uniform);
         _encode16 = K("io/encode_rgba16", tex, BindingSpec.Storage, uniform);
-        _display = K("io/linear_to_display", tex, storage);
+        _display = K("io/linear_to_display", tex, storage, uniform);
         _spike = K("spike/adjust", tex, storage, uniform);
         _blur = K("common/gaussian", tex, storage, uniform, BindingSpec.StorageRead);
         _blurTile = K("common/gaussian_tile", tex, storage, uniform, BindingSpec.StorageRead);
@@ -217,7 +218,7 @@ internal sealed class GpuEffectPipeline : IDisposable
         var radius = p.BlurRadiusPixels(source.ShortSide);
         if (radius > 0) current = Blur(commands, current, radius);
         var display = Next(current);
-        Dispatch(commands, _display, [current, display]);
+        Dispatch(commands, _display, [current, display, Uniform(new DisplayUniforms(0, 0, 0, 0))]);
         Finish(commands, display, destination, default);
         TrimSources();
     }
@@ -323,8 +324,9 @@ internal sealed class GpuEffectPipeline : IDisposable
                 p.PlateUneven / 100, p.SeedPhotoPlate, _width / (float)_height, 0, 0));
         token.ThrowIfCancellationRequested();
         var display = Next(current);
-        if (source.Scene is { } scene) _rawDisplay.Dispatch(commands, current, display, scene.Tone);
-        else Dispatch(commands, _display, [current, display]);
+        var proPhoto = p.OutputEncoding == RgbEncoding.ProPhoto;
+        if (source.Scene is { } scene) _rawDisplay.Dispatch(commands, current, display, scene.Tone, proPhoto);
+        else Dispatch(commands, _display, [current, display, Uniform(new DisplayUniforms(proPhoto ? 1u : 0u, 0, 0, 0))]);
         current = display;
         if (p.BasicOn)
         {
@@ -364,7 +366,25 @@ internal sealed class GpuEffectPipeline : IDisposable
                 p.SeedGrain, (uint)p.GrainModel, (uint)p.GrainSamples, (uint)d.RoughQ,
                 new Vector4(p.GrainShadows / 100, p.GrainMidtones / 100, p.GrainHighlights / 100, d.Geom.PixelScale)), blurred);
         }
+        if (proPhoto)
+        {
+            _proPhotoOutput ??= CreateProPhotoKernel();
+            var m = RgbEncodingInfo.SrgbToProPhoto;
+            var luma = RgbEncodingInfo.ProPhotoLuma;
+            current = Apply(_proPhotoOutput, new OutputColorUniforms(
+                new(m[0], m[1], m[2], 0), new(m[3], m[4], m[5], 0), new(m[6], m[7], m[8], 0),
+                new(luma.R, luma.G, luma.B, 0)));
+        }
         return current;
+    }
+
+    private ComputeKernel CreateProPhotoKernel()
+    {
+        var kernel = _gpu.CreateKernel(_shaders.Load("io/prophoto_output.wgsl"), "main",
+            [BindingSpec.TextureFloat, BindingSpec.StorageTexture(GpuTextureFormat.Rgba32Float), BindingSpec.Uniform],
+            "ProPhoto output");
+        _kernels.Add(kernel);
+        return kernel;
     }
 
     private TextureUniforms OverlayUniforms(ModuleParams p, GpuTexture asset, bool leak)
@@ -612,7 +632,7 @@ internal sealed class GpuEffectPipeline : IDisposable
     /// <summary>解碼來源到指定線性紋理並送出（SDR 上傳 16-bit 紋理解碼；RAW 先 CPU 色彩轉換再寫入）。</summary>
     private void DecodeSource(SourceImage source, GpuTexture destination)
     {
-        if (source.Scene is not null)
+        if (source.Scene is not null || source.Encoding == RgbEncoding.ProPhoto)
         {
             // Only the source color-space conversion runs on CPU; all editing and finishing stays on GPU.
             var working = CpuPipeline.DecodeLinear(source);
@@ -684,6 +704,9 @@ internal sealed class GpuEffectPipeline : IDisposable
 
     [StructLayout(LayoutKind.Sequential)] private readonly record struct MatrixUniforms(Vector4 Row0, Vector4 Row1, Vector4 Row2);
     [StructLayout(LayoutKind.Sequential)] private readonly record struct BandUniforms(uint Row, uint Rows, uint Pad0, uint Pad1);
+    [StructLayout(LayoutKind.Sequential)] private readonly record struct DisplayUniforms(uint ExtendedSrgb, uint Pad0, uint Pad1, uint Pad2);
+    // io/prophoto_output.wgsl: four vec4f rows at 0/16/32/48, total 64 bytes.
+    [StructLayout(LayoutKind.Sequential)] private readonly record struct OutputColorUniforms(Vector4 Row0, Vector4 Row1, Vector4 Row2, Vector4 Luma);
     /// <summary>geometry/crop.wgsl：OutToSource 仿射（列主序）＋ 來源尺寸，32 位元組。</summary>
     [StructLayout(LayoutKind.Sequential)] private readonly record struct CropUniforms(float M00, float M01, float M02, float SrcW, float M10, float M11, float M12, float SrcH);
     [StructLayout(LayoutKind.Sequential)] private readonly record struct BlurUniforms(int X, int Y, int Radius, uint FirstGroup);

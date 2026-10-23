@@ -209,7 +209,8 @@ public sealed class PreviewDeliveryTests
             }
             return _inner.Render(source, settings, renderCancellation);
         }
-        public SourceImage Render16(SourceImage source, Settings settings, CancellationToken token = default) => _inner.Render16(source, settings, token);
+        public SourceImage Render16(SourceImage source, Settings settings, CancellationToken token = default,
+            RgbEncoding encoding = RgbEncoding.Srgb) => _inner.Render16(source, settings, token, encoding);
         public void Dispose() { _inner.Dispose(); foreach (var gate in Release) gate.Dispose(); }
     }
 }

@@ -16,19 +16,22 @@ namespace FilmBatch.Engine.Rendering;
 public static class CpuPipeline
 {
     /// <summary>
-    /// 完整處理到 16-bit sRGB RGBA。若 <paramref name="outRgba16"/> 非 null 則寫入其中（長度必須為 w*h*4）。
+    /// 完整處理到指定編碼的 16-bit RGBA。若 <paramref name="outRgba16"/> 非 null 則寫入其中（長度必須為 w*h*4）。
     /// 取消：在 pass 之間檢查，丟出 <see cref="OperationCanceledException"/>。
     /// </summary>
-    public static SourceImage Process(SourceImage source, Settings settings, ushort[]? outRgba16, CancellationToken ct)
+    public static SourceImage Process(SourceImage source, Settings settings, ushort[]? outRgba16, CancellationToken ct,
+        RgbEncoding encoding = RgbEncoding.Srgb)
     {
         if (DenoiseSettings.From(settings).IsActive)
             source = DenoiseProcessor.Shared.Prepare(source, settings, ct);
-        var p = ModuleParams.From(source, settings);
+        var p = ModuleParams.From(source, settings, encoding);
         return Process(source, p, outRgba16, ct);
     }
 
     public static SourceImage Process(SourceImage source, ModuleParams p, ushort[]? outRgba16, CancellationToken ct)
     {
+        RgbEncodingInfo.Validate(p.OutputEncoding);
+        var proPhoto = p.OutputEncoding == RgbEncoding.ProPhoto;
         var cur = DecodeLinear(source);
         ct.ThrowIfCancellationRequested();
 
@@ -92,14 +95,17 @@ public static class CpuPipeline
         ct.ThrowIfCancellationRequested();
 
         // ③→④ 顯示空間
-        if (source.Scene is { } scene) RawDisplay.FinishLinear(cur, scene.Tone);
+        if (source.Scene is { } scene) RawDisplay.FinishLinear(cur, scene.Tone, proPhoto);
         else Parallel.For(0, n, i =>
         {
             var s = i * 4;
             // MathF.Pow 保留純量：M3 實測 Exp(Log) 向量組合反而較慢。
             var px = Vector128.LoadUnsafe(ref cur[s]);
-            Vector128.Create(LinearToSrgb(px[0]), LinearToSrgb(px[1]), LinearToSrgb(px[2]), px[3])
-                .CopyTo(cur, s);
+            var rgb = proPhoto
+                ? Vector128.Create(RgbEncodingInfo.EncodeExtendedSrgb(px[0]), RgbEncodingInfo.EncodeExtendedSrgb(px[1]),
+                    RgbEncodingInfo.EncodeExtendedSrgb(px[2]), px[3])
+                : Vector128.Create(LinearToSrgb(px[0]), LinearToSrgb(px[1]), LinearToSrgb(px[2]), px[3]);
+            rgb.CopyTo(cur, s);
         });
         ct.ThrowIfCancellationRequested();
 
@@ -123,19 +129,24 @@ public static class CpuPipeline
         if (p.GrainOn && (p.GrainAmount > 0 || p.GrainSoftness > 0)) Grain(cur, a, b, w, h, p);
         ct.ThrowIfCancellationRequested();
 
-        // 編碼回 16-bit sRGB RGBA
+        // 最後才轉到輸出色域／TRC，再量化；sRGB 路徑沿用既有運算。
         var outArr = outRgba16 ?? new ushort[n * 4];
         if (outArr.Length != n * 4) throw new ArgumentException("outRgba16 長度必須為 w*h*4", nameof(outRgba16));
         Parallel.For(0, n, i =>
         {
             var s = i * 4;
             var px = Vector128.LoadUnsafe(ref cur[s]);
+            if (proPhoto)
+            {
+                var (r, g, b0) = RgbEncodingInfo.EncodeProPhoto(px[0], px[1], px[2]);
+                px = Vector128.Create(r, g, b0, px[3]);
+            }
             var q = Vector128.ConvertToInt32(
                 Vector128.Round(Vector128.Max(Vector128.Min(px, Vector128.Create(1f)), Vector128.Create(0f)) * 65535f));
             var packed = Vector128.Narrow(q.AsUInt32(), q.AsUInt32());
             packed.GetLower().StoreUnsafe(ref outArr[s]);
         });
-        return new SourceImage(w, h, outArr)
+        return new SourceImage(w, h, outArr, p.OutputEncoding)
         {
             FilePath = source.FilePath, RawOptions = source.RawOptions,
             RawInfo = source.RawInfo, SemanticMasks = source.SemanticMasks,
@@ -163,6 +174,16 @@ public static class CpuPipeline
             return result;
         }
         var input = source.Rgba16;
+        if (source.Encoding == RgbEncoding.ProPhoto)
+        {
+            Parallel.For(0, source.Width * source.Height, pixel =>
+            {
+                var i = pixel * 4;
+                var (r, g, b) = RgbEncodingInfo.DecodeProPhoto(input[i] / 65535f, input[i + 1] / 65535f, input[i + 2] / 65535f);
+                result[i] = r; result[i + 1] = g; result[i + 2] = b; result[i + 3] = input[i + 3] / 65535f;
+            });
+            return result;
+        }
         var scale = Vector128.Create(65535f);
         Parallel.For(0, source.Width * source.Height, pixel =>
         {

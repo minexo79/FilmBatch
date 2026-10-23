@@ -25,10 +25,11 @@ public interface IPreviewRenderer : IDisposable
     /// <summary>預覽：輸出 8-bit BGRA。</summary>
     RenderResult Render(SourceImage source, Settings settings, CancellationToken cancellationToken = default);
     /// <summary>
-    /// 完整算圖：輸出 16-bit sRGB RGBA（與輸入同位深），供匯出。
+    /// 完整算圖：輸出以 <paramref name="encoding"/> 編碼的 16-bit RGBA，供匯出；預覽仍為 sRGB。
     /// 尊重 <paramref name="cancellationToken"/>（在 pass 之間檢查）；超過 GPU 上限時自動改用 CPU 等效路徑。
     /// </summary>
-    SourceImage Render16(SourceImage source, Settings settings, CancellationToken cancellationToken = default);
+    SourceImage Render16(SourceImage source, Settings settings, CancellationToken cancellationToken = default,
+        RgbEncoding encoding = RgbEncoding.Srgb);
 }
 
 /// <summary>獨立 GPU benchmark 的參數；產品算圖使用完整的 Settings 管線。</summary>

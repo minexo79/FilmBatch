@@ -42,7 +42,8 @@ public sealed class RenderSchedulerReconfigureTests
             }
             return new RenderResult(source.Width, source.Height, bgra, TimeSpan.Zero);
         }
-        public SourceImage Render16(SourceImage source, Settings settings, CancellationToken cancellationToken = default) => source;
+        public SourceImage Render16(SourceImage source, Settings settings, CancellationToken cancellationToken = default,
+            RgbEncoding encoding = RgbEncoding.Srgb) => source;
         public void Dispose() { }
     }
 
@@ -60,7 +61,8 @@ public sealed class RenderSchedulerReconfigureTests
             for (var i = 0; i < bgra.Length; i += 4) { bgra[i] = 10; bgra[i + 1] = 10; bgra[i + 2] = 10; }
             return new RenderResult(source.Width, source.Height, bgra, TimeSpan.Zero);
         }
-        public SourceImage Render16(SourceImage source, Settings settings, CancellationToken cancellationToken = default) => source;
+        public SourceImage Render16(SourceImage source, Settings settings, CancellationToken cancellationToken = default,
+            RgbEncoding encoding = RgbEncoding.Srgb) => source;
         public void Dispose() { }
     }
 

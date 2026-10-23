@@ -72,9 +72,9 @@ internal static class RawDisplay
     /// <summary>
     /// 線性 sRGB 工作緩衝（rgba，未夾取、可含色域外負值）的 RAW 顯示收尾：
     /// 原地套用與 <see cref="Encode"/> 同順序的色調／去飽和／色域映射與精確 sRGB 曲線，
-    /// 輸出仍在 [0,1] 的顯示 sRGB；alpha 通道不變。渲染管線在效果之後只執行一次。
+    /// ProPhoto 匯出延後色域映射並保留有號延伸 sRGB；一般預覽仍輸出 [0,1] sRGB。alpha 不變。
     /// </summary>
-    internal static void FinishLinear(float[] rgba, CameraTone? tone)
+    internal static void FinishLinear(float[] rgba, CameraTone? tone, bool extendedSrgb = false)
     {
         var map = tone is null ? ToneMap.Create(0.0, 0.0, 0.0) : ToneMap.Camera(tone, 0.0, 0.0, 0.0);
         var (input, m) = RawFinishParams.Working;
@@ -86,10 +86,10 @@ internal static class RawDisplay
             var c0 = input[0] * rgba[o] + input[1] * rgba[o + 1] + input[2] * rgba[o + 2];
             var c1 = input[3] * rgba[o] + input[4] * rgba[o + 1] + input[5] * rgba[o + 2];
             var c2 = input[6] * rgba[o] + input[7] * rgba[o + 1] + input[8] * rgba[o + 2];
-            var (r0, r1, r2) = FinishCore(map, c0, c1, c2, luma, m);
-            rgba[o] = LinearToSrgb(r0);
-            rgba[o + 1] = LinearToSrgb(r1);
-            rgba[o + 2] = LinearToSrgb(r2);
+            var (r0, r1, r2) = FinishCore(map, c0, c1, c2, luma, m, extendedSrgb);
+            rgba[o] = extendedSrgb ? RgbEncodingInfo.EncodeExtendedSrgb(r0) : LinearToSrgb(r0);
+            rgba[o + 1] = extendedSrgb ? RgbEncodingInfo.EncodeExtendedSrgb(r1) : LinearToSrgb(r1);
+            rgba[o + 2] = extendedSrgb ? RgbEncodingInfo.EncodeExtendedSrgb(r2) : LinearToSrgb(r2);
         });
     }
 
@@ -98,7 +98,7 @@ internal static class RawDisplay
     /// 高光去飽和、以 <paramref name="m"/> 轉到 sRGB 後做色域映射。輸出為未編碼線性 sRGB（已收進 [0,1]）。
     /// </summary>
     private static (float R, float G, float B) FinishCore(
-        ToneMap map, float c0, float c1, float c2, float[] luma, float[] m)
+        ToneMap map, float c0, float c1, float c2, float[] luma, float[] m, bool extendedSrgb = false)
     {
         // --- tone map on luminance, highlight desaturation（finish_with 原順序）
         var yl = c0 * luma[0] + c1 * luma[1] + c2 * luma[2];
@@ -135,6 +135,7 @@ internal static class RawDisplay
         var r0 = m[0] * d0 + m[1] * d1 + m[2] * d2;
         var r1 = m[3] * d0 + m[4] * d1 + m[5] * d2;
         var r2 = m[6] * d0 + m[7] * d1 + m[8] * d2;
+        if (extendedSrgb) return (r0, r1, r2);
         var yy = Clamp(OutLuma[0] * r0 + OutLuma[1] * r1 + OutLuma[2] * r2, 0f, 1f);
         var t2 = 1f;
         if (r0 < 0f) t2 = MathF.Min(t2, yy / MathF.Max(yy - r0, 1e-9f));

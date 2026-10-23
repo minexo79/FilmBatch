@@ -39,16 +39,18 @@ public sealed class CpuFakeRenderer : IPreviewRenderer
         };
     }
 
-    public SourceImage Render16(SourceImage source, Settings settings, CancellationToken cancellationToken = default)
+    public SourceImage Render16(SourceImage source, Settings settings, CancellationToken cancellationToken = default,
+        RgbEncoding encoding = RgbEncoding.Srgb)
     {
         if (DenoiseSettings.From(settings).IsActive)
             source = DenoiseProcessor.Shared.Prepare(source, settings, cancellationToken);
-        return RenderPrepared16(source, settings, cancellationToken);
+        return RenderPrepared16(source, settings, cancellationToken, encoding);
     }
 
-    private SourceImage RenderPrepared16(SourceImage source, Settings settings, CancellationToken cancellationToken)
+    private SourceImage RenderPrepared16(SourceImage source, Settings settings, CancellationToken cancellationToken,
+        RgbEncoding encoding = RgbEncoding.Srgb)
     {
-        var parameters = ModuleParams.From(source, settings);
+        var parameters = ModuleParams.From(source, settings, encoding);
         _assets.Prepare(source, parameters);
         return CpuPipeline.Process(source, parameters, null, cancellationToken);
     }

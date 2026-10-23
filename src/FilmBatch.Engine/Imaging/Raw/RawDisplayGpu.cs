@@ -24,13 +24,14 @@ internal sealed class RawDisplayGpu : IDisposable
     private bool _toneReady;
 
     // Records the finish directly between linear effects and display effects. No CPU readback.
-    internal void Dispatch(GpuCommandList commands, GpuTexture input, GpuTexture output, CameraTone? tone)
+    internal void Dispatch(GpuCommandList commands, GpuTexture input, GpuTexture output, CameraTone? tone,
+        bool extendedSrgb = false)
     {
         Prepare(tone);
         var f = RawFinishParams.Working;
         var m = f.Output; var conversion = f.Input;
         var values = new WorkingUniforms(new FinishUniforms(m[0], m[1], m[2], 0,
-            m[3], m[4], m[5], 0, m[6], m[7], m[8], 0, output.Width, output.Height, 0, 0),
+            m[3], m[4], m[5], 0, m[6], m[7], m[8], 0, output.Width, output.Height, 0, extendedSrgb ? 1u : 0u),
             new Vector4(conversion[0], conversion[1], conversion[2], 0),
             new Vector4(conversion[3], conversion[4], conversion[5], 0),
             new Vector4(conversion[6], conversion[7], conversion[8], 0));
@@ -88,5 +89,5 @@ internal sealed class RawDisplayGpu : IDisposable
         float M00, float M01, float M02, float Pad0,
         float M10, float M11, float M12, float Pad1,
         float M20, float M21, float M22, float Pad2,
-        uint Width, uint Rows, uint RoundingMask, uint Pad3); // RoundingMask 固定 0，保留 shader 的 f32 捨入點。
+        uint Width, uint Rows, uint RoundingMask, uint ExtendedSrgb); // ExtendedSrgb at byte 60; total WorkingUniforms 112 bytes.
 }
