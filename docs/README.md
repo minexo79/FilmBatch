@@ -15,6 +15,7 @@
 | 排查大量資料夾載入、縮圖進度或 CPU 佔用 | [載入與背景 CPU](architecture.md#大量照片載入與背景-cpu) | [載入／即時預覽回歸](building.md#大量照片載入與即時預覽回歸) → [本次需求與觀察](superpowers/plans/2026-10-18-progressive-photo-loading.md) |
 | 調整底片色彩或新增 LUT | [底片風格](film-looks.md) | [LUT 轉換工具](../tools/film-luts/README.md) → [授權聲明](../THIRD-PARTY-NOTICES.txt) |
 | 排查 GPU 精度或效能 | [算圖管線](architecture.md#46-engine算圖管線rendering) | [GPU／SIMD 選型與量測](adr/0003-gpu-stack-decision.md) → [Shader 驗證](building.md#shader-驗證) |
+| 重播跨平台編解碼、色彩或匯出差異 | [跨平台影像實驗手冊](cross-platform-imaging-experiments.md) | 固定版本／輸入／設定，分開感光、算圖、codec 與顯示；查歷次反例、獨立 oracle 與 Windows／iOS 證據邊界 |
 | 使用 AI 降噪、安裝模型或排查推論 | [AI 降噪決策與資料域](adr/0002-ai-denoise.md) | [CLI／安裝操作](building.md#本機-ai-降噪) → [驗證計畫與結果](superpowers/plans/2026-10-19-ai-denoising.md)；比較其他方案時查[來源 Survey](ai-denoise-survey.md) |
 | 使用批次 AI 去背、CLI、逐筆遮罩復原或排查透明匯出 | [本機 AI 去背](building.md#本機-ai-去背) | [批次與逐筆操作](building.md#批次去背與草稿逐筆復原) → [來源回歸與尚未驗證項目](building.md#去背驗證現況2026-10-22) → [驗證入口 V1](../VERIFY.md#v1) → [逐張遮罩與專案格式](architecture.md#42-core專案與照片設定projects)；不等於下列生成式物件移除 |
 | 評估物件移除、選取輔助與可重開的修補 | [續驗決策](object-removal-survey.md#10-續驗與採用決策) → [權重來源](object-removal-survey.md#11-權重來源與後續研究) → [場景微調](object-removal-survey.md#12-場景微調vae-身分與原生續驗) → [平行替代方案](object-removal-survey.md#13-多角色替代方案與實驗) → [小型模型／Depth](object-removal-survey.md#14-小型模型與-depth-分層實驗) → [提示詞／LLM 對照](object-removal-survey.md#15-提示詞與-llm-引導實驗) → [ADR 0005](adr/0005-ai-object-removal.md) | [操作與資料契約](object-removal-design.md) → [實作計畫](superpowers/plans/2026-10-20-ai-object-removal.md)；古典／donor、Depth 與提示詞均是研究，LLM 不等於 VLM；舊 `dist/` 與新 v2 分開；通用移除／T1 仍 NO-GO |
@@ -34,6 +35,7 @@
 | [architecture.md](architecture.md)、[building.md](building.md)、[film-looks.md](film-looks.md) | 現行契約與操作方式；修改相關程式時一起更新 |
 | [VERIFY.md](../VERIFY.md) | 執行入口與失敗分類，不是主機強制的政策或鎖定 oracle |
 | [history.md](history.md) | 精選真實提交、理由與取代關係；Git 保留完整歷史 |
+| [跨平台影像實驗手冊](cross-platform-imaging-experiments.md) | 從 macOS 移植至 ProPhoto 的實驗方法、反例、重播入口與證據保存規則；歷史結果不自動延伸到目前版本 |
 | [ADR 0001](adr/0001-webgpu-binding.md)、[ADR 0003](adr/0003-gpu-stack-decision.md) | GPU 選型、量測與後續修正；依文中的日期、狀態與邊界解讀 |
 | [ADR 0002](adr/0002-ai-denoise.md) | 現行 RawNIND／NAFNet 選型、原生推論、取消、快取、模型雜湊與授權；整合驗收狀態以連結的計畫為準 |
 | [AI 降噪 Survey](ai-denoise-survey.md) | 2026-10-18 的來源調查與 2026-10-19 的採用註記；歷史調查邊界不代表目前仍無推論 |

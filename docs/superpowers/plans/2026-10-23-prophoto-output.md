@@ -124,3 +124,26 @@ For `dist/bug202610232110`, the Windows JPEG's black/blue posterization is in de
 
 Both reports need the corresponding `.filmbatch/export_log.json` (or project/preset snapshots), Windows build revision and renderer; matched Windows CPU/GPU execution may then be required. No configured Windows SSH host/VM was available. No speculative DX12 patch was made, and this ProPhoto precision correction is **not** claimed to fix either report. Compact forensic and controlled-run receipts are included in the evidence archive.
 
+## Post-merge verification — 2026-10-23
+
+The user subsequently authorized logical commits, merging the latest `origin/dev-ai-denoising`, historical-method documentation and a normal push. Implementation was split into `0786aa0` (color/rendering/profile), `0c496e4` (codecs/metadata), and `566de17` (export consumers/documentation). Merge `5f93b59` integrates upstream `31f23a7`, including the reset-to-Neutral behavior and seed input/random button. Git merged the two localization catalogs automatically; an independent XML check confirmed the exact union of both parents' keys/values without duplicates. No manual conflict remained.
+
+The following results were executed on **merged revision `5f93b59`**, separately from the pre-merge evidence above:
+
+| Merged Release suite | Passed | Skipped | Failed |
+|---|---:|---:|---:|
+| Core | 754 | 27 | 0 |
+| App | 306 | 0 | 0 |
+| Raw | 643 | 293 | 0 |
+| Total | 1,703 | 320 | 0 |
+
+The same 314 external RAW/oracle, one `rawinfo`, and five Windows-only cases remain skipped. Counts were checked against individual TRX outcomes: this runner writes `Counters.notExecuted=0` even when results contain `outcome="NotExecuted"`. All 38 expanded WGSL entry points passed Naga; the Release CLI build had zero warnings/errors.
+
+The merged native app completed the 4672×7008 ProPhoto PNG export without changing preview bytes or histogram; TIFF retained ProPhoto and JPEG reset to disabled sRGB. All three native screenshots were inspected. Five valid CLI exports returned 0 with the expected renderer/color-space labels; the three invalid combinations returned 2 without files. Magick and Apple PNG16/TIFF16 patch round-trips preserved exact RGBA16, alpha and ICC.
+
+Full-image comparison again measured CPU/Metal maximum **1/65535**, same-renderer TIFF/PNG **0**, and native-GUI/CLI Metal **0**, without changing the **2/65535** criterion. Both renderers retained 31,390 out-of-sRGB pixels in the same 271,150-pixel grid. Independent in-gamut CMS comparison again measured mean 0.01161, p99 0.03113 and maximum 0.07782 in 8-bit codes; original and copied RAW hashes were unchanged.
+
+The orchestration initially supplied nonexistent `.tiff` paths to the final comparison, after tests and exports had succeeded. Only that read-only comparison was rerun, using actual `.tif` paths from the successful export receipts. The original failure and corrected invocation/output are retained; there was no product patch, re-export, or tolerance change.
+
+The local-only evidence archive is `artifacts/verification/2026-10-23-prophoto-post-merge.tar.gz`, SHA-256 `ed4ca97e9e624cd6addd4c778d2f4a307e48fa35641cfe4dc9fbc443c2b08840`; gzip integrity passed. It contains TRX/outcome summaries, binary/source hashes, complete run output, corrected comparison invocation, numeric/CLI/native receipts, settings, screenshots and disposable driver sources. Original photos, full-size exports, model weights and built binaries are excluded. Subsequent changes are documentation only; no new distribution package/notarization or Windows/iOS ProPhoto runtime acceptance is claimed. Historical replay methods and boundaries are consolidated in the [cross-platform imaging experiment manual](../../cross-platform-imaging-experiments.md).
+

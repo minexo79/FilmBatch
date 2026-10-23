@@ -46,6 +46,8 @@ dotnet test FilmBatch.sln -c Release --logger trx --results-directory "$work/tes
 
 判定依各專案的 passed／failed／skipped，不只看 exit 0。沒有 `FILMBATCH_RAW_SAMPLES`／`FILMBATCH_RAW_ORACLE` 時，外部相機語料略過是明確的未覆蓋範圍；沒有 GPU 時，相關 GPU cases 可能略過。JPEG XL 的隨附原生庫／ABI 不可用不是可接受的略過理由。
 
+跨平台影像差異先依[實驗手冊](docs/cross-platform-imaging-experiments.md)固定輸入、版本、resolved settings 與實際 renderer，再分開比較感光／現像、RGBA16、codec round-trip 及原生顯示；不要只以 screenshot 或單一 backend 的 pass 歸因。
+
 | 要查的區域 | 測試入口 | 現行契約 |
 |---|---|---|
 | 參數、持久化、貼上、匯出快照 | `PhotoOperationsTests`、`ProjectServiceTests`、`PersistenceTests`、`BatchExporterTests` | [Core 與復原](docs/architecture.md#41-core參數-schemaparams) |

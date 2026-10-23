@@ -2,6 +2,8 @@
 
 依任務找文件見[文件地圖](README.md)；完整的執行順序、失敗分類與證據邊界見[驗證入口](../VERIFY.md)。
 
+跨平台編解碼／色彩差異的固定輸入、分層對照、歷次反例與證據保存方式，集中於[跨平台影像實驗手冊](cross-platform-imaging-experiments.md)；以下的歷史通過結果只對當時版本與實際平台有效。
+
 ## 需求
 
 - Windows 10 / 11 x64；macOS 封裝的最低版本依實際原生相依檔計算。重建 Dawn 後，Apple Silicon 的相依下限為 14.0（不再提供 Intel Mac 建置）；**目前執行驗證僅涵蓋 macOS 26，較舊系統仍需實機驗證**
@@ -125,7 +127,7 @@ Apple 系統輸出的 sRGB ICC 可被獨立 LittleCMS 解析並用於色彩轉�
 dotnet test FilmBatch.sln -c Release
 ```
 
-UI 測試以 Avalonia.Headless 執行，不需要顯示器；只有沒有可用 WebGPU 介面卡時才略過 GPU 測試。軟體介面卡仍會執行測試，實際算圖、讀回或像素比對失敗不能當成「沒有 GPU」略過。
+UI 測試以 Avalonia.Headless 執行，不需要顯示器。多數 GPU 回歸在可用軟體介面卡上也會執行 WebGPU；但 `ToneCurvePipelineTests` 會略過 `IsSoftware` 的 GPU 案例，另有 Windows-only 條件，須逐項查看 executed／skipped，不能從整套 exit 0 推定所有 GPU 路徑已測。真正進入算圖、讀回後的錯誤或像素比對失敗，不能改判成「沒有 GPU」略過。
 
 ### Windows CI 測試排程
 

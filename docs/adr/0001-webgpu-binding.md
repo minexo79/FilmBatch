@@ -42,6 +42,8 @@ Apple M3 數值為 2026-10-15 在 macOS 26.6.2 執行發佈版 `dist/osx-arm64/c
 
 ## 未解決：軟體介面卡
 
+> 本節保留 M0 當時的限制與候選，不是目前所有 Dawn 建置的能力宣告。後來的 Windows 診斷與正式 CI 已實際使用 Microsoft Basic Render Driver／D3D12（WARP）；`c7f6072` 的 job 43 完成正式管線及發佈 smoke，見[後續實驗與結果](../building.md#gpu-讀回與-raw-數值回歸)。不能把早期「無法取得 fallback adapter」延伸為後來仍未執行 GPU 測試。
+
 WebGPUSharp 內附的 Dawn 建置**不提供軟體介面卡**（`forceFallbackAdapter` 在 D3D12 / D3D11 / Vulkan 皆回傳 "No supported adapters"；未包含 SwiftShader，也不暴露 WARP）。因此驗收標準「軟體介面卡可正確算出相同結果」目前無法在 Windows 以 GPU 達成。
 
 目前的緩解：
@@ -53,5 +55,7 @@ WebGPUSharp 內附的 Dawn 建置**不提供軟體介面卡**（`forceFallbackAd
 3. 接受「無 GPU 時以 CPU 參考實作降級」，並把 CI 的 GPU 測試改在具備 GPU 的 runner 或本機執行。
 
 ## 尚待驗證
+
+> 下列為初次移植的驗證邊界。2026-10-17 已停止 Intel Mac 發佈，後續重建 Dawn 的 Apple Silicon 相依下限為 macOS 14.0，但舊 OS 仍需實機驗證；目前封裝契約以[建置需求](../building.md#需求)及[歷史取代關係](../history.md#精選演進)為準。
 
 - macOS Apple Silicon 的原生 Metal 路徑已驗證；`osx-x64` 封裝在 Rosetta 下通過冒煙，但實體 Intel Mac 與 Linux（Vulkan / lavapipe）仍未驗證。內附 Dawn 的兩個 Mac 架構都宣告 `minos 26.0`；較舊 macOS 需另外的相容原生建置。
