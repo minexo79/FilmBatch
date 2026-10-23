@@ -292,6 +292,9 @@ public sealed partial class PhotoToolsViewModel : ObservableObject
 
     // ───────────── 生命週期 ─────────────
 
+    /// <summary>目前取樣分析用的來源（代理圖解析度）。</summary>
+    internal SourceImage? AnalysisSource => _source;
+
     internal void SetAnalysisSource(SourceImage source)
     {
         _source = source;

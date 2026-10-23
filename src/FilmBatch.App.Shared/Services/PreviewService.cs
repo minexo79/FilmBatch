@@ -22,6 +22,14 @@ public sealed class PreviewService : IDisposable
     private SourceImage? _source;
     /// <summary>最近一次請求的顯示縮放目標；render worker 對任何送達的影格都縮到「目前」的顯示尺寸。</summary>
     private FitTarget? _displayFit;
+    /// <summary>最近一次送達 UI 的影格（縮放前）與它的直方圖；只在 UI 執行緒寫入，refit worker 讀取不可變快照。</summary>
+    private DeliveredFrame? _lastDelivered;
+    private readonly object _refitLock = new();
+    /// <summary>等待中的 refit 目標（最新者勝）；<see cref="_refitRunning"/> 時由執行中的那一輪接手。</summary>
+    private FitTarget? _refitPending;
+    private bool _refitRunning;
+    /// <summary>每次 <see cref="Refit"/> 遞增；送達時不是最新一次 refit 的結果丟棄。</summary>
+    private long _refitSeq;
     // Only the render worker touches the original-statistics cache.
     private SourceImage? _histogramSource;
     private ImageHistogram? _originalHistogram;
@@ -29,6 +37,11 @@ public sealed class PreviewService : IDisposable
     public bool CollectHistogram { get => _collectHistogram; set => _collectHistogram = value; }
 
     public event Action<RenderResult, ImageHistogram?, ImageHistogram?>? PreviewReady;
+    /// <summary>
+    /// 同一張已送達的影格重新做顯示縮放（畫布在同一級內改變尺寸，不重新算圖）：結果與直方圖沿用該影格，
+    /// 只有 bitmap 尺寸改變；照片工具、降噪等「新影格」通知不重送。
+    /// </summary>
+    public event Action<RenderResult, ImageHistogram?, ImageHistogram?>? PreviewRefitted;
     public event Action<string, RenderResult>? ThumbnailReady;
     public event Action<string, bool>? DeviceReady;
     public event Action<string>? Notice;
@@ -71,6 +84,8 @@ public sealed class PreviewService : IDisposable
             if (_collectHistogram)
             {
                 histogram = ImageHistogram.FromBgra8(r.Result.Bgra);
+                // 原圖直方圖取自這次送進算圖器的來源：Main 渲染時是依畫布縮小的版本，屬於「顯示用」直方圖，
+                // 不是代理圖或原圖解析度的統計（分析工具另以代理圖解析度取樣）。
                 var source = Volatile.Read(ref _source);
                 if (!ReferenceEquals(source, _histogramSource))
                 {
@@ -87,6 +102,7 @@ public sealed class PreviewService : IDisposable
             {
                 if (IsStalePreview(r.Generation)) return;
                 Interlocked.Exchange(ref _delivered, r.Generation);
+                Volatile.Write(ref _lastDelivered, new DeliveredFrame(r.Result, shown.Width, shown.Height, r.Generation, r.Epoch, histogram, original));
                 PreviewReady?.Invoke(shown, histogram, original);
             });
         };
@@ -170,6 +186,62 @@ public sealed class PreviewService : IDisposable
         _scheduler.RequestPreview(fileName, source, settings, generation);
     }
 
+    /// <summary>
+    /// 畫布在同一級內改變尺寸：把最近送達的影格（縮放前）重新縮到 <paramref name="target"/>，不重新算圖。
+    /// 縮放在背景執行緒進行，連續呼叫合併（同時只算一個、最新目標勝）；之後的算圖也改用這個目標。
+    /// 送達前重核：期間有新的算圖請求、取消、重建或更新的 refit，結果丟棄，永遠不會蓋掉較新的影格。直方圖沿用原影格。
+    /// </summary>
+    public void Refit((int W, int H) target)
+    {
+        if (target.W <= 0 || target.H <= 0) return;
+        var fit = new FitTarget(target.W, target.H);
+        Volatile.Write(ref _displayFit, fit);
+        if (Volatile.Read(ref _lastDelivered) is null) return;
+        lock (_refitLock)
+        {
+            _refitSeq++;
+            _refitPending = fit;
+            if (_refitRunning) return;
+            _refitRunning = true;
+        }
+        _ = Task.Run(RunRefits);
+    }
+
+    private void RunRefits()
+    {
+        while (true)
+        {
+            FitTarget target;
+            long seq;
+            lock (_refitLock)
+            {
+                if (_refitPending is not { } next || _disposed)
+                {
+                    _refitRunning = false;
+                    return;
+                }
+                target = next;
+                seq = _refitSeq;
+                _refitPending = null;
+            }
+            if (Volatile.Read(ref _lastDelivered) is not { } frame || !IsCurrentFrame(frame)) continue;
+            var shown = DisplayFit.Fit(frame.Unfitted, target.W, target.H);
+            if (shown.Width == frame.ShownWidth && shown.Height == frame.ShownHeight) continue;
+            PostAtEpoch(frame.Epoch, () =>
+            {
+                // 只接受「仍是最新影格、沒有更新請求、也沒有更新的 refit」的結果
+                if (!IsCurrentFrame(frame) || !ReferenceEquals(Volatile.Read(ref _lastDelivered), frame)
+                    || seq != Interlocked.Read(ref _refitSeq)) return;
+                Volatile.Write(ref _lastDelivered, frame with { ShownWidth = shown.Width, ShownHeight = shown.Height });
+                PreviewRefitted?.Invoke(shown, frame.Histogram, frame.OriginalHistogram);
+            });
+        }
+    }
+
+    /// <summary>影格仍是最新：送達後沒有新的算圖請求或取消（兩者都推進 <see cref="_requested"/>）。</summary>
+    private bool IsCurrentFrame(DeliveredFrame frame) =>
+        Interlocked.Read(ref _requested) == frame.Generation && Interlocked.Read(ref _delivered) == frame.Generation;
+
     public void CancelPreview(bool cancelMatchingThumbnails = false)
     {
         Interlocked.Exchange(ref _delivered, Interlocked.Increment(ref _requested));
@@ -193,4 +265,7 @@ public sealed class PreviewService : IDisposable
     }
 
     private sealed record FitTarget(int W, int H);
+
+    private sealed record DeliveredFrame(RenderResult Unfitted, int ShownWidth, int ShownHeight, long Generation, long Epoch,
+        ImageHistogram? Histogram, ImageHistogram? OriginalHistogram);
 }

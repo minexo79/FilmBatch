@@ -28,9 +28,12 @@ public sealed class LoupeMainRenderTests
             Settle(main, () => renderer.LastLongEdge == 1024);
             var requests = renderer.Count;
 
-            Resize(window, 1020);                      // 1020 → 仍是 1024 這一級
-            PumpFor(300);
+            Resize(window, 1020);                      // 1020 → 仍是 1024 這一級：不重新算圖，只把已送達的影格重新縮放
+            TestEnv.PumpUntil(() => main.Preview.Image is { } img && Math.Max(img.PixelSize.Width, img.PixelSize.Height) is >= 1019 and <= 1021, 30000);
+            PumpFor(200);
             Assert.Equal(requests, renderer.Count);
+            var refitted = main.Preview.Image!.PixelSize;
+            Assert.InRange(Math.Max(refitted.Width, refitted.Height), 1019, 1021);
 
             Resize(window, 1100);                      // 1100 → 1152
             Settle(main, () => renderer.Count == requests + 1);
@@ -75,6 +78,21 @@ public sealed class LoupeMainRenderTests
             // 原圖對比以同一份縮放來源建立，與效果圖長寬比一致
             var original = main.Preview.Original!.PixelSize;
             Assert.InRange(Math.Max(original.Width, original.Height), 1150, 1154);
+        }
+        finally { window.Close(); main.Dispose(); }
+    }
+
+    [AvaloniaFact]
+    public async Task Photo_tool_analysis_stays_at_proxy_resolution()
+    {
+        var (main, renderer, window) = await OpenLargePhotoAsync(1000);
+        try
+        {
+            Settle(main, () => renderer.LastLongEdge == 1024);
+            var proxy = main.Preview.Source!;
+            Assert.True(Math.Max(proxy.Width, proxy.Height) > 1024, "the canvas-sized render must be smaller than the proxy");
+            Assert.Equal(proxy.Width, main.PhotoTools.AnalysisSource!.Width);
+            Assert.Equal(proxy.Height, main.PhotoTools.AnalysisSource!.Height);
         }
         finally { window.Close(); main.Dispose(); }
     }

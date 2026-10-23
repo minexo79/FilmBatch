@@ -230,11 +230,19 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         {
             if (BackgroundRemoval.IsEditing) return;
             Preview.SetResult(r, histogram, originalHistogram);
-            if (r.PreparedSource is { } prepared) PhotoTools.SetAnalysisSource(prepared);
+            // 照片工具以代理圖解析度分析：畫布縮放過的來源換回同一張照片的代理圖來源（降噪後的來源是另一個物件，照舊）
+            if (r.PreparedSource is { } prepared)
+                PhotoTools.SetAnalysisSource(_analysisSources.TryGetValue(prepared, out var full) ? full : prepared);
             Denoise.OnRendered(r);
             PhotoTools.OnPreviewRendered();
             LastRenderText = $"{r.Elapsed.TotalMilliseconds:F1} ms";
             UpdateBackgroundText();
+        };
+        // 同一級內改變畫布尺寸：只換 bitmap（直方圖沿用），不是新影格
+        Renderer.PreviewRefitted += (r, histogram, originalHistogram) =>
+        {
+            if (BackgroundRemoval.IsEditing) return;
+            Preview.SetResult(r, histogram, originalHistogram);
         };
         Renderer.ThumbnailReady += (file, r) =>
         {
@@ -520,6 +528,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         var (scaled, displayFit) = MainRenderSource(Preview.Source, crop, settings);
         Preview.SetCompareSource(scaled);
         var source = SourceForPhoto(FocusFile, scaled);
+        if (!ReferenceEquals(scaled, Preview.Source))
+            _analysisSources.AddOrUpdate(source, SourceForPhoto(FocusFile, Preview.Source));
         Preview.ShowTransparency = Preview.SourceHasTransparency || source.ForegroundMask is not null;
         Renderer.RequestPreview(FocusFile, source, settings, displayFit);
         Preview.IsBusy = true;
@@ -533,6 +543,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     /// <summary>最近一次送出的 Main 長邊；null = 畫布還沒回報尺寸（以代理圖原尺寸算圖）。</summary>
     private int? _requestedMainEdge;
+    /// <summary>最近一次送出（或 refit）的顯示縮放目標長邊。</summary>
+    private int? _requestedFitEdge;
+    /// <summary>畫布縮放後的算圖來源 → 同一張照片的代理圖解析度來源（含相同遮罩），供照片工具分析。</summary>
+    private readonly ConditionalWeakTable<SourceImage, SourceImage> _analysisSources = new();
     /// <summary>最近一次請求的裁切 / 方向（含裁切工具的全幅與照片工具的覆寫），畫布尺寸改變時以它重算計畫。</summary>
     private CropParams _requestedCrop;
 
@@ -554,8 +568,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         var plan = Preview.UpdatePlan(Math.Max(native.OutWidth, native.OutHeight), AssumedTextureSide, Images.PreviewLimit);
         _requestedMainEdge = plan?.MainEdge;
         _requestedCrop = crop;
+        _requestedFitEdge = null;
         if (plan is not { } p || Preview.ViewSizes is not { } sizes) return (proxy, null);
         var drawn = (int)Math.Round(sizes.DrawnLongPx);
+        _requestedFitEdge = drawn;
         (int, int)? fit = drawn > 0 ? (drawn, drawn) : null;
         if (DenoiseSettings.From(settings).IsActive) return (proxy, fit);
         var frame = CropGeometry.Compute(proxy.Width, proxy.Height, crop);
@@ -566,15 +582,24 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// 畫布回報新的尺寸：Main 長邊以 64 為一級，換級才重算；同一級內的小幅縮放不重算
-    /// （顯示縮放目標在下一次請求時更新）。
+    /// 畫布回報新的尺寸：Main 長邊以 64 為一級，換級才重算；同一級內只把最近送達的影格重新縮到新的繪製尺寸
+    /// （<see cref="PreviewService.Refit"/>，不重新算圖），畫面仍是 1:1。
     /// </summary>
     internal void OnPreviewViewSizesChanged()
     {
         if (_disposed || Service is null || FocusFile is null || Preview.Source is not { } proxy) return;
         var native = CropGeometry.Compute(proxy.ReferenceWidth, proxy.ReferenceHeight, _requestedCrop);
         var plan = Preview.UpdatePlan(Math.Max(native.OutWidth, native.OutHeight), AssumedTextureSide, Images.PreviewLimit);
-        if (plan?.MainEdge != _requestedMainEdge) RequestPreview();
+        if (plan?.MainEdge != _requestedMainEdge)
+        {
+            RequestPreview();
+            return;
+        }
+        if (Preview.ViewSizes is not { } sizes || _suspended || BackgroundRemoval.IsEditing) return;
+        var drawn = (int)Math.Round(sizes.DrawnLongPx);
+        if (drawn <= 0 || drawn == _requestedFitEdge) return;
+        _requestedFitEdge = drawn;
+        Renderer.Refit((drawn, drawn));
     }
 
     public void CancelDenoisePreview()
