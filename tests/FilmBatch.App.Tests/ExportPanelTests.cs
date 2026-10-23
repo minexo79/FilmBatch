@@ -14,17 +14,28 @@ public class ExportPanelTests
         using var vm = TestEnv.CreateViewModel();
         await TestEnv.OpenSamplesAsync(vm);
         var export = vm.Sidebar.Export;
-        export.Refresh();
-        Assert.Equal(ViewModels.Dialogs.ExportScope.All, export.Scope);
-        Assert.Equal(vm.Service!.Project.FileNames.Count, export.Count);
-        Assert.EndsWith("export", export.Destination);
-        Assert.Contains(export.Count.ToString(), export.Summary);
-
-        vm.OnSelectionChanged([vm.Service.Project.FileNames[0]], vm.Service.Project.FileNames[0]);
+        var files = vm.Service!.Project.FileNames;
+        vm.OnSelectionChanged([files[0]], files[0]);
         vm.Sidebar.IsExport = true;
-        export.Scope = ViewModels.Dialogs.ExportScope.Selected;
-        export.Refresh();
+        // 預設為「選取的照片」，單選也一樣
+        Assert.Equal(ViewModels.Dialogs.ExportScope.Selected, export.Scope);
         Assert.Equal(1, export.Count);
+        Assert.EndsWith("export", export.Destination);
+        Assert.Contains("1", export.Summary);
+
+        // 張數與摘要跟著縮圖列選取即時更新
+        var changed = new List<string?>();
+        export.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+        vm.OnSelectionChanged([files[0], files[1], files[2]], files[2]);
+        Assert.Equal(3, export.Count);
+        Assert.Contains(nameof(export.Count), changed);
+        Assert.Contains(nameof(export.Summary), changed);
+
+        // 手動選「全部」後不會因多選被改回「選取的照片」
+        export.Scope = ViewModels.Dialogs.ExportScope.All;
+        vm.OnSelectionChanged([files[0], files[1]], files[1]);
+        Assert.Equal(ViewModels.Dialogs.ExportScope.All, export.Scope);
+        Assert.Equal(files.Count, export.Count);
     }
 
     [AvaloniaFact]
