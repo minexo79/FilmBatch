@@ -8,6 +8,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using FilmBatch.App.Controls.Tools;
 using FilmBatch.App.Localization;
 using FilmBatch.App.Services;
+using FilmBatch.App.Services.Loupe;
 using FilmBatch.Core.Params;
 using FilmBatch.Engine.Imaging;
 using FilmBatch.Engine.Rendering;
@@ -146,6 +147,7 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
             _resultHistogram = _originalHistogram = null;
             NotifyHistogram();
             Source = source;
+            _compareSource = null;
             SourceHasTransparency = false;
             if (!source.IsSceneLinear)
             {
@@ -165,6 +167,22 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
     /// <summary>原圖對比使用的裁切（只比較調整，與 Lightroom 相同）；未啟用時為全幅。</summary>
     private CropParams _compareCrop;
     private (SourceImage Source, CropParams Crop)? _originalShown;
+    /// <summary>原圖對比使用的來源：與 Main 渲染相同的縮放來源，兩張圖的像素格線一致；null 時用 <see cref="Source"/>。</summary>
+    private SourceImage? _compareSource;
+
+    /// <summary>
+    /// 目前畫框（裁切 / 方向之後）在代理圖解析度下的長邊。畫布以它做版面與縮放的基準（<c>PreviewCanvas.LayoutLongEdge</c>），
+    /// 所以 Main 渲染尺寸、顯示縮放改變 bitmap 尺寸時，畫面位置與「100%」的意義都不變。沒有來源時為 0。
+    /// </summary>
+    [ObservableProperty]
+    private double _frameLongEdge;
+
+    /// <summary>設定原圖對比要用的（縮放後）來源；與這次算圖請求送出的來源相同。相同時不重算。</summary>
+    public void SetCompareSource(SourceImage source)
+    {
+        _compareSource = ReferenceEquals(source, Source) ? null : source;
+        UpdateOriginal();
+    }
 
     /// <summary>
     /// 設定「原圖」要套用的裁切（與這次算圖請求相同的裁切 / 方向），讓左右對比與按住空白鍵時畫框一致。
@@ -178,7 +196,10 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
 
     private void UpdateOriginal()
     {
-        if (Source is not { } source) return;
+        if (Source is not { } proxy) return;
+        var frame = CropGeometry.Compute(proxy.Width, proxy.Height, _compareCrop);
+        FrameLongEdge = Math.Max(frame.OutWidth, frame.OutHeight);
+        var source = _compareSource ?? proxy;
         if (_originalShown is { } shown && ReferenceEquals(shown.Source, source) && shown.Crop == _compareCrop) return;
         _originalShown = (source, _compareCrop);
         if (!_compareCrop.On)
@@ -188,6 +209,48 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
         }
         var t = CropGeometry.Compute(source.Width, source.Height, _compareCrop);
         Original = ToBitmap(ImageCache.ToBgra8(source, t), t.OutWidth, t.OutHeight);
+    }
+
+    // ───────────── Loupe：畫布尺寸 → Main 渲染尺寸 ─────────────
+
+    private (double Drawn, double Canvas)? _viewReport;
+
+    /// <summary>
+    /// 最近一次建立的畫布尺寸（物理像素）與目前照片的原圖畫框長邊；畫布還沒回報過尺寸時為 null（算圖沿用代理圖原尺寸）。
+    /// </summary>
+    public ViewSizes? ViewSizes { get; private set; }
+
+    /// <summary>依 <see cref="ViewSizes"/> 算出的渲染計畫；畫布還沒回報過尺寸時為 null。</summary>
+    public LoupePlanResult? CurrentPlan { get; private set; }
+
+    /// <summary>
+    /// 由實際顯示的畫布回報：影像繪製的長邊與畫布長邊（物理像素）。數值不變時不做事；
+    /// 改變時交給主視窗判斷 Main 渲染尺寸是否換了一級（只有換級才重算）。
+    /// </summary>
+    public void ReportViewSizes(double drawnLongPx, double canvasLongPx)
+    {
+        if (!double.IsFinite(drawnLongPx) || !double.IsFinite(canvasLongPx) || canvasLongPx <= 0) return;
+        if (_viewReport == (drawnLongPx, canvasLongPx)) return;
+        _viewReport = (drawnLongPx, canvasLongPx);
+        main.OnPreviewViewSizesChanged();
+    }
+
+    /// <summary>
+    /// 以最近回報的畫布尺寸與目前照片的原圖畫框長邊重算 <see cref="ViewSizes"/> 與 <see cref="CurrentPlan"/>。
+    /// 拖曳草稿（Task 5）與窗口（Task 7）尚未接上：DraftScale = null、WindowsAllowed = false。
+    /// </summary>
+    internal LoupePlanResult? UpdatePlan(int nativeLongPx, int textureSide, int previewLimit)
+    {
+        if (_viewReport is not { } report)
+        {
+            ViewSizes = null;
+            CurrentPlan = null;
+            return null;
+        }
+        var sizes = new ViewSizes(report.Drawn, report.Canvas, nativeLongPx, textureSide, DraftScale: null, WindowsAllowed: false);
+        ViewSizes = sizes;
+        CurrentPlan = LoupePlan.Plan(previewLimit, sizes);
+        return CurrentPlan;
     }
 
     // ───────────── 畫布工具 ─────────────
@@ -237,6 +300,8 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
         Image = null;
         Original = null;
         _originalShown = null;
+        _compareSource = null;
+        FrameLongEdge = 0;
         Exif = null;
         IsBusy = false;
         SourceHasTransparency = false;

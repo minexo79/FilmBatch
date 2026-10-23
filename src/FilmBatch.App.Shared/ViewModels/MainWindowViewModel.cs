@@ -15,6 +15,7 @@ using FilmBatch.Core.Commands;
 using FilmBatch.Core.Params;
 using FilmBatch.Core.Presets;
 using FilmBatch.Core.Projects;
+using FilmBatch.Engine.Denoising;
 using FilmBatch.Engine.Imaging;
 using FilmBatch.Engine.Rendering;
 
@@ -512,12 +513,68 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         if (CropTool.IsActive) settings = settings.Overlay(FullFrame(CropTool.Working));
         _previewOrientation = CropTool.IsActive ? (CropTool.Working.Quarter, CropTool.Working.FlipH, CropTool.Working.FlipV) : null;
         // 原圖對比也套用同一個裁切 / 方向：只比較調整（與 Lightroom 相同）
-        Preview.SetCompareCrop(CropGeometry.FromSettings(settings));
+        var crop = CropGeometry.FromSettings(settings);
+        Preview.SetCompareCrop(crop);
         Denoise.RefreshContext();
-        var source = SourceForPhoto(FocusFile, Preview.Source);
+        // Main 渲染尺寸跟著畫布走；原圖對比用同一份縮放來源，兩者對齊
+        var (scaled, displayFit) = MainRenderSource(Preview.Source, crop, settings);
+        Preview.SetCompareSource(scaled);
+        var source = SourceForPhoto(FocusFile, scaled);
         Preview.ShowTransparency = Preview.SourceHasTransparency || source.ForegroundMask is not null;
-        Renderer.RequestPreview(FocusFile, source, settings);
+        Renderer.RequestPreview(FocusFile, source, settings, displayFit);
         Preview.IsBusy = true;
+    }
+
+    /// <summary>
+    /// GPU 貼圖邊長上限。實際上限在 GPU 執行緒上的 adapter 資訊裡（<c>GpuAdapterInfo.MaxTextureDimension2D</c>），
+    /// UI 端拿不到；Main 長邊受 2560（或使用者上限，最多 8192）約束，用 8192（WebGPU 預設 limit）即可，超過時算圖器自行改走 CPU 等效路徑。
+    /// </summary>
+    private const int AssumedTextureSide = 8192;
+
+    /// <summary>最近一次送出的 Main 長邊；null = 畫布還沒回報尺寸（以代理圖原尺寸算圖）。</summary>
+    private int? _requestedMainEdge;
+    /// <summary>最近一次請求的裁切 / 方向（含裁切工具的全幅與照片工具的覆寫），畫布尺寸改變時以它重算計畫。</summary>
+    private CropParams _requestedCrop;
+
+    /// <summary>
+    /// 依畫布尺寸決定這次算圖的來源與顯示縮放目標。
+    /// <list type="bullet">
+    /// <item>NativeLongPx：原圖參考尺寸（<see cref="SourceImage.ReferenceWidth"/>／<see cref="SourceImage.ReferenceHeight"/>，
+    /// 即未縮小的已轉正來源）套用同一個裁切 / 方向後的輸出長邊——Main 不必比原圖畫框更大。</item>
+    /// <item>MainEdge 是「輸出畫框」的長邊，<see cref="SourceImage.ScaledTo"/> 縮的是未裁切的來源：來源長邊取
+    /// ceil(代理圖長邊 × MainEdge ÷ 代理圖輸出畫框長邊)，裁切後的輸出長邊約等於 MainEdge（向上取整，不會小於它）；
+    /// 同一 MainEdge 與裁切得到同一個長邊，<c>ScaledTo</c> 回傳同一個物件，GPU 來源紋理不重新上傳。</item>
+    /// <item>AI 降噪啟用時不縮小來源：降噪在來源階段執行且依來源快取，改尺寸會讓整張重新推論。</item>
+    /// </list>
+    /// 畫布還沒回報尺寸時沿用代理圖原尺寸、不做顯示縮放（與先前行為相同）。
+    /// </summary>
+    private (SourceImage Source, (int W, int H)? DisplayFit) MainRenderSource(SourceImage proxy, CropParams crop, Settings settings)
+    {
+        var native = CropGeometry.Compute(proxy.ReferenceWidth, proxy.ReferenceHeight, crop);
+        var plan = Preview.UpdatePlan(Math.Max(native.OutWidth, native.OutHeight), AssumedTextureSide, Images.PreviewLimit);
+        _requestedMainEdge = plan?.MainEdge;
+        _requestedCrop = crop;
+        if (plan is not { } p || Preview.ViewSizes is not { } sizes) return (proxy, null);
+        var drawn = (int)Math.Round(sizes.DrawnLongPx);
+        (int, int)? fit = drawn > 0 ? (drawn, drawn) : null;
+        if (DenoiseSettings.From(settings).IsActive) return (proxy, fit);
+        var frame = CropGeometry.Compute(proxy.Width, proxy.Height, crop);
+        var frameLong = Math.Max(frame.OutWidth, frame.OutHeight);
+        if (p.MainEdge >= frameLong) return (proxy, fit);
+        var edge = (int)Math.Ceiling(Math.Max(proxy.Width, proxy.Height) * (double)p.MainEdge / frameLong);
+        return (proxy.ScaledTo(edge), fit);
+    }
+
+    /// <summary>
+    /// 畫布回報新的尺寸：Main 長邊以 64 為一級，換級才重算；同一級內的小幅縮放不重算
+    /// （顯示縮放目標在下一次請求時更新）。
+    /// </summary>
+    internal void OnPreviewViewSizesChanged()
+    {
+        if (_disposed || Service is null || FocusFile is null || Preview.Source is not { } proxy) return;
+        var native = CropGeometry.Compute(proxy.ReferenceWidth, proxy.ReferenceHeight, _requestedCrop);
+        var plan = Preview.UpdatePlan(Math.Max(native.OutWidth, native.OutHeight), AssumedTextureSide, Images.PreviewLimit);
+        if (plan?.MainEdge != _requestedMainEdge) RequestPreview();
     }
 
     public void CancelDenoisePreview()

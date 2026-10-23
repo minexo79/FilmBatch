@@ -20,6 +20,8 @@ public sealed class PreviewService : IDisposable
     private bool _disposed;
     private volatile bool _collectHistogram = true;
     private SourceImage? _source;
+    /// <summary>最近一次請求的顯示縮放目標；render worker 對任何送達的影格都縮到「目前」的顯示尺寸。</summary>
+    private FitTarget? _displayFit;
     // Only the render worker touches the original-statistics cache.
     private SourceImage? _histogramSource;
     private ImageHistogram? _originalHistogram;
@@ -77,13 +79,15 @@ public sealed class PreviewService : IDisposable
                 }
                 original = _originalHistogram;
             }
+            // 直方圖取自縮放前的結果（顯示縮放不得改變直方圖）；縮放也在 worker 執行緒，UI 只做 1:1 複製。
+            var shown = Volatile.Read(ref _displayFit) is { } fit ? DisplayFit.Fit(r.Result, fit.W, fit.H) : r.Result;
             // 昂貴計算之後重核世代：期間的新來源/取消/重建使此影格過期，不再排入 UI。
             if (IsStalePreview(r.Generation)) return;
             PostAtEpoch(r.Epoch, () =>
             {
                 if (IsStalePreview(r.Generation)) return;
                 Interlocked.Exchange(ref _delivered, r.Generation);
-                PreviewReady?.Invoke(r.Result, histogram, original);
+                PreviewReady?.Invoke(shown, histogram, original);
             });
         };
         _scheduler.ThumbnailRendered += t => PostAtEpoch(t.Epoch, () => ThumbnailReady?.Invoke(t.Key, t.Result));
@@ -152,8 +156,13 @@ public sealed class PreviewService : IDisposable
             TexturesFolder = string.IsNullOrWhiteSpace(settings.TexturesFolder) ? null : settings.TexturesFolder,
         });
 
-    public void RequestPreview(string fileName, SourceImage source, Settings settings)
+    /// <summary>
+    /// 送出預覽請求。<paramref name="displayFit"/> 為顯示尺寸（裝置像素）的上限框：結果在 render worker 上以
+    /// Lanczos-3 等比縮到框內（只縮小）再交付；直方圖仍以縮放前的結果計算。null 表示原尺寸交付。
+    /// </summary>
+    public void RequestPreview(string fileName, SourceImage source, Settings settings, (int W, int H)? displayFit = null)
     {
+        Volatile.Write(ref _displayFit, displayFit is { W: > 0, H: > 0 } f ? new FitTarget(f.W, f.H) : null);
         var generation = Interlocked.Increment(ref _requested);
         if (!ReferenceEquals(source, Volatile.Read(ref _source)))
             Interlocked.Exchange(ref _firstSourceGeneration, generation);
@@ -182,4 +191,6 @@ public sealed class PreviewService : IDisposable
         _disposed = true;
         _scheduler.Dispose();
     }
+
+    private sealed record FitTarget(int W, int H);
 }

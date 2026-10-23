@@ -254,8 +254,8 @@ public static class BatchExporter
         var src = image.Rgba16;
         var dst = new ushort[w * h * 4];
         // Lanczos-3 filters premultiplied sRGB; unpremultiply only after both passes.
-        var xContrib = Weights(image.Width, w);
-        var yContrib = Weights(image.Height, h);
+        var xContrib = LanczosKernel.Weights(image.Width, w);
+        var yContrib = LanczosKernel.Weights(image.Height, h);
         var tmp = new float[h * image.Width * 4];
         // 注意：取消只在 pass 邊界檢查；Parallel lambda 內不檢查（OCE 會被包成 AggregateException）。
         Parallel.For(0, h, y =>
@@ -307,43 +307,6 @@ public static class BatchExporter
             RawInfo = image.RawInfo, SemanticMasks = image.SemanticMasks,
             Denoise = image.Denoise, LensDatabaseWarning = image.LensDatabaseWarning,
         };
-    }
-
-    private sealed record Contrib((int Index, double Weight)[] Source);
-
-    private static Contrib[] Weights(int srcLen, int dstLen)
-    {
-        const double a = 3;
-        var scale = (double)dstLen / srcLen;
-        var filter = scale < 1 ? a / scale : a; // 縮小時加寬濾波器
-        var result = new Contrib[dstLen];
-        for (var d = 0; d < dstLen; d++)
-        {
-            var center = (d + 0.5) / scale - 0.5;
-            var lo = Math.Max(0, (int)Math.Floor(center - filter));
-            var hi = Math.Min(srcLen - 1, (int)Math.Ceiling(center + filter));
-            var list = new List<(int, double)>();
-            double sum = 0;
-            for (var s = lo; s <= hi; s++)
-            {
-                var wgt = Lanczos((center - s) * (scale < 1 ? scale : 1), a);
-                if (wgt == 0) continue;
-                list.Add((s, wgt));
-                sum += wgt;
-            }
-            if (list.Count == 0) list.Add((Math.Clamp((int)Math.Round(center), 0, srcLen - 1), 1));
-            else if (sum != 0) { for (var k = 0; k < list.Count; k++) list[k] = (list[k].Item1, list[k].Item2 / sum); }
-            result[d] = new Contrib(list.ToArray());
-        }
-        return result;
-    }
-
-    private static double Lanczos(double x, double a)
-    {
-        if (x == 0) return 1;
-        if (Math.Abs(x) >= a) return 0;
-        var pix = Math.PI * x;
-        return a * Math.Sin(pix) * Math.Sin(pix / a) / (pix * pix);
     }
 
     private static ushort Clamp16(double v) => (ushort)Math.Clamp(Math.Round(v), 0, 65535);

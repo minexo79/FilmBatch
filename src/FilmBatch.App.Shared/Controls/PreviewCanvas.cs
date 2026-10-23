@@ -64,6 +64,12 @@ public class PreviewCanvas : Control
         AvaloniaProperty.Register<PreviewCanvas, IBrush?>(nameof(CanvasBackground));
     public static readonly StyledProperty<bool> ShowTransparencyProperty =
         AvaloniaProperty.Register<PreviewCanvas, bool>(nameof(ShowTransparency));
+    /// <summary>
+    /// 影像在版面上的長邊（影像像素）；0 = 使用 bitmap 本身的尺寸。預覽的 bitmap 尺寸跟著畫布走（Main 渲染、顯示縮放），
+    /// 版面與 <see cref="Zoom"/> 改以這個固定的畫框尺寸計算，換 bitmap 尺寸時畫面不跳動、100% 的意義不變。長寬比仍取自 bitmap。
+    /// </summary>
+    public static readonly StyledProperty<double> LayoutLongEdgeProperty =
+        AvaloniaProperty.Register<PreviewCanvas, double>(nameof(LayoutLongEdge));
 
     private const double PointRadius = 6;
     private const double HitRadius = 12;
@@ -123,6 +129,13 @@ public class PreviewCanvas : Control
     private readonly DispatcherTimer _spinTimer;
     private double _spinAngle;
     private double _lastFit;
+    /// <summary>
+    /// 最近一次回報（所有畫布共用，只在 UI 執行緒存取）：面板顯示 / 隱藏換畫布時，新出現的畫布即使尺寸與自己上次回報相同，
+    /// VM 目前持有的也可能是另一個畫布的值，所以以「哪個畫布 + 尺寸」去重。隱藏的畫布不繪製，也就不回報。
+    /// </summary>
+    private static (long Canvas, double Drawn, double CanvasLong) s_lastViewSizes;
+    private static long s_nextId;
+    private readonly long _id = ++s_nextId;
     private readonly Dictionary<int, Point> _touches = new();
     private double _pinchDistance;
     private Point _pinchCenter;
@@ -143,6 +156,7 @@ public class PreviewCanvas : Control
     public ICanvasTool? ActiveTool { get => GetValue(ActiveToolProperty); set => SetValue(ActiveToolProperty, value); }
     public bool ShowTransparency { get => GetValue(ShowTransparencyProperty); set => SetValue(ShowTransparencyProperty, value); }
     public IReadOnlyList<FootprintPath>? Footprint { get => GetValue(FootprintProperty); set => SetValue(FootprintProperty, value); }
+    public double LayoutLongEdge { get => GetValue(LayoutLongEdgeProperty); set => SetValue(LayoutLongEdgeProperty, value); }
 
     /// <summary>拖曳控制點：參數為正規化座標與是否已放開。</summary>
     public event Action<Point, bool>? ControlPointDragged;
@@ -159,10 +173,17 @@ public class PreviewCanvas : Control
     /// <summary>符合視窗時的實際倍率（相對 100%）。</summary>
     public event Action<double>? FitScaleChanged;
 
+    /// <summary>
+    /// 影像繪製的長邊與畫布長邊（物理像素 = DIP × RenderScaling）。在畫布尺寸、縮放、scaling、影像尺寸改變後的下一次繪製回報；
+    /// 只有實際顯示（會繪製）的畫布回報，面板顯示 / 隱藏換畫布時由新出現的那個重新回報。
+    /// </summary>
+    public event Action<double, double>? ViewSizesChanged;
+
     static PreviewCanvas()
     {
         AffectsRender<PreviewCanvas>(ImageProperty, OriginalProperty, ShowOriginalProperty, IsSplitProperty,
-            SplitPositionProperty, ZoomProperty, PanProperty, OverlayTextProperty, ControlPointProperty, CanvasBackgroundProperty, IsBusyProperty, ShowsSpinnerProperty, FootprintProperty, ShowTransparencyProperty);
+            SplitPositionProperty, ZoomProperty, PanProperty, OverlayTextProperty, ControlPointProperty, CanvasBackgroundProperty, IsBusyProperty, ShowsSpinnerProperty, FootprintProperty, ShowTransparencyProperty,
+            LayoutLongEdgeProperty);
         ZoomProperty.Changed.AddClassHandler<PreviewCanvas>((c, e) =>
         {
             if (e.NewValue is <= 0.0) c.Pan = default;
@@ -215,6 +236,16 @@ public class PreviewCanvas : Control
 
     private Bitmap? Displayed => ShowOriginal ? Original ?? Image : Image ?? Original;
 
+    /// <summary>版面用的影像尺寸（影像像素）：長寬比取自 bitmap，長邊為 <see cref="LayoutLongEdge"/>（0 = bitmap 本身）。</summary>
+    private Size LayoutSize(Bitmap img)
+    {
+        var size = img.Size;
+        var longEdge = Math.Max(size.Width, size.Height);
+        if (LayoutLongEdge <= 0 || longEdge <= 0) return size;
+        var k = LayoutLongEdge / longEdge;
+        return new Size(size.Width * k, size.Height * k);
+    }
+
     private double FitScale(Size img) =>
         img.Width <= 0 || img.Height <= 0 ? 1 : Math.Min(Bounds.Width / img.Width, Bounds.Height / img.Height);
 
@@ -237,19 +268,20 @@ public class PreviewCanvas : Control
 
         if (Displayed is { } img)
         {
-            var size = img.Size;
+            var size = LayoutSize(img);
             var dest = ImageRect(size);
             var map = Mapping();
+            var scaling = RenderScaling;
             // 工具要求旋轉顯示（裁切拉直）時，影像與對比分割一起轉；工具本身照 map 換算畫在轉後的位置
             DrawingContext.PushedState? rotated = map.RotationDeg != 0 ? ctx.PushTransform(map.Transform) : null;
             if (ShowTransparency) ctx.FillRectangle(Checkerboard, dest);
-            ctx.DrawImage(img, new Rect(size), dest);
+            DrawBitmap(ctx, img, dest, scaling, map.RotationDeg == 0);
 
             if (IsSplitShown && Original is { } orig)
             {
                 var x = SplitX(dest);
                 using (ctx.PushClip(new Rect(dest.X, dest.Y, Math.Max(0, x - dest.X), dest.Height)))
-                    ctx.DrawImage(orig, new Rect(orig.Size), dest);
+                    DrawBitmap(ctx, orig, dest, scaling, map.RotationDeg == 0);
                 var top = Math.Max(0, dest.Y);
                 var bottom = Math.Min(Bounds.Height, dest.Bottom);
                 ctx.DrawLine(SplitShadow, new Point(x, top), new Point(x, bottom));
@@ -271,12 +303,21 @@ public class PreviewCanvas : Control
                 ctx.DrawEllipse(fill, PointPen, c, PointRadius, PointRadius);
             }
 
-            var fit = Math.Round(FitScale(size) * RenderScaling, 3);
+            var fit = Math.Round(FitScale(size) * scaling, 3);
             if (Zoom <= 0 && fit != _lastFit)
             {
                 // 不在 Render 中直接改動其他屬性
                 _lastFit = fit;
                 Dispatcher.UIThread.Post(() => FitScaleChanged?.Invoke(fit));
+            }
+
+            // 以 0.1 物理像素為單位去重；平移不改變尺寸，不回報
+            var drawn = Math.Round(Math.Max(dest.Width, dest.Height) * scaling, 1);
+            var canvas = Math.Round(Math.Max(Bounds.Width, Bounds.Height) * scaling, 1);
+            if (canvas > 0 && s_lastViewSizes != (_id, drawn, canvas))
+            {
+                s_lastViewSizes = (_id, drawn, canvas);
+                Dispatcher.UIThread.Post(() => ViewSizesChanged?.Invoke(drawn, canvas));
             }
         }
 
@@ -286,6 +327,22 @@ public class PreviewCanvas : Control
             DrawLabel(ctx, Localization.Loc.Get("Preview.Original"), new Point(10, string.IsNullOrEmpty(OverlayText) ? 10 : 36), alignRight: false);
 
         if (SpinnerVisible) DrawSpinner(ctx, new Point(Bounds.Width - SpinnerRightInset, SpinnerTop));
+    }
+
+    /// <summary>
+    /// 繪製影像：bitmap 像素剛好等於目的地的裝置像素（±1，且沒有旋轉）時以 <see cref="BitmapInterpolationMode.None"/> 1:1 繪製，
+    /// 不在 worker 已經 Lanczos 縮好的結果上再插值一次；其餘沿用畫布目前的取樣品質（拖曳中為低品質）。
+    /// </summary>
+    private static void DrawBitmap(DrawingContext ctx, Bitmap bmp, Rect dest, double scaling, bool axisAligned)
+    {
+        var px = bmp.PixelSize;
+        if (axisAligned && Math.Abs(px.Width - dest.Width * scaling) <= 1 && Math.Abs(px.Height - dest.Height * scaling) <= 1)
+        {
+            using (ctx.PushRenderOptions(new RenderOptions { BitmapInterpolationMode = BitmapInterpolationMode.None }))
+                ctx.DrawImage(bmp, new Rect(bmp.Size), dest);
+            return;
+        }
+        ctx.DrawImage(bmp, new Rect(bmp.Size), dest);
     }
 
     /// <summary>先畫一層深色陰影再畫白線，任何底圖上都看得清楚；帶狀範圍的直線超出影像，裁在影像內。</summary>
@@ -348,7 +405,7 @@ public class PreviewCanvas : Control
     private Point? ControlPointScreen()
     {
         if (ControlPoint is not { } p || Displayed is not { } img) return null;
-        var dest = ImageRect(img.Size);
+        var dest = ImageRect(LayoutSize(img));
         return new Point(dest.X + p.X * dest.Width, dest.Y + p.Y * dest.Height);
     }
 
@@ -358,7 +415,7 @@ public class PreviewCanvas : Control
     private string? HitFootprint(Point pos)
     {
         if (ShowOriginal || Footprint is not { Count: > 0 } footprint || Displayed is not { } img) return null;
-        var dest = ImageRect(img.Size);
+        var dest = ImageRect(LayoutSize(img));
         if (!dest.Inflate(HitRadius).Contains(pos)) return null;
         Point Screen(System.Numerics.Vector2 p) => new(dest.X + p.X * dest.Width, dest.Y + p.Y * dest.Height);
         string? best = null;
@@ -483,10 +540,10 @@ public class PreviewCanvas : Control
                 _dragTool?.OnMoved(pos, Mapping(), e.KeyModifiers);
                 break;
             case DragMode.ControlPoint:
-                ControlPointDragged?.Invoke(ToNormalized(img.Size, pos), false);
+                ControlPointDragged?.Invoke(ToNormalized(LayoutSize(img), pos), false);
                 break;
             case DragMode.Footprint:
-                FootprintDragged?.Invoke(_dragFootprintKey!, ToNormalizedUnclamped(img.Size, pos), false);
+                FootprintDragged?.Invoke(_dragFootprintKey!, ToNormalizedUnclamped(LayoutSize(img), pos), false);
                 break;
             case DragMode.Split:
                 SplitPosition = Math.Clamp(Mapping().ToImage(pos).X, 0, 1);
@@ -553,14 +610,14 @@ public class PreviewCanvas : Control
         else if (drag == DragMode.ControlPoint)
         {
             if (releasedAt is { } at && Displayed is { } img)
-                ControlPointDragged?.Invoke(ToNormalized(img.Size, at), true);
+                ControlPointDragged?.Invoke(ToNormalized(LayoutSize(img), at), true);
             else
                 ControlPointDragInterrupted?.Invoke();
         }
         else if (drag == DragMode.Footprint && footprintKey is not null)
         {
             if (releasedAt is { } at && Displayed is { } img)
-                FootprintDragged?.Invoke(footprintKey, ToNormalizedUnclamped(img.Size, at), true);
+                FootprintDragged?.Invoke(footprintKey, ToNormalizedUnclamped(LayoutSize(img), at), true);
             else
                 FootprintDragInterrupted?.Invoke();
         }
@@ -632,7 +689,7 @@ public class PreviewCanvas : Control
     private void ZoomAt(Point anchor, double factor)
     {
         if (Displayed is not { } img) return;
-        var size = img.Size;
+        var size = LayoutSize(img);
         var oldScale = Scale(size);
         var oldRect = ImageRect(size);
         var newZoom = Math.Clamp(oldScale * RenderScaling * factor, 0.05, 8);
@@ -646,10 +703,10 @@ public class PreviewCanvas : Control
 
     /// <summary>目前顯示影像的畫布矩形 ↔ 正規化座標。</summary>
     private CanvasMapping Mapping() =>
-        new(Displayed is { } img ? ImageRect(img.Size) : new Rect(Bounds.Size), ActiveTool?.ViewRotationDeg ?? 0);
+        new(Displayed is { } img ? ImageRect(LayoutSize(img)) : new Rect(Bounds.Size), ActiveTool?.ViewRotationDeg ?? 0);
 
     private bool IsLargerThanView() =>
-        Displayed is { } img && ImageRect(img.Size) is var r && (r.Width > Bounds.Width + 1 || r.Height > Bounds.Height + 1);
+        Displayed is { } img && ImageRect(LayoutSize(img)) is var r && (r.Width > Bounds.Width + 1 || r.Height > Bounds.Height + 1);
 
     private Point ToNormalized(Size img, Point pos)
     {
