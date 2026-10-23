@@ -1,3 +1,4 @@
+using FilmBatch.Core.Presets;
 using System.Globalization;
 using System.Text.Json;
 using Avalonia;
@@ -51,6 +52,7 @@ public sealed class FilmstripMenuTests
             Assert.Equal([files[1]], vm.Selection);
             Click(view, "ResetPhotoItem");
             Assert.False(vm.Service.Project[files[1]].HasOverrides);
+            Assert.Equal(SamplePresets.Neutral, vm.Service.Project[files[1]].PresetId);
             Assert.Equal(0.75, vm.Service.SettingsFor(files[3]).Number("basic.exposure"));
             vm.UndoCommand.Execute(null);
             Assert.Equal(0.75, vm.Service.SettingsFor(files[1]).Number("basic.exposure"));
