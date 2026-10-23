@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -153,6 +154,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     public MainWindowViewModel(AppSettings settings, IDialogService dialogs, Func<IPreviewRenderer> rendererFactory, Action<Action> post)
     {
         Settings = settings;
+        RecentFolderList.Sanitize(settings.RecentFolders, settings.LastFolder, exclude: SamplesFolder);
+        SyncRecentFolders();
         RawLoadOptions.LensDatabaseDirectory = settings.LensDatabaseFolder;
         Dialogs = dialogs;
         _post = post;
@@ -272,10 +275,64 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task OpenSamples()
     {
-        var folder = Path.Combine(AppPaths.Root, "samples");
+        var folder = SamplesFolder;
         Toast.Show(Loc.Get("Toast.PreparingSamples"));
         await Task.Run(() => SampleImages.Generate(folder));
         await OpenFolderAsync(folder);
+    }
+
+    /// <summary>內建範例照片資料夾（不列入最近開啟的資料夾）。</summary>
+    private static string SamplesFolder => Path.Combine(AppPaths.Root, "samples");
+
+    /// <summary>「檔案 → 開啟...」子選單的項目（與 <see cref="AppSettings.RecentFolders"/> 同步）。</summary>
+    public ObservableCollection<RecentFolderItemViewModel> RecentFolders { get; } = [];
+
+    public bool HasRecentFolders => RecentFolders.Count > 0;
+
+    /// <summary>開啟最近的資料夾；資料夾已不存在時提示並從清單移除。</summary>
+    public async Task OpenRecentFolderAsync(string folder)
+    {
+        if (!Directory.Exists(folder))
+        {
+            Toast.Show(Loc.Format("Toast.RecentFolderMissing", folder));
+            if (RecentFolderList.Remove(Settings.RecentFolders, folder)) SaveRecentFolders();
+            return;
+        }
+        await OpenFolderAsync(folder);
+    }
+
+    [RelayCommand(CanExecute = nameof(HasRecentFolders))]
+    private void ClearRecentFolders()
+    {
+        Settings.RecentFolders.Clear();
+        SaveRecentFolders();
+    }
+
+    private void AddRecentFolder(string folder)
+    {
+        if (RecentFolderList.PathComparer.Equals(RecentFolderList.Normalize(folder), RecentFolderList.Normalize(SamplesFolder))) return;
+        RecentFolderList.Add(Settings.RecentFolders, folder);
+        SaveRecentFolders();
+    }
+
+    private void SaveRecentFolders()
+    {
+        SyncRecentFolders();
+        try { Settings.Save(); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            AppLog.Warn($"無法儲存最近開啟的資料夾：{ex.Message}");
+        }
+    }
+
+    /// <summary>以設定中的清單重建子選單項目（清單最多 10 筆，整批重建即可）。</summary>
+    private void SyncRecentFolders()
+    {
+        RecentFolders.Clear();
+        foreach (var path in Settings.RecentFolders)
+            RecentFolders.Add(new RecentFolderItemViewModel(path, OpenRecentFolderAsync));
+        OnPropertyChanged(nameof(HasRecentFolders));
+        ClearRecentFoldersCommand.NotifyCanExecuteChanged();
     }
 
     public async Task OpenFolderAsync(string folder)
@@ -313,6 +370,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             project.EntriesChanged += OnEntriesChanged;
             Folder = project.Folder;
             Settings.LastFolder = project.Folder;
+            AddRecentFolder(project.Folder);
             OnPropertyChanged(nameof(HasProject));
             OnPropertyChanged(nameof(WindowTitle));
             AppLog.Info($"開啟資料夾：{folder}（{project.FileNames.Count} 張）");

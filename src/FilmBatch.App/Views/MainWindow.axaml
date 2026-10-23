@@ -30,6 +30,12 @@
     <Menu Grid.Column="1" Name="MainMenu" VerticalAlignment="Center" Background="Transparent">
       <MenuItem Header="{l:Tr Menu.File}">
         <MenuItem Header="{l:Tr Cmd.OpenFolder}" Command="{Binding OpenFolderCommand}" InputGesture="{OnPlatform Ctrl+O, macOS=Meta+O}" />
+        <!-- 最近開啟的資料夾：資料夾項目由 MainWindow.axaml.cs 依 RecentFolders 插在最前面 -->
+        <MenuItem Name="RecentFoldersMenu" Header="{l:Tr Cmd.OpenRecent}">
+          <MenuItem Name="RecentFoldersEmpty" Header="{l:Tr Menu.RecentNone}" IsEnabled="False" IsVisible="{Binding !HasRecentFolders}" />
+          <Separator />
+          <MenuItem Header="{l:Tr Cmd.ClearRecent}" Command="{Binding ClearRecentFoldersCommand}" />
+        </MenuItem>
         <MenuItem Header="{l:Tr Cmd.OpenSamples}" Command="{Binding OpenSamplesCommand}" />
         <Separator />
         <MenuItem Header="{l:Tr Cmd.Export}" Command="{Binding ExportCommand}" InputGesture="{OnPlatform Ctrl+E, macOS=Meta+E}" />

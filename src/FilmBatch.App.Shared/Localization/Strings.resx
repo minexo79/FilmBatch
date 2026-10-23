@@ -12,6 +12,10 @@
   <data name="Menu.Help" xml:space="preserve"><value>說明(_H)</value></data>
   <data name="Cmd.OpenFolder" xml:space="preserve"><value>開啟資料夾…</value></data>
   <data name="Cmd.OpenSamples" xml:space="preserve"><value>開啟範例資料夾</value></data>
+  <data name="Cmd.OpenRecent" xml:space="preserve"><value>開啟...</value></data>
+  <data name="Cmd.ClearRecent" xml:space="preserve"><value>清除清單</value></data>
+  <data name="Menu.RecentNone" xml:space="preserve"><value>（無）</value></data>
+  <data name="Toast.RecentFolderMissing" xml:space="preserve"><value>資料夾已不存在，已從最近清單移除：{0}</value></data>
   <data name="Cmd.Export" xml:space="preserve"><value>匯出…</value></data>
   <data name="Cmd.QuickExport" xml:space="preserve"><value>快速匯出選取照片</value></data>
   <data name="Cmd.ResetSelected" xml:space="preserve"><value>重設選取照片</value></data>

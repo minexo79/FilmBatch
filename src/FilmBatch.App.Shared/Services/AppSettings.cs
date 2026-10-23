@@ -55,6 +55,8 @@ public sealed class AppSettings
     public bool HideDisabledModules { get; set; }
     public bool HistogramExpanded { get; set; } = true;
     public string? LastFolder { get; set; }
+    /// <summary>最近開啟的資料夾（最新的在前，最多 <see cref="RecentFolderList.MaxCount"/> 筆；由 <see cref="RecentFolderList"/> 維護）。</summary>
+    public List<string> RecentFolders { get; set; } = [];
     public List<string> SelectivePasteModules { get; set; } = [];
     public bool SelectivePasteIncludeSeeds { get; set; }
     public bool SelectivePasteMirror { get; set; }

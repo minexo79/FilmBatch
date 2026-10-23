@@ -12,6 +12,10 @@
   <data name="Menu.Help" xml:space="preserve"><value>_Help</value></data>
   <data name="Cmd.OpenFolder" xml:space="preserve"><value>Open Folder…</value></data>
   <data name="Cmd.OpenSamples" xml:space="preserve"><value>Open Sample Folder</value></data>
+  <data name="Cmd.OpenRecent" xml:space="preserve"><value>Open Recent</value></data>
+  <data name="Cmd.ClearRecent" xml:space="preserve"><value>Clear List</value></data>
+  <data name="Menu.RecentNone" xml:space="preserve"><value>(None)</value></data>
+  <data name="Toast.RecentFolderMissing" xml:space="preserve"><value>Folder no longer exists and was removed from the recent list: {0}</value></data>
   <data name="Cmd.Export" xml:space="preserve"><value>Export…</value></data>
   <data name="Cmd.QuickExport" xml:space="preserve"><value>Quick Export Selected Photos</value></data>
   <data name="Cmd.ResetSelected" xml:space="preserve"><value>Reset Selected Photos</value></data>
