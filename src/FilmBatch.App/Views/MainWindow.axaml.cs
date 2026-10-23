@@ -52,11 +52,28 @@ public partial class MainWindow : Window
             if (DockHost.Layout is { } l) _factory.UpdateTitles(l);
         };
 
+        vm.RecentFolders.CollectionChanged += (_, _) => UpdateRecentFoldersMenu(vm);
+        UpdateRecentFoldersMenu(vm);
         ExitItem.Click += (_, _) => Close();
         ConfigureTitleBar();
         AddHandler(KeyDownEvent, OnKeyDown, RoutingStrategies.Tunnel);
         AddHandler(KeyUpEvent, OnKeyUp, RoutingStrategies.Tunnel);
         RestoreWindowPlacement(vm.Settings);
+    }
+
+    /// <summary>
+    /// 「開啟...」子選單：把最近資料夾的項目放在「（無）」佔位項之前，
+    /// 分隔線與「清除清單」固定在 XAML 中（Avalonia 選單無法混合 ItemsSource 與固定項目）。
+    /// </summary>
+    private void UpdateRecentFoldersMenu(MainWindowViewModel vm)
+    {
+        var items = RecentFoldersMenu.Items;
+        while (items.Count > 0 && items[0] is MenuItem { Tag: RecentFolderItemViewModel }) items.RemoveAt(0);
+        for (var i = 0; i < vm.RecentFolders.Count; i++)
+        {
+            var recent = vm.RecentFolders[i];
+            items.Insert(i, new MenuItem { Header = recent.Header, Command = recent.OpenCommand, Tag = recent });
+        }
     }
 
     /// <summary>

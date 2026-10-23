@@ -12,6 +12,10 @@
   <data name="Menu.Help" xml:space="preserve"><value>說明(_H)</value></data>
   <data name="Cmd.OpenFolder" xml:space="preserve"><value>開啟資料夾…</value></data>
   <data name="Cmd.OpenSamples" xml:space="preserve"><value>開啟範例資料夾</value></data>
+  <data name="Cmd.OpenRecent" xml:space="preserve"><value>開啟...</value></data>
+  <data name="Cmd.ClearRecent" xml:space="preserve"><value>清除清單</value></data>
+  <data name="Menu.RecentNone" xml:space="preserve"><value>（無）</value></data>
+  <data name="Toast.RecentFolderMissing" xml:space="preserve"><value>資料夾已不存在，已從最近清單移除：{0}</value></data>
   <data name="Cmd.Export" xml:space="preserve"><value>匯出…</value></data>
   <data name="Cmd.QuickExport" xml:space="preserve"><value>快速匯出選取照片</value></data>
   <data name="Cmd.ResetSelected" xml:space="preserve"><value>重設選取照片</value></data>
@@ -213,6 +217,7 @@
   <data name="Tip.HasOverrides" xml:space="preserve"><value>有單張覆寫</value></data>
   <data name="Inspector.RelativePath" xml:space="preserve"><value>相對路徑</value></data>
   <data name="Tip.LastRender" xml:space="preserve"><value>最近一次預覽算圖時間</value></data>
+  <data name="Tip.Rendering" xml:space="preserve"><value>算圖中</value></data>
   <data name="Tip.Compare" xml:space="preserve"><value>原圖對比：按住空白鍵；Y 切換左右分割</value></data>
   <data name="Tip.ZoomFit" xml:space="preserve"><value>符合視窗（Ctrl+0）</value></data>
   <data name="Tip.ZoomFit.Mac" xml:space="preserve"><value>符合視窗（⌘0）</value></data>
