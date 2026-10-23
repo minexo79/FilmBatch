@@ -311,3 +311,22 @@ Native driver failures were corrected in the disposable harness, not hidden in p
 
 The complete pre-merge Release suite passed: **Raw 643 / 293 skipped**, **Core 707 / 27 skipped**, **App 245 / 0 skipped**; **1,595 passed, 320 skipped, 0 failed** overall. Missing external corpus/platform-specific cases remain skipped, not inferred passes. Merged-source validation is recorded separately below.
 
+
+### Remote integration and merged verification
+
+Implementation was split into scheduler (`68d5489`), RAW allocation (`0cb5e48`), Canon/Fuji correctness (`14b702b`), tone editing/rendering (`ddcfb1c`) and evidence (`71c0357`) commits. Merge `1f92a70` incorporates the current remote branch through `6fb61dc`, including ratings, reveal-in-file-browser, recent folders, status-bar rendering feedback, selected-photo export, smooth histogram, inspector ordering and enabled-by-default RAW processing.
+
+The sole textual conflict was `InspectorViewModel` initialization: retain both the remote leading/trailing module groups and the local group-expansion histogram demand handler. Tone Curves remains immediately after Basic Adjustments inside the Basic group; no remote feature was discarded.
+
+The complete merged Release suite passed: **Raw 643 / 293 skipped**, **Core 712 / 27 skipped**, **App 265 / 0 skipped**; **1,620 passed, 320 skipped, 0 failed**. The earlier allocation comparison isolates this run's binning change; it does not claim that changing the remote RAW default leaves previously implicit RAW settings visually identical.
+
+The merged native run repeated all **11** curve workflow stages and the interrupted **18-photo** load. Curves retained the requested position and single-commit drag behavior; preset/paste/reopen and full PNG16 export passed. The exported curve image retained the same pixel hash and maximum **1/65535** CPU/Metal difference recorded above. The interrupted load completed **18/18**, with **0 failures / 0 pending GPU thumbnails**, and both end/back visible ranges rendered. Placement, final export and filmstrip captures were inspected. All **37** expanded WGSL units passed Naga again.
+
+One merged native attempt stopped before opening photos because its process did not acquire application focus. Explicit AppKit activation in the disposable driver resolved that harness failure; the active-window assertion and product code were unchanged. Apple Event automation was unavailable, so that path was not used for acceptance.
+
+The merged macOS package was rebuilt with `build/Build.cs --rid osx-arm64 --smoke --zip`: **25 native smoke checks passed**, including real preview/readback, persistence, PNG16/ICC export and source preservation. The packaged CLI reloaded the edited project and produced **4672×7008 RGBA PNG16** with `Status=ok` on both paths: Metal matched the GUI pixels exactly; `--software` selected the **CPU reference renderer** because this Dawn build has no software GPU adapter, and differed from Metal by at most **1/65535**. The original curve RAW and its isolated GUI/CLI copy still match their pre-run SHA-256; the three measured RAW originals also remain unchanged.
+
+`codesign --verify --deep --strict` and `unzip -tq` passed. This is an **ad-hoc-signed local package**, not Developer ID signing or notarization. Package SHA-256: `6b666b039c42968a065c405a4937d0c0796f6ca085125ffc11d3a639dfad53fd`; GUI executable: `c8d55e78e3bdef495e04cb4f79b8beec8fa9f664e18c51693124e3d9fe872ad3`; CLI executable: `1f16c4cbb164df101de7f7bcf2b7c2dd40d9c59cec2c4a93036c70a52b27da4e`. Product code is `1f92a70`; the subsequent receipt commit changes documentation only.
+
+Seven updated Markdown files passed a **170-local-link** target/anchor check. Detailed TRX, measurements, native captures, command/export receipts and disposable driver sources are retained locally in the ignored `artifacts/verification/2026-10-23-pipeline-curves.tar.gz`, SHA-256 `0f5b336d7cda1c3cf6716a4daf6d708e4347c023328b9b3e72baf3cd07ffc2e5`; gzip integrity passed. Original photographs, model weights, build outputs and profile directories are excluded. This archive is not pushed.
+

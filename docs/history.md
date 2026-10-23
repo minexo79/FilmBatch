@@ -84,6 +84,8 @@ Sigma BF 另在 `research/sigma-bf-raw-performance` 保存並推送研究提交 
 以目前分支的 `e84ad2c` 為基準，實際重現縮圖中斷後停在 4/18，以及 Basic Shadows 抬黑／階調反轉；修正排程復原條件與共同 RGB 增益後，原生 18 張載入及 Shadows 全尺寸 Metal 匯出通過。RAW 分箱改用每個 worker 的暫存陣列，三張實拍預覽配置量下降約 15–25%，53 項影像／尺寸欄位不變；不宣稱整條 pipeline 全面加速。
 
 LightCraft v0.13.0 差異只採用經重現的 Canon coded-width 與 Fujifilm plain-radius 修正；未因版本更新任意放寬 DNG 色調擬合、支援新機型或替換外部 oracle。使用者另要求多段曲線，沿用既有點編輯器、Settings 與復原，放在「照片基本參數 → 基本」的基本調整之後。CPU／Metal 共用查表；原生操作、保存／貼上、重開與 PNG16 匯出已有實測，跨平台與外部相機資料的邊界另列於[完整驗證記錄](superpowers/plans/2026-10-22-performance-correctness.md#pipeline-revalidation-2026-10-23)。
+本輪以五筆實作／文件提交拆分，`1f92a70` 再合併遠端至 `6fb61dc`，保留評分、面板順序、RAW 預設與其他遠端行為。合併後回歸為 1,620 passed／320 skipped／0 failed，37 個 WGSL、11 段原生曲線流程、18 張中斷恢復載入與 25 項 macOS 封裝 smoke 均通過；封裝 CLI 的 Metal 像素與 GUI 相同，CPU 最多差 1/65535。完整 receipt 與未測範圍見上述驗證記錄。
+
 
 ## 如何新增歷史列
 
