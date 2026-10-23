@@ -6,30 +6,81 @@
              x:Class="FilmBatch.App.Controls.ToneCurvesControl"
              x:DataType="vm:ToneCurvesViewModel">
   <UserControl.Styles>
+    <!-- 曲線通道：與側邊欄等寬的分段控制，底座為一條圓角槽，選中的通道以浮起的膠囊標示 -->
+    <Style Selector="Border.curve-channels">
+      <Setter Property="Background" Value="{DynamicResource FB.BaseBrush}" />
+      <Setter Property="CornerRadius" Value="7" />
+      <Setter Property="Padding" Value="2" />
+    </Style>
     <Style Selector="ToggleButton.curve-channel">
-      <Setter Property="MinWidth" Value="36" />
-      <Setter Property="MinHeight" Value="32" />
-      <Setter Property="Padding" Value="6,2" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="MinHeight" Value="26" />
+      <Setter Property="Padding" Value="4,2" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="CornerRadius" Value="5" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="{DynamicResource FB.SecondaryTextBrush}" />
+    </Style>
+    <Style Selector="ToggleButton.curve-channel /template/ ContentPresenter">
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Background" Duration="0:0:0.12" />
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="ToggleButton.curve-channel:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource FB.HoverOverlayBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource FB.TextBrush}" />
+    </Style>
+    <Style Selector="ToggleButton.curve-channel:pressed /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource FB.ButtonPressedBrush}" />
+    </Style>
+    <Style Selector="ToggleButton.curve-channel:checked /template/ ContentPresenter, ToggleButton.curve-channel:checked:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource FB.ButtonHoverBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource FB.TextBrush}" />
+      <Setter Property="BoxShadow" Value="0 1 2 0 #50000000" />
+    </Style>
+    <!-- R／G／B 以通道色字標示；未選時降低不透明度，選中時全亮 -->
+    <Style Selector="ToggleButton.curve-channel.tinted">
+      <Setter Property="Opacity" Value="0.72" />
+    </Style>
+    <Style Selector="ToggleButton.curve-channel.tinted:pointerover, ToggleButton.curve-channel.tinted:checked">
+      <Setter Property="Opacity" Value="1" />
+    </Style>
+    <Style Selector="ToggleButton.curve-channel.red /template/ ContentPresenter">
+      <Setter Property="Foreground" Value="#F06262" />
+    </Style>
+    <Style Selector="ToggleButton.curve-channel.green /template/ ContentPresenter">
+      <Setter Property="Foreground" Value="#4CC870" />
+    </Style>
+    <Style Selector="ToggleButton.curve-channel.blue /template/ ContentPresenter">
+      <Setter Property="Foreground" Value="#5A9CF5" />
     </Style>
   </UserControl.Styles>
   <StackPanel Spacing="6" Margin="0,6,0,4">
-    <StackPanel Orientation="Horizontal" Spacing="6">
-      <ToggleButton Name="ParametricChannelButton" Classes="flat curve-channel" Content="{l:Tr Curves.Regions}"
+    <Border Classes="curve-channels">
+      <Grid ColumnDefinitions="1.6*,1.2*,*,*,*" ColumnSpacing="2">
+      <ToggleButton Name="ParametricChannelButton" Grid.Column="0" Classes="curve-channel" Content="{l:Tr Curves.Regions}"
                     IsChecked="{Binding IsParametric, Mode=OneWay}" Command="{Binding SelectChannelCommand}" CommandParameter="parametric"
                     ToolTip.Tip="{l:Tr Curves.Regions}" AutomationProperties.Name="{l:Tr Curves.Regions}" />
-      <ToggleButton Name="MasterChannelButton" Classes="flat curve-channel" Content="RGB"
+      <ToggleButton Name="MasterChannelButton" Grid.Column="1" Classes="curve-channel" Content="RGB"
                     IsChecked="{Binding IsMaster, Mode=OneWay}" Command="{Binding SelectChannelCommand}" CommandParameter="master"
                     ToolTip.Tip="{l:Tr Curves.Master}" AutomationProperties.Name="{l:Tr Curves.Master}" />
-      <ToggleButton Name="RedChannelButton" Classes="flat curve-channel" Content="R" Foreground="#DD3333"
+      <ToggleButton Name="RedChannelButton" Grid.Column="2" Classes="curve-channel tinted red" Content="R"
                     IsChecked="{Binding IsRed, Mode=OneWay}" Command="{Binding SelectChannelCommand}" CommandParameter="red"
                     ToolTip.Tip="{l:Tr Curves.Red}" AutomationProperties.Name="{l:Tr Curves.Red}" />
-      <ToggleButton Name="GreenChannelButton" Classes="flat curve-channel" Content="G" Foreground="#33BB55"
+      <ToggleButton Name="GreenChannelButton" Grid.Column="3" Classes="curve-channel tinted green" Content="G"
                     IsChecked="{Binding IsGreen, Mode=OneWay}" Command="{Binding SelectChannelCommand}" CommandParameter="green"
                     ToolTip.Tip="{l:Tr Curves.Green}" AutomationProperties.Name="{l:Tr Curves.Green}" />
-      <ToggleButton Name="BlueChannelButton" Classes="flat curve-channel" Content="B" Foreground="#3377EE"
+      <ToggleButton Name="BlueChannelButton" Grid.Column="4" Classes="curve-channel tinted blue" Content="B"
                     IsChecked="{Binding IsBlue, Mode=OneWay}" Command="{Binding SelectChannelCommand}" CommandParameter="blue"
                     ToolTip.Tip="{l:Tr Curves.Blue}" AutomationProperties.Name="{l:Tr Curves.Blue}" />
-    </StackPanel>
+      </Grid>
+    </Border>
     <c:CurveEditor Name="CurveCanvas" Points="{Binding Points}" Samples="{Binding ParametricSamples}"
                    Histogram="{Binding Histogram}" HistogramChannel="{Binding Channel}" StrokeBrush="{Binding StrokeBrush}"
                    ToolTip.Tip="{l:Tr Curves.Hint}" AutomationProperties.Name="{l:Tr Curves.Graph}" />
