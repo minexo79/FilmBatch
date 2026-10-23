@@ -93,7 +93,7 @@
   <data name="Presets.Duplicate" xml:space="preserve"><value>複製</value></data>
   <data name="Presets.Delete" xml:space="preserve"><value>刪除</value></data>
   <data name="Presets.Reveal" xml:space="preserve"><value>在檔案總管中顯示</value></data>
-  <data name="Presets.Pin" xml:space="preserve"><value>釘選（數字鍵 1–9）</value></data>
+  <data name="Presets.Pin" xml:space="preserve"><value>釘選（Shift + 1–9）</value></data>
   <data name="Presets.Manage" xml:space="preserve"><value>管理…</value></data>
   <data name="Status.NoProject" xml:space="preserve"><value>尚未開啟資料夾</value></data>
   <data name="Status.Selected" xml:space="preserve"><value>已選取 {0} 張</value></data>

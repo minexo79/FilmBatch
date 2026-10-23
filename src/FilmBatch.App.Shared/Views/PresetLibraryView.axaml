@@ -4,7 +4,7 @@
              xmlns:l="using:FilmBatch.App.Localization"
              x:Class="FilmBatch.App.Views.PresetLibraryView"
              x:DataType="vm:PresetLibraryViewModel">
-  <!-- 預設庫（計畫書 2.4.2）：分類 → 預設；拖曳到縮圖或預覽區指定；雙擊套用；數字鍵 1–9 套用釘選預設 -->
+  <!-- 預設庫（計畫書 2.4.2）：分類 → 預設；拖曳到縮圖或預覽區指定；雙擊套用；Shift + 1–9 套用釘選預設 -->
   <DockPanel Background="{DynamicResource FB.PanelBrush}">
     <!-- 標題列：面板名稱｜＋ 以目前照片建立預設 -->
     <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="16,14,10,6">

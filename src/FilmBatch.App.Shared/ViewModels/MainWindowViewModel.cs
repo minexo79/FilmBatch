@@ -892,7 +892,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     // ───────────── 預設 ─────────────
 
     /// <summary>
-    /// 指定預設（拖放、雙擊、數字鍵、資訊區下拉選單）。目標照片有覆寫時詢問保留或清除（可記住選擇）。
+    /// 指定預設（拖放、雙擊、Shift + 數字鍵、資訊區下拉選單）。目標照片有覆寫時詢問保留或清除（可記住選擇）。
     /// </summary>
     public async Task AssignPresetAsync(IReadOnlyCollection<string> targets, Guid presetId)
     {
@@ -925,7 +925,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// <summary>拖放到預覽區：套用到目前照片（多選時為所有選取照片）。</summary>
     public Task DropPresetOnPreviewAsync(Guid presetId) => AssignPresetAsync(Selection, presetId);
 
-    /// <summary>數字鍵 1–9：套用第 N 個釘選預設。</summary>
+    /// <summary>Shift + 1–9：套用第 N 個釘選預設。</summary>
     [RelayCommand]
     private Task ApplyPinned(int index)
     {

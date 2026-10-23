@@ -221,7 +221,21 @@ public partial class MainWindow : Window
             e.Handled = true;
             return;
         }
+        // Shift + 1–9：套用第 N 個釘選預設（單獨的數字鍵留給星級評分）
+        if (!typing && mods == KeyModifiers.Shift && DigitOf(e.Key) is >= 1 and var pin)
+        {
+            _vm.ApplyPinnedCommand.Execute(pin);
+            e.Handled = true;
+            return;
+        }
         if (typing || mods != KeyModifiers.None) return;
+        // 0–5（含數字鍵台）：設定選取照片的星級評分，0 清除
+        if (DigitOf(e.Key) is >= 0 and <= FilmBatch.Core.Projects.PhotoEntry.MaxRating and var rating)
+        {
+            if (_vm.SetRatingCommand.CanExecute(rating)) _vm.SetRatingCommand.Execute(rating);
+            e.Handled = true;
+            return;
+        }
         switch (e.Key)
         {
             // 裁切工具（cut-and-mask Task 1.7）：R 進入 / 套用並返回，其餘只在工具啟用時有效
@@ -236,11 +250,18 @@ public partial class MainWindow : Window
             case Key.F: Run(_vm.ToggleFullScreenCommand); break;
             case Key.Tab: Run(_vm.TogglePanelsCommand); break;
             case Key.Escape when _vm.IsFullScreen: _vm.IsFullScreen = false; break;
-            case >= Key.D1 and <= Key.D9: _vm.ApplyPinnedCommand.Execute(e.Key - Key.D0); break;
             default: return;
         }
         e.Handled = true;
     }
+
+    /// <summary>主鍵盤或數字鍵台的數字 0–9；其他按鍵為 null。</summary>
+    private static int? DigitOf(Key key) => key switch
+    {
+        >= Key.D0 and <= Key.D9 => key - Key.D0,
+        >= Key.NumPad0 and <= Key.NumPad9 => key - Key.NumPad0,
+        _ => null,
+    };
 
     private void OnKeyUp(object? sender, KeyEventArgs e)
     {

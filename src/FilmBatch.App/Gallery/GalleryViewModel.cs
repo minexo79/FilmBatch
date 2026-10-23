@@ -78,7 +78,7 @@ public sealed class GalleryViewModel : IParamHost
             Thumb(Loc.Get("Gallery.Thumb.Failed"), false, false, Loc.Get("Gallery.Thumb.FailedReason"), "#7A7A7A"),
         ];
         PresetItems = FilmBatch.Core.Presets.SamplePresets.Create().Take(4)
-            .Select((p, i) => new PresetItemViewModel(p) { PinKey = (i + 1).ToString() }).ToList();
+            .Select((p, i) => new PresetItemViewModel(p) { PinKey = PresetItemViewModel.PinKeyOf(i + 1) }).ToList();
     }
 
     private ModuleSectionViewModel Section(string key, Settings resolved, Settings overrides, bool expanded)

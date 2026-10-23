@@ -93,7 +93,7 @@
   <data name="Presets.Duplicate" xml:space="preserve"><value>Duplicate</value></data>
   <data name="Presets.Delete" xml:space="preserve"><value>Delete</value></data>
   <data name="Presets.Reveal" xml:space="preserve"><value>Show in Explorer</value></data>
-  <data name="Presets.Pin" xml:space="preserve"><value>Pin (keys 1–9)</value></data>
+  <data name="Presets.Pin" xml:space="preserve"><value>Pin (Shift+1–9)</value></data>
   <data name="Presets.Manage" xml:space="preserve"><value>Manage…</value></data>
   <data name="Status.NoProject" xml:space="preserve"><value>No folder open</value></data>
   <data name="Status.Selected" xml:space="preserve"><value>{0} selected</value></data>
