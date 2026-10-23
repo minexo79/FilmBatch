@@ -79,10 +79,9 @@ public sealed partial class RawImage
         var wlen = bw * k;
         var outp = new RgbImage(bw, bh);
         var mask = new byte[bw * bh];
-        Parallel.For(0, bh, by =>
+        // 每個工作分區重用 k 列暫存；每輪完整覆寫，不跨列保留樣本。
+        Parallel.For(0, bh, () => new float[k * wlen], (by, _, rows) =>
         {
-            // 該列區塊的 k 列樣本，正規化後
-            var rows = new float[k * wlen];
             for (var dy = 0; dy < k; dy++)
             {
                 var y = c.Y + by * k + dy;
@@ -129,7 +128,8 @@ public sealed partial class RawImage
                     if (clipped) mask[by * bw + bx] |= (byte)(1 << ch);
                 }
             }
-        });
+            return rows;
+        }, _ => { });
         return (outp, mask);
     }
 
