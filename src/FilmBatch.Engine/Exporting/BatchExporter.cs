@@ -62,6 +62,17 @@ public static class BatchExporter
     {
         if (string.IsNullOrWhiteSpace(options.Destination))
             throw new InvalidDataException(CoreText.T("請選擇匯出目的地。", "Choose an export destination."));
+        try { RgbEncodingInfo.Validate(options.ColorSpace); }
+        catch (ArgumentOutOfRangeException)
+        {
+            throw new InvalidDataException(CoreText.T(
+                $"不支援的色彩空間：{(int)options.ColorSpace}。",
+                $"Unsupported color space: {(int)options.ColorSpace}."));
+        }
+        if (options.ColorSpace == RgbEncoding.ProPhoto && options.Format is not (ExportFormat.Tiff16 or ExportFormat.Png16))
+            throw new InvalidDataException(CoreText.T(
+                $"ProPhoto RGB 僅支援 16-bit TIFF／PNG，不支援 {options.Format}。",
+                $"ProPhoto RGB is only supported for 16-bit TIFF/PNG, not {options.Format}."));
         if (options.Format == ExportFormat.Jpeg && (options.Quality is < 1 or > 100))
             throw new InvalidDataException(CoreText.T(
                 $"JPEG 品質必須為 1–100（目前 {options.Quality}）。",
@@ -75,6 +86,14 @@ public static class BatchExporter
         // 範本語法預檢（以佔位值展開一次；{ext} 與未知 token 在此報錯）
         ExportFileNames.RenderTemplate(options.FileNameTemplate, "name", "preset", 1);
     }
+
+    /// <summary>export_log.json 用的色彩空間顯示名稱（英文穩定字串，供重現匯出位元組）。</summary>
+    public static string ColorSpaceName(RgbEncoding encoding) => encoding switch
+    {
+        RgbEncoding.Srgb => "sRGB",
+        RgbEncoding.ProPhoto => "ProPhoto RGB",
+        _ => throw new ArgumentOutOfRangeException(nameof(encoding)),
+    };
 
     /// <summary>
     /// 執行整批匯出（呼叫執行緒即工作執行緒；算圖器只建立一次並全程同一執行緒使用，符合執行緒親和性）。
@@ -211,6 +230,7 @@ public static class BatchExporter
         Width = w,
         Height = h,
         Format = options.Format.ToString(),
+        ColorSpace = ColorSpaceName(options.ColorSpace),
         Quality = options.Format == ExportFormat.Jpeg ? options.Quality : 0,
         Renderer = device,
         Status = status,
@@ -230,12 +250,12 @@ public static class BatchExporter
         ct.ThrowIfCancellationRequested();
 
         // 2. 完整 16-bit 算圖（GPU 或 CPU 等效；超限時算圖器內部以等效路徑處理，不靜默截斷）
-        var rendered = renderer.Render16(source, job.Settings, ct);
+        var rendered = renderer.Render16(source, job.Settings, ct, options.ColorSpace);
         ct.ThrowIfCancellationRequested();
         string? rawDevice = source.Scene is null ? null
             : renderer is GpuSpikeRenderer gpu && !gpu.UsingCpu ? "RAW GPU" : "RAW CPU";
 
-        // 3. 長邊縮放（只縮小；16-bit sRGB 端可分離 Lanczos-3，精度保留）
+        // 3. 長邊縮放（只縮小；16-bit 輸出編碼端可分離 Lanczos-3，精度保留）
         var sized = options.Size == ExportSize.LongEdge && options.LongEdgePx > 0
             ? DownscaleLongEdge(rendered, options.LongEdgePx, ct)
             : rendered;
@@ -253,7 +273,7 @@ public static class BatchExporter
         var h = Math.Max(1, (int)Math.Round(image.Height * scale));
         var src = image.Rgba16;
         var dst = new ushort[w * h * 4];
-        // Lanczos-3 filters premultiplied sRGB; unpremultiply only after both passes.
+        // Lanczos-3 filters premultiplied output-encoded samples; unpremultiply only after both passes.
         var xContrib = LanczosKernel.Weights(image.Width, w);
         var yContrib = LanczosKernel.Weights(image.Height, h);
         var tmp = new float[h * image.Width * 4];
@@ -301,7 +321,7 @@ public static class BatchExporter
             }
         });
         ct.ThrowIfCancellationRequested();
-        return new SourceImage(w, h, dst)
+        return new SourceImage(w, h, dst, image.Encoding)
         {
             FilePath = image.FilePath, RawOptions = image.RawOptions,
             RawInfo = image.RawInfo, SemanticMasks = image.SemanticMasks,
@@ -314,6 +334,12 @@ public static class BatchExporter
     internal static string? Encode(SourceImage image, ExportJob job, string outputPath, ExportOptions options, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
+        // 直接編碼入口同樣先驗證（寫檔副作用之前）：選項必須合法，且像素編碼必須與選項一致，絕不重新標籤。
+        ValidateOptions(options);
+        if (image.Encoding != options.ColorSpace)
+            throw new InvalidDataException(CoreText.T(
+                $"像素色彩空間（{ColorSpaceName(image.Encoding)}）與匯出選項（{ColorSpaceName(options.ColorSpace)}）不一致，拒絕編碼。",
+                $"Pixel color space ({ColorSpaceName(image.Encoding)}) does not match export options ({ColorSpaceName(options.ColorSpace)}); refusing to encode."));
         if (File.Exists(outputPath))
             throw new IOException(CoreText.T($"輸出檔已存在，拒絕覆寫：{outputPath}", $"Output file already exists; refusing to overwrite: {outputPath}"));
         // JPEG／DNG 不支援透明度：套過遮罩的透明輸出必須明確失敗，不靜默寫成不透明檔。
@@ -326,7 +352,7 @@ public static class BatchExporter
                         $"{options.Format} 不支援透明背景：請改用 PNG16 或 TIFF16 匯出去背結果。",
                         $"{options.Format} cannot store transparency: export the masked result as PNG16 or TIFF16 instead."));
         }
-        var exif = CopyExifProfile(job.SourcePath, (uint)image.Width, (uint)image.Height, options.Format, image.RawInfo?.Metadata, out var metadataWarning);
+        var exif = CopyExifProfile(job.SourcePath, (uint)image.Width, (uint)image.Height, options.Format, options.ColorSpace, image.RawInfo?.Metadata, out var metadataWarning);
         byte[]? dng = null;
         if (options.Format == ExportFormat.Dng)
         {
@@ -359,10 +385,10 @@ public static class BatchExporter
             if (options.Format is ExportFormat.Tiff16 or ExportFormat.Dng)
 #if FILMBATCH_APPLE_IMAGING
                 // ImageIO 的 TIFF 自帶 EXIF/GPS 須以 canonical 副本取代；DNG 同。
-                TiffMetadata.Append(tmp, exif, replaceExif: true);
+                TiffMetadata.Append(tmp, exif, replaceExif: true, encoding: options.ColorSpace);
 #else
                 // Magick 編碼器已就地寫入 canonical EXIF；只有 DNG 寫入器的自帶 EXIF 缺來源標準欄位須取代。
-                TiffMetadata.Append(tmp, exif, replaceExif: options.Format == ExportFormat.Dng);
+                TiffMetadata.Append(tmp, exif, replaceExif: options.Format == ExportFormat.Dng, encoding: options.ColorSpace);
 #endif
             ct.ThrowIfCancellationRequested();
             File.Move(tmp, outputPath, overwrite: false);
@@ -379,7 +405,7 @@ public static class BatchExporter
 
     /// <summary>canonical EXIF 位元組（<c>Exif\0\0</c>＋TIFF 目錄）：RAW 讀原檔目錄，一般影像由後端擷取再正規化。</summary>
     private static byte[] CopyExifProfile(string sourcePath, uint width, uint height, ExportFormat format,
-        Metadata? decoded, out string? metadataWarning)
+        RgbEncoding encoding, Metadata? decoded, out string? metadataWarning)
     {
         metadataWarning = null;
         try
@@ -388,17 +414,17 @@ public static class BatchExporter
             if (FilmBatch.Engine.Imaging.Raw.RawSourceLoader.IsRawExtension(sourcePath))
             {
                 // RAW 的 EXIF 失敗與其他來源一樣，外層統一記錄 "Source EXIF omitted: …" 並輸出全新 EXIF。
-                normalized = TiffMetadata.ReadRaw(sourcePath, width, height, decoded);
+                normalized = TiffMetadata.ReadRaw(sourcePath, width, height, decoded, encoding);
             }
             else
             {
                 var source = ImageBackend.ExtractExifBytes(sourcePath, width, height);
-                normalized = TiffMetadata.Normalize(source, width, height);
+                normalized = TiffMetadata.Normalize(source, width, height, encoding: encoding);
             }
             // Prefer losing a private MakerNote to silently losing the entire EXIF profile.
             if (format == ExportFormat.Jpeg && normalized.Length > 65533)
             {
-                normalized = TiffMetadata.Normalize(normalized, width, height, omitMakerNote: true);
+                normalized = TiffMetadata.Normalize(normalized, width, height, omitMakerNote: true, encoding: encoding);
                 if (normalized.Length > 65533)
                     throw new InvalidDataException("JPEG EXIF exceeds the 65533-byte APP1 limit even without MakerNote.");
                 metadataWarning = "JPEG EXIF exceeded the 65533-byte APP1 limit; MakerNote omitted.";
@@ -410,7 +436,7 @@ public static class BatchExporter
         {
             // EXIF 損毀或不支援：輸出仍帶 ICC + 方向 1，不因中繼資料失敗整張
             metadataWarning = $"Source EXIF omitted: {ex.GetType().Name}: {ex.Message}";
-            return TiffMetadata.Normalize((byte[]?)null, width, height);
+            return TiffMetadata.Normalize((byte[]?)null, width, height, encoding: encoding);
         }
     }
 

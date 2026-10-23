@@ -87,6 +87,14 @@ LightCraft v0.13.0 差異只採用經重現的 Canon coded-width 與 Fujifilm pl
 本輪以五筆實作／文件提交拆分，`1f92a70` 再合併遠端至 `6fb61dc`，保留評分、面板順序、RAW 預設與其他遠端行為。合併後回歸為 1,620 passed／320 skipped／0 failed，37 個 WGSL、11 段原生曲線流程、18 張中斷恢復載入與 25 項 macOS 封裝 smoke 均通過；封裝 CLI 的 Metal 像素與 GUI 相同，CPU 最多差 1/65535。完整 receipt 與未測範圍見上述驗證記錄。
 
 
+## ProPhoto RGB 匯出（2026-10-23）
+
+以 `35da12a` 為基準的工作樹加入真正的 RAW 廣色域 ProPhoto TIFF16／PNG16 輸出，保留原本 sRGB 預覽與匯出預設；不是只替換 ICC 標籤。GUI／CLI、來源編碼、縮放、EXIF 與匯出紀錄共用明確的色彩契約。ICC 由 LCMS 2.17（MIT）自行產生，使用 v4.3 parametric gamma 1.8，避免 v2 單值曲線把 gamma 量化成 1.796875；沒有引入 GPL／LGPL 實作或下載廠商 profile。
+
+實拍驗收先抓到 CPU／Metal 最大差 4/65535：色域壓縮在零附近相消的殘差，被純 gamma 1.8 放大。改為等價的邊界投影後，六面飽和漸層回歸與原問題像素通過；4672×7008 實拍最大差降為 1/65535，未放寬 2/65535 門檻。同一 renderer 的 TIFF／PNG，以及原生 GUI／CLI Metal 像素完全相同。完整回歸為 1,698 passed／320 skipped／0 failed，38 個 WGSL 通過；原生匯出不改變預覽與直方圖。
+
+兩筆 Windows RAW／JPEG 偏暗、黑塊與藍色斷階報告仍未修復：已確認差異存在於匯出像素，但缺當次完整設定、建置版本與可執行的 Windows 環境。不能用 Mac CPU／Metal 相符推定 DX12 正確，也不能把 ProPhoto 修正冒充跨平台修復。詳見[完整驗收、來源授權與證據邊界](superpowers/plans/2026-10-23-prophoto-output.md#final-verification-evidence--2026-10-23)。本輪尚未 commit／push。
+
 ## 如何新增歷史列
 
 只記對未來修改有用的決定：真實 commit／日期、可核對的理由或重現、被拒絕方案、目前契約／檢查、後續取代。沒有當時證據時明寫「只確認提交意圖」；數值必須保留平台、輸入與來源版本，不把舊測試 totals 複製成新版本的驗收結果。

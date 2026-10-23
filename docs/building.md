@@ -419,6 +419,7 @@ dotnet run build/Build.cs -- --rid osx-arm64 \
 
 ```bash
 filmbatch-cli export "/path/to/photos" --out "/path/to/output" --format png
+filmbatch-cli export "/path/to/photos" --out "/path/to/prophoto" --format tiff --color-space prophoto
 filmbatch-cli export "/path/to/photos" --format jpg --quality 95 --long-edge 3000
 filmbatch-cli gpu-info
 filmbatch-cli raw convert "/path/input.CR2" "/path/output.dng" --compression lj92
@@ -432,6 +433,8 @@ filmbatch-cli raw masks "/path/input.dng"
 - `--presets-folder` 指定獨立預設庫。
 - RAW 的預覽與匯出均從浮點場景來源執行白平衡、局部遮罩與既有效果，再完成顯示收尾；解碼與 demosaic 由 CPU 執行，Metal 路徑不把 CPU 算好的圖冒充 GPU。超過裝置尺寸／記憶體限制時明確改用 CPU。
 - 每筆 RAW `export_log.json` 的 `Renderer` 會附上 `RAW GPU` 或 `RAW CPU`，降級時保留原因；一般影像維持原有裝置標示。精度、量測與 Halide AOT 取捨見 [ADR 0003](adr/0003-gpu-stack-decision.md)。
+- `--color-space srgb|prophoto` 預設為 `srgb`。ProPhoto 只支援 `--format tiff`／`png`，輸出為 16-bit、D50、純 gamma 1.8，嵌入自建的匹配 ICC；JPEG／DNG 或未知色彩空間回傳結束碼 2，不產生輸出檔。每筆匯出紀錄的 `ColorSpace` 保留實際選擇。
+- GUI 在匯出面板選 TIFF／PNG 後可選「ProPhoto RGB」；切回 JPEG／DNG 會重設為 sRGB。此選項不改變預覽與直方圖，也不改寫照片設定。RAW 中性輸出可保留 sRGB 外的色彩；一般 raster 匯入與會裁切色域的既有效果仍有原有限制，詳見[色彩契約](architecture.md#48-engine影像讀取與批次匯出imaging--exporting)與[驗收記錄](superpowers/plans/2026-10-23-prophoto-output.md)。
 - AI 降噪另記於每筆匯出紀錄的 `Denoise`：模型身分與 SHA-256、實際推論 provider、推論時間、tile 數及快取命中。效果 renderer 的 GPU 名稱不代表神經網路全部在同一裝置執行。
 - RAW 處理啟用時，「基本調整」提供 As Shot／自訂 2500–9900 K＋色偏，取代相對色溫／色偏；RAW 面板仍提供實際內嵌語意遮罩，沒有對應遮罩的照片保留設定但不全圖套用。外部 Lensfun-format 目錄在「偏好設定 → 資料夾」指定（存於 settings.json，全部專案共用）；CLI 匯出用 `--lens-database`，兩者皆未設定時使用 `FILMBATCH_LENSFUN_DIR`。不會下載資料庫。
 - Lensfun 校正以 RAW 的預設裁切區（`DefaultCrop`）建立光學中心與半徑，再換算至完整感光區（`ActiveArea`）座標；非置中裁切的變形與暗角共用相同映射。

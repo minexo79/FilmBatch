@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using FilmBatch.Engine.Denoising;
+using FilmBatch.Engine.Imaging;
 
 namespace FilmBatch.Engine.Exporting;
 
@@ -15,6 +16,8 @@ public sealed record ExportOptions
     public required string Destination { get; init; }
     public string FileNameTemplate { get; init; } = "{name}_{preset}";
     public ExportFormat Format { get; init; } = ExportFormat.Jpeg;
+    /// <summary>輸出色彩空間（預設 sRGB；ProPhoto 僅限 TIFF16／PNG16，由呼叫端驗證）。</summary>
+    public RgbEncoding ColorSpace { get; init; } = RgbEncoding.Srgb;
     /// <summary>JPEG 品質 1–100（非 JPEG 時忽略）。超出範圍由呼叫端驗證。</summary>
     public int Quality { get; init; } = 95;
     public ExportSize Size { get; init; } = ExportSize.Original;
@@ -78,6 +81,8 @@ public sealed class ExportLogEntry
     public required int Width { get; set; }
     public required int Height { get; set; }
     public required string Format { get; set; }
+    /// <summary>輸出色彩空間（"sRGB" 或 "ProPhoto RGB"，供重現匯出位元組）。</summary>
+    public required string ColorSpace { get; set; }
     public int Quality { get; set; }
     public required string Renderer { get; set; }
     public required string Status { get; set; }

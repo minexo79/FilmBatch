@@ -213,6 +213,10 @@ R {1:P2}　G {2:P2}　B {3:P2}　亮度 {4:P2}</value></data>
   <data name="Export.Field.Format" xml:space="preserve"><value>格式</value></data>
   <data name="Export.Field.Quality" xml:space="preserve"><value>品質</value></data>
   <data name="Export.Field.Size" xml:space="preserve"><value>尺寸</value></data>
+  <data name="Export.Field.ColorSpace" xml:space="preserve"><value>色彩空間</value></data>
+  <data name="Export.ColorSpace.Srgb" xml:space="preserve"><value>sRGB</value></data>
+  <data name="Export.ColorSpace.ProPhoto" xml:space="preserve"><value>ProPhoto RGB</value></data>
+  <data name="Export.ColorSpace.Note" xml:space="preserve"><value>ProPhoto RGB 僅供 16-bit TIFF／PNG 使用</value></data>
   <data name="Export.Field.LongEdge" xml:space="preserve"><value>長邊（px）</value></data>
   <data name="Export.Field.Destination" xml:space="preserve"><value>目的地</value></data>
   <data name="Common.ChooseFolder" xml:space="preserve"><value>選擇資料夾</value></data>

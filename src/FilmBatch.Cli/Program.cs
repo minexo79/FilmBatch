@@ -51,6 +51,7 @@ samples.SetAction(r =>
 var exportFolder = new Argument<string>("folder") { Description = "照片資料夾（已含 .filmbatch/project.json 或即時掃描）" };
 var outOption = new Option<string?>("--out") { Description = "輸出資料夾（預設 <照片資料夾>/export/）" };
 var formatOption = new Option<string>("--format") { Description = "jpg | tiff | png | dng（預設 jpg；DNG 保留已套用效果的線性資料）", DefaultValueFactory = _ => "jpg" };
+var colorSpaceOption = new Option<string>("--color-space") { Description = "srgb | prophoto（預設 srgb；prophoto 僅支援 tiff／png）", DefaultValueFactory = _ => "srgb" };
 var qualityOption = new Option<int>("--quality") { Description = "JPEG 品質 1–100（預設 95）", DefaultValueFactory = _ => 95 };
 var longEdgeOption = new Option<int>("--long-edge") { Description = "長邊像素；0 = 原尺寸（預設 0）", DefaultValueFactory = _ => 0 };
 var presetOption = new Option<string?>("--preset") { Description = "只匯出使用此預設的照片（名稱或 Id）" };
@@ -63,7 +64,7 @@ var lensDatabaseOption = new Option<string?>("--lens-database") { Description = 
 
 var export = new Command("export", "批次匯出（與 GUI 共用匯出器）")
 {
-    exportFolder, outOption, formatOption, qualityOption, longEdgeOption,
+    exportFolder, outOption, formatOption, colorSpaceOption, qualityOption, longEdgeOption,
     presetOption, onlyUnassignedOption, presetsFolderOption,
     backendOption, softwareOption, lowPowerOption,
     embeddedLensOption, cameraLocalToneOption, denoiseOption, lensDatabaseOption,
@@ -77,6 +78,7 @@ export.SetAction(async (r, ct) =>
         return 2;
     }
     ExportFormat format;
+    RgbEncoding colorSpace;
     try
     {
         format = r.GetValue(formatOption)!.ToLowerInvariant() switch
@@ -86,6 +88,12 @@ export.SetAction(async (r, ct) =>
             "png" => ExportFormat.Png16,
             "dng" => ExportFormat.Dng,
             var f => throw new InvalidDataException($"未知格式：{f}（可用 jpg、tiff、png、dng）。"),
+        };
+        colorSpace = r.GetValue(colorSpaceOption)!.ToLowerInvariant() switch
+        {
+            "srgb" => RgbEncoding.Srgb,
+            "prophoto" => RgbEncoding.ProPhoto,
+            var c => throw new InvalidDataException($"未知色彩空間：{c}（可用 srgb、prophoto）。"),
         };
     }
     catch (InvalidDataException ex)
@@ -110,6 +118,7 @@ export.SetAction(async (r, ct) =>
         Destination = r.GetValue(outOption) ?? Path.Combine(folder, "export"),
         FileNameTemplate = "{name}_{preset}",
         Format = format,
+        ColorSpace = colorSpace,
         Quality = quality,
         Size = longEdge > 0 ? ExportSize.LongEdge : ExportSize.Original,
         LongEdgePx = longEdge,

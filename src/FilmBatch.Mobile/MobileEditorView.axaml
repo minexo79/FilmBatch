@@ -57,6 +57,8 @@
               <TextBlock Text="{l:Tr Export.Field.Format}" />
               <ComboBox ItemsSource="{Binding Formats}" SelectedItem="{Binding SelectedFormat}" HorizontalAlignment="Stretch" MinHeight="44" AutomationProperties.AutomationId="Mobile.ExportFormat" />
               <NumericUpDown Value="{Binding Quality}" Minimum="1" Maximum="100" IsVisible="{Binding IsJpeg}" MinHeight="44" />
+              <TextBlock Text="{l:Tr Export.Field.ColorSpace}" />
+              <ComboBox ItemsSource="{Binding ColorSpaces}" SelectedItem="{Binding SelectedColorSpace}" HorizontalAlignment="Stretch" MinHeight="44" IsEnabled="{Binding IsColorSpaceAvailable}" AutomationProperties.AutomationId="Mobile.ExportColorSpace" />
               <TextBlock Text="{l:Tr Export.Field.Size}" />
               <ComboBox ItemsSource="{Binding Sizes}" SelectedItem="{Binding SelectedSize}" HorizontalAlignment="Stretch" MinHeight="44" AutomationProperties.AutomationId="Mobile.ExportSize" />
               <NumericUpDown Value="{Binding LongEdge}" Minimum="100" Maximum="20000" IsVisible="{Binding IsLongEdge}" MinHeight="44" AutomationProperties.AutomationId="Mobile.ExportLongEdge" />

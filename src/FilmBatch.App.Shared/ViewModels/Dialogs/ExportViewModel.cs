@@ -4,6 +4,7 @@ using FilmBatch.App.Localization;
 using FilmBatch.App.Services;
 using FilmBatch.Core.Projects;
 using FilmBatch.Engine.Exporting;
+using FilmBatch.Engine.Imaging;
 namespace FilmBatch.App.ViewModels.Dialogs;
 
 public enum ExportScope { Selected, All, ByPreset }
@@ -38,10 +39,16 @@ public sealed partial class ExportViewModel : ObservableObject
         Option<Engine.Exporting.ExportSize>.Localized(Engine.Exporting.ExportSize.Original, "Export.Size.Original"),
         Option<Engine.Exporting.ExportSize>.Localized(Engine.Exporting.ExportSize.LongEdge, "Export.Size.LongEdge"),
     ];
+    public IReadOnlyList<Option<RgbEncoding>> ColorSpaces { get; } =
+    [
+        Option<RgbEncoding>.Localized(RgbEncoding.Srgb, "Export.ColorSpace.Srgb"),
+        Option<RgbEncoding>.Localized(RgbEncoding.ProPhoto, "Export.ColorSpace.ProPhoto"),
+    ];
 
     public Option<ExportScope> SelectedScope { get => Scopes.First(o => o.Value == Scope); set { if (value is not null) Scope = value.Value; } }
     public Option<Engine.Exporting.ExportFormat> SelectedFormat { get => Formats.First(o => o.Value == Format); set { if (value is not null) Format = value.Value; } }
     public Option<Engine.Exporting.ExportSize> SelectedSize { get => Sizes.First(o => o.Value == Size); set { if (value is not null) Size = value.Value; } }
+    public Option<RgbEncoding> SelectedColorSpace { get => ColorSpaces.First(o => o.Value == ColorSpace); set { if (value is not null) ColorSpace = value.Value; } }
     [ObservableProperty]
     private IReadOnlyList<PresetItemViewModel> _presets = [];
 
@@ -54,8 +61,12 @@ public sealed partial class ExportViewModel : ObservableObject
     private PresetItemViewModel? _preset;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsJpeg), nameof(SelectedFormat))]
+    [NotifyPropertyChangedFor(nameof(IsJpeg), nameof(SelectedFormat), nameof(IsColorSpaceAvailable))]
     private Engine.Exporting.ExportFormat _format = Engine.Exporting.ExportFormat.Jpeg;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SelectedColorSpace))]
+    private RgbEncoding _colorSpace = RgbEncoding.Srgb;
 
     [ObservableProperty]
     private int _quality = 95;
@@ -120,6 +131,8 @@ public sealed partial class ExportViewModel : ObservableObject
     public bool IsJpeg => Format == Engine.Exporting.ExportFormat.Jpeg;
     public bool IsLongEdge => Size == Engine.Exporting.ExportSize.LongEdge;
     public bool IsByPreset => Scope == ExportScope.ByPreset;
+    /// <summary>ProPhoto 僅供 TIFF16／PNG16；其他格式下選擇器停用且選項重設為 sRGB。</summary>
+    public bool IsColorSpaceAvailable => Format is Engine.Exporting.ExportFormat.Tiff16 or Engine.Exporting.ExportFormat.Png16;
     /// <summary>未匯出中、且目前規劃有張數、且目前選項通過驗證時可匯出（Count 變化時由 Refresh 通知）；上一次匯出的錯誤不擋重試。</summary>
     public bool CanExport => !IsExporting && _validationError is null && Count > 0;
 
@@ -170,7 +183,19 @@ public sealed partial class ExportViewModel : ObservableObject
 
     partial void OnScopeChanged(ExportScope value) => Validate();
     partial void OnPresetChanged(PresetItemViewModel? value) => Validate();
-    partial void OnFormatChanged(Engine.Exporting.ExportFormat value) => Validate();
+    partial void OnFormatChanged(Engine.Exporting.ExportFormat value)
+    {
+        if (!IsColorSpaceAvailable && ColorSpace != RgbEncoding.Srgb)
+            ColorSpace = RgbEncoding.Srgb;
+        Validate();
+    }
+    partial void OnColorSpaceChanged(RgbEncoding value)
+    {
+        if (!IsColorSpaceAvailable && value != RgbEncoding.Srgb)
+            ColorSpace = RgbEncoding.Srgb;
+        else
+            Validate();
+    }
     partial void OnQualityChanged(int value) => Validate();
     partial void OnSizeChanged(Engine.Exporting.ExportSize value) => Validate();
     partial void OnLongEdgeChanged(int value) => Validate();
@@ -198,6 +223,7 @@ public sealed partial class ExportViewModel : ObservableObject
         FileNameTemplate = FileNameTemplate,
         Format = Format,
         Quality = Quality,
+        ColorSpace = ColorSpace,
         Size = Size,
         LongEdgePx = Size == Engine.Exporting.ExportSize.LongEdge ? LongEdge : 0,
     };

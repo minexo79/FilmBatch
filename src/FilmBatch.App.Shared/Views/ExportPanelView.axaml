@@ -54,6 +54,13 @@
         </StackPanel>
 
         <StackPanel Classes="field">
+          <TextBlock Classes="field-label" Text="{l:Tr Export.Field.ColorSpace}" />
+          <ComboBox Classes="flat" HorizontalAlignment="Stretch" ItemsSource="{Binding ColorSpaces}" SelectedItem="{Binding SelectedColorSpace}"
+                    IsEnabled="{Binding IsColorSpaceAvailable}" AutomationProperties.AutomationId="Export.ColorSpace"
+                    ToolTip.Tip="{l:Tr Export.ColorSpace.Note}" />
+          <TextBlock Classes="secondary small" Text="{l:Tr Export.ColorSpace.Note}" TextWrapping="Wrap" IsVisible="{Binding IsColorSpaceAvailable}" />
+        </StackPanel>
+        <StackPanel Classes="field">
           <TextBlock Classes="field-label" Text="{l:Tr Export.Field.Size}" />
           <ComboBox Classes="flat" HorizontalAlignment="Stretch" ItemsSource="{Binding Sizes}" SelectedItem="{Binding SelectedSize}" DisplayMemberBinding="{Binding Label, x:DataType=d:OptionBase}" />
           <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding IsLongEdge}">
