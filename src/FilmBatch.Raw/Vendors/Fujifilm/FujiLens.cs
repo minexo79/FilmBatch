@@ -4,9 +4,10 @@
 // 無鏡頭資料庫、無外部解碼器程式碼。橫向色差表（0xf00f）刻意不套用：去馬賽克已配準色版，存的位移會過校正。
 //
 // 版面（n 個 knot）：[scale, knot × n, value × n]。scale × n 為記錄影像半對角線（像素）。
-// Knot 為半徑上的位置，最後一個是最遠角；依機身在 r（0, 0.1 … 1）或 r²（√(k/8)，末 √(9/8)）上等距。
-// - 畸變：百分比，括號 1 + D/100 乘半徑；自家 JPEG 以 source = z·r·(1 + D(ρ(source))/100) 取樣 raw，
-//   ρ = knot_last·radius／半對角線，zoom z 使輸出矩形落在來源內（框邊半徑上括號最大的倒數）。
+// Knot 為半對角線單位的半徑，依機身在 r（0, 0.1 … 1）或 r²（√(k/8)）上等距；角落在 1。
+// 九 knot 表格多伸出一 knot 至 √(9/8)（X-T4 上第九與第八值相同），表格以原半徑 ρ = r 讀取。
+// - 畸變：百分比，括號 1 + D/100 乘半徑；自家 JPEG 以 source = z·r·(1 + D(source)/100) 取樣 raw，
+//   半徑皆半對角線單位，zoom z 使輸出矩形落在來源內（框邊半徑上括號最大的倒數）。
 // - 暗角：來源半徑處的相對照度（百分比）；校正為增益 100／V。
 // Copyright (c) 2026 ArtCraft Team and the LightCraft contributors，MIT OR Apache-2.0；為 FilmBatch 改寫為 C#。
 
@@ -39,6 +40,7 @@ internal static class FujiLens
     /// <summary>
     /// 表格以自家 JPEG 校驗過的相機（畸變在至少一顆鏡頭上達最佳自由徑向擬合相關 0.01 內，
     /// 見 docs/fuji-lens-corrections.md）。他身不校正。精確比對（大小寫敏感）。
+    /// X-T4 以外九 knot 機身當初以 knot_last·r 讀法校驗；現行原半徑讀法僅 X-T4 量測過（該文件「Knot radius」）。
     /// </summary>
     internal static readonly string[] Validated =
     [
@@ -73,8 +75,6 @@ internal static class FujiLens
                 if (x <= k[i]) return y[i - 1] + (y[i] - y[i - 1]) * (x - k[i - 1]) / (k[i] - k[i - 1]);
             return y[y.Length - 1];
         }
-
-        public double Last => Knots[Knots.Length - 1];
     }
 
     /// <summary>讀並檢查表格。<paramref name="halfDiagonal"/> 為記錄影像半對角線（像素），scale × n 須重現它。</summary>
@@ -98,8 +98,9 @@ internal static class FujiLens
 
     private sealed class Geometry(Table? table, double zoom)
     {
+        /// <summary>來源半徑 <paramref name="source"/> 處的半徑括號 <c>1 + D/100</c>（半對角線，表格自有單位）；無表為 1。</summary>
         public double Bracket(double source) =>
-            table is null ? 1.0 : 1.0 + table.At(source * table.Last, 0.0) / 100.0;
+            table is null ? 1.0 : 1.0 + table.At(source, 0.0) / 100.0;
 
         public double Source(double r)
         {
@@ -258,7 +259,7 @@ internal static class FujiLens
         var half = LensFit.Hypot(w, h) / 2.0;
         if (Read(ifd, VignettingTag, half) is not { } t) return null;
         if (t.Values.Any(v => v is < 10.0 or > 130.0)) return null;
-        double Gain(double r) => 100.0 / t.At(r * t.Last, 100.0);
+        double Gain(double r) => 100.0 / t.At(r, 100.0);
         var allOne = true;
         for (var j = 0; j <= Samples; j++)
             if (Math.Abs(Gain((double)j / Samples) - 1.0) >= 1e-4) { allOne = false; break; }

@@ -262,27 +262,7 @@ internal static class Crx
         {
             var (w, h) = shapes[i]; var band = plane.Bands[i]; var bytes = BandBytes(sample, band); int[] data;
             if (i == 0) data = LosslessPlane(bytes, w, h);
-            else
-            {
-                int[]? decoded = null;
-                // Some high-frequency bands retain up to two redundant right columns. Infer
-                // this only from a complete, correctly aligned stream, then crop the rows.
-                for (int extra = 0; extra <= 2; extra++)
-                {
-                    if (w > int.MaxValue - extra) throw RawException.Limit("CRX band width");
-                    int codedWidth = w + extra; int[] values;
-                    try { values = HighFrequencyBand(bytes, codedWidth, h); }
-                    catch (RawException) { continue; }
-                    if (extra == 0) decoded = values;
-                    else
-                    {
-                        decoded = Allocate(w * h, "CRX cropped band allocation");
-                        for (int row = 0; row < h; row++) values.AsSpan(row * codedWidth, w).CopyTo(decoded.AsSpan(row * w, w));
-                    }
-                    break;
-                }
-                data = decoded ?? throw RawException.Corrupt($"Canon CRX band {i}: unsupported geometry or corrupt entropy");
-            }
+            else data = CodedHighFrequencyBand(bytes, w, CodedBandWidth(i, w, edges), h);
             int uniformStep = band.Quant.Adaptive ? 0 : QuantStep(band.Quant.Uniform, MaxUniformQuant);
             for (int position = 0; position < data.Length; position++)
             {
@@ -296,6 +276,30 @@ internal static class Crx
             bands[i] = new CrxWavelet.Band(w, h, data);
         }
         return CrxWavelet.Reconstruct(bands, width, height, 3, edges);
+    }
+
+    /// <summary>
+    /// Width at which high-frequency band <paramref name="index"/> (1-9, coarsest level first)
+    /// is entropy coded, given its synthesis width. A tile with a right neighbour codes bands
+    /// 5 and 8 at an odd width: an even synthesis width gains one column, which synthesis does
+    /// not use. Every other band is coded at its synthesis width.
+    /// </summary>
+    private static int CodedBandWidth(int index, int width, CrxWavelet.TileEdges edges) =>
+        edges.Right && (index is 5 or 8) ? width | 1 : width;
+
+    private static int[] CodedHighFrequencyBand(ReadOnlySpan<byte> bytes, int width, int codedWidth, int height)
+    {
+        int[] values = HighFrequencyBand(bytes, codedWidth, height);
+        if (codedWidth == width) return values;
+        int count = PlaneSize(width, height, "CRX cropped band allocation");
+        var cropped = Allocate(count, "CRX cropped band allocation");
+        for (int row = 0; row < height; row++)
+        {
+            if ((long)(row + 1) * codedWidth > values.Length || (long)row * width + width > cropped.Length)
+                throw Corrupt("band crop outside row");
+            values.AsSpan(row * codedWidth, width).CopyTo(cropped.AsSpan(row * width, width));
+        }
+        return cropped;
     }
 
     internal static int AdaptiveStep(QpMap map, int band, int x, int y, uint @base, uint gain)
