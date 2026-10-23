@@ -699,4 +699,34 @@ Clear overrides: use the new preset entirely.</value></data>
   <data name="BackgroundRemoval.BatchCancelled" xml:space="preserve"><value>Batch cancelled: {0} photos; applied {1}, skipped {2}, no subject {3}, failed {4}, unfinished {5}.</value></data>
   <data name="BackgroundRemoval.BatchCancelling" xml:space="preserve"><value>Cancelling; completed masks will be saved, but the unfinished result will not be accepted.</value></data>
   <data name="BackgroundRemoval.BatchCancelledWithoutApply" xml:space="preserve"><value>Batch cancelled without applying these results.</value></data>
+  <data name="Module.curves" xml:space="preserve"><value>Tone Curves</value></data>
+  <data name="Param.curves.master" xml:space="preserve"><value>RGB Curve</value></data>
+  <data name="Param.curves.red" xml:space="preserve"><value>Red Curve</value></data>
+  <data name="Param.curves.green" xml:space="preserve"><value>Green Curve</value></data>
+  <data name="Param.curves.blue" xml:space="preserve"><value>Blue Curve</value></data>
+  <data name="Param.curves.shadows" xml:space="preserve"><value>Shadows</value></data>
+  <data name="Param.curves.darks" xml:space="preserve"><value>Darks</value></data>
+  <data name="Param.curves.lights" xml:space="preserve"><value>Lights</value></data>
+  <data name="Param.curves.highlights" xml:space="preserve"><value>Highlights</value></data>
+  <data name="Param.curves.split_shadows" xml:space="preserve"><value>Shadows Split</value></data>
+  <data name="Param.curves.split_mid" xml:space="preserve"><value>Midtones Split</value></data>
+  <data name="Param.curves.split_highlights" xml:space="preserve"><value>Highlights Split</value></data>
+  <data name="Param.curves.refine_saturation" xml:space="preserve"><value>Refine Saturation</value></data>
+  <data name="Curves.Regions" xml:space="preserve"><value>Regions</value></data>
+  <data name="Curves.Master" xml:space="preserve"><value>Master RGB Curve</value></data>
+  <data name="Curves.Red" xml:space="preserve"><value>Red Channel</value></data>
+  <data name="Curves.Green" xml:space="preserve"><value>Green Channel</value></data>
+  <data name="Curves.Blue" xml:space="preserve"><value>Blue Channel</value></data>
+  <data name="Curves.Graph" xml:space="preserve"><value>Tone Curve Editor</value></data>
+  <data name="Curves.Preset" xml:space="preserve"><value>Point Curve Preset</value></data>
+  <data name="Curves.Linear" xml:space="preserve"><value>Linear</value></data>
+  <data name="Curves.Medium" xml:space="preserve"><value>Medium Contrast</value></data>
+  <data name="Curves.Strong" xml:space="preserve"><value>Strong Contrast</value></data>
+  <data name="Curves.Custom" xml:space="preserve"><value>Custom</value></data>
+  <data name="Curves.Reset" xml:space="preserve"><value>Reset</value></data>
+  <data name="Curves.ResetHint" xml:space="preserve"><value>Reset the current curve; keep other channels</value></data>
+  <data name="Curves.Splits" xml:space="preserve"><value>Region Boundaries</value></data>
+  <data name="Curves.Readout" xml:space="preserve"><value>Input {0:0} → Output {1:0}</value></data>
+  <data name="Curves.Edit" xml:space="preserve"><value>Adjust Tone Curves</value></data>
+  <data name="Curves.Hint" xml:space="preserve"><value>Click to add a point; drag to adjust. Double-click an interior point or drag it beyond the top/bottom edge to remove it.</value></data>
 </root>

@@ -4,6 +4,8 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using FilmBatch.Core.Curves;
+using FilmBatch.Engine.Imaging;
+using FilmBatch.App.Localization;
 
 namespace FilmBatch.App.Controls;
 
@@ -16,7 +18,7 @@ public sealed class CurvePointsEditedEventArgs(RoutedEvent routedEvent, IReadOnl
 }
 
 /// <summary>
-/// 最小曲線編輯器（計畫 Task 2.1；Phase 3 擴充直方圖、精確數值與鍵盤微調）。
+/// 多段曲線編輯器：共用插值、直方圖背景與輸入／輸出讀值；Samples 模式僅顯示分段曲線。
 /// 正方形畫布：點擊空白處新增點、拖曳點移動（x 限制在左右鄰點之間）、把中間的點拖出上下界或雙擊刪除（端點不可刪）。
 /// 拖曳中送出 <c>isFinal = false</c> 的 <see cref="PointsEdited"/>，放開時送出一次 <c>isFinal = true</c>。
 /// <see cref="PointsEdited"/> 是冒泡的路由事件，DataTemplate 內的編輯器可由外層 View 統一處理。
@@ -37,12 +39,21 @@ public sealed class CurveEditor : Control
     public static readonly StyledProperty<IBrush?> StrokeBrushProperty =
         AvaloniaProperty.Register<CurveEditor, IBrush?>(nameof(StrokeBrush));
 
+    public static readonly StyledProperty<ImageHistogram?> HistogramProperty =
+        AvaloniaProperty.Register<CurveEditor, ImageHistogram?>(nameof(Histogram));
+    public static readonly StyledProperty<string> HistogramChannelProperty =
+        AvaloniaProperty.Register<CurveEditor, string>(nameof(HistogramChannel), "master");
+    public static readonly StyledProperty<float[]?> SamplesProperty =
+        AvaloniaProperty.Register<CurveEditor, float[]?>(nameof(Samples));
+    public static readonly DirectProperty<CurveEditor, string> ReadoutProperty =
+        AvaloniaProperty.RegisterDirect<CurveEditor, string>(nameof(Readout), e => e.Readout);
+
     public static readonly RoutedEvent<CurvePointsEditedEventArgs> PointsEditedEvent =
         RoutedEvent.Register<CurveEditor, CurvePointsEditedEventArgs>(nameof(PointsEdited), RoutingStrategies.Bubble);
 
     static CurveEditor()
     {
-        AffectsRender<CurveEditor>(PointsProperty, StrokeBrushProperty);
+        AffectsRender<CurveEditor>(PointsProperty, StrokeBrushProperty, HistogramProperty, HistogramChannelProperty, SamplesProperty);
         FocusableProperty.OverrideDefaultValue<CurveEditor>(true);
     }
 
@@ -59,6 +70,29 @@ public sealed class CurveEditor : Control
         set => SetValue(StrokeBrushProperty, value);
     }
 
+    public ImageHistogram? Histogram
+    {
+        get => GetValue(HistogramProperty);
+        set => SetValue(HistogramProperty, value);
+    }
+    public string HistogramChannel
+    {
+        get => GetValue(HistogramChannelProperty);
+        set => SetValue(HistogramChannelProperty, value);
+    }
+    /// <summary>分段模式使用算圖端同一份單調查表，不能在圖上修改控制點。</summary>
+    public float[]? Samples
+    {
+        get => GetValue(SamplesProperty);
+        set => SetValue(SamplesProperty, value);
+    }
+    private string _readout = "";
+    public string Readout
+    {
+        get => _readout;
+        private set => SetAndRaise(ReadoutProperty, ref _readout, value);
+    }
+
     public event EventHandler<CurvePointsEditedEventArgs>? PointsEdited
     {
         add => AddHandler(PointsEditedEvent, value);
@@ -68,6 +102,20 @@ public sealed class CurveEditor : Control
     private List<CurvePoint>? _work;
     private int _dragIndex = -1;
     private bool _dragRemoved;
+    private IPointer? _pointer;
+    private ToneCurve _curve = ToneCurve.Identity;
+    private StreamGeometry? _curveGeometry, _histogramGeometry;
+
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == PointsProperty) _curve = ToneCurve.Create(Points);
+        if (change.Property == PointsProperty || change.Property == SamplesProperty || change.Property == BoundsProperty)
+            _curveGeometry = null;
+        if (change.Property == HistogramProperty || change.Property == HistogramChannelProperty || change.Property == BoundsProperty)
+            _histogramGeometry = null;
+        if (change.Property == HistogramChannelProperty) Readout = "";
+    }
 
     private Rect Plot => new Rect(Bounds.Size).Deflate(Inset);
 
@@ -106,7 +154,9 @@ public sealed class CurveEditor : Control
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
         base.OnPointerPressed(e);
-        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed) return;
+        if (Samples is not null || !e.GetCurrentPoint(this).Properties.IsLeftButtonPressed) return;
+        CompleteGesture();
+        Focus();
         var pos = e.GetPosition(this);
         var pts = Points.OrderBy(p => p.X).ToList();
         var hit = HitTest(pts, pos);
@@ -135,6 +185,8 @@ public sealed class CurveEditor : Control
         _work = pts;
         _dragIndex = hit;
         _dragRemoved = false;
+        _pointer = e.Pointer;
+        UpdateReadout(pts[hit]);
         e.Pointer.Capture(this);
         Commit(Current(), isFinal: false);
     }
@@ -153,6 +205,7 @@ public sealed class CurveEditor : Control
         var r = Plot;
         _dragRemoved = i != 0 && i != last && (pos.Y < r.Top - RemoveDistance || pos.Y > r.Bottom + RemoveDistance);
         _work[i] = new CurvePoint(x, Math.Clamp(c.Y, 0, 1));
+        UpdateReadout(_work[i]);
         Commit(Current(), isFinal: false);
         e.Handled = true;
     }
@@ -161,25 +214,38 @@ public sealed class CurveEditor : Control
     {
         base.OnPointerReleased(e);
         if (_work is null) return;
-        var result = Current();
-        _work = null;
-        _dragIndex = -1;
-        _dragRemoved = false;
-        e.Pointer.Capture(null);
-        Commit(result, isFinal: true);
+        CompleteGesture();
         e.Handled = true;
     }
 
     protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
     {
         base.OnPointerCaptureLost(e);
+        CompleteGesture();
+    }
+
+    /// <summary>放開、通道切換或面板離開時提交一次，並釋放捕捉，後續移動不再修改舊曲線。</summary>
+    public void CompleteGesture()
+    {
         if (_work is null) return;
         var result = Current();
         _work = null;
         _dragIndex = -1;
         _dragRemoved = false;
+        var pointer = _pointer;
+        _pointer = null;
+        pointer?.Capture(null);
         Commit(result, isFinal: true);
     }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        CompleteGesture();
+        base.OnDetachedFromVisualTree(e);
+    }
+
+    private void UpdateReadout(CurvePoint p) =>
+        Readout = Loc.Format("Curves.Readout", Math.Round(p.X * 255), Math.Round(p.Y * 255));
 
     private List<CurvePoint> Current()
     {
@@ -202,6 +268,7 @@ public sealed class CurveEditor : Control
         var r = Plot;
         if (r.Width <= 0 || r.Height <= 0) return;
         context.FillRectangle(Brush("FB.CanvasBrush", Brushes.Black), r);
+        DrawHistogram(context, r);
 
         var grid = new Pen(Brush("FB.DividerBrush", Brushes.DimGray), 1);
         for (var k = 1; k < 4; k++)
@@ -214,24 +281,57 @@ public sealed class CurveEditor : Control
         context.DrawLine(new Pen(Brush("FB.BorderLightBrush", Brushes.Gray), 1), r.BottomLeft, r.TopRight);
 
         var stroke = StrokeBrush ?? Brush("FB.TextBrush", Brushes.White);
-        var curve = ToneCurve.Create(Points);
-        var geometry = new StreamGeometry();
-        using (var g = geometry.Open())
+        if (_curveGeometry is null)
         {
+            _curveGeometry = new StreamGeometry();
+            using var g = _curveGeometry.Open();
             var steps = Math.Max(2, (int)r.Width);
             for (var s = 0; s <= steps; s++)
             {
                 var x = s / (double)steps;
-                var p = ToScreen(new CurvePoint(x, curve.Evaluate(x)));
+                var y = _curve.Evaluate(x);
+                if (Samples is { Length: > 1 } samples)
+                {
+                    var f = x * (samples.Length - 1);
+                    var i = Math.Min((int)f, samples.Length - 2);
+                    y = samples[i] + (samples[i + 1] - samples[i]) * (f - i);
+                }
+                var p = ToScreen(new CurvePoint(x, y));
                 if (s == 0) g.BeginFigure(p, false);
                 else g.LineTo(p);
             }
             g.EndFigure(false);
         }
-        context.DrawGeometry(null, new Pen(stroke, 1.5), geometry);
+        context.DrawGeometry(null, new Pen(stroke, 1.5), _curveGeometry);
+        if (Samples is not null) return;
 
         var fill = Brush("FB.PanelBrush", Brushes.Black);
         var pointPen = new Pen(stroke, 1.5);
         foreach (var p in Points) context.DrawEllipse(fill, pointPen, ToScreen(p), 4, 4);
+    }
+
+    private void DrawHistogram(DrawingContext context, Rect r)
+    {
+        if (Histogram is not { PixelCount: > 0 } h) return;
+        if (_histogramGeometry is null)
+        {
+            var bins = HistogramChannel switch
+            {
+                "red" => h.Red, "green" => h.Green, "blue" => h.Blue, _ => h.Luminance,
+            };
+            var peak = 0;
+            foreach (var count in bins) peak = Math.Max(peak, count);
+            if (peak == 0) return;
+            _histogramGeometry = new StreamGeometry();
+            using var g = _histogramGeometry.Open();
+            g.BeginFigure(r.BottomLeft, true);
+            for (var i = 0; i < bins.Length; i++)
+                g.LineTo(new Point(r.Left + r.Width * i / (bins.Length - 1),
+                    r.Bottom - r.Height * .95 * bins[i] / peak));
+            g.LineTo(r.BottomRight);
+            g.EndFigure(true);
+        }
+        using var opacity = context.PushOpacity(.3);
+        context.DrawGeometry(StrokeBrush ?? Brush("FB.TextBrush", Brushes.White), null, _histogramGeometry);
     }
 }

@@ -96,6 +96,59 @@ public sealed class EffectPipelineTests
     }
 
     [Theory]
+    [InlineData(-100.0, false)]
+    [InlineData(40.0, false)]
+    [InlineData(100.0, false)]
+    [InlineData(-100.0, true)]
+    [InlineData(40.0, true)]
+    [InlineData(100.0, true)]
+    public void BasicShadows_PreserveBlackWhiteAndOrderedGreySteps(double amount, bool gpu)
+    {
+        const int width = 257;
+        var pixels = new ushort[width * 4];
+        for (var x = 0; x < width; x++)
+        {
+            pixels[x * 4] = pixels[x * 4 + 1] = pixels[x * 4 + 2] = (ushort)(x * 65535 / 256);
+            pixels[x * 4 + 3] = (ushort)((x % 4) switch { 0 => 0, 1 => 1, 2 => 32768, _ => 65535 });
+        }
+        using IPreviewRenderer? renderer = gpu ? TryCreateGpu() : new CpuFakeRenderer();
+        Assert.SkipWhen(renderer is null, "No GPU");
+        var output = renderer!.Render16(new SourceImage(width, 1, pixels),
+            ModuleCatalog.Defaults.With("basic.shadows", amount), TestContext.Current.CancellationToken).Rgba16;
+        Assert.Equal((ushort)0, output[0]);
+        Assert.Equal(ushort.MaxValue, output[256 * 4]);
+        for (var x = 1; x < width; x++)
+            Assert.True(output[x * 4] > output[(x - 1) * 4], $"Shadow steps reversed/collapsed at {x}: {amount}");
+        Assert.True(amount > 0 ? output[16 * 4] > pixels[16 * 4] : output[16 * 4] < pixels[16 * 4]);
+        for (var x = 0; x < width; x++)
+        {
+            Assert.Equal(pixels[x * 4 + 3], output[x * 4 + 3]);
+            if (x >= 128) Assert.InRange(Math.Abs(output[x * 4] - pixels[x * 4]), 0, 1);
+        }
+    }
+
+    [Theory]
+    [InlineData(-100.0, false)]
+    [InlineData(100.0, false)]
+    [InlineData(-100.0, true)]
+    [InlineData(100.0, true)]
+    public void BasicShadows_PreserveDarkColourRatiosWithoutGreyOffset(double amount, bool gpu)
+    {
+        var source = new SourceImage(2, 1, [2000, 4000, 8000, 32768, 6000, 9000, 12000, 65535]);
+        using IPreviewRenderer? renderer = gpu ? TryCreateGpu() : new CpuFakeRenderer();
+        Assert.SkipWhen(renderer is null, "No GPU");
+        var output = renderer!.Render16(source, ModuleCatalog.Defaults.With("basic.shadows", amount),
+            TestContext.Current.CancellationToken).Rgba16;
+        Assert.True(output[0] > 0 && output[4] > 0, "Lowering shadows must not clip nonzero dark colour to black.");
+        Assert.InRange(Math.Abs(output[1] - 2 * output[0]), 0, 2);
+        Assert.InRange(Math.Abs(output[2] - 4 * output[0]), 0, 3);
+        Assert.InRange(Math.Abs(2 * output[5] - 3 * output[4]), 0, 3);
+        Assert.InRange(Math.Abs(output[6] - 2 * output[4]), 0, 2);
+        Assert.Equal((ushort)32768, output[3]);
+        Assert.Equal(ushort.MaxValue, output[7]);
+    }
+
+    [Theory]
     [InlineData(70.0, 0.0)]
     [InlineData(0.0, 70.0)]
     [InlineData(70.0, 70.0)]

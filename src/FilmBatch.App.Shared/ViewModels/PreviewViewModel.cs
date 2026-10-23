@@ -36,9 +36,17 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
         UpdateHistogramCollection();
     }
 
+    private bool _curveHistogramVisible;
+    public void SetCurveHistogramVisible(bool visible)
+    {
+        if (_curveHistogramVisible == visible) return;
+        _curveHistogramVisible = visible;
+        UpdateHistogramCollection();
+    }
+
     public void UpdateHistogramCollection()
     {
-        var enabled = HistogramExpanded && !main.PanelsHidden && !main.IsFullScreen;
+        var enabled = (HistogramExpanded || _curveHistogramVisible) && !main.PanelsHidden && !main.IsFullScreen;
         var wasEnabled = main.Renderer.CollectHistogram;
         main.Renderer.CollectHistogram = enabled;
         if (enabled && !wasEnabled) main.RequestPreview();

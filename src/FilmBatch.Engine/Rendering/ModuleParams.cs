@@ -1,8 +1,11 @@
+using FilmBatch.Core.Curves;
 using FilmBatch.Core.Film;
 using FilmBatch.Core.Params;
 using FilmBatch.Core.Random;
 using FilmBatch.Engine.Imaging;
 using FilmBatch.Raw.Color;
+// FilmBatch.Raw.Color 也有 DNG 的 ToneCurve；本檔的曲線參數一律是 Core 的控制點曲線。
+using ToneCurve = FilmBatch.Core.Curves.ToneCurve;
 
 namespace FilmBatch.Engine.Rendering;
 
@@ -21,6 +24,8 @@ public sealed class ModuleParams
     // basic
     public bool BasicOn;
     public float Exposure, Temperature, Tint, Brightness, Contrast, Highlights, Shadows, Saturation, Structure;
+    // curves（色調曲線：分段 → 主曲線 → 各通道合成的顯示編碼查表；停用或恆等時為 null，不解析也不配置查表）
+    public ToneCurveSet? Curves;
     // RAW：場景線性來源的白平衡與語意遮罩；舊 basic.temperature/tint 仍是相對效果。
     public bool RawProcessingOn, RawCustomWhiteBalance;
     public float RawTemperature, RawTint;
@@ -114,6 +119,7 @@ public sealed class ModuleParams
         static string T(Settings s, string k, string def) => s.ContainsKey(k) ? s.Text(k) : def;
         static int I(Settings s, string k, int def) => s.ContainsKey(k) ? (int)Math.Round(s.Number(k)) : def;
         static bool B(Settings s, string k, bool def) => s.ContainsKey(k) ? s.Bool(k) : def;
+        static double D(Settings s, string k, double def) => s.ContainsKey(k) ? s.Number(k) : def;
         int C(string key)
         {
             var definition = ModuleCatalog.Param(key)!;
@@ -121,6 +127,13 @@ public sealed class ModuleParams
             for (var index = 0; index < definition.Choices.Count; index++)
                 if (definition.Choices[index].Key == value) return index;
             throw new InvalidDataException($"Unknown choice for {key}: {value}");
+        }
+        ToneCurve Curve(string key)
+        {
+            // 預設恆等的正規化文字不必解析；設定載入時已驗證，仍無法解析就和未知選項一樣明確失敗。
+            var text = T(s, key, ToneCurve.IdentityText);
+            if (text == ToneCurve.IdentityText) return ToneCurve.Identity;
+            return ToneCurve.TryParse(text, out var curve) ? curve : throw new InvalidDataException($"Invalid curve for {key}: {text}");
         }
 
         var rawTemperature = ModuleCatalog.Param("raw.temperature")!;
@@ -316,6 +329,14 @@ public sealed class ModuleParams
         m.ShadowRecoveryOn &= m.ShadowRecoveryExposure > 0 || m.ShadowRecoveryLuminance > 0 || m.ShadowRecoveryChroma > 0;
         m.FilmLut = m.FilmOn ? FilmLookLibrary.TryLut(m.FilmLookKey) : null;
         m.FilmLook = FilmLookUniforms.From(m);
+        // 色調曲線：停用時完全不讀取；啟用但恆等時 Create 回傳 null。分段量與分界比例以 double 讀取，
+        // 與介面 ToneCurveSet.BakeParametric(滑桿值, …, 分界 / 100) 的輸入逐位相同。
+        m.Curves = B(s, "curves.enabled", true)
+            ? ToneCurveSet.Create(Curve("curves.master"), Curve("curves.red"), Curve("curves.green"), Curve("curves.blue"),
+                D(s, "curves.shadows", 0), D(s, "curves.darks", 0), D(s, "curves.lights", 0), D(s, "curves.highlights", 0),
+                D(s, "curves.split_shadows", 25) / 100, D(s, "curves.split_mid", 50) / 100,
+                D(s, "curves.split_highlights", 75) / 100, D(s, "curves.refine_saturation", 100) / 100)
+            : null;
         m.RawWhiteBalanceMatrix = m.RawProcessingOn && m.RawCustomWhiteBalance
             ? source.WhiteBalance?.MatrixFor(m.RawTemperature, m.RawTint)
             : null;

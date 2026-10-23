@@ -1,4 +1,5 @@
 using FilmBatch.Engine.Denoising;
+using FilmBatch.Core.Curves;
 using FilmBatch.Core.Params;
 using FilmBatch.Core.Random;
 using FilmBatch.Engine.Imaging;
@@ -102,8 +103,10 @@ public static class CpuPipeline
         });
         ct.ThrowIfCancellationRequested();
 
-        // ④ 顯示：基本調整（顯示部分）→ 色調分離 → 清晰銳化
+        // ④ 顯示：基本調整（顯示部分）→ 色調曲線 → 色調分離 → 清晰銳化
         if (p.BasicOn) BasicDisplay(cur, a, w, h, p);
+        ct.ThrowIfCancellationRequested();
+        if (p.Curves is { } curves) ToneCurves(cur, n, curves);
         ct.ThrowIfCancellationRequested();
         if (p.ToneOn) ToneSplit(cur, w, h, p);
         ct.ThrowIfCancellationRequested();
@@ -1012,6 +1015,7 @@ public static class CpuPipeline
         var gm = brightness != 0 ? MathF.Pow(2f, -brightness) : 0f;
         var cMul = contrast != 0 ? 1f + contrast : 0f;
         var satK = 1f + saturation;
+        var shadowToe = shadows != 0 ? MathF.Pow(2f, -2f * shadows) - 1f : 0f;
         Parallel.For(0, n, i =>
         {
             var s = i * 4;
@@ -1027,12 +1031,16 @@ public static class CpuPipeline
             // 對比：圍繞中間調
             if (contrast != 0)
                 v = (v - Vector128.Create(0.5f)) * Vector128.Create(cMul) + Vector128.Create(0.5f);
-            // 亮部/暗部：分段加權
+            // 暗部：共同 RGB 增益保留黑點與色彩比例，於 Y=0.45 平滑接回恆等。
+            // Y' = Y / (1 + a(1-Y/0.45)²)，a > -1：整段嚴格遞增，不反轉灰階。
             var lum = Luminance(v);
+            if (shadows != 0 && lum > 0 && lum < 0.45f)
+            {
+                var toe = 1f - lum / 0.45f;
+                v *= Vector128.Create(1f / (1f + shadowToe * toe * toe));
+            }
             var hi = SmoothStep(0.45f, 0.95f, lum);
-            var lo = 1f - SmoothStep(0.05f, 0.45f, lum);
-            var k = highlights * hi * 0.35f + shadows * lo * 0.35f;
-            v += Vector128.Create(k);
+            v += Vector128.Create(highlights * hi * 0.35f);
             // 飽和度
             if (saturation != 0)
             {
@@ -1049,6 +1057,19 @@ public static class CpuPipeline
                 v = Vector128.Max(v * Vector128.Create(scale), Vector128<float>.Zero);
             }
             buf[s] = v[0]; buf[s + 1] = v[1]; buf[s + 2] = v[2];
+        });
+    }
+
+    /// <summary>
+    /// 色調曲線（顯示編碼）：分段 → 主曲線 → 各通道的合成查表＋曲線飽和度（<see cref="ToneCurveSet.Apply"/>，
+    /// 與 linear/tone_curves.wgsl 一致）；alpha 不變。停用或恆等時 <see cref="ModuleParams.Curves"/> 為 null，整段略過。
+    /// </summary>
+    public static void ToneCurves(float[] buf, int n, ToneCurveSet curves)
+    {
+        Parallel.For(0, n, i =>
+        {
+            var s = i * 4;
+            (buf[s], buf[s + 1], buf[s + 2]) = curves.Apply(buf[s], buf[s + 1], buf[s + 2]);
         });
     }
 

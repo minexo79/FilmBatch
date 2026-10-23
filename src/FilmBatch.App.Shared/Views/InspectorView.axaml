@@ -29,6 +29,11 @@
           </DataTemplate>
         </ContentControl.DataTemplates>
       </ContentControl>
+      <ContentControl Content="{Binding Curves}" IsVisible="{Binding Curves, Converter={x:Static ObjectConverters.IsNotNull}}">
+        <ContentControl.DataTemplates>
+          <DataTemplate x:DataType="vm:ToneCurvesViewModel"><c:ToneCurvesControl /></DataTemplate>
+        </ContentControl.DataTemplates>
+      </ContentControl>
       <ItemsControl ItemsSource="{Binding Params}">
         <ItemsControl.DataTemplates>
           <!-- RAW 白平衡／遮罩：與一般選項列相同的「名稱 ● ｜ 下拉」單行，補充說明放在下方一行 -->

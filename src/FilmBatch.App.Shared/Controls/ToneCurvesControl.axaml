@@ -1,0 +1,58 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:FilmBatch.App.ViewModels"
+             xmlns:c="using:FilmBatch.App.Controls"
+             xmlns:l="using:FilmBatch.App.Localization"
+             x:Class="FilmBatch.App.Controls.ToneCurvesControl"
+             x:DataType="vm:ToneCurvesViewModel">
+  <UserControl.Styles>
+    <Style Selector="ToggleButton.curve-channel">
+      <Setter Property="MinWidth" Value="36" />
+      <Setter Property="MinHeight" Value="32" />
+      <Setter Property="Padding" Value="6,2" />
+    </Style>
+  </UserControl.Styles>
+  <StackPanel Spacing="6" Margin="0,6,0,4">
+    <StackPanel Orientation="Horizontal" Spacing="6">
+      <ToggleButton Name="ParametricChannelButton" Classes="flat curve-channel" Content="{l:Tr Curves.Regions}"
+                    IsChecked="{Binding IsParametric, Mode=OneWay}" Command="{Binding SelectChannelCommand}" CommandParameter="parametric"
+                    ToolTip.Tip="{l:Tr Curves.Regions}" AutomationProperties.Name="{l:Tr Curves.Regions}" />
+      <ToggleButton Name="MasterChannelButton" Classes="flat curve-channel" Content="RGB"
+                    IsChecked="{Binding IsMaster, Mode=OneWay}" Command="{Binding SelectChannelCommand}" CommandParameter="master"
+                    ToolTip.Tip="{l:Tr Curves.Master}" AutomationProperties.Name="{l:Tr Curves.Master}" />
+      <ToggleButton Name="RedChannelButton" Classes="flat curve-channel" Content="R" Foreground="#DD3333"
+                    IsChecked="{Binding IsRed, Mode=OneWay}" Command="{Binding SelectChannelCommand}" CommandParameter="red"
+                    ToolTip.Tip="{l:Tr Curves.Red}" AutomationProperties.Name="{l:Tr Curves.Red}" />
+      <ToggleButton Name="GreenChannelButton" Classes="flat curve-channel" Content="G" Foreground="#33BB55"
+                    IsChecked="{Binding IsGreen, Mode=OneWay}" Command="{Binding SelectChannelCommand}" CommandParameter="green"
+                    ToolTip.Tip="{l:Tr Curves.Green}" AutomationProperties.Name="{l:Tr Curves.Green}" />
+      <ToggleButton Name="BlueChannelButton" Classes="flat curve-channel" Content="B" Foreground="#3377EE"
+                    IsChecked="{Binding IsBlue, Mode=OneWay}" Command="{Binding SelectChannelCommand}" CommandParameter="blue"
+                    ToolTip.Tip="{l:Tr Curves.Blue}" AutomationProperties.Name="{l:Tr Curves.Blue}" />
+    </StackPanel>
+    <c:CurveEditor Name="CurveCanvas" Points="{Binding Points}" Samples="{Binding ParametricSamples}"
+                   Histogram="{Binding Histogram}" HistogramChannel="{Binding Channel}" StrokeBrush="{Binding StrokeBrush}"
+                   ToolTip.Tip="{l:Tr Curves.Hint}" AutomationProperties.Name="{l:Tr Curves.Graph}" />
+    <Grid ColumnDefinitions="*,Auto">
+      <ComboBox Name="CurvePreset" Classes="flat" IsVisible="{Binding !IsParametric}" HorizontalAlignment="Left"
+                ItemsSource="{Binding PresetOptions}" SelectedIndex="{Binding PresetIndex}"
+                AutomationProperties.Name="{l:Tr Curves.Preset}" />
+      <TextBlock IsVisible="{Binding IsParametric}" Text="{l:Tr Curves.Regions}" Classes="secondary" VerticalAlignment="Center" />
+      <Button Name="ResetCurveButton" Grid.Column="1" Classes="flat" Content="{l:Tr Curves.Reset}"
+              Command="{Binding ResetCurrentCommand}" ToolTip.Tip="{l:Tr Curves.ResetHint}" />
+    </Grid>
+    <TextBlock Text="{Binding #CurveCanvas.Readout}" Classes="secondary small numeric" MinHeight="16" />
+    <StackPanel IsVisible="{Binding IsParametric}">
+      <ItemsControl ItemsSource="{Binding Regions}">
+        <ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:SliderParamViewModel"><c:ParamRow /></DataTemplate></ItemsControl.ItemTemplate>
+      </ItemsControl>
+      <Expander Header="{l:Tr Curves.Splits}">
+        <ItemsControl ItemsSource="{Binding Splits}">
+          <ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:SliderParamViewModel"><c:ParamRow /></DataTemplate></ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </Expander>
+    </StackPanel>
+    <c:ParamRow DataContext="{Binding Refine}" />
+    <TextBlock Classes="secondary small" Text="{l:Tr Curves.Hint}" TextWrapping="Wrap" IsVisible="{Binding !IsParametric}" />
+  </StackPanel>
+</UserControl>

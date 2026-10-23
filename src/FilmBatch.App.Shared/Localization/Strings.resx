@@ -499,4 +499,22 @@
   <data name="BackgroundRemoval.BatchCancelled" xml:space="preserve"><value>批次已取消：共 {0} 張，套用 {1}、略過 {2}、無主體 {3}、失敗 {4}、未完成 {5}。</value></data>
   <data name="BackgroundRemoval.BatchCancelling" xml:space="preserve"><value>正在取消；將保存已完成的遮罩，不接受目前尚未完成的結果。</value></data>
   <data name="BackgroundRemoval.BatchCancelledWithoutApply" xml:space="preserve"><value>批次已取消，未套用本次結果。</value></data>
+  <data name="Module.curves" xml:space="preserve"><value>色調曲線</value></data>
+  <data name="Curves.Regions" xml:space="preserve"><value>分段</value></data>
+  <data name="Curves.Master" xml:space="preserve"><value>總合 RGB 曲線</value></data>
+  <data name="Curves.Red" xml:space="preserve"><value>紅色通道</value></data>
+  <data name="Curves.Green" xml:space="preserve"><value>綠色通道</value></data>
+  <data name="Curves.Blue" xml:space="preserve"><value>藍色通道</value></data>
+  <data name="Curves.Graph" xml:space="preserve"><value>色調曲線編輯器</value></data>
+  <data name="Curves.Preset" xml:space="preserve"><value>點曲線預設</value></data>
+  <data name="Curves.Linear" xml:space="preserve"><value>線性</value></data>
+  <data name="Curves.Medium" xml:space="preserve"><value>中等對比</value></data>
+  <data name="Curves.Strong" xml:space="preserve"><value>強烈對比</value></data>
+  <data name="Curves.Custom" xml:space="preserve"><value>自訂</value></data>
+  <data name="Curves.Reset" xml:space="preserve"><value>重設</value></data>
+  <data name="Curves.ResetHint" xml:space="preserve"><value>重設目前曲線，保留其他通道</value></data>
+  <data name="Curves.Splits" xml:space="preserve"><value>分段界線</value></data>
+  <data name="Curves.Readout" xml:space="preserve"><value>輸入 {0:0} → 輸出 {1:0}</value></data>
+  <data name="Curves.Edit" xml:space="preserve"><value>調整色調曲線</value></data>
+  <data name="Curves.Hint" xml:space="preserve"><value>點選新增控制點，拖曳調整；雙擊中間點或拖出上下邊界可刪除。</value></data>
 </root>

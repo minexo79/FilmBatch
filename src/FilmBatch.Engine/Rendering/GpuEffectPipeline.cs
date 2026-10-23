@@ -1,5 +1,6 @@
 using System.Numerics;
 using System.Runtime.InteropServices;
+using FilmBatch.Core.Curves;
 using FilmBatch.Core.Film;
 using FilmBatch.Core.Random;
 using FilmBatch.Engine.Imaging;
@@ -32,6 +33,8 @@ internal sealed class GpuEffectPipeline : IDisposable
     private readonly LinkedList<CachedSource> _sources = new();
     private readonly GpuTexture[] _work = new GpuTexture[4];
     private GpuBuffer? _output, _readback, _band;
+    // 色調曲線查表（3 × ToneCurveSet.Size 個 float）：第一次用到曲線時才配置，之後每次算圖覆寫重用。
+    private GpuBuffer? _curveTable;
     private uint _width, _height, _bandRows;
     private int _uniformIndex;
     private ulong _pendingBlurSamples;
@@ -57,7 +60,7 @@ internal sealed class GpuEffectPipeline : IDisposable
     private readonly ComputeKernel _decode, _encode8, _encode16, _display, _spike, _blur, _blurTile, _box,
         _crop, _basicLinear, _photoAdjust, _shadowStats, _shadowBox, _shadowApply, _lens, _multi, _double, _bokeh, _zoom, _motion, _vignette,
         _halExtract, _halAdd, _leak, _look, _plate, _foreground,
-        _basicDisplay, _tone, _detail, _dirt, _grain, _texture;
+        _basicDisplay, _toneCurves, _tone, _detail, _dirt, _grain, _texture;
 
     public GpuEffectPipeline(GpuDevice gpu, ShaderLibrary shaders, EffectRendererOptions? options = null)
     {
@@ -105,6 +108,7 @@ internal sealed class GpuEffectPipeline : IDisposable
         _look = K("film/look", tex, tex, storage, uniform);
         _plate = K("film/photo_plate", tex, storage, uniform);
         _basicDisplay = K("linear/basic_display", tex, tex, storage, uniform);
+        _toneCurves = K("linear/tone_curves", tex, storage, uniform, BindingSpec.StorageRead);
         _tone = K("film/tone", tex, storage, uniform);
         _detail = K("detail/detail_apply", tex, tex, storage, uniform);
         _dirt = K("surface/dirt_scratches", tex, storage, uniform);
@@ -180,6 +184,7 @@ internal sealed class GpuEffectPipeline : IDisposable
         foreach (var texture in _luts.Values) texture.Dispose();
         _luts.Clear();
         _band?.Dispose(); _band = null;
+        _curveTable?.Dispose(); _curveTable = null;
     }
 
     public void Render<T>(SourceImage source, ModuleParams p, T[] destination, CancellationToken token) where T : unmanaged
@@ -325,7 +330,16 @@ internal sealed class GpuEffectPipeline : IDisposable
         {
             var basis = p.Structure == 0 ? current : Blur(commands, current, Math.Max(1, (int)MathF.Round(shortSide * .012f)), token: token);
             current = Apply(_basicDisplay, new BasicUniforms(p.Brightness / 100, p.Contrast / 100,
-                p.Highlights / 100, p.Shadows / 100, p.Saturation / 100, p.Structure / 100, shortSide, 0), basis);
+                p.Highlights / 100, p.Shadows == 0 ? 0 : MathF.Pow(2f, -2f * p.Shadows / 100) - 1f,
+                p.Saturation / 100, p.Structure / 100, shortSide, 0), basis);
+        }
+        if (p.Curves is { } curves)
+        {
+            token.ThrowIfCancellationRequested();
+            var curved = Next(current);
+            Dispatch(commands, _toneCurves, [current, curved,
+                Uniform(new CurveUniforms(curves.RefineSaturation, ToneCurveSet.Size, 0, 0)), CurveTable(curves)]);
+            current = curved;
         }
         if (p.ToneOn)
             current = Apply(_tone, new ToneUniforms(p.ToneShadowHue, p.ToneShadowAmount / 100,
@@ -459,6 +473,24 @@ internal sealed class GpuEffectPipeline : IDisposable
         _gpu.WriteTexture<float>(texture, lut.ToTextureRgba());
         _luts.Add(lut, texture);
         return texture;
+    }
+
+    /// <summary>
+    /// 色調曲線查表的儲存緩衝區：第一次需要時配置（12 KB），大小不符才重建；每次算圖只有一個曲線 pass，
+    /// 錄製前覆寫一次。由 <see cref="ReleaseAll"/> 與 <see cref="Dispose"/> 釋放；停用或恆等時從不配置。
+    /// </summary>
+    private GpuBuffer CurveTable(ToneCurveSet curves)
+    {
+        var bytes = (ulong)curves.Table.Length * sizeof(float);
+        var buffer = _curveTable;
+        if (buffer is null || buffer.Size != bytes)
+        {
+            buffer?.Dispose();
+            _curveTable = null;
+            _curveTable = buffer = _gpu.CreateBuffer(bytes, GpuBufferUsage.Storage | GpuBufferUsage.CopyDst, "tone curve table");
+        }
+        _gpu.WriteBuffer<float>(buffer, curves.Table);
+        return buffer;
     }
 
     private GpuTexture Next(GpuTexture first, GpuTexture? second = null, GpuTexture? third = null)
@@ -647,7 +679,7 @@ internal sealed class GpuEffectPipeline : IDisposable
         foreach (var buffer in _gaussians.Values) buffer.Dispose();
         foreach (var texture in _luts.Values) texture.Dispose();
         foreach (var kernel in _kernels) kernel.Dispose();
-        _output?.Dispose(); _readback?.Dispose(); _band?.Dispose();
+        _output?.Dispose(); _readback?.Dispose(); _band?.Dispose(); _curveTable?.Dispose();
     }
 
     [StructLayout(LayoutKind.Sequential)] private readonly record struct MatrixUniforms(Vector4 Row0, Vector4 Row1, Vector4 Row2);
@@ -664,8 +696,10 @@ internal sealed class GpuEffectPipeline : IDisposable
     [StructLayout(LayoutKind.Sequential)] private readonly record struct HalationUniforms(float Amount, float Threshold, float Radius, float Hue, float ShortSide, float Pad0, float Pad1, float Pad2);
     [StructLayout(LayoutKind.Sequential)] private readonly record struct LeakUniforms(int Mode, float Amount, float Angle, float Size, float Hue, float Irregularity, int Count, uint Seed, float Aspect, float ShortSide, int Blend, float Red, float Yellow, float Blue, uint Pad0, uint Pad1);
     [StructLayout(LayoutKind.Sequential)] private readonly record struct PlateUniforms(int Type, float Strength, float Ortho, float Hue, float Tint, float Erosion, float Stains, float Uneven, uint Seed, float Aspect, uint Pad0, uint Pad1);
-    [StructLayout(LayoutKind.Sequential)] private readonly record struct BasicUniforms(float Brightness, float Contrast, float Highlights, float Shadows, float Saturation, float Structure, float ShortSide, float Pad);
+    [StructLayout(LayoutKind.Sequential)] private readonly record struct BasicUniforms(float Brightness, float Contrast, float Highlights, float ShadowToe, float Saturation, float Structure, float ShortSide, float Pad);
     [StructLayout(LayoutKind.Sequential)] private readonly record struct ToneUniforms(float ShadowHue, float ShadowAmount, float HighlightHue, float HighlightAmount, float Balance, float Pad0, float Pad1, float Pad2);
+    /// <summary>linear/tone_curves.wgsl：曲線飽和度（0–1，1 略過修正）與每通道查表格數，16 位元組。</summary>
+    [StructLayout(LayoutKind.Sequential)] private readonly record struct CurveUniforms(float Refine, uint Size, uint Pad0, uint Pad1);
     [StructLayout(LayoutKind.Sequential)] private readonly record struct DirtUniforms(int Mode, float Dust, float Scratches, float Hairs, int Polarity, float Strength, float Scale, uint Seed, float ShortSide, uint Pad0, uint Pad1, uint Pad2);
 
     /// <summary>surface/grain.wgsl：A 為效果參數、B 為光學模型常數、MapX/MapY 為輸出→來源參考仿射（w 欄放 r0）、Tone 為亮度帶權重＋像素足跡；96 位元組。</summary>

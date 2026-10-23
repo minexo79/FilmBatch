@@ -46,7 +46,7 @@ public static class PhotoSamplingSettings
     [
         "lens_distortion", "multi_lens", "double_exposure", "bokeh", "zoom_rotate_blur",
         "motion_blur", "vignette", "halation", "light_leak", "film", "photo_plate",
-        "tone", "detail", "dirt_scratches", "grain",
+        "curves", "tone", "detail", "dirt_scratches", "grain",
         "shadow_recovery",
     ];
 

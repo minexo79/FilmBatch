@@ -46,8 +46,9 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
         get => _isActive;
         set
         {
-            if (!SetProperty(ref _isActive, value) || !value) return;
-            if (_main.Service is not null && _main.FocusFile is not null)
+            if (!SetProperty(ref _isActive, value)) return;
+            UpdateCurveHistogram();
+            if (value && _main.Service is not null && _main.FocusFile is not null)
                 UpdateControlPoint(_main.EditingSettings(_main.FocusFile));
         }
     }
@@ -85,9 +86,16 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
         Modules = schemas
             .Select(s => new ModuleSectionViewModel(s, this,
                 ResetModule,
-                m => _main.CopyModuleOnly(m.Key), FilmLook) { IsVisible = s.Key != "raw" })
+                m => _main.CopyModuleOnly(m.Key), FilmLook, main.Preview) { IsVisible = s.Key != "raw" })
             .ToList();
-        foreach (var m in Modules) m.ExpandedChanged += OnModuleExpanded;
+        foreach (var m in Modules)
+        {
+            m.ExpandedChanged += OnModuleExpanded;
+            if (m.Curves is not null) m.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(ModuleSectionViewModel.IsVisible)) UpdateCurveHistogram();
+            };
+        }
         Loc.OnCultureChanged(this, static vm =>
         {
             foreach (var g in vm.Groups) g.RefreshLabel();
@@ -98,6 +106,10 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
         if (Modules.FirstOrDefault(m => m.Key == "basic") is { } basic) basic.IsExpanded = true;
         AiModules = Modules.Where(m => AiModuleKeys.Contains(m.Key)).ToList();
         Groups = new(Modules.Where(m => !AiModuleKeys.Contains(m.Key)).GroupBy(m => m.Schema.Group).Select(g => new ModuleGroupViewModel(g.Key, g)));
+        foreach (var group in Groups) group.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(ModuleGroupViewModel.IsExpanded)) UpdateCurveHistogram();
+        };
         RefreshPresetOptions();
     }
 
@@ -214,7 +226,9 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
         if (mergeKey is null)
         {
             _main.FlushEdit();
-            var description = values.Keys.Any(RawWbParamViewModel.FlatKeys.Contains) ? Loc.Get("Raw.WbEdit") : Loc.Get("Raw.MaskEdit");
+            var description = values.Keys.Any(k => k.StartsWith("curves.", StringComparison.Ordinal))
+                ? Loc.Get("Curves.Edit")
+                : values.Keys.Any(RawWbParamViewModel.FlatKeys.Contains) ? Loc.Get("Raw.WbEdit") : Loc.Get("Raw.MaskEdit");
             _main.Service.SetValues(_main.Selection, new Settings(values), description);
         }
         else _main.PreviewEditValues(mergeKey, values);
@@ -254,6 +268,7 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
 
     private void OnModuleExpanded(object? sender, EventArgs e)
     {
+        UpdateCurveHistogram();
         if (sender is ModuleSectionViewModel { IsExpanded: true, Schema.HasCanvasPoint: true } m) _pointModule = m;
         else if (sender == _pointModule && _pointModule is { IsExpanded: false }) _pointModule = Modules.FirstOrDefault(x => x.IsExpanded && x.Schema.HasCanvasPoint);
         if (_main.Service is not null && _main.FocusFile is not null)
@@ -264,5 +279,13 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
     {
         if (!IsActive) return;
         _main.Preview.ShowControlPoint(_pointModule?.Key, _pointModule is null ? null : resolved);
+    }
+
+    private void UpdateCurveHistogram()
+    {
+        // Only the inspector owning curves controls this demand; other tabs must not clear it.
+        if (!ShowsPhotoInfo) return;
+        _main.Preview.SetCurveHistogramVisible(IsActive && Groups?.Any(g => g.IsExpanded
+            && g.Modules.Any(m => m.Curves is not null && m.IsExpanded && m.IsVisible)) == true);
     }
 }

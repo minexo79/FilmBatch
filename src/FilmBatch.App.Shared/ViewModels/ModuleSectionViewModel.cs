@@ -31,6 +31,7 @@ public sealed partial class ModuleSectionViewModel : ObservableObject
         OnPropertyChanged(nameof(Label));
         foreach (var p in _allParams) p.RefreshLabels();
         FilmLook?.RefreshLabels();
+        Curves?.RefreshLabels();
     }
 
     [ObservableProperty]
@@ -48,7 +49,7 @@ public sealed partial class ModuleSectionViewModel : ObservableObject
 
     public ModuleSectionViewModel(ModuleSchema schema, IParamHost host,
         Action<ModuleSectionViewModel> onReset, Action<ModuleSectionViewModel> onCopyOnly,
-        FilmLookViewModel? filmLook = null)
+        FilmLookViewModel? filmLook = null, PreviewViewModel? preview = null)
     {
         Schema = schema;
         _host = host;
@@ -61,9 +62,10 @@ public sealed partial class ModuleSectionViewModel : ObservableObject
             .Select(p => ParamViewModel.Create(schema.Key, p, host))];
         if (schema.Key == "basic") InsertRawWhiteBalance(host);
         FilmLook = schema.Key == "film" ? filmLook : null;
+        Curves = schema.Key == "curves" ? new ToneCurvesViewModel(host, _allParams, preview) : null;
         // film 模組：底片（look）由縮圖格選、24 個色相參數由色相帶編輯器顯示，一般參數列只留其餘欄位。
         Params = new((FilmLook is null ? _allParams : _allParams.Where(p => p.Def.Key != "look" && !IsHueParam(p)))
-            .Where(p => p.FlatKey != "raw.mask_instance"));
+            .Where(p => p.FlatKey != "raw.mask_instance" && Curves is null));
         FilmLook?.Attach([.. _allParams.Where(IsHueParam)]);
     }
 
@@ -133,6 +135,9 @@ public sealed partial class ModuleSectionViewModel : ObservableObject
 
     /// <summary>film 模組頂部的底片風格選擇；其他模組為 null。</summary>
     public FilmLookViewModel? FilmLook { get; }
+
+    /// <summary>曲線共用畫布；其他模組為 null。參數仍由 _allParams 載入。</summary>
+    public ToneCurvesViewModel? Curves { get; }
 
     // HueBands.Params() 的順序是色相帶 × (h, s, l)，篩選後第 b*3+c 個即對應參數（與 FilmLookViewModel.Attach 一致）。
     private static bool IsHueParam(ParamViewModel p) => p.Def.Key.StartsWith("hue_", StringComparison.Ordinal);
