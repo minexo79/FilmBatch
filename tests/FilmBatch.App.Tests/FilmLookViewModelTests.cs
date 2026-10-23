@@ -118,6 +118,9 @@ public class FilmLookViewModelTests
             using var vm = TestEnv.CreateViewModel();
             await TestEnv.OpenSamplesAsync(vm).WaitAsync(TestContext.Current.CancellationToken);
             var tile = vm.FilmLook.Looks.First();
+            vm.Inspector.SetValue("raw.enabled", false, null);
+            TestEnv.PumpUntil(() => vm.Preview.Source is { RawOptions: var options } && options == default
+                && !vm.Preview.IsBusy && !vm.Renderer.IsBusy);
             // The old developed source is blue; current photo settings require RAW processing off.
             // Keep that source pending across several debounce ticks, then deliver the red replacement.
             vm.Preview.SetOriginal(new SourceImage(1, 1, [0, 0, 65535, 65535])
