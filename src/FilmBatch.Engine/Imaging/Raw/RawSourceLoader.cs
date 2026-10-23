@@ -218,14 +218,20 @@ internal static class RawSourceLoader
         var (xy, transform, look) = CameraPreview.StartingColour(raw, bytes, lens, vignette);
         var whiteBalance = RawWhiteBalance.Create(raw, xy, transform, look);
         var factor = BinFactor(raw, edge);
-        var binned = factor is { } k ? raw.DevelopBinnedMasked(k, HighlightClip) : null;
+        var binned = factor is { } k ? DevelopBinned(raw, k) : null;
         var image = binned?.Image ?? RawSourceGeometry.Develop(raw, edge <= 600 ? DemosaicMethod.Bilinear : DemosaicMethod.Ahd);
         var geometry = RawSourceGeometry.Create(raw, binned is not null ? factor ?? 1 : 1);
         raw.Data = new RawData.U16([]);
         var matrix = look is null ? transform.Matrix : look.Matrix.Mul(transform.Matrix);
         var white = ClippedWhite(matrix);
         if (binned is { } block)
+        {
             Highlight.ReconstructMasked(image, transform.Wb, HighlightClip, white, block.Mask);
+            // 鏡頭鏈在高光重建之後才套用：裁切遮罩不必跨邊界重取樣（否則亮部邊緣出現色邊）。
+            if (block.LensDeferred)
+                image = RawSourceGeometry.ApplyLensChainBinned(list3, image, block.Region, factor!.Value,
+                    raw.ActiveArea.Width, raw.ActiveArea.Height);
+        }
         else
             Highlight.ReconstructWith(image, transform.Wb, HighlightClip, white);
         var tables = ProfileTables.Create(raw.Color.Profile, CameraColor.IlluminantWeight(raw.Color, xy));
@@ -238,6 +244,20 @@ internal static class RawSourceLoader
         CameraLocalTone.Apply(image, raw, rawOptions.CameraLocalTone, geometry);
         var tone = look?.Tone ?? DngTone(raw.Color.Profile.ToneCurve);
         return new RawSceneData(image, tone, whiteBalance, geometry);
+    }
+
+    /// <summary>
+    /// 預覽分箱。List3 只含鏡頭鏈（原廠或 Lensfun 校正）時照樣分箱，不必為了代理圖先對整張感光資料去馬賽克；
+    /// 此時 <c>LensDeferred</c> 為 true，呼叫端於高光重建後以 <see cref="RawSourceGeometry.ApplyLensChainBinned"/> 套用鏡頭鏈。
+    /// 其他 List3 運算碼仍需完整解析度，回傳 null 走完整顯影。
+    /// </summary>
+    internal static (RgbImage Image, byte[] Mask, PixelRect Region, bool LensDeferred)? DevelopBinned(RawImage raw, int k)
+    {
+        var list3 = raw.Opcodes.List3;
+        var deferred = list3.Count != 0;
+        if (deferred && !RawSourceGeometry.IsLensChainOnly(list3)) return null;
+        if (raw.DevelopBinnedMasked(k, HighlightClip, deferList3: deferred) is not { } binned) return null;
+        return (binned.Image, binned.Mask, raw.BinnedRegion(k), deferred);
     }
 
     private static void ApplyColour(RgbImage image, float[] wb, Mat3 matrix, float gain, ProfileTables? tables, HueSat? hueSat)

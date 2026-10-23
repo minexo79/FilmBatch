@@ -85,7 +85,7 @@ internal sealed class RawSourceGeometry
 
     private static RgbImage ApplyLensChain(List<Opcode> ops, RgbImage image)
     {
-        var chain = ops.Select(op => (Op: op, Warp: Stage.From(op))).ToArray();
+        var chain = Chain(ops);
         var w = image.Width; var h = image.Height;
         var result = new RgbImage(w, h);
         Parallel.For(0, h, y =>
@@ -93,24 +93,68 @@ internal sealed class RawSourceGeometry
             for (var x = 0; x < w; x++)
                 for (var ch = 0; ch < 3; ch++)
                 {
-                    double sx = x, sy = y, gain = 1;
-                    for (var i = chain.Length - 1; i >= 0; i--)
-                    {
-                        if (chain[i].Warp is { } warp) (sx, sy) = warp.Map(sx, sy, ch, w, h);
-                        else if (chain[i].Op is FixVignetteRadial v)
-                        {
-                            var cx = v.Center[0] * w; var cy = v.Center[1] * h;
-                            var radius = double.Hypot(Math.Max(cx, w - cx), Math.Max(cy, h - cy));
-                            var r2 = ((sx + .5 - cx) * (sx + .5 - cx) + (sy + .5 - cy) * (sy + .5 - cy)) / Math.Max(radius * radius, 1e-18);
-                            var f = 0d;
-                            for (var k = 4; k >= 0; k--) f = f * r2 + v.K[k];
-                            gain *= 1 + r2 * f;
-                        }
-                    }
+                    var (sx, sy, gain) = MapChain(chain, x, y, ch, w, h);
                     result.Data[(y * w + x) * 3 + ch] = Sample(image, sx, sy, ch) * (float)gain;
                 }
         });
         return result;
+    }
+
+    /// <summary>List3 是否只含鏡頭鏈（warp／徑向暗角）：此時可以先分箱，再於分箱座標套用同一條鏈。</summary>
+    internal static bool IsLensChainOnly(IReadOnlyList<Opcode> list) =>
+        OpcodeOps.AppliedOps(list).All(op => op is WarpRectilinear or WarpRectilinear2 or FixVignetteRadial);
+
+    /// <summary>
+    /// 在分箱影像上套用鏡頭鏈（預覽代理用）：每個輸出區塊以其中心的有效區域座標走與 <see cref="ApplyLensChain"/>
+    /// 相同的映射，再換回分箱座標雙線性取樣。<paramref name="region"/> 為 <see cref="RawImage.BinnedRegion"/>；
+    /// <paramref name="activeWidth"/>／<paramref name="activeHeight"/> 為鏡頭運算碼所定義的完整解析度有效區域。
+    /// </summary>
+    internal static RgbImage ApplyLensChainBinned(IReadOnlyList<Opcode> list, RgbImage image,
+        PixelRect region, int k, int activeWidth, int activeHeight)
+    {
+        var chain = Chain(OpcodeOps.AppliedOps(list));
+        if (chain.Length == 0) return image;
+        var w = image.Width; var h = image.Height;
+        var half = (k - 1) / 2d;
+        var result = new RgbImage(w, h);
+        Parallel.For(0, h, by =>
+        {
+            for (var bx = 0; bx < w; bx++)
+            {
+                double x = region.X + bx * k + half, y = region.Y + by * k + half;
+                for (var ch = 0; ch < 3; ch++)
+                {
+                    var (sx, sy, gain) = MapChain(chain, x, y, ch, activeWidth, activeHeight);
+                    result.Data[(by * w + bx) * 3 + ch] =
+                        Sample(image, (sx - region.X - half) / k, (sy - region.Y - half) / k, ch) * (float)gain;
+                }
+            }
+        });
+        return result;
+    }
+
+    private static (Opcode Op, Stage? Warp)[] Chain(IEnumerable<Opcode> ops) =>
+        ops.Where(op => op is WarpRectilinear or WarpRectilinear2 or FixVignetteRadial)
+            .Select(op => (Op: op, Warp: Stage.From(op))).ToArray();
+
+    /// <summary>輸出像素 (x, y)（有效區域像素中心座標）經鏡頭鏈反向映射到來源座標與暗角增益。</summary>
+    private static (double X, double Y, double Gain) MapChain((Opcode Op, Stage? Warp)[] chain, double x, double y, int ch, int w, int h)
+    {
+        double sx = x, sy = y, gain = 1;
+        for (var i = chain.Length - 1; i >= 0; i--)
+        {
+            if (chain[i].Warp is { } warp) (sx, sy) = warp.Map(sx, sy, ch, w, h);
+            else if (chain[i].Op is FixVignetteRadial v)
+            {
+                var cx = v.Center[0] * w; var cy = v.Center[1] * h;
+                var radius = double.Hypot(Math.Max(cx, w - cx), Math.Max(cy, h - cy));
+                var r2 = ((sx + .5 - cx) * (sx + .5 - cx) + (sy + .5 - cy) * (sy + .5 - cy)) / Math.Max(radius * radius, 1e-18);
+                var f = 0d;
+                for (var k = 4; k >= 0; k--) f = f * r2 + v.K[k];
+                gain *= 1 + r2 * f;
+            }
+        }
+        return (sx, sy, gain);
     }
 
     // Match the raster boundary: continuous pixel centres become f32 before bilinear interpolation.

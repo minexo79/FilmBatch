@@ -282,4 +282,36 @@ public sealed class LensProfileTests
         Assert.Empty(raw.Opcodes.List3);
     }
 
+    [Fact]
+    public void ParsedDatabaseIsCachedUntilAFileChanges()
+    {
+        using var f = new Fixture("""<distortion model="poly3" focal="30" k1="0.02"/>""");
+        var path = Path.Combine(f.DirectoryPath, "fixture.xml");
+        var first = Raw(); LensProfiles.ApplyFallback(first, f.DirectoryPath);
+        var k1 = Ratio(Assert.IsType<WarpRectilinear>(Assert.Single(first.Opcodes.List3)), .5);
+
+        // Same name, size and timestamp: the cached parse is reused (content is not re-read).
+        var stamp = File.GetLastWriteTimeUtc(path);
+        File.WriteAllText(path, File.ReadAllText(path).Replace("k1=\"0.02\"", "k1=\"0.04\""));
+        File.SetLastWriteTimeUtc(path, stamp);
+        var cached = Raw(); LensProfiles.ApplyFallback(cached, f.DirectoryPath);
+        Near(k1, Ratio(Assert.IsType<WarpRectilinear>(Assert.Single(cached.Opcodes.List3)), .5));
+
+        // A real edit changes the timestamp and is picked up.
+        File.SetLastWriteTimeUtc(path, stamp.AddSeconds(5));
+        var edited = Raw(); LensProfiles.ApplyFallback(edited, f.DirectoryPath);
+        Assert.NotEqual(k1, Ratio(Assert.IsType<WarpRectilinear>(Assert.Single(edited.Opcodes.List3)), .5));
+    }
+
+    [Fact]
+    public void BrokenDatabaseIsReportedEveryTimeAfterACachedParse()
+    {
+        using var f = new Fixture("""<distortion model="poly3" focal="30" k1="0.02"/>""");
+        var raw = Raw(); LensProfiles.ApplyFallback(raw, f.DirectoryPath);
+        Assert.Single(raw.Opcodes.List3);
+        File.WriteAllText(Path.Combine(f.DirectoryPath, "broken.xml"), "<lensdatabase>");
+        Assert.ThrowsAny<System.Xml.XmlException>(() => LensProfiles.ApplyFallback(Raw(), f.DirectoryPath));
+        Assert.ThrowsAny<System.Xml.XmlException>(() => LensProfiles.ApplyFallback(Raw(), f.DirectoryPath));
+    }
+
 }

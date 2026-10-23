@@ -9,14 +9,41 @@ internal static partial class LensProfiles
     private const long MaxFileBytes = 16 << 20;
     private const long MaxDatabaseBytes = 64 << 20;
 
+    private const int MaxCachedDatabases = 8;
+    private static readonly Lock CacheLock = new();
+    private static readonly Dictionary<string, (string Stamp, Database Db)> Cache = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// 以資料夾內 XML 的名稱、大小與修改時間為戳記快取解析結果：每張 RAW 讀取都會查詢資料庫，
+    /// 重複解析整個 Lensfun 資料夾（數 MB XML、兩趟）是預覽變慢的主因之一。讀取失敗不快取，下次照常回報。
+    /// </summary>
     private static Database Load(string directory)
     {
-        var db = new Database([], []);
-        long total = 0;
         var files = Directory.EnumerateFiles(directory).Where(p => Path.GetExtension(p).Equals(".xml", StringComparison.OrdinalIgnoreCase))
             .Take(2001).ToArray();
         if (files.Length > 2000) throw new InvalidDataException("Lens database exceeds 2000 XML files.");
         Array.Sort(files, StringComparer.Ordinal);
+        var key = Path.GetFullPath(directory);
+        var stamp = string.Join("\n", files.Select(f =>
+        {
+            var info = new FileInfo(f);
+            return $"{info.Name}|{info.Length}|{info.LastWriteTimeUtc.Ticks}";
+        }));
+        lock (CacheLock)
+            if (Cache.TryGetValue(key, out var hit) && hit.Stamp == stamp) return hit.Db;
+        var db = Parse(files);
+        lock (CacheLock)
+        {
+            if (Cache.Count >= MaxCachedDatabases && !Cache.ContainsKey(key)) Cache.Clear();
+            Cache[key] = (stamp, db);
+        }
+        return db;
+    }
+
+    private static Database Parse(string[] files)
+    {
+        var db = new Database([], []);
+        long total = 0;
         foreach (var file in files)
         {
             using var stream = File.OpenRead(file);

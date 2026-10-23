@@ -31,17 +31,32 @@ public sealed partial class RawImage
     /// <see cref="Highlight.ClippedR"/>/G/B 位元標示該顏色區塊內有大於等於 clip 的樣本。
     /// 與影像一起交給 <see cref="Highlight.ReconstructMasked"/>。
     /// </summary>
-    public (RgbImage Image, byte[] Mask)? DevelopBinnedMasked(int k, float clip) => Bin(k, clip, keepMax: false);
+    public (RgbImage Image, byte[] Mask)? DevelopBinnedMasked(int k, float clip) => Bin(k, clip, keepMax: false, deferList3: false);
 
-    private (RgbImage Image, byte[] Mask)? Bin(int k, float clip, bool keepMax)
+    /// <summary>
+    /// 與 <see cref="DevelopBinnedMasked(int, float)"/> 相同；<paramref name="deferList3"/> 為 true 時帶有 OpcodeList3
+    /// 也分箱，由呼叫端在 <see cref="BinnedRegion"/> 座標下自行套用 List3（輸出尚未套用任何 List3 運算碼）。
+    /// </summary>
+    public (RgbImage Image, byte[] Mask)? DevelopBinnedMasked(int k, float clip, bool deferList3) =>
+        Bin(k, clip, keepMax: false, deferList3);
+
+    /// <summary>分箱涵蓋的有效區域範圍（預設裁切，寬高截為 k 的倍數）；輸出像素 (bx, by) 即此範圍內的第 (bx, by) 個 k×k 區塊。</summary>
+    public PixelRect BinnedRegion(int k)
+    {
+        var a = ActiveArea;
+        var c = Crop.Clipped(a.Width, a.Height);
+        c = c.Width < k || c.Height < k ? new PixelRect(0, 0, a.Width, a.Height) : c;
+        return new PixelRect(c.X, c.Y, c.Width / k * k, c.Height / k * k);
+    }
+
+    private (RgbImage Image, byte[] Mask)? Bin(int k, float clip, bool keepMax, bool deferList3 = false)
     {
         Validate();
-        if (!CanBin(k) || Opcodes.List3.Count != 0) return null;
+        if (!CanBin(k) || (!deferList3 && Opcodes.List3.Count != 0)) return null;
         if (Cfa is not { } cfa) return null;
         var a = ActiveArea;
         // 只分箱預設裁切（相對於有效區域）
-        var c = Crop.Clipped(a.Width, a.Height);
-        c = c.Width < k || c.Height < k ? new PixelRect(0, 0, a.Width, a.Height) : c;
+        var c = BinnedRegion(k);
         var (bw, bh) = (c.Width / k, c.Height / k);
         if (bw == 0 || bh == 0) return null;
         // Opcode 清單 1/2 需要正規化複本；純檔案逐列正規化即可
