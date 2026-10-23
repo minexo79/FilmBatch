@@ -26,6 +26,17 @@ public static class ImageLoader
         return ImageBackend.Load(path, maxLongEdge, rawOptions);
     }
 
+    /// <summary>
+    /// RAW 檔內相機渲染的內嵌預覽（JPEG／JXL），轉正並縮到 <paramref name="longEdge"/> 以下；挑選長邊至少為
+    /// <paramref name="longEdge"/> 的最小預覽，沒有則用最大的那張。非 RAW、沒有內嵌預覽或預覽損毀時回傳 null。
+    /// 只供開圖時的暫時替身顯示：不是場景線性顯影，不得用於編輯、分析或匯出。
+    /// </summary>
+    public static SourceImage? TryLoadEmbeddedPreview(string path, int longEdge)
+    {
+        if (!RawSourceLoader.TryExtractThumbnail(path, longEdge, out var preview, out var info)) return null;
+        return ImageBackend.TryLoadEmbeddedPreview(preview, path, default, longEdge, info!);
+    }
+
     /// <summary>全解析度解碼（匯出用）：EXIF 轉正、不縮放，保留 16-bit 資料。</summary>
     public static SourceImage LoadFull(string path, RawLoadOptions rawOptions = default)
     {

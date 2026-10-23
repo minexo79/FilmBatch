@@ -18,6 +18,10 @@
   <ItemGroup>
     <Using Include="Xunit" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- 測試用 TIFF/DNG 寫入器（合成含內嵌預覽的 DNG fixture） -->
+    <Compile Include="..\FilmBatch.Raw.Tests\Support\TiffWriter.cs" Link="Support\TiffWriter.cs" />
+  </ItemGroup>
 </Project>
 
 

@@ -46,7 +46,7 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
     private readonly SemaphoreSlim _decodeGate = new(Math.Max(2, Environment.ProcessorCount / 2));
     private readonly SemaphoreSlim _backgroundGate = new(1, 1);
     private readonly ConcurrentDictionary<string, (RawLoadOptions Options, Task<SourceImage> Task, CancellationTokenSource Cts)> _thumbs = new(StringComparer.Ordinal);
-    private readonly ConcurrentDictionary<(string Path, int Edge, RawLoadOptions Options), (Task<SourceImage> Task, CancellationTokenSource Cts)> _previews = new();
+    private readonly ConcurrentDictionary<(string Path, int Edge, RawLoadOptions Options), (Task<SourceImage> Task, CancellationTokenSource Cts, PrefetchState? Prefetch)> _previews = new();
     private readonly LinkedList<(string Path, int Edge, RawLoadOptions Options)> _previewOrder = new();
     private readonly LinkedList<string> _thumbOrder = new();
     private readonly object _stateLock = new();
@@ -60,6 +60,13 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
     private long _lastPaceTimestamp = Stopwatch.GetTimestamp();
     private TimeSpan _lastPaceCpu = GetProcessCpuTime();
     private bool _disposed;
+
+    /// <summary>背景入場的預覽解碼（前後張預取）狀態：<see cref="Started"/> 只在 <c>_stateLock</c> 內讀寫。</summary>
+    private sealed class PrefetchState
+    {
+        /// <summary>已通過背景入場並開始解碼（之後前景請求直接共用這次解碼）。</summary>
+        public bool Started;
+    }
 
     /// <summary>
     /// 目前實際解碼的預覽代理圖長邊（偏好設定變更後即時更新，不再是建構時的固定值）。
@@ -164,7 +171,8 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
             ObjectDisposedException.ThrowIf(_disposed, this);
             var edge = EffectivePreviewEdge(_previewLimit);
             var key = (Path: path, Edge: edge, Options: rawOptions);
-            if (_previews.TryGetValue(key, out var cur) && IsReusable(cur.Task))
+            // 背景預取還在排隊（尚未開始解碼）：不排在背景閘門與節流之後，改由前景重新入場
+            if (_previews.TryGetValue(key, out var cur) && IsReusable(cur.Task) && cur.Prefetch is not { Started: false })
             {
                 _previewOrder.Remove(key);
                 _previewOrder.AddFirst(key);
@@ -172,26 +180,82 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
             }
             else
             {
+                if (cur.Prefetch is { Started: false }) cur.Cts.Cancel();
                 // 保留仍在 LRU 內的舊選項，讓復原重用同一來源／單次解碼；超過容量才取消。
                 var entryCts = new CancellationTokenSource();
                 var folderToken = _foregroundCts.Token;
                 var generation = _folderGeneration;
                 var task = DecodePreviewAsync(path, edge, rawOptions, generation, folderToken, entryCts);
-                task.ContinueWith(static t => { _ = t.Exception; }, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
-                _previews[key] = (task, entryCts);
-                _previewOrder.Remove(key);
-                _previewOrder.AddFirst(key);
-                while (_previewOrder.Count > MaxPreviews)
-                {
-                    var last = _previewOrder.Last!.Value;
-                    _previewOrder.RemoveLast();
-                    if (_previews.TryRemove(last, out var evicted))
-                        evicted.Cts.Cancel();
-                }
-                shared = task;
+                shared = AddPreviewLocked(key, task, entryCts, null);
             }
         }
         return ApplyWaiter(shared, cancellationToken);
+    }
+
+    /// <summary>
+    /// 背景入場的預覽代理圖（前後張預取）：與縮圖共用背景閘門與 CPU 節流，結果放進同一個預覽 LRU，焦點換過去時直接命中。
+    /// 尚未開始解碼前若被前景請求，前景取代並取消這筆；已開始的解碼則由前景共用。
+    /// </summary>
+    private Task<SourceImage> GetPreviewBackgroundAsync(string path, RawLoadOptions rawOptions, CancellationToken cancellationToken)
+    {
+        Task<SourceImage> shared;
+        lock (_stateLock)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            var edge = EffectivePreviewEdge(_previewLimit);
+            var key = (Path: path, Edge: edge, Options: rawOptions);
+            if (_previews.TryGetValue(key, out var cur) && IsReusable(cur.Task))
+            {
+                // 預取不更新 LRU 順序：不把焦點照片最近用過的來源擠出去
+                shared = cur.Task;
+            }
+            else
+            {
+                var entryCts = new CancellationTokenSource();
+                var state = new PrefetchState();
+                var task = DecodePreviewBackgroundAsync(path, edge, rawOptions, _folderGeneration, _backgroundCts.Token, entryCts, state);
+                shared = AddPreviewLocked(key, task, entryCts, state);
+            }
+        }
+        return ApplyWaiter(shared, cancellationToken);
+    }
+
+    private Task<SourceImage> AddPreviewLocked((string Path, int Edge, RawLoadOptions Options) key, Task<SourceImage> task,
+        CancellationTokenSource entryCts, PrefetchState? prefetch)
+    {
+        task.ContinueWith(static t => { _ = t.Exception; }, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
+        _previews[key] = (task, entryCts, prefetch);
+        _previewOrder.Remove(key);
+        _previewOrder.AddFirst(key);
+        while (_previewOrder.Count > MaxPreviews)
+        {
+            var last = _previewOrder.Last!.Value;
+            _previewOrder.RemoveLast();
+            if (_previews.TryRemove(last, out var evicted))
+                evicted.Cts.Cancel();
+        }
+        return task;
+    }
+
+    /// <summary>
+    /// 取消還在排隊（尚未開始解碼）的背景預取並移出快取：焦點換到別張時，舊的前後張不再佔用背景入場。
+    /// 已開始的解碼照常完成並留在 LRU（之後回到那張照片可直接使用）。
+    /// </summary>
+    public void CancelPreviewPrefetch()
+    {
+        var cancelled = new List<CancellationTokenSource>();
+        lock (_stateLock)
+        {
+            if (_disposed) return;
+            foreach (var (key, entry) in _previews)
+            {
+                if (entry.Prefetch is not { Started: false }) continue;
+                _previews.TryRemove(key, out _);
+                _previewOrder.Remove(key);
+                cancelled.Add(entry.Cts);
+            }
+        }
+        foreach (var cts in cancelled) cts.Cancel();
     }
 
     /// <summary>
@@ -214,11 +278,16 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
     /// <see cref="GetPreviewAsync"/>、<see cref="SourceLevel.Full"/> 走前景入場的全解析度單一槽。
     /// 三者各自獨立的共享任務；等待取消只取消該呼叫的等待。
     /// </summary>
-    public Task<SourceImage> GetSourceAsync(string path, SourceLevel level, RawLoadOptions rawOptions = default, CancellationToken ct = default) =>
+    /// <remarks><paramref name="admission"/> = <see cref="SourceAdmission.Background"/> 只適用 Preview（前後張預取）；Thumb 本來就是背景，Full 不支援背景。</remarks>
+    public Task<SourceImage> GetSourceAsync(string path, SourceLevel level, RawLoadOptions rawOptions = default, CancellationToken ct = default,
+        SourceAdmission admission = SourceAdmission.Foreground) =>
         level switch
         {
             SourceLevel.Thumb => GetThumbnailSourceAsync(path, rawOptions, ct),
+            SourceLevel.Preview when admission == SourceAdmission.Background => GetPreviewBackgroundAsync(path, rawOptions, ct),
             SourceLevel.Preview => GetPreviewAsync(path, rawOptions, ct),
+            SourceLevel.Full when admission == SourceAdmission.Background =>
+                throw new ArgumentException("Full sources have no background admission.", nameof(admission)),
             SourceLevel.Full => GetFullAsync(path, rawOptions, ct),
             _ => throw new ArgumentOutOfRangeException(nameof(level), level, null),
         };
@@ -387,6 +456,36 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
         string path, int longEdge, RawLoadOptions rawOptions, long generation,
         CancellationToken folderToken, CancellationTokenSource entryCts) =>
         DecodeForegroundAsync(() => ImageLoader.Load(path, longEdge, rawOptions), generation, folderToken, entryCts);
+
+    private async Task<SourceImage> DecodePreviewBackgroundAsync(
+        string path, int longEdge, RawLoadOptions rawOptions, long generation,
+        CancellationToken backgroundToken, CancellationTokenSource entryCts, PrefetchState state)
+    {
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(backgroundToken, entryCts.Token);
+        var ct = linked.Token;
+        ct.ThrowIfCancellationRequested();
+        await _backgroundGate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            ct.ThrowIfCancellationRequested();
+            if (!IsCurrent(generation)) throw new OperationCanceledException(ct);
+            await PaceBackgroundAsync(ct).ConfigureAwait(false);
+            // 與前景的「尚未開始就取代」判斷在同一把鎖內：標記開始後，前景請求改為共用這次解碼
+            lock (_stateLock)
+            {
+                ct.ThrowIfCancellationRequested();
+                if (_folderGeneration != generation) throw new OperationCanceledException(ct);
+                state.Started = true;
+            }
+            var result = await Task.Run(() => ImageLoader.Load(path, longEdge, rawOptions), CancellationToken.None).ConfigureAwait(false);
+            if (!IsCurrent(generation)) throw new OperationCanceledException(ct);
+            return result;
+        }
+        finally
+        {
+            _backgroundGate.Release();
+        }
+    }
 
     private async Task<SourceImage> DecodeFullAsync(
         string path, RawLoadOptions rawOptions, long generation,

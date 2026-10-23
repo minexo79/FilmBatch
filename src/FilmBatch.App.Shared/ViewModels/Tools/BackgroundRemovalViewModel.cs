@@ -274,6 +274,8 @@ public sealed partial class BackgroundRemovalViewModel : ObservableObject, IDisp
     {
         _tool = new ForegroundBrushTool(_source!, mask) { BrushSize = BrushSize, KeepForeground = KeepForeground };
         _tool.HistoryChanged += RefreshDraftHistory;
+        // 開圖替身不得成為去背結束後還原的畫面
+        _main.Preview.DropStandIn();
         _previousImage = _main.Preview.Image;
         _previousSplit = _main.Preview.IsSplit;
         _main.Renderer.CancelPreview();

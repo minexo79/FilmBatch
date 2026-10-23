@@ -15,6 +15,19 @@ using FilmBatch.Engine.Rendering;
 
 namespace FilmBatch.App.ViewModels;
 
+/// <summary>開圖替身的來源（OPEN-01）；數值越大越接近最終畫面，較低的不會蓋掉較高的。</summary>
+public enum StandInKind
+{
+    /// <summary>縮圖列已有的縮圖（套用了照片設定，但解析度低）。</summary>
+    Thumbnail,
+
+    /// <summary>RAW 檔內相機渲染的內嵌 JPEG（只用於未調整的照片）。</summary>
+    EmbeddedJpeg,
+
+    /// <summary>同一張照片、同一組設定最近的完整 Main 渲染（含前後張預取）。</summary>
+    ViewCache,
+}
+
 /// <summary>預覽畫布的狀態（計畫書 2.4.3）。影像以雙緩衝的 WriteableBitmap 呈現，避免每幀配置大型點陣圖。</summary>
 public sealed partial class PreviewViewModel(MainWindowViewModel main) : ObservableObject
 {
@@ -24,7 +37,8 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
     private ImageHistogram? _resultHistogram;
     private ImageHistogram? _originalHistogram;
 
-    public ImageHistogram? Histogram => ShowOriginal ? _originalHistogram : _resultHistogram;
+    /// <summary>直方圖只描述正式渲染：顯示替身時為 null。</summary>
+    public ImageHistogram? Histogram => StandIn is not null ? null : ShowOriginal ? _originalHistogram : _resultHistogram;
     public string HistogramClipping => Histogram is { } h
         ? Loc.Format("Histogram.Clipping", h.ShadowFraction, h.HighlightFraction) : "";
 
@@ -97,6 +111,75 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
 
     [ObservableProperty]
     private bool _isBusy;
+
+    // ───────────── 開圖替身 ─────────────
+
+    /// <summary>
+    /// 目前 <see cref="Image"/> 顯示的是哪一種替身；null 表示顯示的是正式渲染（或沒有影像）。
+    /// 替身只暫時顯示：不進直方圖（<see cref="Histogram"/> 為 null）、不畫控制點與範圍、不給照片工具、遮罩、裁切或匯出，
+    /// 期間 <see cref="IsBusy"/> 維持 true；正式結果送達（<see cref="SetResult"/>）時原地替換。
+    /// </summary>
+    [ObservableProperty]
+    private StandInKind? _standIn;
+
+    /// <summary>替身的 bitmap（由本 VM 擁有，替換後釋放）。</summary>
+    private Bitmap? _standInBitmap;
+
+    partial void OnStandInChanged(StandInKind? value) => NotifyHistogram();
+
+    /// <summary>
+    /// 顯示開圖替身。只在還沒有正式來源（<see cref="Source"/> 為 null）且畫面上不是正式渲染時接受；
+    /// 已顯示較接近最終畫面的替身時，較低等級的不取代它。<paramref name="layoutLongEdge"/> 是估計的畫框長邊
+    /// （代理圖解析度），讓放大倍率下的替身與正式畫面同樣大小；0 = 用 bitmap 本身的尺寸。
+    /// 接受後 bitmap 歸本 VM 所有；不接受時立即釋放。
+    /// </summary>
+    /// <returns>是否顯示。</returns>
+    public bool ShowStandIn(Bitmap bitmap, StandInKind kind, double layoutLongEdge = 0)
+    {
+        if (Source is not null || (StandIn is null && Image is not null) || StandIn > kind)
+        {
+            bitmap.Dispose();
+            return false;
+        }
+        var old = _standInBitmap;
+        _standInBitmap = bitmap;
+        StandIn = kind;
+        ControlPoint = null;
+        FrameLongEdge = Math.Max(0, layoutLongEdge);
+        Image = bitmap;
+        UpdateFootprint();
+        if (!ReferenceEquals(old, bitmap)) old?.Dispose();
+        return true;
+    }
+
+    /// <summary>撤下替身（不是被正式結果取代：失敗、取消、背景化、去背編輯接手畫面）：畫面清空，不把替身留作最終畫面。</summary>
+    public void DropStandIn()
+    {
+        if (StandIn is null) return;
+        if (ReferenceEquals(Image, _standInBitmap)) Image = null;
+        ReleaseStandIn();
+        if (Source is null) FrameLongEdge = 0;
+    }
+
+    /// <summary>替身已不在畫面上：清除狀態並釋放 bitmap，恢復控制點與範圍的顯示。</summary>
+    private void ReleaseStandIn()
+    {
+        if (StandIn is null && _standInBitmap is null) return;
+        var bitmap = _standInBitmap;
+        _standInBitmap = null;
+        StandIn = null;
+        bitmap?.Dispose();
+        RefreshControlOverlay();
+    }
+
+    /// <summary>替身只在算圖中顯示：忙碌結束（失敗、取消、背景化）卻還沒有正式結果時撤下。</summary>
+    partial void OnIsBusyChanged(bool value)
+    {
+        if (!value) DropStandIn();
+    }
+
+    /// <summary>以 BGRA 像素建立一張新的 bitmap（替身用）。</summary>
+    internal static WriteableBitmap BitmapFrom(RenderResult r) => ToBitmap(r.Bgra, r.Width, r.Height);
 
     [ObservableProperty]
     private string? _overlayText;
@@ -298,6 +381,7 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
         EndControlPointEdit();
         Source = null;
         Image = null;
+        ReleaseStandIn();
         Original = null;
         _originalShown = null;
         _compareSource = null;
@@ -362,7 +446,17 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
         _controlModule = moduleKey;
         _controlSettings = moduleKey is not null ? settings : null;
         _controlKeys = moduleKey is not null && ModuleCatalog.TryGetModule(moduleKey, out var schema) ? schema.CanvasPoint : null;
-        ControlPoint = _controlKeys is { } keys && settings is not null && (keys.ToggleKey is null || settings.Bool(keys.ToggleKey))
+        RefreshControlOverlay();
+    }
+
+    /// <summary>
+    /// 依目前模組與設定重算控制點與範圍。替身顯示期間兩者都不畫：替身的長寬比可能與正式畫框不同（內嵌 JPEG 未裁切），
+    /// 正規化座標會畫錯位置，也不能拖曳。
+    /// </summary>
+    private void RefreshControlOverlay()
+    {
+        var settings = _controlSettings;
+        ControlPoint = StandIn is null && _controlKeys is { } keys && settings is not null && (keys.ToggleKey is null || settings.Bool(keys.ToggleKey))
             ? ToCanvas(keys, settings, new Point(settings.Number(keys.XKey), settings.Number(keys.YKey)))
             : null;
         UpdateFootprint();
@@ -444,7 +538,7 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
     /// <summary>範圍輪廓依顯示影像的長寬比計算（裁切改變畫框時重算）。</summary>
     private void UpdateFootprint()
     {
-        var size = (Image ?? Original)?.PixelSize;
+        var size = StandIn is null ? (Image ?? Original)?.PixelSize : null;
         Footprint = _controlModule is { } module && _controlSettings is { } settings && size is { } px
             ? EffectFootprint.For(module, settings, px.Width, px.Height, Source?.Width ?? 0, Source?.Height ?? 0)
             : [];
@@ -454,6 +548,8 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
 
     partial void OnImageChanged(Bitmap? value)
     {
+        // 正式結果（或去背編輯的畫面）取代了替身
+        if (_standInBitmap is not null && !ReferenceEquals(value, _standInBitmap)) ReleaseStandIn();
         var size = (value ?? Original)?.PixelSize;
         if (size == _footprintImageSize) return;
         _footprintImageSize = size;

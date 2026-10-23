@@ -43,6 +43,8 @@ public sealed class PreviewService : IDisposable
     /// </summary>
     public event Action<RenderResult, ImageHistogram?, ImageHistogram?>? PreviewRefitted;
     public event Action<string, RenderResult>? ThumbnailReady;
+    /// <summary>預取渲染完成（UI 執行緒；換代後的舊結果已丟棄）。只供快取，不得當成預覽影像。</summary>
+    public event Action<string, RenderResult>? PrefetchReady;
     public event Action<string, bool>? DeviceReady;
     public event Action<string>? Notice;
     public event Action<RenderFailure>? Failed;
@@ -107,6 +109,7 @@ public sealed class PreviewService : IDisposable
             });
         };
         _scheduler.ThumbnailRendered += t => PostAtEpoch(t.Epoch, () => ThumbnailReady?.Invoke(t.Key, t.Result));
+        _scheduler.PrefetchRendered += t => PostAtEpoch(t.Epoch, () => PrefetchReady?.Invoke(t.Key, t.Result));
     }
 
     private void PostAtEpoch(long epoch, Action action)
@@ -251,6 +254,13 @@ public sealed class PreviewService : IDisposable
 
     public void RequestThumbnail(string fileName, SourceImage source, Settings settings) =>
         _scheduler.RequestThumbnail(fileName, source, settings);
+
+    /// <summary>排入前後張的預取渲染（低於預覽、高於縮圖）；結果經 <see cref="PrefetchReady"/> 送出，不影響 <see cref="IsBusy"/>。</summary>
+    public void RequestPrefetch(string key, SourceImage source, Settings settings) =>
+        _scheduler.RequestPrefetch(key, source, settings);
+
+    /// <summary>丟棄排隊中與執行中的預取。</summary>
+    public void CancelPrefetch() => _scheduler.CancelPrefetch();
 
     public void CancelThumbnails()
     {

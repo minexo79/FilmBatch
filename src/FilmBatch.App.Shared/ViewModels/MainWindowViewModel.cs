@@ -8,6 +8,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FilmBatch.App.Localization;
 using FilmBatch.App.Services;
+using FilmBatch.App.Services.Loupe;
 using FilmBatch.App.ViewModels.Dialogs;
 using FilmBatch.App.ViewModels.Tools;
 using FilmBatch.Core;
@@ -237,7 +238,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             PhotoTools.OnPreviewRendered();
             LastRenderText = $"{r.Elapsed.TotalMilliseconds:F1} ms";
             UpdateBackgroundText();
+            OnFullPreviewDelivered(r);
         };
+        Renderer.PrefetchReady += OnPrefetchReady;
         // 同一級內改變畫布尺寸：只換 bitmap（直方圖沿用），不是新影格
         Renderer.PreviewRefitted += (r, histogram, originalHistogram) =>
         {
@@ -372,6 +375,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             Presets.Hover.InvalidateCache();
             FilmLook.InvalidateThumbnails();
             Images.Clear();
+            CancelPrefetch();
+            ViewCache.Clear();
             if (Service is not null) Service.Project.EntriesChanged -= OnEntriesChanged;
 
             Stack.Clear();
@@ -459,6 +464,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         Preview.UpdateOverlay(Selection.Count);
         Preview.IsBusy = true;
         var rawOptions = RawLoadOptions.FromSettings(EditingSettings(file));
+        // 換照片（或重新載入）：舊的前後張預取作廢；這張第一次完整送達後再預取它的前後張
+        CancelPrefetch();
+        _prefetchArmedFor = file;
+        // 解碼前先顯示替身（同步命中的只在這一個 UI 影格內完成；內嵌 JPEG 在背景解碼，不佔前景解碼入場）
+        ShowStandIns(service, file, rawOptions, generation, cancellationToken);
         try
         {
             var source = await Images.GetPreviewAsync(service.Project.PathOf(file), rawOptions, cancellationToken);
@@ -531,8 +541,173 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         if (!ReferenceEquals(scaled, Preview.Source))
             _analysisSources.AddOrUpdate(source, SourceForPhoto(FocusFile, Preview.Source));
         Preview.ShowTransparency = Preview.SourceHasTransparency || source.ForegroundMask is not null;
+        // 裁切工具的全幅與照片工具的取樣視圖不是照片的最終畫面：送達後不放進 ViewCache
+        _lastRequest = new RenderRequest(Service, FocusFile, Service.Project.PathOf(FocusFile), settings, Preview.Source.RawOptions,
+            Cacheable: !CropTool.IsActive && PhotoTools.PreviewOverlay is null);
         Renderer.RequestPreview(FocusFile, source, settings, displayFit);
         Preview.IsBusy = true;
+    }
+
+    // ───────────── 開圖替身與前後張預取（OPEN-01） ─────────────
+
+    /// <summary>最近完整品質 Main 渲染的快取：開圖替身與前後張預取共用。</summary>
+    internal ViewRenderCache ViewCache { get; } = new();
+
+    /// <summary>最近一次送出的預覽請求（含覆寫後的設定）；送達且是最新一筆時，以它作為 ViewCache 的鍵。</summary>
+    private sealed record RenderRequest(ProjectService Service, string File, string Path, Settings Settings, RawLoadOptions RawOptions, bool Cacheable);
+    private RenderRequest? _lastRequest;
+
+    /// <summary>等待第一次完整送達後預取前後張的照片；送達後清除。</summary>
+    private string? _prefetchArmedFor;
+    private CancellationTokenSource _prefetchCts = new();
+    private long _prefetchSeq;
+    /// <summary>已送到 render 執行緒的預取：鍵 → 結果該放進 ViewCache 的位置。取消時清空，之後送達的舊結果因此丟棄。</summary>
+    private readonly Dictionary<string, PendingPrefetch> _prefetches = new(StringComparer.Ordinal);
+
+    private sealed record PendingPrefetch(ProjectService Service, long FolderGeneration, string Path, Settings Settings,
+        RawLoadOptions RawOptions, double FrameLongEdge);
+
+    /// <summary>
+    /// 解碼前依序嘗試替身：① ViewCache（同一組設定最近的完整渲染）；② 未調整的 RAW 以內嵌 JPEG（背景解碼後替換 ③）；
+    /// ③ 縮圖列已有的縮圖。裁切工具、去背編輯期間不顯示替身（裁切框與筆刷不得對著替身的像素）。
+    /// </summary>
+    private void ShowStandIns(ProjectService service, string file, RawLoadOptions rawOptions, long generation, CancellationToken token)
+    {
+        if (Preview.Source is not null || Sidebar.IsCrop || CropTool.IsActive || BackgroundRemoval.IsEditing) return;
+        var path = service.Project.PathOf(file);
+        var settings = EditingSettings(file);
+        if (ViewCache.TryGet(path, settings, rawOptions, out var cached))
+        {
+            Preview.ShowStandIn(PreviewViewModel.BitmapFrom(cached.Result), StandInKind.ViewCache, cached.FrameLongEdge);
+            return;
+        }
+        if (Filmstrip.CopyThumbnail(file) is { } thumb)
+            Preview.ShowStandIn(thumb.Bitmap, StandInKind.Thumbnail, EstimatedFrameLongEdge(thumb.Source, settings));
+        // 內嵌 JPEG 是相機的渲染：只有未調整的照片才接近最終畫面（有調整時縮圖較接近）
+        if (Project.IsRawFile(path) && settings.Equals(ModuleCatalog.Defaults) && service.Project[file].ForegroundMask is null)
+            _ = ShowEmbeddedStandInAsync(path, settings, generation, token);
+    }
+
+    /// <summary>
+    /// 在背景讀出 RAW 內嵌的相機 JPEG 並顯示為替身。走獨立路徑（不經 <see cref="ImageCache"/> 的入場閘門），不延誤正式解碼；
+    /// 換照片、取消或正式來源先到時丟棄。讀取失敗不提示（正式載入會回報錯誤）。
+    /// </summary>
+    private async Task ShowEmbeddedStandInAsync(string path, Settings settings, long generation, CancellationToken token)
+    {
+        // 依畫布大小挑內嵌預覽（夠蓋滿畫布的最小那張），避免解出 3300 萬像素的全尺寸 JPEG
+        var edge = Math.Clamp(Preview.CurrentPlan?.MainEdge ?? ImageLoader.PreviewLongEdge, 256, LoupePlan.PreviewLevelEdge);
+        (byte[] Bgra, int Width, int Height, SourceImage Preview)? decoded;
+        try
+        {
+            decoded = await Task.Run<(byte[], int, int, SourceImage)?>(() =>
+            {
+                if (token.IsCancellationRequested || ImageLoader.TryLoadEmbeddedPreview(path, edge) is not { } preview) return null;
+                return (ImageCache.ToBgra8(preview), preview.Width, preview.Height, preview);
+            }, token);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException) { return; }
+        if (decoded is not { } d || _disposed || token.IsCancellationRequested || generation != _previewLoadGeneration) return;
+        if (Preview.Source is not null || Sidebar.IsCrop || CropTool.IsActive || BackgroundRemoval.IsEditing) return;
+        var bitmap = PreviewViewModel.BitmapFrom(new RenderResult(d.Width, d.Height, d.Bgra, TimeSpan.Zero));
+        Preview.ShowStandIn(bitmap, StandInKind.EmbeddedJpeg, EstimatedFrameLongEdge(d.Preview, settings));
+    }
+
+    /// <summary>
+    /// 估計正式畫框長邊（代理圖解析度）：原圖參考尺寸套用裁切，再依預覽等級縮小。只用於放大倍率下讓替身與正式畫面同樣大小；
+    /// 符合視窗時不影響版面。沒有參考尺寸時為 0（以 bitmap 本身的尺寸排版）。
+    /// </summary>
+    private double EstimatedFrameLongEdge(SourceImage? reference, Settings settings)
+    {
+        if (reference is not { ReferenceWidth: > 0, ReferenceHeight: > 0 }) return 0;
+        var nativeLong = Math.Max(reference.ReferenceWidth, reference.ReferenceHeight);
+        var scale = Math.Min(1.0, (double)Images.PreviewLongEdge / nativeLong);
+        var frame = CropGeometry.Compute(reference.ReferenceWidth, reference.ReferenceHeight, CropGeometry.FromSettings(settings));
+        return Math.Max(frame.OutWidth, frame.OutHeight) * scale;
+    }
+
+    /// <summary>
+    /// 預覽送達之後：是最新一筆、不在連續手勢中、也不是裁切／取樣視圖時，放進 ViewCache（回到這張照片時立即顯示）；
+    /// 這張照片第一次完整送達時，開始預取縮圖列中的前後張。拖曳草稿（Task 5）也不得放進快取。
+    /// </summary>
+    private void OnFullPreviewDelivered(RenderResult r)
+    {
+        if (_disposed || Renderer.IsBusy || _lastRequest is not { } request || request.Service != Service || request.File != FocusFile) return;
+        if (request.Cacheable && _edit is not { Pending.Count: > 0 })
+            ViewCache.Put(request.Path, request.Settings, request.RawOptions, r, Preview.FrameLongEdge);
+        if (_prefetchArmedFor == FocusFile && !_suspended)
+        {
+            _prefetchArmedFor = null;
+            StartPrefetch();
+        }
+    }
+
+    /// <summary>作廢所有預取：排隊中的背景解碼、render 執行緒上的預取、以及還沒送達的結果。</summary>
+    private void CancelPrefetch()
+    {
+        _prefetchCts.Cancel();
+        _prefetchCts = new CancellationTokenSource();
+        _prefetches.Clear();
+        Renderer.CancelPrefetch();
+        if (!_disposed) Images.CancelPreviewPrefetch();
+    }
+
+    /// <summary>
+    /// 預取縮圖列順序中焦點照片的前後張：代理圖走背景入場（與縮圖共用、受 CPU 節流），再以目前的 Main 長邊在預取優先序算圖，
+    /// 結果只放進 ViewCache，不送到畫面。
+    /// </summary>
+    private void StartPrefetch()
+    {
+        if (_disposed || _suspended || Service is not { } service || FocusFile is not { } focus) return;
+        var token = _prefetchCts.Token;
+        var mainEdge = Preview.CurrentPlan?.MainEdge;
+        var folder = Images.FolderGeneration;
+        foreach (var file in Filmstrip.Neighbours(focus))
+            _ = PrefetchAsync(service, file, mainEdge, folder, token);
+    }
+
+    private async Task PrefetchAsync(ProjectService service, string file, int? mainEdge, long folder, CancellationToken token)
+    {
+        var settings = service.SettingsFor(file);
+        // AI 降噪在來源階段執行且很重，預取不做
+        if (DenoiseSettings.From(settings).IsActive) return;
+        var rawOptions = RawLoadOptions.FromSettings(settings);
+        var path = service.Project.PathOf(file);
+        if (ViewCache.Contains(path, settings, rawOptions)) return;
+        try
+        {
+            var proxy = await Images.GetSourceAsync(path, SourceLevel.Preview, rawOptions, token, SourceAdmission.Background);
+            if (token.IsCancellationRequested || _disposed || Service != service || !Images.IsCurrent(folder)) return;
+            var crop = CropGeometry.FromSettings(settings);
+            // 縮放在背景執行緒；ScaledTo 對同一長邊回傳同一個物件，真的切過去時 GPU 來源可沿用
+            var (source, frameLong) = await Task.Run(() => PrefetchSource(proxy, crop, mainEdge), token);
+            if (token.IsCancellationRequested || _disposed || Service != service || !Images.IsCurrent(folder)) return;
+            var key = $"$prefetch/{++_prefetchSeq}/{file}";
+            _prefetches[key] = new PendingPrefetch(service, folder, path, settings, rawOptions, frameLong);
+            Renderer.RequestPrefetch(key, SourceForPhoto(file, source), settings);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // 取消或解碼失敗：預取只是加速，不提示；真的開這張照片時由正式載入回報錯誤
+        }
+    }
+
+    /// <summary>與 <see cref="MainRenderSource"/> 相同的縮放規則，以目前的 Main 長邊（受這張照片的原圖畫框約束）縮小代理圖。</summary>
+    private static (SourceImage Source, double FrameLongEdge) PrefetchSource(SourceImage proxy, CropParams crop, int? mainEdge)
+    {
+        var frame = CropGeometry.Compute(proxy.Width, proxy.Height, crop);
+        var frameLong = Math.Max(frame.OutWidth, frame.OutHeight);
+        if (mainEdge is not { } edge || frameLong <= 0) return (proxy, frameLong);
+        var native = CropGeometry.Compute(proxy.ReferenceWidth, proxy.ReferenceHeight, crop);
+        edge = Math.Min(edge, Math.Max(native.OutWidth, native.OutHeight));
+        if (edge >= frameLong) return (proxy, frameLong);
+        var longEdge = (int)Math.Ceiling(Math.Max(proxy.Width, proxy.Height) * (double)edge / frameLong);
+        return (proxy.ScaledTo(longEdge), frameLong);
+    }
+
+    private void OnPrefetchReady(string key, RenderResult result)
+    {
+        if (!_prefetches.Remove(key, out var p) || p.Service != Service || !Images.IsCurrent(p.FolderGeneration)) return;
+        ViewCache.Put(p.Path, p.Settings, p.RawOptions, result, p.FrameLongEdge);
     }
 
     /// <summary>
@@ -1234,6 +1409,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         RendererFactory = PreviewService.GpuFactory(Settings);
         Renderer.Reconfigure(RendererFactory,
             Settings.ForceSoftwareGpu ? null : () => PreviewService.CreateCpuRenderer(Settings));
+        // 算圖器、材質、預覽上限都可能改變同一組設定的結果
+        CancelPrefetch();
+        ViewCache.Clear();
         Filmstrip.RefreshThumbnails();
         Images.SetPreviewLongEdge(Settings.PreviewLongEdge);
         Presets.Hover.InvalidateCache();
@@ -1253,6 +1431,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         Settings.Save();
         RawLoadOptions.LensDatabaseDirectory = Settings.LensDatabaseFolder;
         _shownLensWarning = null;
+        ViewCache.Clear();
         Presets.Hover.InvalidateCache();
         FilmLook.InvalidateThumbnails();
         RequestPreview();
@@ -1312,6 +1491,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         _resumePreview = FocusFile is not null && (Preview.IsBusy || Renderer.IsBusy || Preview.Source is null);
         Preview.IsBusy = false;
         Renderer.CancelThumbnails();
+        CancelPrefetch();
+        _prefetchArmedFor = FocusFile;
         // Freeze the scan and queue explicit edits until foreground recovery.
         Filmstrip.SuspendPump();
         Images.CancelBackground();

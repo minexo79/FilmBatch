@@ -226,6 +226,111 @@ public sealed class RenderSchedulerTests
         Assert.Equal(after, atEntry);
     }
 
+    [Fact]
+    public async Task Prefetch_runs_below_preview_and_above_thumbnails()
+    {
+        using var scheduler = new RenderScheduler(() => new CpuFakeRenderer());
+        var order = new List<string>();
+        var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void Record(string key)
+        {
+            lock (order)
+            {
+                order.Add(key);
+                if (order.Count == 3) done.TrySetResult();
+            }
+        }
+        scheduler.PreviewRendered += r => Record(r.Key);
+        scheduler.PrefetchRendered += r => Record(r.Key);
+        scheduler.ThumbnailRendered += r => Record(r.Key);
+        scheduler.RenderFailed += f => done.TrySetException(f.Error);
+        var source = new SourceImage(1, 1, [0x4040, 0x4040, 0x4040, ushort.MaxValue]);
+        scheduler.RequestThumbnail("thumb", source, ModuleCatalog.Defaults);
+        scheduler.RequestPrefetch("prefetch", source, ModuleCatalog.Defaults);
+        scheduler.RequestPreview("preview", source, ModuleCatalog.Defaults, 1);
+        scheduler.Start();
+        await done.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        lock (order) Assert.Equal(["preview", "prefetch", "thumb"], order);
+    }
+
+    [Fact]
+    public async Task Prefetch_never_delays_focused_preview()
+    {
+        // 預取正在算圖（卡在算圖器裡）時送出預覽：預取被讓出，預覽先完成；預取之後重新排隊完成，結果只走預取事件。
+        var renderer = new SlowFirstCpuRenderer();
+        using var scheduler = new RenderScheduler(() => renderer);
+        var order = new List<string>();
+        var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        scheduler.PreviewRendered += r => { lock (order) order.Add("preview:" + r.Key); };
+        scheduler.PrefetchRendered += r =>
+        {
+            lock (order) order.Add("prefetch:" + r.Key);
+            done.TrySetResult();
+        };
+        scheduler.RenderFailed += f => done.TrySetException(f.Error);
+        scheduler.RequestPrefetch("next.tif", new SourceImage(1, 1, [65535, 0, 0, 65535]), ModuleCatalog.Defaults);
+        scheduler.Start();
+        await renderer.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        scheduler.RequestPreview("current.tif", new SourceImage(1, 1, [0, 65535, 0, 65535]), ModuleCatalog.Defaults, 1);
+        await done.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        lock (order) Assert.Equal(["preview:current.tif", "prefetch:next.tif"], order);
+    }
+
+    [Fact]
+    public async Task Stale_prefetch_after_folder_change_is_dropped()
+    {
+        var renderer = new SlowFirstCpuRenderer(holdCancellation: true);
+        using var scheduler = new RenderScheduler(() => renderer);
+        var prefetched = new List<string>();
+        var thumbnail = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        scheduler.PrefetchRendered += r => { lock (prefetched) prefetched.Add(r.Key); };
+        scheduler.ThumbnailRendered += _ => thumbnail.TrySetResult();
+        scheduler.RenderFailed += f => thumbnail.TrySetException(f.Error);
+        var source = new SourceImage(1, 1, [65535, 0, 0, 65535]);
+        scheduler.RequestPrefetch("old/a.tif", source, ModuleCatalog.Defaults);
+        scheduler.RequestPrefetch("old/b.tif", source, ModuleCatalog.Defaults);
+        scheduler.Start();
+        try
+        {
+            await renderer.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            // 開新資料夾：取消縮圖（推進 epoch），舊資料夾的預取（執行中與排隊中）都不得送達
+            scheduler.CancelThumbnails();
+            await renderer.CancellationObserved.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        }
+        finally { renderer.ReleaseCancellation.TrySetResult(); }
+        scheduler.RequestThumbnail("new/c.tif", source, ModuleCatalog.Defaults);
+        await thumbnail.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        lock (prefetched) Assert.Empty(prefetched);
+    }
+
+    [Fact]
+    public async Task CancelPrefetch_drops_queued_and_running_prefetch()
+    {
+        var renderer = new SlowFirstCpuRenderer(holdCancellation: true);
+        using var scheduler = new RenderScheduler(() => renderer);
+        var prefetched = new List<string>();
+        var later = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        scheduler.PrefetchRendered += r =>
+        {
+            lock (prefetched) prefetched.Add(r.Key);
+            if (r.Key == "later.tif") later.TrySetResult();
+        };
+        var source = new SourceImage(1, 1, [65535, 0, 0, 65535]);
+        scheduler.RequestPrefetch("a.tif", source, ModuleCatalog.Defaults);
+        scheduler.RequestPrefetch("b.tif", source, ModuleCatalog.Defaults);
+        scheduler.Start();
+        try
+        {
+            await renderer.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            scheduler.CancelPrefetch();
+            await renderer.CancellationObserved.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        }
+        finally { renderer.ReleaseCancellation.TrySetResult(); }
+        scheduler.RequestPrefetch("later.tif", source, ModuleCatalog.Defaults);
+        await later.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        lock (prefetched) Assert.Equal(["later.tif"], prefetched);
+    }
+
     // Simulates a slow native inference boundary, but keeps rendering and its pixels real.
     private sealed class SlowFirstCpuRenderer(bool holdCancellation = false) : IPreviewRenderer
     {

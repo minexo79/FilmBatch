@@ -19,6 +19,12 @@ public sealed record PreviewRendered(string Key, long Generation, RenderResult R
 /// <param name="Epoch">完成資格快照時的算圖世代；重建後送達即丟棄。</param>
 public sealed record ThumbnailRendered(string Key, RenderResult Result, long Epoch);
 
+/// <summary>完成的預取渲染（前後張的 Main 渲染），只供快取使用，不送 UI 影像；攜帶送出時的算圖世代。</summary>
+/// <param name="Key">預取鍵（呼叫端自訂，用來對應快取鍵）。</param>
+/// <param name="Result">算圖結果。</param>
+/// <param name="Epoch">完成資格快照時的算圖世代；重建或換資料夾後送達即丟棄。</param>
+public sealed record PrefetchRendered(string Key, RenderResult Result, long Epoch);
+
 /// <summary>算圖器建立完成（或改用備援），攜帶建立當下的算圖世代。</summary>
 /// <param name="DeviceName">裝置名稱。</param>
 /// <param name="IsSoftware">是否為軟體介面卡。</param>
@@ -39,7 +45,8 @@ public readonly record struct RenderFailure(string Key, Exception Error, long? P
 
 /// <summary>
 /// 單一 GPU 執行緒：所有算圖都在這裡序列化執行（計畫書 9.2、11.3）。
-/// 預覽只保留最新的請求（舊的直接丟棄），且優先於縮圖。
+/// 預覽只保留最新的請求（舊的直接丟棄），且優先於預取；預取（前後張的 Main 渲染，結果只進快取）優先於縮圖。
+/// 預覽送出時會讓出執行中的預取或縮圖（取消後重新排隊），所以預取永遠不會延誤焦點照片的預覽。
 /// 事件在 GPU 執行緒上觸發，UI 端需自行切回 UI 執行緒。
 /// </summary>
 public sealed class RenderScheduler : IDisposable
@@ -50,6 +57,11 @@ public sealed class RenderScheduler : IDisposable
     private readonly AutoResetEvent _signal = new(false);
     private readonly object _lock = new();
     private readonly LinkedList<(string Key, SourceImage Source, Settings Settings, long Epoch)> _thumbs = new();
+    /// <summary>排隊中的預取；同鍵只保留最新，最多 <see cref="MaxPrefetches"/> 筆（超過丟掉最舊的）。</summary>
+    private readonly LinkedList<(string Key, SourceImage Source, Settings Settings, long Epoch, long Generation)> _prefetches = new();
+    private const int MaxPrefetches = 4;
+    /// <summary>每次 <see cref="CancelPrefetch"/>（以及換資料夾、重建）遞增；被讓出的舊世代預取不重新排隊、不送達。</summary>
+    private long _prefetchGeneration;
     private (string Key, SourceImage Source, Settings Settings, long Generation, long Epoch)? _preview;
     private (Func<IPreviewRenderer> Factory, Func<IPreviewRenderer>? Fallback)? _pendingReset;
     private long _epoch;
@@ -59,7 +71,7 @@ public sealed class RenderScheduler : IDisposable
     private IPreviewRenderer? _renderer;
     private CancellationTokenSource? _activeRender;
     private SourceImage? _activeSource;
-    private bool _activeIsPreview, _activeDenoise;
+    private bool _activeIsPreview, _activeDenoise, _activePrefetch;
     private string? _previewKey, _previewPath, _activeKey;
     private (string? Key, string? Path)? _cancelledPreview;
 
@@ -70,6 +82,8 @@ public sealed class RenderScheduler : IDisposable
     public string? DeviceName => Volatile.Read(ref _renderer)?.DeviceName;
     public event Action<PreviewRendered>? PreviewRendered;
     public event Action<ThumbnailRendered>? ThumbnailRendered;
+    /// <summary>預取完成（只供快取，不是 UI 影像）；在 GPU 執行緒上觸發。</summary>
+    public event Action<PrefetchRendered>? PrefetchRendered;
     /// <summary>需要告知使用者的訊息（例如 GPU 重新初始化），攜帶發出時的算圖世代。</summary>
     public event Action<SchedulerNotice>? Notice;
     public event Action<RenderFailure>? RenderFailed;
@@ -168,11 +182,44 @@ public sealed class RenderScheduler : IDisposable
         _signal.Set();
     }
 
+    /// <summary>
+    /// 排入預取渲染：優先序低於預覽、高於縮圖，結果只經 <see cref="PrefetchRendered"/> 送出。同鍵只保留最新的請求。
+    /// 執行中的預取被預覽讓出時重新排隊（除非之後呼叫了 <see cref="CancelPrefetch"/>）。
+    /// </summary>
+    public void RequestPrefetch(string key, SourceImage source, Settings settings)
+    {
+        lock (_lock)
+        {
+            for (var n = _prefetches.First; n != null; n = n.Next)
+            {
+                if (n.Value.Key != key) continue;
+                _prefetches.Remove(n);
+                break;
+            }
+            _prefetches.AddLast((key, source, settings, _epoch, _prefetchGeneration));
+            while (_prefetches.Count > MaxPrefetches) _prefetches.RemoveFirst();
+        }
+        _signal.Set();
+    }
+
+    /// <summary>丟棄排隊中的預取並取消執行中的那一筆（換焦點照片、換資料夾）；之後才完成的舊預取不送達。</summary>
+    public void CancelPrefetch()
+    {
+        lock (_lock)
+        {
+            _prefetches.Clear();
+            _prefetchGeneration++;
+            if (_activePrefetch) _activeRender?.Cancel();
+        }
+    }
+
     public void CancelThumbnails()
     {
         lock (_lock)
         {
             _thumbs.Clear();
+            _prefetches.Clear();
+            _prefetchGeneration++;
             _preview = null;
             _epoch++;
             _activeRender?.Cancel();
@@ -194,6 +241,8 @@ public sealed class RenderScheduler : IDisposable
             _epoch++;
             _preview = null;
             _thumbs.Clear();
+            _prefetches.Clear();
+            _prefetchGeneration++;
             _activeRender?.Cancel();
             _signal.Set();
         }
@@ -229,6 +278,7 @@ public sealed class RenderScheduler : IDisposable
 
                 (string Key, SourceImage Source, Settings Settings, long Generation, long Epoch)? preview;
                 (string Key, SourceImage Source, Settings Settings, long Epoch)? thumb = null;
+                (string Key, SourceImage Source, Settings Settings, long Epoch, long Generation)? prefetch = null;
                 long epoch;
                 CancellationTokenSource? cancellation = null;
                 lock (_lock)
@@ -236,18 +286,24 @@ public sealed class RenderScheduler : IDisposable
                     epoch = _epoch;
                     preview = _preview;
                     _preview = null;
-                    if (preview is null && _thumbs.First is { } first)
+                    if (preview is null && _prefetches.First is { } next)
+                    {
+                        prefetch = next.Value;
+                        _prefetches.RemoveFirst();
+                    }
+                    else if (preview is null && _thumbs.First is { } first)
                     {
                         thumb = first.Value;
                         _thumbs.RemoveFirst();
                     }
-                    if (preview is not null || thumb is not null)
+                    if (preview is not null || thumb is not null || prefetch is not null)
                     {
                         cancellation = _activeRender = new CancellationTokenSource();
                         _activeIsPreview = preview is not null;
-                        _activeSource = preview?.Source ?? thumb!.Value.Source;
-                        _activeKey = preview?.Key ?? thumb!.Value.Key;
-                        _activeDenoise = DenoiseSettings.From(preview?.Settings ?? thumb!.Value.Settings).IsActive;
+                        _activePrefetch = prefetch is not null;
+                        _activeSource = preview?.Source ?? prefetch?.Source ?? thumb!.Value.Source;
+                        _activeKey = preview?.Key ?? prefetch?.Key ?? thumb!.Value.Key;
+                        _activeDenoise = DenoiseSettings.From(preview?.Settings ?? prefetch?.Settings ?? thumb!.Value.Settings).IsActive;
                     }
                 }
 
@@ -268,6 +324,20 @@ public sealed class RenderScheduler : IDisposable
                                     completed = PreviewRendered;
                             }
                             completed?.Invoke(new PreviewRendered(p.Key, p.Generation, r, p.Epoch));
+                        }
+                    }
+                    else if (prefetch is { } f)
+                    {
+                        if (f.Epoch != epoch) continue;
+                        if (TryRender(f.Key, f.Source, f.Settings, f.Epoch, cancellation!.Token) is { } r)
+                        {
+                            Action<PrefetchRendered>? completed = null;
+                            lock (_lock)
+                            {
+                                if (f.Epoch == _epoch && f.Generation == _prefetchGeneration && !cancellation.IsCancellationRequested)
+                                    completed = PrefetchRendered;
+                            }
+                            completed?.Invoke(new PrefetchRendered(f.Key, r, f.Epoch));
                         }
                     }
                     else if (thumb is { } t)
@@ -297,7 +367,13 @@ public sealed class RenderScheduler : IDisposable
                             && !MatchesCancelled(interrupted.Key, interrupted.Source)
                             && !_thumbs.Any(item => item.Key == interrupted.Key))
                             _thumbs.AddFirst(interrupted);
+                        // 被預覽讓出的預取重新排隊；明確取消（換照片、換資料夾、重建）推進了世代，不再排回
+                        if (prefetch is { } yielded && cancellation!.IsCancellationRequested
+                            && !_disposed && yielded.Epoch == _epoch && yielded.Generation == _prefetchGeneration
+                            && !_prefetches.Any(item => item.Key == yielded.Key))
+                            _prefetches.AddFirst(yielded);
                         _activeRender = null;
+                        _activePrefetch = false;
                         _activeSource = null;
                     }
                     cancellation?.Dispose();

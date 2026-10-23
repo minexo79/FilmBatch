@@ -772,6 +772,46 @@ public sealed partial class FilmstripViewModel : ObservableObject
             EnqueueExplicit(vm);
     }
 
+    /// <summary>
+    /// 複製一份已送達的縮圖（開圖替身用）。縮圖列會在重算或釋放保留時 Dispose 自己的 bitmap，
+    /// 預覽不能共用同一個物件；沒有縮圖時回傳 null。一併回傳縮圖的解碼來源（帶原圖參考尺寸，供估計畫框大小）。
+    /// </summary>
+    internal (WriteableBitmap Bitmap, SourceImage? Source)? CopyThumbnail(string file)
+    {
+        if (!_byName.TryGetValue(file, out var vm) || vm.Bitmap is not WriteableBitmap source) return null;
+        var size = source.PixelSize;
+        var copy = new WriteableBitmap(size, new Vector(96, 96), PixelFormat.Bgra8888, AlphaFormat.Unpremul);
+        using (var from = source.Lock())
+        using (var to = copy.Lock())
+        {
+            var row = size.Width * 4;
+            var buffer = new byte[row];
+            for (var y = 0; y < size.Height; y++)
+            {
+                Marshal.Copy(from.Address + y * from.RowBytes, buffer, 0, row);
+                Marshal.Copy(buffer, 0, to.Address + y * to.RowBytes, row);
+            }
+        }
+        return (copy, vm.Source);
+    }
+
+    /// <summary>縮圖列（目前篩選後的顯示順序）中焦點照片的前一張與後一張；預取依這個順序。</summary>
+    internal IReadOnlyList<string> Neighbours(string file)
+    {
+        var index = -1;
+        for (var i = 0; i < Items.Count; i++)
+        {
+            if (Items[i].FileName != file) continue;
+            index = i;
+            break;
+        }
+        if (index < 0) return [];
+        var result = new List<string>(2);
+        if (index + 1 < Items.Count) result.Add(Items[index + 1].FileName);
+        if (index > 0) result.Add(Items[index - 1].FileName);
+        return result;
+    }
+
     public void SetThumbnail(string file, RenderResult r)
     {
         if (!_byName.TryGetValue(file, out var vm)) return;
