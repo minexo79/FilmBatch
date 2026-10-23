@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using FilmBatch.App.ViewModels;
@@ -6,6 +7,12 @@ namespace FilmBatch.App.Views;
 
 public partial class PreviewView : UserControl
 {
+    /// <summary>算圖中在預覽右上角顯示旋轉指示（行動版沒有底列時使用；桌面版的指示在主視窗底列）。</summary>
+    public static readonly StyledProperty<bool> ShowsBusySpinnerProperty =
+        AvaloniaProperty.Register<PreviewView, bool>(nameof(ShowsBusySpinner));
+
+    public bool ShowsBusySpinner { get => GetValue(ShowsBusySpinnerProperty); set => SetValue(ShowsBusySpinnerProperty, value); }
+
     public PreviewView()
     {
         InitializeComponent();
@@ -22,6 +29,12 @@ public partial class PreviewView : UserControl
                 && (DataContext as PreviewViewModel)?.Main is { } main)
                 await main.DropPresetOnPreviewAsync(presetId);
         });
+    }
+
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == ShowsBusySpinnerProperty) Canvas.ShowsSpinner = ShowsBusySpinner;
     }
 
     /// <summary>Cancels the canvas interaction in progress (drag, tool gesture, pinch), if any.</summary>

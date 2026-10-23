@@ -12,11 +12,26 @@
   <data name="Menu.Help" xml:space="preserve"><value>說明(_H)</value></data>
   <data name="Cmd.OpenFolder" xml:space="preserve"><value>開啟資料夾…</value></data>
   <data name="Cmd.OpenSamples" xml:space="preserve"><value>開啟範例資料夾</value></data>
+  <data name="Cmd.OpenRecent" xml:space="preserve"><value>開啟...</value></data>
+  <data name="Cmd.ClearRecent" xml:space="preserve"><value>清除清單</value></data>
+  <data name="Menu.RecentNone" xml:space="preserve"><value>（無）</value></data>
+  <data name="Toast.RecentFolderMissing" xml:space="preserve"><value>資料夾已不存在，已從最近清單移除：{0}</value></data>
   <data name="Cmd.Export" xml:space="preserve"><value>匯出…</value></data>
   <data name="Cmd.QuickExport" xml:space="preserve"><value>快速匯出選取照片</value></data>
+  <data name="Cmd.RevealInFileManager" xml:space="preserve"><value>在檔案瀏覽器中查看圖片</value></data>
+  <data name="Cmd.RevealInFileManager.Mac" xml:space="preserve"><value>在 Finder 中查看圖片</value></data>
   <data name="Cmd.ResetSelected" xml:space="preserve"><value>重設選取照片</value></data>
+  <data name="Cmd.Rating" xml:space="preserve"><value>評分</value></data>
+  <data name="Cmd.ClearRating" xml:space="preserve"><value>清除評分</value></data>
   <data name="Histogram.Title" xml:space="preserve"><value>直方圖 · RGB / 亮度</value></data>
   <data name="Histogram.Clipping" xml:space="preserve"><value>暗部裁切 {0:P1}　亮部裁切 {1:P1}</value></data>
+  <data name="Histogram.HoverTip" xml:space="preserve"><value>色階 {0}
+R {1:P2}　G {2:P2}　B {3:P2}　亮度 {4:P2}</value></data>
+  <data name="Histogram.Legend.Luminance" xml:space="preserve"><value>亮度</value></data>
+  <data name="Histogram.Legend.RedTip" xml:space="preserve"><value>紅色通道：各色階（0 暗 → 255 亮）的紅色像素分布</value></data>
+  <data name="Histogram.Legend.GreenTip" xml:space="preserve"><value>綠色通道：各色階（0 暗 → 255 亮）的綠色像素分布</value></data>
+  <data name="Histogram.Legend.BlueTip" xml:space="preserve"><value>藍色通道：各色階（0 暗 → 255 亮）的藍色像素分布</value></data>
+  <data name="Histogram.Legend.LuminanceTip" xml:space="preserve"><value>亮度：依人眼感光加權（Rec.709）的整體明暗分布，以白色曲線表示</value></data>
   <data name="Cmd.Preferences" xml:space="preserve"><value>偏好設定…</value></data>
   <data name="Cmd.Exit" xml:space="preserve"><value>結束</value></data>
   <data name="Cmd.Undo" xml:space="preserve"><value>復原</value></data>
@@ -64,6 +79,7 @@
   <data name="Toast.CropFocusedOnly" xml:space="preserve"><value>裁切只套用到目前照片</value></data>
   <data name="Inspector.NoPhoto" xml:space="preserve"><value>尚未選取照片</value></data>
   <data name="Inspector.Preset" xml:space="preserve"><value>預設</value></data>
+  <data name="Inspector.Rating" xml:space="preserve"><value>評分</value></data>
   <data name="Inspector.ResetPhoto" xml:space="preserve"><value>重設此張</value></data>
   <data name="Inspector.CreatePreset" xml:space="preserve"><value>以此張建立預設</value></data>
   <data name="Inspector.UpdatePreset" xml:space="preserve"><value>更新回預設</value></data>
@@ -78,13 +94,17 @@
   <data name="Filmstrip.AllFiles" xml:space="preserve"><value>所有檔案</value></data>
   <data name="Filmstrip.RawOnly" xml:space="preserve"><value>只顯示 RAW</value></data>
   <data name="Filmstrip.NonRaw" xml:space="preserve"><value>只顯示非 RAW</value></data>
+  <data name="Filmstrip.AllRatings" xml:space="preserve"><value>全部星級</value></data>
+  <data name="Filmstrip.RatingAtLeast" xml:space="preserve"><value>★{0} 以上</value></data>
+  <data name="Filmstrip.Rating5" xml:space="preserve"><value>★5</value></data>
+  <data name="Filmstrip.Unrated" xml:space="preserve"><value>未評分</value></data>
   <data name="Presets.Apply" xml:space="preserve"><value>套用到選取照片</value></data>
   <data name="Presets.Rename" xml:space="preserve"><value>重新命名…</value></data>
   <data name="Presets.Color" xml:space="preserve"><value>更改色彩標籤</value></data>
   <data name="Presets.Duplicate" xml:space="preserve"><value>複製</value></data>
   <data name="Presets.Delete" xml:space="preserve"><value>刪除</value></data>
   <data name="Presets.Reveal" xml:space="preserve"><value>在檔案總管中顯示</value></data>
-  <data name="Presets.Pin" xml:space="preserve"><value>釘選（數字鍵 1–9）</value></data>
+  <data name="Presets.Pin" xml:space="preserve"><value>釘選（Shift + 1–9）</value></data>
   <data name="Presets.Manage" xml:space="preserve"><value>管理…</value></data>
   <data name="Status.NoProject" xml:space="preserve"><value>尚未開啟資料夾</value></data>
   <data name="Status.Selected" xml:space="preserve"><value>已選取 {0} 張</value></data>
@@ -213,6 +233,7 @@
   <data name="Tip.HasOverrides" xml:space="preserve"><value>有單張覆寫</value></data>
   <data name="Inspector.RelativePath" xml:space="preserve"><value>相對路徑</value></data>
   <data name="Tip.LastRender" xml:space="preserve"><value>最近一次預覽算圖時間</value></data>
+  <data name="Tip.Rendering" xml:space="preserve"><value>算圖中</value></data>
   <data name="Tip.Compare" xml:space="preserve"><value>原圖對比：按住空白鍵；Y 切換左右分割</value></data>
   <data name="Tip.ZoomFit" xml:space="preserve"><value>符合視窗（Ctrl+0）</value></data>
   <data name="Tip.ZoomFit.Mac" xml:space="preserve"><value>符合視窗（⌘0）</value></data>
@@ -280,6 +301,7 @@
   <data name="Toast.UnhandledError" xml:space="preserve"><value>發生錯誤：{0}（詳見 log）</value></data>
   <data name="Toast.BackgroundError" xml:space="preserve"><value>背景工作發生錯誤：{0}</value></data>
   <data name="Toast.SaveProjectFailed" xml:space="preserve"><value>無法儲存專案：{0}（已取消關閉）</value></data>
+  <data name="Toast.RevealFailed" xml:space="preserve"><value>無法開啟檔案瀏覽器：{0}</value></data>
   <data name="Preview.Original" xml:space="preserve"><value>原圖</value></data>
   <data name="Preview.Effect" xml:space="preserve"><value>效果</value></data>
   <data name="Gallery.WindowTitle" xml:space="preserve"><value>FilmBatch 元件展示視窗</value></data>

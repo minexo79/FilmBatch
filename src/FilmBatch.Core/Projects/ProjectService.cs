@@ -90,6 +90,14 @@ public sealed class ProjectService
             masks.Keys, entry => masks.TryGetValue(entry.FileName, out var mask) ? entry with { ForegroundMask = mask } : entry);
     }
 
+    /// <summary>設定星級評分（多選時一併套用）；一筆復原紀錄，不影響參數覆寫。</summary>
+    public bool SetRating(IReadOnlyCollection<string> fileNames, int rating)
+    {
+        rating = Math.Clamp(rating, 0, PhotoEntry.MaxRating);
+        return Apply(rating == 0 ? CoreText.T("清除評分", "Clear rating") : CoreText.T($"評分 {rating} 星", $"Rate {rating} stars"),
+            fileNames, entry => entry with { Rating = rating });
+    }
+
     public bool ResetParam(IReadOnlyCollection<string> fileNames, string key) =>
         Apply($"重設 {ModuleCatalog.Param(key)?.Label ?? key}", fileNames, e => PhotoOperations.ResetParam(e, key));
 

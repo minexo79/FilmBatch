@@ -21,7 +21,7 @@ public sealed class RawSourceLifecycleTests
         File.WriteAllBytes(path, DngWriter.WriteRenderedDng(16, 12,
             Enumerable.Repeat(.18f, 16 * 12 * 3).ToArray(), ColorSpaces.Srgb, new()));
         await main.OpenFolderAsync(folder);
-        // A：RAW 處理停用（預設選項）並已快取。之後毀損檔案，只有尚未解碼的 B（啟用 RAW）會失敗。
+        // A：RAW 處理啟用（預設）並已快取。之後毀損檔案，只有尚未解碼的 B（停用 RAW）會失敗。
         TestEnv.PumpUntil(() => main.Preview.Source is { } source
             && source.RawOptions == RawLoadOptions.FromSettings(main.FocusedResolved)
             && main.Preview.Image is not null && !main.Preview.IsBusy && !main.Renderer.IsBusy);
@@ -34,7 +34,7 @@ public sealed class RawSourceLifecycleTests
         try
         {
             File.WriteAllBytes(path, [0x49, 0x49, 0x2A, 0x00, 0xFF, 0xFF, 0xFF, 0x7F]);
-            main.Inspector.SetValue("raw.enabled", true, null);
+            main.Inspector.SetValue("raw.enabled", false, null);
             var pending = main.Images.GetPreviewAsync(path, RawLoadOptions.FromSettings(main.FocusedResolved), TestContext.Current.CancellationToken);
             Assert.False(pending.IsCompleted);
             main.UndoCommand.Execute(null);

@@ -75,6 +75,31 @@
   <Style Selector="Grid.bottombar TextBlock.warning">
     <Setter Property="Foreground" Value="{DynamicResource FB.WarningTextBrush}" />
   </Style>
+  <!-- 算圖中指示：12px 的 252° 弧線持續旋轉；只在外層 Border.busy-indicator 可見時套用動畫，隱藏時不佔用算圖時脈 -->
+  <Style Selector="Path.busy-spinner">
+    <Setter Property="Width" Value="12" />
+    <Setter Property="Height" Value="12" />
+    <Setter Property="Data" Value="M 6,1 A 5,5 0 1 1 1.245,7.545" />
+    <Setter Property="Stroke" Value="{DynamicResource FB.SecondaryTextBrush}" />
+    <Setter Property="StrokeThickness" Value="1.5" />
+    <Setter Property="StrokeLineCap" Value="Round" />
+    <Setter Property="RenderTransformOrigin" Value="50%,50%" />
+    <Setter Property="RenderTransform">
+      <RotateTransform />
+    </Setter>
+  </Style>
+  <Style Selector="Border.busy-indicator[IsVisible=True] Path.busy-spinner">
+    <Style.Animations>
+      <Animation Duration="0:0:0.8" IterationCount="Infinite">
+        <KeyFrame Cue="0%">
+          <Setter Property="RotateTransform.Angle" Value="0" />
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="RotateTransform.Angle" Value="360" />
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
 
   <!-- ───── 數值欄位：等寬數字 ───── -->
   <Style Selector="TextBlock.numeric">

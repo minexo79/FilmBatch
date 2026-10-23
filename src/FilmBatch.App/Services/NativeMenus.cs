@@ -27,12 +27,15 @@ public static class NativeMenus
         var appMenu = NativeMenu.GetMenu(app) ?? throw new InvalidOperationException("App.axaml must declare NativeMenu.Menu.");
         var windowMenu = new NativeMenu();
         NativeMenuItemBase[] appItems = [];
+        NativeMenu recentMenu = null!;
         Fill();
         NativeMenu.SetMenu(window, windowMenu);
         Loc.Instance.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(Loc.Culture)) Fill();
         };
+        // 最近資料夾變動時只重建「開啟...」子選單的項目
+        vm.RecentFolders.CollectionChanged += (_, _) => FillRecentMenu(recentMenu, vm);
         return;
 
         void Fill()
@@ -42,7 +45,7 @@ public static class NativeMenus
             for (var i = 0; i < appItems.Length; i++) appMenu.Items.Insert(i, appItems[i]);
 
             windowMenu.Items.Clear();
-            FillWindowMenu(windowMenu, window, vm);
+            recentMenu = FillWindowMenu(windowMenu, window, vm);
         }
     }
 
@@ -54,11 +57,14 @@ public static class NativeMenus
         Item(Loc.Get("Cmd.Preferences"), vm.PreferencesCommand, new KeyGesture(Key.OemComma, KeyModifiers.Meta)),
     ];
 
-    /// <summary>視窗選單：檔案／編輯／檢視／預設／視窗／說明，與視窗內選單同一組命令與手勢。</summary>
-    private static void FillWindowMenu(NativeMenu menu, MainWindow window, MainWindowViewModel vm)
+    /// <summary>視窗選單：檔案／編輯／檢視／預設／視窗／說明，與視窗內選單同一組命令與手勢。傳回「開啟...」子選單供後續更新。</summary>
+    private static NativeMenu FillWindowMenu(NativeMenu menu, MainWindow window, MainWindowViewModel vm)
     {
         var file = new NativeMenu();
         file.Items.Add(Item(Loc.Get("Cmd.OpenFolder"), vm.OpenFolderCommand, Meta(Key.O)));
+        var recent = new NativeMenu();
+        FillRecentMenu(recent, vm);
+        file.Items.Add(SubMenu(Loc.Get("Cmd.OpenRecent"), recent));
         file.Items.Add(Item(Loc.Get("Cmd.OpenSamples"), vm.OpenSamplesCommand));
         file.Items.Add(new NativeMenuItemSeparator());
         file.Items.Add(Item(Loc.Get("Cmd.Export"), vm.ExportCommand, Meta(Key.E)));
@@ -107,6 +113,19 @@ public static class NativeMenus
         help.Items.Add(Item(Loc.Get("Cmd.OpenGitHub"), vm.OpenGitHubCommand));
         help.Items.Add(Item(Loc.Get("Cmd.ReportIssue"), vm.ReportIssueCommand));
         menu.Items.Add(SubMenu(Loc.Get("Menu.Help"), help));
+        return recent;
+    }
+
+    /// <summary>「開啟...」子選單：最近資料夾（空清單時顯示停用的「（無）」）＋分隔線＋清除清單。</summary>
+    private static void FillRecentMenu(NativeMenu menu, MainWindowViewModel vm)
+    {
+        menu.Items.Clear();
+        if (vm.RecentFolders.Count == 0)
+            menu.Items.Add(new NativeMenuItem { Header = Loc.Get("Menu.RecentNone"), IsEnabled = false });
+        foreach (var recent in vm.RecentFolders)
+            menu.Items.Add(Item(recent.Path, recent.OpenCommand));
+        menu.Items.Add(new NativeMenuItemSeparator());
+        menu.Items.Add(Item(Loc.Get("Cmd.ClearRecent"), vm.ClearRecentFoldersCommand));
     }
 
     private static KeyGesture Meta(Key key) => new(key, KeyModifiers.Meta);

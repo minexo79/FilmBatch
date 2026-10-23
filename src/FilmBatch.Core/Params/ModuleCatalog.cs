@@ -18,9 +18,10 @@ public static class ModuleCatalog
         // 外部 Lensfun 資料庫是應用程式偏好設定（RawLoadOptions.LensDatabaseDirectory），不是照片設定。
         // RAW 處理啟用時，面板把 wb_mode/temperature/tint 顯示在「基本調整」
         // 取代 basic 的相對色溫/色調（相對值保留在設定中但不套用，見 ModuleParams.UsesRawWhiteBalance）。
+        // 預設啟用：RAW 照片一開啟就以原廠處理顯示；非 RAW 來源沒有場景線性資料，ModuleParams 不會套用。
         new("raw", "RAW 原廠處理", ModuleGroup.Basic, PasteCategory.Color,
         [
-            Bool(ModuleSchema.EnabledKey, "啟用"),
+            Bool(ModuleSchema.EnabledKey, "啟用", true),
             Bool("embedded_lens", "內嵌鏡頭校正", true),
             Bool("camera_local_tone", "相機局部色調"),
             Choice("wb_mode", "白平衡", O("as-shot", "拍攝值"), O("custom", "自訂")),

@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -153,6 +154,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     public MainWindowViewModel(AppSettings settings, IDialogService dialogs, Func<IPreviewRenderer> rendererFactory, Action<Action> post)
     {
         Settings = settings;
+        RecentFolderList.Sanitize(settings.RecentFolders, settings.LastFolder, exclude: SamplesFolder);
+        SyncRecentFolders();
         RawLoadOptions.LensDatabaseDirectory = settings.LensDatabaseFolder;
         Dialogs = dialogs;
         _post = post;
@@ -272,10 +275,64 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task OpenSamples()
     {
-        var folder = Path.Combine(AppPaths.Root, "samples");
+        var folder = SamplesFolder;
         Toast.Show(Loc.Get("Toast.PreparingSamples"));
         await Task.Run(() => SampleImages.Generate(folder));
         await OpenFolderAsync(folder);
+    }
+
+    /// <summary>內建範例照片資料夾（不列入最近開啟的資料夾）。</summary>
+    private static string SamplesFolder => Path.Combine(AppPaths.Root, "samples");
+
+    /// <summary>「檔案 → 開啟...」子選單的項目（與 <see cref="AppSettings.RecentFolders"/> 同步）。</summary>
+    public ObservableCollection<RecentFolderItemViewModel> RecentFolders { get; } = [];
+
+    public bool HasRecentFolders => RecentFolders.Count > 0;
+
+    /// <summary>開啟最近的資料夾；資料夾已不存在時提示並從清單移除。</summary>
+    public async Task OpenRecentFolderAsync(string folder)
+    {
+        if (!Directory.Exists(folder))
+        {
+            Toast.Show(Loc.Format("Toast.RecentFolderMissing", folder));
+            if (RecentFolderList.Remove(Settings.RecentFolders, folder)) SaveRecentFolders();
+            return;
+        }
+        await OpenFolderAsync(folder);
+    }
+
+    [RelayCommand(CanExecute = nameof(HasRecentFolders))]
+    private void ClearRecentFolders()
+    {
+        Settings.RecentFolders.Clear();
+        SaveRecentFolders();
+    }
+
+    private void AddRecentFolder(string folder)
+    {
+        if (RecentFolderList.PathComparer.Equals(RecentFolderList.Normalize(folder), RecentFolderList.Normalize(SamplesFolder))) return;
+        RecentFolderList.Add(Settings.RecentFolders, folder);
+        SaveRecentFolders();
+    }
+
+    private void SaveRecentFolders()
+    {
+        SyncRecentFolders();
+        try { Settings.Save(); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            AppLog.Warn($"無法儲存最近開啟的資料夾：{ex.Message}");
+        }
+    }
+
+    /// <summary>以設定中的清單重建子選單項目（清單最多 10 筆，整批重建即可）。</summary>
+    private void SyncRecentFolders()
+    {
+        RecentFolders.Clear();
+        foreach (var path in Settings.RecentFolders)
+            RecentFolders.Add(new RecentFolderItemViewModel(path, OpenRecentFolderAsync));
+        OnPropertyChanged(nameof(HasRecentFolders));
+        ClearRecentFoldersCommand.NotifyCanExecuteChanged();
     }
 
     public async Task OpenFolderAsync(string folder)
@@ -313,6 +370,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             project.EntriesChanged += OnEntriesChanged;
             Folder = project.Folder;
             Settings.LastFolder = project.Folder;
+            AddRecentFolder(project.Folder);
             OnPropertyChanged(nameof(HasProject));
             OnPropertyChanged(nameof(WindowTitle));
             AppLog.Info($"開啟資料夾：{folder}（{project.FileNames.Count} 張）");
@@ -544,8 +602,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     private void OnEntriesChanged(object? sender, IReadOnlyCollection<string> files)
     {
+        // 只改評分（含復原）不影響算圖：只更新標記與面板上的星級，不重算預覽與縮圖。
+        var ratingOnly = Filmstrip.RatingOnlyChanges(files);
         Filmstrip.UpdateMarkers(files);
-        if (FocusFile is not null && files.Contains(FocusFile))
+        if (FocusFile is not null && ratingOnly.Contains(FocusFile))
+            Inspector.RefreshRating();
+        else if (FocusFile is not null && files.Contains(FocusFile))
         {
             // 外部裁切變更（復原、貼上等）才重載工具；RAW／其他效果變更保留未套用的裁切。
             if (CropTool.IsActive && !_committingCrop && Service is not null) CropTool.Reload(Service.SettingsFor(FocusFile));
@@ -557,7 +619,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             RequestPreview();
         }
         // 背景重算縮圖（低優先）
-        foreach (var f in files) Filmstrip.RequestThumbnail(f);
+        foreach (var f in files)
+            if (!ratingOnly.Contains(f)) Filmstrip.RequestThumbnail(f);
     }
 
     // ───────────── 連續編輯（滑桿拖曳／滾輪、曲線拖曳、畫布多欄位拖曳） ─────────────
@@ -887,7 +950,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     // ───────────── 預設 ─────────────
 
     /// <summary>
-    /// 指定預設（拖放、雙擊、數字鍵、資訊區下拉選單）。目標照片有覆寫時詢問保留或清除（可記住選擇）。
+    /// 指定預設（拖放、雙擊、Shift + 數字鍵、資訊區下拉選單）。目標照片有覆寫時詢問保留或清除（可記住選擇）。
     /// </summary>
     public async Task AssignPresetAsync(IReadOnlyCollection<string> targets, Guid presetId)
     {
@@ -920,7 +983,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// <summary>拖放到預覽區：套用到目前照片（多選時為所有選取照片）。</summary>
     public Task DropPresetOnPreviewAsync(Guid presetId) => AssignPresetAsync(Selection, presetId);
 
-    /// <summary>數字鍵 1–9：套用第 N 個釘選預設。</summary>
+    /// <summary>Shift + 1–9：套用第 N 個釘選預設。</summary>
     [RelayCommand]
     private Task ApplyPinned(int index)
     {
@@ -961,6 +1024,40 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     {
         FlushEdit();
         Service?.ResetAll(Selection);
+    }
+
+    /// <summary>設定所有選取照片的星級評分（0 = 清除）；一筆復原紀錄。</summary>
+    [RelayCommand(CanExecute = nameof(CanEditSelection))]
+    private void SetRating(int rating)
+    {
+        if (Service is null || Selection.Count == 0) return;
+        FlushEdit();
+        Service.SetRating(Selection, rating);
+    }
+
+    /// <summary>是否可在系統檔案管理員中顯示照片（iOS 等平台隱藏此動作）。</summary>
+    public bool CanRevealInFileManager => FileReveal.IsSupported;
+
+    /// <summary>實際開啟檔案管理員的動作；測試替換以免真的啟動外部程式。</summary>
+    internal Action<string> RevealFile { get; set; } = FileReveal.Reveal;
+
+    private bool CanRevealFocus() => CanRevealInFileManager && Service is not null && FocusFile is not null && Selection.Count > 0;
+
+    /// <summary>在檔案總管／Finder 中顯示焦點照片。</summary>
+    [RelayCommand(CanExecute = nameof(CanRevealFocus))]
+    private void RevealInFileManager()
+    {
+        if (Service is null || FocusFile is null) return;
+        var path = Service.Project.PathOf(FocusFile);
+        try
+        {
+            RevealFile(path);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error($"無法在檔案管理員中顯示：{path}", ex);
+            Toast.Show(Loc.Format("Toast.RevealFailed", ex.Message));
+        }
     }
 
     [RelayCommand]
@@ -1105,6 +1202,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         CreatePresetCommand.NotifyCanExecuteChanged();
         UpdatePresetCommand.NotifyCanExecuteChanged();
         ResetPhotoCommand.NotifyCanExecuteChanged();
+        SetRatingCommand.NotifyCanExecuteChanged();
+        RevealInFileManagerCommand.NotifyCanExecuteChanged();
         QuickExportCommand.NotifyCanExecuteChanged();
     }
 

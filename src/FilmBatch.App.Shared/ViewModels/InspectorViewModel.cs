@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using FilmBatch.App.Localization;
 using FilmBatch.Core.Params;
 
@@ -16,6 +17,12 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
     private bool _loadingPreset;
 
     public ObservableCollection<ModuleGroupViewModel> Groups { get; }
+
+    /// <summary>排在「AI 功能」之前的分組（基本）；版面順序為照片工具 → 基本 → AI 功能 → 其餘分組。</summary>
+    public IReadOnlyList<ModuleGroupViewModel> LeadingGroups { get; }
+
+    /// <summary>排在「AI 功能」之後的分組（光學等）；沒有基本分組的分頁（底片效果）全部在這裡。</summary>
+    public IReadOnlyList<ModuleGroupViewModel> TrailingGroups { get; }
     public IReadOnlyList<ModuleSectionViewModel> Modules { get; }
 
     /// <summary>film 模組頂部的底片風格縮圖格與色相帶編輯器；只有包含 film 模組的分頁才有。</summary>
@@ -77,6 +84,14 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
     [ObservableProperty]
     private PresetItemViewModel? _selectedPreset;
 
+    /// <summary>焦點照片的星級評分（0 ~ 5）。</summary>
+    [ObservableProperty]
+    private int _rating;
+
+    /// <summary>照片資訊標題列的五顆星；按下目前評分的那顆會清除評分。</summary>
+    public IReadOnlyList<RatingStarViewModel> RatingStars { get; } =
+        Enumerable.Range(1, FilmBatch.Core.Projects.PhotoEntry.MaxRating).Select(i => new RatingStarViewModel(i)).ToList();
+
     public InspectorViewModel(MainWindowViewModel main, IReadOnlySet<ModuleGroup> groups, bool showsPhotoInfo = true)
     {
         _main = main;
@@ -110,6 +125,8 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
         {
             if (e.PropertyName == nameof(ModuleGroupViewModel.IsExpanded)) UpdateCurveHistogram();
         };
+        LeadingGroups = Groups.Where(g => g.Group == ModuleGroup.Basic).ToList();
+        TrailingGroups = Groups.Where(g => g.Group != ModuleGroup.Basic).ToList();
         RefreshPresetOptions();
     }
 
@@ -160,6 +177,7 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
             Dimensions = "";
             OverrideText = "";
             HasOverrides = false;
+            Rating = 0;
             if (Modules.FirstOrDefault(m => m.Key == "raw") is { } raw) { raw.IsVisible = false; raw.SetRawSource(null); }
             Modules.FirstOrDefault(m => m.Key == "basic")?.SetRawSource(null);
             if (IsActive) _main.Preview.ShowControlPoint(null, null);
@@ -172,6 +190,7 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
         FileName = _main.Selection.Count > 1 ? Loc.Format("Inspector.FileMulti", file, _main.Selection.Count) : file;
         Dimensions = _main.Preview.Source is { } src && _main.FocusFile == file ? Loc.Format("Inspector.PreviewSize", src.Width, src.Height) : "";
         HasOverrides = entry.HasOverrides;
+        Rating = entry.Rating;
         var adjustments = entry.Overrides.Count > 0 ? Loc.Format("Inspector.Overrides", entry.Overrides.Count) : Loc.Get("Inspector.NoOverrides");
         OverrideText = entry.ForegroundMask is null ? adjustments
             : entry.Overrides.Count > 0 ? $"{adjustments} · {Loc.Get("BackgroundRemoval.AppliedLabel")}" : Loc.Get("BackgroundRemoval.AppliedLabel");
@@ -193,6 +212,23 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
         }
         FilmLook?.OnSettingsChanged();
         UpdateControlPoint(resolved);
+    }
+
+    /// <summary>只重新讀取焦點照片的評分（評分變更不影響參數，不必重載整個面板）。</summary>
+    public void RefreshRating() =>
+        Rating = _main.Service is { } svc && _main.FocusFile is { } file ? svc.Project[file].Rating : 0;
+
+    partial void OnRatingChanged(int value)
+    {
+        foreach (var star in RatingStars) star.IsFilled = star.Value <= value;
+    }
+
+    /// <summary>按下第 n 顆星：設定為 n 星；若已是 n 星則清除為 0（與 Lightroom 相同）。</summary>
+    [RelayCommand]
+    private void ClickStar(int value)
+    {
+        var rating = value == Rating ? 0 : value;
+        if (_main.SetRatingCommand.CanExecute(rating)) _main.SetRatingCommand.Execute(rating);
     }
 
     partial void OnSelectedPresetChanged(PresetItemViewModel? value)
@@ -288,4 +324,13 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
         _main.Preview.SetCurveHistogramVisible(IsActive && Groups?.Any(g => g.IsExpanded
             && g.Modules.Any(m => m.Curves is not null && m.IsExpanded && m.IsVisible)) == true);
     }
+}
+
+/// <summary>評分列中的一顆星。</summary>
+public sealed partial class RatingStarViewModel(int value) : ObservableObject
+{
+    public int Value { get; } = value;
+
+    [ObservableProperty]
+    private bool _isFilled;
 }

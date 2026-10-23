@@ -130,7 +130,8 @@ public sealed partial class ExportViewModel : ObservableObject
     {
         _main = main;
         _destination = "";
-        _scope = ExportScope.All;
+        // 預設匯出縮圖列選取的照片（單選也一樣），張數跟著選取變化；「全部」與「依預設」需手動切換。
+        _scope = ExportScope.Selected;
         Refresh();
         Loc.OnCultureChanged(this, static vm =>
         {
@@ -141,7 +142,8 @@ public sealed partial class ExportViewModel : ObservableObject
     }
 
     /// <summary>
-    /// 依目前的資料夾、選取與預設庫更新：預設清單、預設目的地（使用者未填時）、範圍（多選時改為「選取的照片」）與摘要。
+    /// 依目前的資料夾、選取與預設庫更新：預設清單、預設目的地（使用者未填時）與張數／摘要。
+    /// 範圍維持使用者的選擇（預設為「選取的照片」），不再依選取數量自動切換。
     /// </summary>
     public void Refresh()
     {
@@ -150,7 +152,6 @@ public sealed partial class ExportViewModel : ObservableObject
         Preset = Presets.FirstOrDefault(p => p.Id == presetId);
         if (string.IsNullOrEmpty(Destination) && _main.Folder is { } folder)
             Destination = Path.Combine(folder, "export");
-        if (_main.Selection.Count > 1 && Scope == ExportScope.All) Scope = ExportScope.Selected;
         OnPropertyChanged(nameof(Count));
         OnPropertyChanged(nameof(Summary));
         OnPropertyChanged(nameof(CanExport));

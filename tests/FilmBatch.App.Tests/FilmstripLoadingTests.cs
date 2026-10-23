@@ -97,7 +97,8 @@ public sealed class FilmstripLoadingTests
         TestEnv.PumpUntil(() => !vm.Filmstrip.IsLoadingThumbnails);
         var photo = Assert.Single(vm.Filmstrip.Items);
         var original = photo.Source;
-        vm.Inspector.SetValue("raw.enabled", true, null);
+        // RAW 原廠處理預設啟用；關閉它同樣是 RAW 選項變更，必須重新載入已完成的縮圖。
+        vm.Inspector.SetValue("raw.enabled", false, null);
         var expected = RawLoadOptions.FromSettings(vm.FocusedResolved);
         TestEnv.PumpUntil(() => photo.Source is { } source && source.RawOptions == expected
             && photo.Bitmap is not null && !vm.Renderer.IsBusy);

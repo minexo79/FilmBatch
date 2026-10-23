@@ -225,6 +225,33 @@ public sealed class PhotoAnalysisTests
         }
     }
 
+    // ---- RAW processing defaults on, but only scene-linear sources use it ---
+
+    [Fact]
+    public void RawProcessing_DefaultsOn_ButNonRawRendersIgnoreIt()
+    {
+        var defaults = ModuleCatalog.Defaults;
+        Assert.True(defaults.ContainsKey("raw.enabled"));
+        Assert.True(defaults.Bool("raw.enabled"));
+        Assert.NotEqual(new RawLoadOptions(), RawLoadOptions.FromSettings(defaults));
+        var scene = SceneSource(4, 4, .2f, .2f, .2f, NeutralModel());
+        Assert.True(ModuleParams.From(scene, defaults).RawProcessingOn);
+        Assert.True(ModuleParams.UsesRawWhiteBalance(scene, defaults));
+
+        // SDR sources: the default-on value never turns RAW processing or RAW WB on,
+        // so the relative basic temperature/tint still applies and pixels match RAW off.
+        var sdr = Sdr(8, 8, 30000, 20000, 12000);
+        var edited = defaults.With("basic.exposure", 0.5).With("basic.temperature", 30.0);
+        var p = ModuleParams.From(sdr, edited);
+        Assert.False(p.RawProcessingOn);
+        Assert.False(p.RawMaskOn);
+        Assert.Equal(30, p.Temperature);
+        Assert.False(ModuleParams.UsesRawWhiteBalance(sdr, edited));
+        using var cpu = new CpuFakeRenderer();
+        var ct = TestContext.Current.CancellationToken;
+        Assert.Equal(cpu.Render16(sdr, edited.With("raw.enabled", false), ct).Rgba16, cpu.Render16(sdr, edited, ct).Rgba16);
+    }
+
     // ---- applyAdjustments: pre-WB vs current edits -------------------------
 
     [Fact]
