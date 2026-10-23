@@ -585,6 +585,8 @@
     <Setter Property="Padding" Value="6,0" />
     <Setter Property="MinHeight" Value="0" />
     <Setter Property="VerticalAlignment" Value="Stretch" />
+    <!-- 按鈕撐滿整列高度；內容需置中，否則標題文字會貼齊頂端而與右側圖示錯位 -->
+    <Setter Property="VerticalContentAlignment" Value="Center" />
   </Style>
   <Style Selector="ToggleButton.chevron PathIcon">
     <Setter Property="Width" Value="12" />
