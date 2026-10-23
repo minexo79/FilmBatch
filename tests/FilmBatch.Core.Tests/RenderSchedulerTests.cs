@@ -112,6 +112,30 @@ public sealed class RenderSchedulerTests
     }
 
     [Fact]
+    public async Task CancelledReplacementPreview_DoesNotLoseInterruptedThumbnail()
+    {
+        var renderer = new SlowFirstCpuRenderer(holdCancellation: true);
+        using var scheduler = new RenderScheduler(() => renderer);
+        var delivered = new TaskCompletionSource<RenderResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        scheduler.ThumbnailRendered += result => delivered.TrySetResult(result.Result);
+        scheduler.RenderFailed += failure => delivered.TrySetException(failure.Error);
+        scheduler.RequestThumbnail("background.tif", new SourceImage(1, 1, [65535, 0, 0, 65535]), ModuleCatalog.Defaults);
+        scheduler.Start();
+        try
+        {
+            await renderer.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            scheduler.RequestPreview("current.tif", new SourceImage(1, 1, [0, 65535, 0, 65535]), ModuleCatalog.Defaults, 1);
+            await renderer.CancellationObserved.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            // Selecting another photo cancels the queued preview while its new source is still decoding.
+            scheduler.CancelPreview();
+        }
+        finally { renderer.ReleaseCancellation.TrySetResult(); }
+
+        var result = await delivered.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        Assert.Equal(new byte[] { 0, 0, 255, 255 }, result.Bgra);
+    }
+
+    [Fact]
     public async Task GatedPreviewCallback_DoesNotBlockNewSubmission()
     {
         // The first completion handler gates on a signal: a new submission must still proceed,
@@ -203,11 +227,13 @@ public sealed class RenderSchedulerTests
     }
 
     // Simulates a slow native inference boundary, but keeps rendering and its pixels real.
-    private sealed class SlowFirstCpuRenderer : IPreviewRenderer
+    private sealed class SlowFirstCpuRenderer(bool holdCancellation = false) : IPreviewRenderer
     {
         private readonly CpuFakeRenderer _inner = new();
         private int _calls;
         public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource CancellationObserved { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource ReleaseCancellation { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public string DeviceName => _inner.DeviceName;
         public bool IsSoftware => _inner.IsSoftware;
         public RenderResult Render(SourceImage source, Settings settings, CancellationToken cancellationToken = default)
@@ -216,6 +242,8 @@ public sealed class RenderSchedulerTests
             {
                 Entered.TrySetResult();
                 cancellationToken.WaitHandle.WaitOne(TimeSpan.FromSeconds(15));
+                CancellationObserved.TrySetResult();
+                if (holdCancellation) ReleaseCancellation.Task.GetAwaiter().GetResult();
                 cancellationToken.ThrowIfCancellationRequested();
             }
             return _inner.Render(source, settings, cancellationToken);

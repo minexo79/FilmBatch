@@ -290,9 +290,11 @@ public sealed class RenderScheduler : IDisposable
                 {
                     lock (_lock)
                     {
-                        // A foreground request interrupted this thumbnail, rather than cancelling the folder.
+                        // Foreground preemption must not lose the thumbnail when that preview is
+                        // itself replaced/cancelled while rendering unwinds. Explicit cancellation wins.
                         if (thumb is { } interrupted && cancellation!.IsCancellationRequested
-                            && interrupted.Epoch == _epoch && _preview is not null
+                            && !_disposed && interrupted.Epoch == _epoch
+                            && !MatchesCancelled(interrupted.Key, interrupted.Source)
                             && !_thumbs.Any(item => item.Key == interrupted.Key))
                             _thumbs.AddFirst(interrupted);
                         _activeRender = null;
