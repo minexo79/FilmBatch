@@ -2,6 +2,8 @@
 
 `FilmBatch.Raw` 與 `FilmBatch.Engine/Imaging/Raw` 移植自 LightCraft。下列既有語料產生器仍釘選 commit `f34c7a8a89e0d1bade0a6889185f40acecc84a9f`，不因新的整合實驗暗中換版；八項 RAW 整合另對照 `4f0b110bcbd2e350c6d97b47f1d824c2222295c4`（v0.9.1），驗收契約見[實作計畫](../../docs/superpowers/plans/2026-10-18-raw-pipeline-parity.md)。語料測試把 C# 與同一批 CC0 樣本的上游輸出比對；樣本與參考輸出不進版本庫，CI 沒有這兩個資料夾時相關測試會略過。
 
+2026-10-23 的 [pipeline／LightCraft 差異複查](../../docs/superpowers/plans/2026-10-22-performance-correctness.md#pipeline-revalidation-2026-10-23)另外比較 v0.9.1 與 v0.13.0（`23e181283cb448205d865e8cd288b56afe987986`）。採用項目及獨立 fixture 在該紀錄分列；不是整批升級 RAW 引擎，以下語料產生器、參考雜湊與容差均未換版。
+
 ```bash
 tools/raw-oracle/fetch-samples.sh ~/filmbatch-raw-samples          # 依 Corpus/*.tsv 下載並核對 SHA-256
 git clone https://github.com/storytold/lightcraft ~/lightcraft

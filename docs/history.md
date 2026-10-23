@@ -79,6 +79,12 @@ Sigma BF 另在 `research/sigma-bf-raw-performance` 保存並推送研究提交 
 
 同一整合提交修正 `35f4373` 引入的大型 Gaussian 佇列逾時：限制累積工作量、分批等待，不延長 10 秒期限、不縮小案例、不改走應用程式 CPU renderer。[Windows CI #110](https://circleci.com/gh/minexo79/FilmBatch/110) 已在 DX12 軟體介面卡上通過原案例、完整回歸、封裝與原生 smoke；macOS、shader、admission 與 pre-merge gate 也通過。程式碼已推送；後續文件提交僅補記遠端結果，不混淆驗證版本。[整合與驗證證據](superpowers/plans/2026-10-22-performance-correctness.md#subsequent-sigma-and-preview-branch-integration)保留各平台測試數與未驗證範圍。
 
+## Pipeline 再驗證與色調曲線（2026-10-23）
+
+以目前分支的 `e84ad2c` 為基準，實際重現縮圖中斷後停在 4/18，以及 Basic Shadows 抬黑／階調反轉；修正排程復原條件與共同 RGB 增益後，原生 18 張載入及 Shadows 全尺寸 Metal 匯出通過。RAW 分箱改用每個 worker 的暫存陣列，三張實拍預覽配置量下降約 15–25%，53 項影像／尺寸欄位不變；不宣稱整條 pipeline 全面加速。
+
+LightCraft v0.13.0 差異只採用經重現的 Canon coded-width 與 Fujifilm plain-radius 修正；未因版本更新任意放寬 DNG 色調擬合、支援新機型或替換外部 oracle。使用者另要求多段曲線，沿用既有點編輯器、Settings 與復原，放在「照片基本參數 → 基本」的基本調整之後。CPU／Metal 共用查表；原生操作、保存／貼上、重開與 PNG16 匯出已有實測，跨平台與外部相機資料的邊界另列於[完整驗證記錄](superpowers/plans/2026-10-22-performance-correctness.md#pipeline-revalidation-2026-10-23)。
+
 ## 如何新增歷史列
 
 只記對未來修改有用的決定：真實 commit／日期、可核對的理由或重現、被拒絕方案、目前契約／檢查、後續取代。沒有當時證據時明寫「只確認提交意圖」；數值必須保留平台、輸入與來源版本，不把舊測試 totals 複製成新版本的驗收結果。

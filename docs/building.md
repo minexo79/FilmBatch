@@ -532,9 +532,28 @@ dotnet test FilmBatch.sln -c Release --no-restore --nologo --filter 'FullyQualif
 
 一次性端到端驅動、TRX、畫面與 PNG／CLI 核對收據保留於儲存庫外的工作階段證據。2026-10-21 的四份驗證來源已封存為 `verification-harnesses.tar.gz`（SHA-256：`c914a5def6c6b990b2be2e279b42a1a48f570c142f20a888cd0c4e9a3b2cca99`），是上一輪單張去背的證據，不代替本輪批次／逐筆結果。本輪另保存實際驅動與來源封存，臨時驅動不成為產品依賴；既有照片／研究資料未清除。fresh clone 的永久入口為上方命令及 [VERIFY V1](../VERIFY.md#v1)。暗部研究與後續實作另見[局部暗部還原](#局部暗部還原)，不以去背驗證代替。
 
+## 色調曲線
+
+位置：**照片基本參數 → 基本 → 色調曲線**，緊接「基本調整」。預設為恆等曲線，不改變原有照片外觀；不需 AI 模型或額外下載。
+
+- **RGB／R／G／B**：選擇主曲線或個別通道，在圖上點選新增控制點、拖曳調整；雙擊內部點或拖出圖的上／下緣可刪除，端點保留。下方顯示輸入／輸出讀值。
+- **線性／中等對比／強烈對比**：套用目前通道的點曲線，套用後仍可編輯。「重設」只重設目前通道。
+- **分段**：調整亮部、亮色調、暗色調、暗部；展開「分段界線」可調三個分界。交叉分界會在計算時排序並保持間距；「重設」一次還原四段與分界。
+- **曲線飽和度**：100 保留曲線後的色彩，降低時以曲線後亮度為中心，將飽和度往曲線前拉回；不是一般飽和度滑桿。
+
+處理順序為分段 → RGB → 個別通道，發生在 RAW 既有顯示映射之後，不取代相機色調／場景線性暗部還原。拖曳預覽不寫專案，放開一次保存、一次復原；通道切換、預設、模組貼上、專案重開與批次匯出共用同一組參數。白平衡／膚色／Zone 取樣時暫停曲線，避免創意調色影響取樣。
+
+回歸入口：
+
+```bash
+dotnet test FilmBatch.sln -c Release --filter 'FullyQualifiedName~ToneCurve|FullyQualifiedName~CurveEditorTests|FullyQualifiedName~SamplingView_ToneCurvesDoNotChangeTheSampledPixels'
+```
+
+原生介面、全尺寸 PNG16 與合併後驗證紀錄另列於[本輪 pipeline／曲線驗證](superpowers/plans/2026-10-22-performance-correctness.md#pipeline-revalidation-2026-10-23)。CPU／Metal 檢查不代替 Windows／iOS 實機驗收。
+
 ## 局部暗部還原
 
-這是獨立的 `shadow_recovery` 模組，**預設關閉**；既有「陰影」／`basic.shadows` 的顯示域行為不變。適用於 RAW 與一般 RGB 來源，不需要 AI 模型、下載或 LibRaw 相依。最終 JPEG／PNG／TIFF 仍為既有的顯示輸出，不是 HDR 感光資料。
+這是獨立的 `shadow_recovery` 模組，**預設關閉**；與「陰影」／`basic.shadows` 的顯示域調整分開。後者在 2026-10-23 修正抬黑與暗部洗白，採共同 RGB 增益；不是把本模組移到另一個滑桿。適用於 RAW 與一般 RGB 來源，不需要 AI 模型、下載或 LibRaw 相依。最終 JPEG／PNG／TIFF 仍為既有的顯示輸出，不是 HDR 感光資料。
 
 1. 在基本參數的「暗部還原」展開並啟用；若找不到，先取消「隱藏已停用的模組」。
 2. 以「暗部提亮」調亮暗處，再調局部範圍；亮度降噪保守使用，以免抹掉紋理，彩色斑塊可另調色度降噪。

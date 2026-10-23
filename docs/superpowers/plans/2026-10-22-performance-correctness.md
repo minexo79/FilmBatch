@@ -237,3 +237,77 @@ Commit `4a867155179365d65a1a55d984dbb23a7bda2a5c` completed [Windows job #110](h
 - The [commit status API](https://api.github.com/repos/minexo79/FilmBatch/commits/4a867155179365d65a1a55d984dbb23a7bda2a5c/status) reports success for [admission #109](https://circleci.com/gh/minexo79/FilmBatch/109), [shaders #111](https://circleci.com/gh/minexo79/FilmBatch/111), [macOS #112](https://circleci.com/gh/minexo79/FilmBatch/112) and [pre-merge #113](https://circleci.com/gh/minexo79/FilmBatch/113), as well as Windows #110.
 
 Additional local evidence archive: `artifacts/verification/2026-10-22-preview-merge-windows-ci.tar.gz` (ignored, not pushed), SHA-256 `2f1db2a16a32002ec00dafaf1e8d7e37a56c9e420cd5424de26f68b94136640a`; gzip integrity passes. It contains the public job/gate summary, full Windows test log, native smoke receipt and inspected screenshot. This follow-up changes documentation only; the runtime evidence is pinned to `4a86715`.
+
+<a id="pipeline-revalidation-2026-10-23"></a>
+## Pipeline revalidation and LightCraft delta (2026-10-23)
+
+Baseline: `research/performance-improve` at `e84ad2c`, including `7dbe9be` lens-corrected preview binning / Lensfun caching and the existing Sigma GainMap repair. The untouched baseline was built separately; those changes were not rediscovered as missing fixes. The user subsequently authorized logical commits, integration of new commits on the current remote branch, conflict resolution, and a normal push; original photos, model weights and ignored evidence stay local.
+
+### Reproduced defects and fixes
+
+- **Thumbnail delivery:** a foreground preview interrupts an active thumbnail; the replacement preview is then cancelled before rendering unwinds. Requeue incorrectly depended on a still-pending preview. The native reproduction stopped at **4/18**, with no queued GPU work and the filmstrip pump awaiting delivery. Requeue now depends on the interrupted thumbnail's epoch, source cancellation and absence of a newer same-key request. Explicit cancellation, folder changes and disposal still discard obsolete work. `CancelledReplacementPreview_DoesNotLoseInterruptedThumbnail` failed before the fix; all 13 scheduler cases passed afterward.
+- **Basic Shadows:** CPU and Metal added a grey offset to dark RGB. At +40 / +100, black became **9175 / 22937** in 16-bit output; a 4097-step float ramp at +100 had 800 reversed steps. A shared rational toe now multiplies RGB by a luminance-dependent gain, fixes black, preserves dark colour ratios / alpha, and joins identity smoothly at display luminance 0.45. Ten CPU / GPU cases failed before and passed after. Zero remains identity; persisted nonzero Shadows settings intentionally render differently. No project/schema migration or stage reorder.
+- **Binned RAW scratch:** `RawImage.Binned.Bin` allocated `k × rowWidth` floats for every output row. `Parallel.For` now retains one scratch array per worker partition, completely overwriting it before reuse. Summation order, crop, clipping masks and opcodes are unchanged; this is allocation reduction, not the cause of the thumbnail stall.
+
+The Shadows repair is **not** a port of LightCraft's spatial shadows: upstream uses a scene-linear log-luminance base and common RGB exposure gain before display mapping (`crates/pipeline/src/local.rs`, `finish.rs`, `wgsl/finish.wgsl`). FilmBatch retains its separate, opt-in `shadow_recovery` module. The supplied LightCraft / RapidRAW screenshots are visual references, not matched-setting pixel oracles or proof of decoder differences.
+
+### Serial measurements and image invariants
+
+Apple M3 / .NET 10.0.13 / Metal; one first invocation and three warm invocations per stage, with the warm median reported. Source bytes are unchanged. Managed allocations are cumulative allocated bytes, **not peak RSS**, native encoder memory or retained cache size; stages overlap and must not be summed. Wall times vary enough that no blanket speedup is claimed.
+
+| File / stage | Before ms | After ms | Before MiB allocated | After MiB allocated |
+|---|---:|---:|---:|---:|
+| Sigma BF `9609219312.dng`, preview 1600 | 483.6 | 514.8 | 1229.2 | 1049.5 |
+| Sony A7 IV `DSC02851.ARW`, preview 1600 | 329.9 | 293.4 | 977.7 | 734.1 |
+| Sony A7R V `DSC00037.ARW`, preview 1600 | 526.2 | 528.2 | 1914.8 | 1467.4 |
+| Sigma BF, full source | 987.0 | 1226.1 | 1674.4 | 1585.5 |
+| Sony A7 IV, full source | 3553.3 | 2387.5 | 2220.1 | 2100.4 |
+
+All **53** recorded file/sample/scene/display/export-hash and dimension fields matched before/after. This covers all three sensor buffers and preview scenes/displays, plus BF and A7 IV full scenes and neutral RGBA16 exports. BF export remains `8d38398287f500c2295debe49f7eccd76fd0a0b8f28af71dbd9e57ff06f1833a`; A7 IV export remains `b611a7a2aa17b4fcb8fcd6e8bc9889d14e9c54004ea39131bf6dac64668dd8fa`. Neutral parity is not an oracle for intentionally changed Shadows, Canon or Fuji outputs.
+
+### Latest upstream comparison and admission boundaries
+
+Compared [v0.9.1 `4f0b110`](https://github.com/storytold/lightcraft/tree/4f0b110bcbd2e350c6d97b47f1d824c2222295c4) to [v0.13.0 / main `23e1812`](https://github.com/storytold/lightcraft/tree/23e181283cb448205d865e8cd288b56afe987986), pinned through `git ls-remote` and release metadata on 2026-10-23. Only code consumed by FilmBatch was assessed; release notes alone were not adoption evidence.
+
+| Delta / proposal | Decision and boundary |
+|---|---|
+| Canon CRX coded high-pass width, `crates/raw/src/vendor/crx.rs` | Ported deterministic tile/band geometry in `Crx.cs`, replacing first-success entropy probing. Ambiguous streams can decode at two widths with different coefficients; the old path produced an incorrect mosaic. Synthetic two-tile coefficient regressions now pass. No fallback to a narrower decode; real-camera and adaptive coded-width coverage remain unverified without the external corpus. |
+| Fujifilm radius units, `crates/raw/src/vendor/raf_lens.rs` | Ported plain-radius lookup for warp and vignette; knots already use half-diagonal units. Four independent X-T4 interpolation/geometry facts pass after three failed under the old reading. Geometry constants are upstream-published JPEG measurements, not a local RAF/JPEG run. The 59-model validated gate is unchanged; this is not real-RAF coverage of every admitted model. |
+| DNG `MIN_PREVIEW_FRACTION` 0.9→0.1, LookTable eligibility and List3 proxy fallback | Not cherry-picked. Upstream also changed dark-scene/highlight fitting gates; changing only eligibility constants can change starting colour without corresponding safety checks and real DNG evidence. |
+| Reduced-IFD DNG thumbnails | Feature for Lightroom merge DNGs; not the reproduced 18-photo stall. No qualifying large merged-DNG fixture was measured in this run; no new path added. |
+| Neutral `ToneMap.DisplayHdr` shoulder | Delta confirmed, but no production consumer of FilmBatch's helper found. Not the Basic Shadows defect; no unrelated change made. |
+| Sony A7CR distortion / new Nikon packed layouts / Hasselblad-Minolta support | Additional model/format support, not measured regressions on these inputs; no claim of a complete v0.13.0 rebase. |
+| Smaller JPEG for colour fitting | Rejected: can change camera-dependent fitted tone / colour. |
+| Shrink sparse RAW file buffer | Not applied: current parser uses file-relative addresses throughout; a smaller buffer without changing ownership/addressing is unsafe. |
+
+The existing external corpus oracle remains pinned to `f34c7a8a89e0d1bade0a6889185f40acecc84a9f`; no expected files or tolerances were refreshed to make a fix pass.
+
+The integrated Canon / Fuji / lens subset executed **50 passed, 1 skipped**. The skipped CR3 comparison requires `LIGHTCRAFT_CR3_CORPUS` or `FILMBATCH_RAW_SAMPLES`; it is not counted as real-camera parity. Source SHA-256 for the three measured RAWs still matches the untouched baseline; the Shadows input and isolated native copy also match.
+
+### Native acceptance
+
+The final native `Avalonia.Native` run, using isolated settings and copied inputs, completed all **18/18** thumbnails after forced interruption/cancellation, with zero failures and zero pending GPU work. Scrolling to indices 11–17 and back to 0–6 showed real thumbnails; captures were inspected.
+
+The supplied `DSC01282.ARW` was edited at Shadows −100 / 0 / +40 / +100 without replacing its scene source, then undone/redone and exported through the GUI at **4672×7008 RGBA PNG16** on **Apple M3 · Metal**, `IsSoftwareRenderer=false`. Reloaded output differs from the full CPU reference by at most **1/65535**; RGBA16 hash `50f88896a42623b55ee377fda01e363bedffc1de6bd84bf68d25b2435e22c04e`. The export-complete surface was inspected. All **36** expanded WGSL entry points passed Naga 30.0.1.
+
+Windows/iOS native execution, missing external camera corpus/oracles, local real Canon/Fuji photography, cross-camera perceptual ranking and peak-memory measurements remain explicit untested boundaries. Earlier Windows CI receipts above do not validate this working tree.
+
+### Multisegment tone curves
+
+The user added a separate feature request, illustrated by `dist/ curve.webp`: implement editable point/parametric curves and place the module inside **照片基本參數 → 基本**, immediately after **基本調整**. The shared editor reuses `CurveEditor`, existing parameter transactions and persistence. No new dependency, tab, project version or parallel undo system was introduced.
+
+`ToneCurveSet` composes parametric → master → channel curves into a shared CPU/GPU LUT after BasicDisplay and before ToneSplit; neutral settings bypass the pass. Parametric windows, monotonic baking and saturation refinement reference [LightCraft v0.13.0 `finish.rs`](https://github.com/storytold/lightcraft/blob/23e181283cb448205d865e8cd288b56afe987986/crates/pipeline/src/finish.rs), while points retain FilmBatch's existing monotone cubic interpolation. RAW source, alpha and existing display boundaries are preserved.
+
+Pre-merge verification:
+
+- **20** Core curve cases passed, covering independent composition values, neutral/disabled identity, interpolation, extreme/crossing splits, saturation, alpha and actual Metal parity.
+- **9** UI/sampling cases passed. The new sampling pixel test first failed with red `46718` instead of `13107`; adding curves to the existing creative-effect exclusions restored the expected pixels. Gesture tests cover photo/channel changes without retargeting or extra undo commits.
+- A real `Avalonia.Native` window on **Apple M3 · Metal** exercised pointer add/drag/delete, channel preservation, selected reset, editable strong preset, region/split sliders, undo/redo, preset snapshot, module paste, save/reopen and full export. Dragging left the project file unchanged and release committed exactly once; RAW source identity stayed unchanged during edits.
+- The main histogram was collapsed while the expanded curve still received **1,707,200** preview pixels. Captures show the Basic group, Basic Adjustments followed by Tone Curves, and the actual editor/export surfaces.
+- **4672×7008 RGBA PNG16**, `IsSoftwareRenderer=false`; decoded pixels differed from the full CPU reference by at most **1/65535**, mean **0.001205/65535** over RGBA. Pixel hash `1fabf2ade34471e720744234cfb10d0a734663212f0c387cfb37f07dfc09361b`. This is numerical consistency on one supplied RAW, not a cross-camera perceptual judgement.
+- **37** expanded shader compilation units passed **Naga 30.0.1**, including the new tone-curve entry point.
+
+Native driver failures were corrected in the disposable harness, not hidden in product code: initialize the empty project before checking disk stability, discover lazy Expander content after opening it, and move the shadows split when only the shadows region is active. The middle split correctly leaves that region unchanged.
+
+The complete pre-merge Release suite passed: **Raw 643 / 293 skipped**, **Core 707 / 27 skipped**, **App 245 / 0 skipped**; **1,595 passed, 320 skipped, 0 failed** overall. Missing external corpus/platform-specific cases remain skipped, not inferred passes. Merged-source validation is recorded separately below.
+
