@@ -78,6 +78,13 @@ public static class LoupePlan
         var canvas = double.IsFinite(v.CanvasLongPx) ? Math.Max(v.CanvasLongPx, 8) : 8;
         var drawn = double.IsFinite(v.DrawnLongPx) ? Math.Max(v.DrawnLongPx, 8) : canvas;
         var scale = v.DraftScale is { } s && double.IsFinite(s) ? Math.Clamp(s, 0.1, 1) : 1;
+        if (!v.WindowsAllowed)
+        {
+            // 沒有 Window 層：整張畫面依繪製尺寸渲染（仍受 Preview 等級等上限約束），放大時才不會比代理圖更糊；
+            // 拖曳中的草稿則只算畫布大小，1:1 時拖曳不能每格都算整張照片（Lightcraft plan 的 !windows 分支）。
+            var wanted = v.DraftScale is not null ? Math.Min(drawn, canvas) : drawn;
+            return new(MainEdge(wanted * scale, previewLimit, v.NativeLongPx, v.TextureSide), null);
+        }
         var main = MainEdge(Math.Min(drawn, canvas) * scale, previewLimit, v.NativeLongPx, v.TextureSide);
         if (!v.WindowsAllowed || v.DraftScale is not null || drawn < main * WindowRatio) return new(main, null);
         return new(main, Math.Min((int)Math.Round(drawn), v.NativeLongPx));

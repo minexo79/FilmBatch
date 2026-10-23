@@ -182,6 +182,12 @@ public static class LoupePlan
         var canvas = double.IsFinite(v.CanvasLongPx) ? Math.Max(v.CanvasLongPx, 8) : 8;
         var drawn = double.IsFinite(v.DrawnLongPx) ? Math.Max(v.DrawnLongPx, 8) : canvas;
         var scale = v.DraftScale is { } s && double.IsFinite(s) ? Math.Clamp(s, 0.1, 1) : 1;
+        if (!v.WindowsAllowed)
+        {
+            // 沒有 Window 層：依繪製尺寸渲染（拖曳草稿則只算畫布大小）；見驗證輪 1 的回歸
+            var wanted = v.DraftScale is not null ? Math.Min(drawn, canvas) : drawn;
+            return new(MainEdge(wanted * scale, previewLimit, v.NativeLongPx, v.TextureSide), null);
+        }
         var main = MainEdge(Math.Min(drawn, canvas) * scale, previewLimit, v.NativeLongPx, v.TextureSide);
         if (!v.WindowsAllowed || v.DraftScale is not null || drawn < main * WindowRatio) return new(main, null);
         return new(main, Math.Min((int)Math.Round(drawn), v.NativeLongPx));
@@ -447,4 +453,9 @@ public void Window_matches_full_frame_crop_cpu(string name, Settings settings)
 | Item | Status | Evidence |
 |---|---|---|
 | 現況調查 | inspected | 固定 1600 代理圖由畫布放大；沒有替身與預取；GPU 以參考相等快取來源；RAW 已有 binning；35 個 frame-relative shader |
-| Task 1 – 8 | pending | — |
+| Task 1 | verified | `448c68a`；LoupePlanTests 11/11 |
+| Task 2 | verified | `54e92b0`；SourceLevelTests 8、SourceImageScaleTests 4；App 284、Core 701/42 skipped |
+| Task 3 | verified | `e74cb72` + `bd2405b`（同級 refit、工具分析維持代理圖解析度）；App 291、Core 705/42 skipped |
+| 驗證輪 1 | observed | 50 張 Sony A7M4（7008×4672，25 ARW + 25 JPG）、RTX 3060 DX12、headless Avalonia+Skia、Auto。開圖到最終預覽中位數／p90：ARW 519／625 ms，JPG 1333／1860 ms（JPG 解碼約為 ARW 的 3 倍）；符合視窗 1:1 共 55/55；50 張縮圖 12.6 s 完成。**回歸**：放大時 Main 被畫布尺寸封頂（1600），100% 以上比 Task 3 之前更糊（針織紋出現摩爾紋） |
+| 回歸修正 | verified | `LoupePlan.Plan`：沒有 Window 層時依繪製尺寸渲染（上限 2560），拖曳草稿仍為畫布尺寸；App 293/293 |
+| Task 4 – 8 | pending | — |

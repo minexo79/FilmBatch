@@ -8,6 +8,25 @@ public sealed class LoupePlanTests
     private static ViewSizes Sizes(double drawn, double canvas, int native, double? draft = null) =>
         new(drawn, canvas, native, 16384, draft, WindowsAllowed: true);
 
+    // 沒有 Window 層時，整張畫面依「繪製尺寸」渲染（Lightcraft plan 的 !windows 分支）：放大時不得被畫布尺寸封頂
+    [Fact]
+    public void Without_windows_zoomed_view_renders_at_drawn_size_up_to_the_preview_level()
+    {
+        var zoomed = LoupePlan.Plan(0, new ViewSizes(4380, 1600, 7008, 16384, null, WindowsAllowed: false));
+        Assert.Equal(2560, zoomed.MainEdge);
+        Assert.Null(zoomed.WindowFrameEdge);
+        var fit = LoupePlan.Plan(0, new ViewSizes(1500, 1600, 7008, 16384, null, WindowsAllowed: false));
+        Assert.Equal(1536, fit.MainEdge);
+    }
+
+    // 拖曳中的草稿即使沒有 Window 層也只算畫布大小：1:1 時拖曳不能每格都算整張照片
+    [Fact]
+    public void Without_windows_draft_stays_canvas_sized()
+    {
+        var p = LoupePlan.Plan(0, new ViewSizes(4380, 1600, 7008, 16384, 1.0, WindowsAllowed: false));
+        Assert.Equal(1600, p.MainEdge);
+    }
+
     [Fact]
     public void Retina_fit_view_needs_no_window()
     {
