@@ -49,6 +49,10 @@ public sealed class RawInspectorTests
             Assert.NotNull(main.Preview.Source!.RawInfo);
             Assert.True(RawControlsVisible(window));
             main.Inspector.HideDisabledModules = true;
+            // RAW 原廠處理預設啟用：隱藏停用模組時仍顯示，關閉後才隱藏。
+            Assert.True(RawControlsVisible(window));
+            main.Inspector.SetValue("raw.enabled", false, null);
+            WaitForSource(rawName);
             Assert.False(RawControlsVisible(window));
             main.Inspector.SetValue("raw.enabled", true, null);
             main.Inspector.SetValue("raw.camera_local_tone", true, null);

@@ -173,7 +173,8 @@ public sealed class ForegroundBatchTests : IDisposable
         var folder = NewPhotoFolder(1, longEdge: 2400);
         using var library = new PresetLibrary(SamplePresets.Create());
         var service = NewService(folder, library);
-        Assert.True(service.SetValue(["DSC_0012.tif"], "raw.enabled", true));
+        // RAW 原廠處理預設啟用，工作設定直接帶出含語意遮罩的 RAW 選項。
+        Assert.True(service.SettingsFor("DSC_0012.tif").Bool("raw.enabled"));
         var jobs = ForegroundBatch.BuildJobs(service, ["DSC_0012.tif"]);
         var job = Assert.Single(jobs);
         var seen = new List<SourceImage>();
