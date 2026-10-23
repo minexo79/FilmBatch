@@ -120,6 +120,23 @@
       </StackPanel>
     </c:ModuleSection>
     </DataTemplate>
+    <!-- 模組分組（標題可整組折疊＋其中的模組）；基本分組與其餘分組分在「AI 功能」前後，共用這個樣板 -->
+    <DataTemplate x:Key="ModuleGroupTemplate" x:DataType="vm:ModuleGroupViewModel">
+      <StackPanel>
+        <!-- 分組標題可整組折疊 -->
+        <ToggleButton Classes="chevron group-header" IsChecked="{Binding IsExpanded}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <TextBlock Classes="group-title" Text="{Binding Label}" />
+            <Panel VerticalAlignment="Center">
+              <PathIcon Classes="collapsed" Data="{StaticResource Icon.ChevronRight}" />
+              <PathIcon Classes="expanded" Data="{StaticResource Icon.ChevronDown}" />
+            </Panel>
+          </StackPanel>
+        </ToggleButton>
+        <ItemsControl ItemsSource="{Binding Modules}" IsVisible="{Binding IsExpanded}"
+                      ItemTemplate="{StaticResource ModuleSectionTemplate}" />
+      </StackPanel>
+    </DataTemplate>
   </UserControl.Resources>
   <!-- 照片資訊（固定在頂部）＋ 模組捲動區（計畫書 2.4.5） -->
   <DockPanel Background="{DynamicResource FB.PanelBrush}">
@@ -164,88 +181,7 @@
 
     <ScrollViewer HorizontalScrollBarVisibility="Disabled" IsEnabled="{Binding HasPhoto}">
       <StackPanel>
-      <!-- AI 功能：降噪模組、模型狀態、去背。只在照片基本參數；收合取消單張草稿，不中斷批次或模型下載。 -->
-      <StackPanel IsVisible="{Binding ShowsPhotoTools}">
-        <ToggleButton Classes="chevron group-header" AutomationProperties.AutomationId="AiFeatures.Panel"
-                      IsChecked="{Binding IsAiFeaturesExpanded}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left">
-          <StackPanel Orientation="Horizontal" Spacing="6">
-            <TextBlock Classes="group-title" Text="{l:Tr AiFeatures.Title}" />
-            <Panel VerticalAlignment="Center">
-              <PathIcon Classes="collapsed" Data="{StaticResource Icon.ChevronRight}" />
-              <PathIcon Classes="expanded" Data="{StaticResource Icon.ChevronDown}" />
-            </Panel>
-          </StackPanel>
-        </ToggleButton>
-        <StackPanel AutomationProperties.AutomationId="AiFeatures.Content" IsVisible="{Binding IsAiFeaturesExpanded}">
-          <ItemsControl ItemsSource="{Binding AiModules}" ItemTemplate="{StaticResource ModuleSectionTemplate}" />
-          <ContentControl Content="{Binding Main.Denoise}" IsVisible="{Binding ShowsPhotoTools}">
-            <ContentControl.DataTemplates>
-              <DataTemplate x:DataType="vt:DenoiseViewModel">
-                <Border Classes="tool-section" AutomationProperties.AutomationId="Denoise.Panel" IsVisible="{Binding HasPhoto}">
-                  <StackPanel>
-                    <TextBlock Classes="tool-section-title" Text="{l:Tr Denoise.Title}" />
-                    <TextBlock Classes="secondary small" Text="{Binding ModelName}" />
-                    <TextBlock Classes="secondary small" Text="{Binding ModelDomainText}" />
-                    <TextBlock AutomationProperties.AutomationId="Denoise.Attribution" Classes="secondary small" Text="{Binding AttributionText}" TextWrapping="Wrap" />
-                    <TextBlock AutomationProperties.AutomationId="Denoise.Status" Classes="secondary small" Text="{Binding StatusText}" TextWrapping="Wrap" />
-                    <TextBlock AutomationProperties.AutomationId="Denoise.Provider" Classes="secondary small" Text="{Binding ProviderText}"
-                               IsVisible="{Binding ProviderText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-                    <ProgressBar AutomationProperties.AutomationId="Denoise.Progress" Minimum="0" Maximum="100"
-                                 Value="{Binding ProgressValue}" IsVisible="{Binding HasProgress}" />
-                    <TextBlock AutomationProperties.AutomationId="Denoise.Error" Classes="warning small" Text="{Binding ErrorText}" TextWrapping="Wrap"
-                               IsVisible="{Binding ErrorText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-                    <WrapPanel ItemSpacing="6" LineSpacing="6">
-                      <Button AutomationProperties.AutomationId="Denoise.Download" Command="{Binding DownloadModelCommand}"
-                              IsVisible="{Binding CanDownload}" Content="{l:Tr Denoise.Download}" />
-                      <Button AutomationProperties.AutomationId="Denoise.Import" Command="{Binding ImportModelCommand}"
-                              IsVisible="{Binding CanImport}" Content="{l:Tr Denoise.Import}" />
-                      <Button AutomationProperties.AutomationId="Denoise.Cancel" Command="{Binding CancelCommand}"
-                              IsVisible="{Binding CanCancel}" Content="{l:Tr PhotoTools.Cancel}" />
-                    </WrapPanel>
-                  </StackPanel>
-                </Border>
-              </DataTemplate>
-            </ContentControl.DataTemplates>
-          </ContentControl>
-          <ContentControl Content="{Binding Main.BackgroundRemoval}" IsVisible="{Binding ShowsPhotoTools}">
-            <ContentControl.DataTemplates>
-              <DataTemplate x:DataType="vt:BackgroundRemovalViewModel">
-                <Border Classes="tool-section">
-                  <StackPanel Spacing="8">
-                    <TextBlock Classes="tool-section-title" Text="{l:Tr BackgroundRemoval.Title}" />
-                    <TextBlock Classes="secondary small" TextWrapping="Wrap" Text="{Binding Hint}" />
-                    <WrapPanel ItemSpacing="6" LineSpacing="6">
-                      <Button Classes="outline" AutomationProperties.AutomationId="BackgroundRemoval.Generate" Command="{Binding GenerateCommand}" Content="{l:Tr BackgroundRemoval.Generate}" />
-                      <Button Classes="outline" AutomationProperties.AutomationId="BackgroundRemoval.GenerateSelected" Command="{Binding GenerateSelectedCommand}" Content="{l:Tr BackgroundRemoval.GenerateSelected}" />
-                      <Button Classes="outline" AutomationProperties.AutomationId="BackgroundRemoval.Edit" Command="{Binding BeginEditCommand}" Content="{l:Tr BackgroundRemoval.Edit}" />
-                      <Button Classes="outline" AutomationProperties.AutomationId="BackgroundRemoval.Restore" Command="{Binding RestoreCommand}" Content="{l:Tr BackgroundRemoval.Restore}" IsVisible="{Binding HasAppliedMask}" />
-                    </WrapPanel>
-                    <ProgressBar Height="4" IsIndeterminate="True" IsVisible="{Binding IsBusy}" />
-                    <StackPanel Spacing="8" IsVisible="{Binding IsEditing}">
-                      <ToggleSwitch AutomationProperties.AutomationId="BackgroundRemoval.BrushMode" IsChecked="{Binding KeepForeground}"
-                                    OnContent="{l:Tr BackgroundRemoval.Keep}" OffContent="{l:Tr BackgroundRemoval.Remove}" />
-                      <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
-                        <TextBlock Classes="param-name" Text="{l:Tr BackgroundRemoval.BrushSize}" />
-                        <TextBlock Grid.Column="1" Classes="numeric" Text="{Binding BrushSize, StringFormat='{}{0:0}%'}" />
-                        <Slider Grid.Row="1" Grid.ColumnSpan="2" Minimum="1" Maximum="30" SmallChange="1" Value="{Binding BrushSize}" />
-                      </Grid>
-                      <WrapPanel ItemSpacing="6" LineSpacing="6">
-                        <Button Classes="outline" AutomationProperties.AutomationId="BackgroundRemoval.Undo" Command="{Binding UndoCommand}" Content="{l:Tr Cmd.Undo}" />
-                        <Button Classes="outline" AutomationProperties.AutomationId="BackgroundRemoval.Redo" Command="{Binding RedoCommand}" Content="{l:Tr Cmd.Redo}" />
-                        <Button Classes="outline" AutomationProperties.AutomationId="BackgroundRemoval.Invert" Command="{Binding InvertCommand}" Content="{l:Tr BackgroundRemoval.Invert}" />
-                        <Button Classes="outline" AutomationProperties.AutomationId="BackgroundRemoval.Apply" Command="{Binding ApplyCommand}" Content="{l:Tr Tool.Crop.Apply}" />
-                      </WrapPanel>
-                    </StackPanel>
-                    <Button Classes="outline" HorizontalAlignment="Left" AutomationProperties.AutomationId="BackgroundRemoval.Cancel" Command="{Binding CancelCommand}" Content="{l:Tr Dialog.Cancel}" IsVisible="{Binding CanCancel}" />
-                    <TextBlock Classes="secondary small" TextWrapping="Wrap" Text="{Binding StatusText}" IsVisible="{Binding StatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-                    <TextBlock Classes="secondary small" Foreground="{DynamicResource FB.WarningTextBrush}" TextWrapping="Wrap" Text="{Binding ErrorText}" IsVisible="{Binding ErrorText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-                  </StackPanel>
-                </Border>
-              </DataTemplate>
-            </ContentControl.DataTemplates>
-          </ContentControl>
-        </StackPanel>
-      </StackPanel>
+      <!-- 版面順序：照片工具 → 基本分組 → AI 功能 → 其餘分組（光學等）。底片效果分頁沒有照片工具、基本分組與 AI 功能，只剩其餘分組。 -->
       <ContentControl Content="{Binding Main.PhotoTools}" IsVisible="{Binding ShowsPhotoTools}">
         <ContentControl.DataTemplates>
           <DataTemplate x:DataType="vt:PhotoToolsViewModel">
@@ -380,26 +316,90 @@
           </DataTemplate>
         </ContentControl.DataTemplates>
       </ContentControl>
-      <ItemsControl ItemsSource="{Binding Groups}" Margin="0,0,0,12">
-        <ItemsControl.ItemTemplate>
-          <DataTemplate x:DataType="vm:ModuleGroupViewModel">
-            <StackPanel>
-              <!-- 分組標題可整組折疊 -->
-              <ToggleButton Classes="chevron group-header" IsChecked="{Binding IsExpanded}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left">
-                <StackPanel Orientation="Horizontal" Spacing="6">
-                  <TextBlock Classes="group-title" Text="{Binding Label}" />
-                  <Panel VerticalAlignment="Center">
-                    <PathIcon Classes="collapsed" Data="{StaticResource Icon.ChevronRight}" />
-                    <PathIcon Classes="expanded" Data="{StaticResource Icon.ChevronDown}" />
-                  </Panel>
-                </StackPanel>
-              </ToggleButton>
-              <ItemsControl ItemsSource="{Binding Modules}" IsVisible="{Binding IsExpanded}"
-                            ItemTemplate="{StaticResource ModuleSectionTemplate}" />
-            </StackPanel>
-          </DataTemplate>
-        </ItemsControl.ItemTemplate>
-      </ItemsControl>
+      <ItemsControl ItemsSource="{Binding LeadingGroups}" ItemTemplate="{StaticResource ModuleGroupTemplate}" />
+      <!-- AI 功能：降噪模組、模型狀態、去背。只在照片基本參數；收合取消單張草稿，不中斷批次或模型下載。 -->
+      <StackPanel IsVisible="{Binding ShowsPhotoTools}">
+        <ToggleButton Classes="chevron group-header" AutomationProperties.AutomationId="AiFeatures.Panel"
+                      IsChecked="{Binding IsAiFeaturesExpanded}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <TextBlock Classes="group-title" Text="{l:Tr AiFeatures.Title}" />
+            <Panel VerticalAlignment="Center">
+              <PathIcon Classes="collapsed" Data="{StaticResource Icon.ChevronRight}" />
+              <PathIcon Classes="expanded" Data="{StaticResource Icon.ChevronDown}" />
+            </Panel>
+          </StackPanel>
+        </ToggleButton>
+        <StackPanel AutomationProperties.AutomationId="AiFeatures.Content" IsVisible="{Binding IsAiFeaturesExpanded}">
+          <ItemsControl ItemsSource="{Binding AiModules}" ItemTemplate="{StaticResource ModuleSectionTemplate}" />
+          <ContentControl Content="{Binding Main.Denoise}" IsVisible="{Binding ShowsPhotoTools}">
+            <ContentControl.DataTemplates>
+              <DataTemplate x:DataType="vt:DenoiseViewModel">
+                <Border Classes="tool-section" AutomationProperties.AutomationId="Denoise.Panel" IsVisible="{Binding HasPhoto}">
+                  <StackPanel>
+                    <TextBlock Classes="tool-section-title" Text="{l:Tr Denoise.Title}" />
+                    <TextBlock Classes="secondary small" Text="{Binding ModelName}" />
+                    <TextBlock Classes="secondary small" Text="{Binding ModelDomainText}" />
+                    <TextBlock AutomationProperties.AutomationId="Denoise.Attribution" Classes="secondary small" Text="{Binding AttributionText}" TextWrapping="Wrap" />
+                    <TextBlock AutomationProperties.AutomationId="Denoise.Status" Classes="secondary small" Text="{Binding StatusText}" TextWrapping="Wrap" />
+                    <TextBlock AutomationProperties.AutomationId="Denoise.Provider" Classes="secondary small" Text="{Binding ProviderText}"
+                               IsVisible="{Binding ProviderText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                    <ProgressBar AutomationProperties.AutomationId="Denoise.Progress" Minimum="0" Maximum="100"
+                                 Value="{Binding ProgressValue}" IsVisible="{Binding HasProgress}" />
+                    <TextBlock AutomationProperties.AutomationId="Denoise.Error" Classes="warning small" Text="{Binding ErrorText}" TextWrapping="Wrap"
+                               IsVisible="{Binding ErrorText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                    <WrapPanel ItemSpacing="6" LineSpacing="6">
+                      <Button AutomationProperties.AutomationId="Denoise.Download" Command="{Binding DownloadModelCommand}"
+                              IsVisible="{Binding CanDownload}" Content="{l:Tr Denoise.Download}" />
+                      <Button AutomationProperties.AutomationId="Denoise.Import" Command="{Binding ImportModelCommand}"
+                              IsVisible="{Binding CanImport}" Content="{l:Tr Denoise.Import}" />
+                      <Button AutomationProperties.AutomationId="Denoise.Cancel" Command="{Binding CancelCommand}"
+                              IsVisible="{Binding CanCancel}" Content="{l:Tr PhotoTools.Cancel}" />
+                    </WrapPanel>
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ContentControl.DataTemplates>
+          </ContentControl>
+          <ContentControl Content="{Binding Main.BackgroundRemoval}" IsVisible="{Binding ShowsPhotoTools}">
+            <ContentControl.DataTemplates>
+              <DataTemplate x:DataType="vt:BackgroundRemovalViewModel">
+                <Border Classes="tool-section">
+                  <StackPanel Spacing="8">
+                    <TextBlock Classes="tool-section-title" Text="{l:Tr BackgroundRemoval.Title}" />
+                    <TextBlock Classes="secondary small" TextWrapping="Wrap" Text="{Binding Hint}" />
+                    <WrapPanel ItemSpacing="6" LineSpacing="6">
+                      <Button Classes="outline" AutomationProperties.AutomationId="BackgroundRemoval.Generate" Command="{Binding GenerateCommand}" Content="{l:Tr BackgroundRemoval.Generate}" />
+                      <Button Classes="outline" AutomationProperties.AutomationId="BackgroundRemoval.GenerateSelected" Command="{Binding GenerateSelectedCommand}" Content="{l:Tr BackgroundRemoval.GenerateSelected}" />
+                      <Button Classes="outline" AutomationProperties.AutomationId="BackgroundRemoval.Edit" Command="{Binding BeginEditCommand}" Content="{l:Tr BackgroundRemoval.Edit}" />
+                      <Button Classes="outline" AutomationProperties.AutomationId="BackgroundRemoval.Restore" Command="{Binding RestoreCommand}" Content="{l:Tr BackgroundRemoval.Restore}" IsVisible="{Binding HasAppliedMask}" />
+                    </WrapPanel>
+                    <ProgressBar Height="4" IsIndeterminate="True" IsVisible="{Binding IsBusy}" />
+                    <StackPanel Spacing="8" IsVisible="{Binding IsEditing}">
+                      <ToggleSwitch AutomationProperties.AutomationId="BackgroundRemoval.BrushMode" IsChecked="{Binding KeepForeground}"
+                                    OnContent="{l:Tr BackgroundRemoval.Keep}" OffContent="{l:Tr BackgroundRemoval.Remove}" />
+                      <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
+                        <TextBlock Classes="param-name" Text="{l:Tr BackgroundRemoval.BrushSize}" />
+                        <TextBlock Grid.Column="1" Classes="numeric" Text="{Binding BrushSize, StringFormat='{}{0:0}%'}" />
+                        <Slider Grid.Row="1" Grid.ColumnSpan="2" Minimum="1" Maximum="30" SmallChange="1" Value="{Binding BrushSize}" />
+                      </Grid>
+                      <WrapPanel ItemSpacing="6" LineSpacing="6">
+                        <Button Classes="outline" AutomationProperties.AutomationId="BackgroundRemoval.Undo" Command="{Binding UndoCommand}" Content="{l:Tr Cmd.Undo}" />
+                        <Button Classes="outline" AutomationProperties.AutomationId="BackgroundRemoval.Redo" Command="{Binding RedoCommand}" Content="{l:Tr Cmd.Redo}" />
+                        <Button Classes="outline" AutomationProperties.AutomationId="BackgroundRemoval.Invert" Command="{Binding InvertCommand}" Content="{l:Tr BackgroundRemoval.Invert}" />
+                        <Button Classes="outline" AutomationProperties.AutomationId="BackgroundRemoval.Apply" Command="{Binding ApplyCommand}" Content="{l:Tr Tool.Crop.Apply}" />
+                      </WrapPanel>
+                    </StackPanel>
+                    <Button Classes="outline" HorizontalAlignment="Left" AutomationProperties.AutomationId="BackgroundRemoval.Cancel" Command="{Binding CancelCommand}" Content="{l:Tr Dialog.Cancel}" IsVisible="{Binding CanCancel}" />
+                    <TextBlock Classes="secondary small" TextWrapping="Wrap" Text="{Binding StatusText}" IsVisible="{Binding StatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                    <TextBlock Classes="secondary small" Foreground="{DynamicResource FB.WarningTextBrush}" TextWrapping="Wrap" Text="{Binding ErrorText}" IsVisible="{Binding ErrorText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ContentControl.DataTemplates>
+          </ContentControl>
+        </StackPanel>
+      </StackPanel>
+      <ItemsControl ItemsSource="{Binding TrailingGroups}" ItemTemplate="{StaticResource ModuleGroupTemplate}" Margin="0,0,0,12" />
       </StackPanel>
     </ScrollViewer>
   </DockPanel>

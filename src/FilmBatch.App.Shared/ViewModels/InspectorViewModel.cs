@@ -16,6 +16,12 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
     private bool _loadingPreset;
 
     public ObservableCollection<ModuleGroupViewModel> Groups { get; }
+
+    /// <summary>排在「AI 功能」之前的分組（基本）；版面順序為照片工具 → 基本 → AI 功能 → 其餘分組。</summary>
+    public IReadOnlyList<ModuleGroupViewModel> LeadingGroups { get; }
+
+    /// <summary>排在「AI 功能」之後的分組（光學等）；沒有基本分組的分頁（底片效果）全部在這裡。</summary>
+    public IReadOnlyList<ModuleGroupViewModel> TrailingGroups { get; }
     public IReadOnlyList<ModuleSectionViewModel> Modules { get; }
 
     /// <summary>film 模組頂部的底片風格縮圖格與色相帶編輯器；只有包含 film 模組的分頁才有。</summary>
@@ -98,6 +104,8 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
         if (Modules.FirstOrDefault(m => m.Key == "basic") is { } basic) basic.IsExpanded = true;
         AiModules = Modules.Where(m => AiModuleKeys.Contains(m.Key)).ToList();
         Groups = new(Modules.Where(m => !AiModuleKeys.Contains(m.Key)).GroupBy(m => m.Schema.Group).Select(g => new ModuleGroupViewModel(g.Key, g)));
+        LeadingGroups = Groups.Where(g => g.Group == ModuleGroup.Basic).ToList();
+        TrailingGroups = Groups.Where(g => g.Group != ModuleGroup.Basic).ToList();
         RefreshPresetOptions();
     }
 

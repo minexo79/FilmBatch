@@ -12,6 +12,7 @@ using FilmBatch.App.Localization;
 using FilmBatch.App.ViewModels;
 using FilmBatch.App.ViewModels.Tools;
 using FilmBatch.App.Views;
+using FilmBatch.Core.Params;
 using FilmBatch.Core.Projects;
 using FilmBatch.Engine.Imaging;
 
@@ -30,6 +31,12 @@ public sealed class AiFeaturesPanelTests
         Assert.DoesNotContain(main.Inspector.Groups.SelectMany(group => group.Modules), module => module.Key == "denoise");
         Assert.Contains(main.Inspector.Groups.SelectMany(group => group.Modules), module => module.Key == "basic");
         Assert.Empty(main.FilmEffects.AiModules);
+        Assert.Equal([ModuleGroup.Basic], main.Inspector.LeadingGroups.Select(group => group.Group));
+        Assert.Equal(main.Inspector.Groups.Skip(1), main.Inspector.TrailingGroups);
+        Assert.Contains(main.Inspector.TrailingGroups, group => group.Group == ModuleGroup.Optical);
+        // 底片效果分頁沒有基本分組：全部分組照原順序排在後段，外觀不變。
+        Assert.Empty(main.FilmEffects.LeadingGroups);
+        Assert.Equal(main.FilmEffects.Groups, main.FilmEffects.TrailingGroups);
     }
 
     [AvaloniaFact]
@@ -133,11 +140,13 @@ public sealed class AiFeaturesPanelTests
             Assert.True(basic.IsEffectivelyVisible);
 
             double Y(Control control) => control.TranslatePoint(new Point(0, 0), window)!.Value.Y;
+            // 照片工具 → 基本分組 → AI 功能 → 光學等其餘分組。
+            Assert.True(Y(photoTools) < Y(basic));
+            Assert.True(Y(basic) < Y(header));
             Assert.True(Y(header) < Y(denoise));
             Assert.True(Y(denoise) < Y(model));
             Assert.True(Y(model) < Y(cutout));
-            Assert.True(Y(cutout) < Y(photoTools));
-            Assert.True(Y(photoTools) < Y(basic));
+            Assert.True(Y(cutout) < Y(Section(window, "vignette")));
 
             main.BackgroundRemoval.BeginEditCommand.Execute(null);
             Dispatcher.UIThread.RunJobs();
