@@ -26,11 +26,14 @@ public sealed partial class PresetItemViewModel(Preset preset) : ObservableObjec
     public string Category => Preset.Category;
     public IBrush ColorBrush { get; } = BrushOf(preset.ColorLabel);
     public bool Pinned => Preset.Pinned;
-    /// <summary>釘選預設的數字鍵（1–9），沒有則為空字串。</summary>
+    /// <summary>釘選預設的快速鍵提示（⇧1 ~ ⇧9），沒有則為空字串。</summary>
     [ObservableProperty]
     private string _pinKey = "";
     public bool HasPinKey => PinKey.Length > 0;
     partial void OnPinKeyChanged(string value) => OnPropertyChanged(nameof(HasPinKey));
+
+    /// <summary>第 N 個釘選預設的快速鍵提示（Shift + N）。</summary>
+    public static string PinKeyOf(int index) => $"⇧{index}";
 
     /// <summary>懸停預覽用的效果縮圖。沒有焦點照片或尚未算好時為 null，此時提示只顯示文字。</summary>
     [ObservableProperty]
@@ -116,7 +119,7 @@ public sealed partial class PresetLibraryViewModel : ObservableObject
     public void Rebuild()
     {
         var expanded = Categories.Where(c => !c.IsExpanded).Select(c => c.Name).ToHashSet();
-        var pinned = _main.Library.Pinned.Select((p, i) => (p.Id, Key: (i + 1).ToString())).ToDictionary(x => x.Id, x => x.Key);
+        var pinned = _main.Library.Pinned.Select((p, i) => (p.Id, Key: PresetItemViewModel.PinKeyOf(i + 1))).ToDictionary(x => x.Id, x => x.Key);
         var hoverItems = new Dictionary<Guid, PresetItemViewModel>();
         foreach (var c in Categories)
             foreach (var p in c.Presets)

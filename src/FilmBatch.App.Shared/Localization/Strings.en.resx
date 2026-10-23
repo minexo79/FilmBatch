@@ -18,7 +18,11 @@
   <data name="Toast.RecentFolderMissing" xml:space="preserve"><value>Folder no longer exists and was removed from the recent list: {0}</value></data>
   <data name="Cmd.Export" xml:space="preserve"><value>Export…</value></data>
   <data name="Cmd.QuickExport" xml:space="preserve"><value>Quick Export Selected Photos</value></data>
+  <data name="Cmd.RevealInFileManager" xml:space="preserve"><value>Show in File Explorer</value></data>
+  <data name="Cmd.RevealInFileManager.Mac" xml:space="preserve"><value>Show in Finder</value></data>
   <data name="Cmd.ResetSelected" xml:space="preserve"><value>Reset Selected Photos</value></data>
+  <data name="Cmd.Rating" xml:space="preserve"><value>Rating</value></data>
+  <data name="Cmd.ClearRating" xml:space="preserve"><value>Clear Rating</value></data>
   <data name="Histogram.Title" xml:space="preserve"><value>Histogram · RGB / Luminance</value></data>
   <data name="Histogram.Clipping" xml:space="preserve"><value>Shadow clipping {0:P1}  Highlight clipping {1:P1}</value></data>
   <data name="Histogram.HoverTip" xml:space="preserve"><value>Level {0}
@@ -75,6 +79,7 @@ R {1:P2}  G {2:P2}  B {3:P2}  Luma {4:P2}</value></data>
   <data name="Toast.CropFocusedOnly" xml:space="preserve"><value>Crop applied to the current photo only</value></data>
   <data name="Inspector.NoPhoto" xml:space="preserve"><value>No photo selected</value></data>
   <data name="Inspector.Preset" xml:space="preserve"><value>Preset</value></data>
+  <data name="Inspector.Rating" xml:space="preserve"><value>Rating</value></data>
   <data name="Inspector.ResetPhoto" xml:space="preserve"><value>Reset Photo</value></data>
   <data name="Inspector.CreatePreset" xml:space="preserve"><value>New Preset</value></data>
   <data name="Inspector.UpdatePreset" xml:space="preserve"><value>Update Preset</value></data>
@@ -89,13 +94,17 @@ R {1:P2}  G {2:P2}  B {3:P2}  Luma {4:P2}</value></data>
   <data name="Filmstrip.AllFiles" xml:space="preserve"><value>All files</value></data>
   <data name="Filmstrip.RawOnly" xml:space="preserve"><value>RAW only</value></data>
   <data name="Filmstrip.NonRaw" xml:space="preserve"><value>Non-RAW only</value></data>
+  <data name="Filmstrip.AllRatings" xml:space="preserve"><value>All ratings</value></data>
+  <data name="Filmstrip.RatingAtLeast" xml:space="preserve"><value>★{0} and up</value></data>
+  <data name="Filmstrip.Rating5" xml:space="preserve"><value>★5</value></data>
+  <data name="Filmstrip.Unrated" xml:space="preserve"><value>Unrated</value></data>
   <data name="Presets.Apply" xml:space="preserve"><value>Apply to Selection</value></data>
   <data name="Presets.Rename" xml:space="preserve"><value>Rename…</value></data>
   <data name="Presets.Color" xml:space="preserve"><value>Change Color Label</value></data>
   <data name="Presets.Duplicate" xml:space="preserve"><value>Duplicate</value></data>
   <data name="Presets.Delete" xml:space="preserve"><value>Delete</value></data>
   <data name="Presets.Reveal" xml:space="preserve"><value>Show in Explorer</value></data>
-  <data name="Presets.Pin" xml:space="preserve"><value>Pin (keys 1–9)</value></data>
+  <data name="Presets.Pin" xml:space="preserve"><value>Pin (Shift+1–9)</value></data>
   <data name="Presets.Manage" xml:space="preserve"><value>Manage…</value></data>
   <data name="Status.NoProject" xml:space="preserve"><value>No folder open</value></data>
   <data name="Status.Selected" xml:space="preserve"><value>{0} selected</value></data>
@@ -292,6 +301,7 @@ Clear overrides: use the new preset entirely.</value></data>
   <data name="Toast.UnhandledError" xml:space="preserve"><value>An error occurred: {0} (see log)</value></data>
   <data name="Toast.BackgroundError" xml:space="preserve"><value>A background task failed: {0}</value></data>
   <data name="Toast.SaveProjectFailed" xml:space="preserve"><value>Could not save the project: {0} (closing cancelled)</value></data>
+  <data name="Toast.RevealFailed" xml:space="preserve"><value>Could not open the file browser: {0}</value></data>
   <data name="Preview.Original" xml:space="preserve"><value>Original</value></data>
   <data name="Preview.Effect" xml:space="preserve"><value>Edited</value></data>
   <data name="Gallery.WindowTitle" xml:space="preserve"><value>FilmBatch Widget Gallery</value></data>

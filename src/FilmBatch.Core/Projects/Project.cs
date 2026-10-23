@@ -74,6 +74,7 @@ public sealed class Project
                 project._photos.Add(name, new PhotoEntry(name, photo.PresetId, photo.Overrides)
                 {
                     ForegroundMask = photo.ForegroundMask is { } mask ? ForegroundMask.FromDocument(mask) : null,
+                    Rating = Math.Clamp(photo.Rating, 0, PhotoEntry.MaxRating),
                 });
         }
         foreach (var file in Directory.EnumerateFiles(folder)
@@ -129,6 +130,7 @@ public sealed class Project
             return new PhotoDocument
             {
                 PresetId = photo.PresetId, Overrides = photo.Overrides, ForegroundMask = photo.ForegroundMask?.ToDocument(),
+                Rating = photo.Rating,
             };
         }, StringComparer.Ordinal);
         var document = new ProjectDocument

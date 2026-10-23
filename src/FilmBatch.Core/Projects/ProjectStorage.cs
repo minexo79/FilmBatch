@@ -20,6 +20,10 @@ internal sealed class PhotoDocument
     public Guid? PresetId { get; init; }
     public required Settings Overrides { get; init; }
     public ForegroundMaskDocument? ForegroundMask { get; init; }
+
+    /// <summary>星級評分；未評分（0）不寫出，舊專案沒有此欄位即讀成 0。</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public int Rating { get; init; }
 }
 
 internal sealed class PresetDocument

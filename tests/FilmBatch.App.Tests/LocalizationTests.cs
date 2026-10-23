@@ -181,6 +181,7 @@ public partial class LocalizationTests
             }
             texts.AddRange(vm.Filmstrip.FilterOptions.Select(o => o.Label));
             texts.AddRange(vm.Filmstrip.FileKindOptions.Select(o => o.Label));
+            texts.AddRange(vm.Filmstrip.RatingOptions.Select(o => o.Label));
             texts.AddRange(vm.Sidebar.Export.Scopes.Select(o => o.Label));
             texts.AddRange(vm.Presets.Categories.SelectMany(c => c.Presets).Select(p => p.Summary));
             Assert.DoesNotContain(texts, t => t is not null && Cjk().IsMatch(t));
