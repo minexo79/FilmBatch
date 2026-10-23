@@ -14,6 +14,8 @@
   <data name="Cmd.OpenSamples" xml:space="preserve"><value>開啟範例資料夾</value></data>
   <data name="Cmd.Export" xml:space="preserve"><value>匯出…</value></data>
   <data name="Cmd.QuickExport" xml:space="preserve"><value>快速匯出選取照片</value></data>
+  <data name="Cmd.RevealInFileManager" xml:space="preserve"><value>在檔案瀏覽器中查看圖片</value></data>
+  <data name="Cmd.RevealInFileManager.Mac" xml:space="preserve"><value>在 Finder 中查看圖片</value></data>
   <data name="Cmd.ResetSelected" xml:space="preserve"><value>重設選取照片</value></data>
   <data name="Cmd.Rating" xml:space="preserve"><value>評分</value></data>
   <data name="Cmd.ClearRating" xml:space="preserve"><value>清除評分</value></data>
@@ -287,6 +289,7 @@
   <data name="Toast.UnhandledError" xml:space="preserve"><value>發生錯誤：{0}（詳見 log）</value></data>
   <data name="Toast.BackgroundError" xml:space="preserve"><value>背景工作發生錯誤：{0}</value></data>
   <data name="Toast.SaveProjectFailed" xml:space="preserve"><value>無法儲存專案：{0}（已取消關閉）</value></data>
+  <data name="Toast.RevealFailed" xml:space="preserve"><value>無法開啟檔案瀏覽器：{0}</value></data>
   <data name="Preview.Original" xml:space="preserve"><value>原圖</value></data>
   <data name="Preview.Effect" xml:space="preserve"><value>效果</value></data>
   <data name="Gallery.WindowTitle" xml:space="preserve"><value>FilmBatch 元件展示視窗</value></data>

@@ -49,6 +49,8 @@
           </MenuItem>
           <Separator />
           <MenuItem Name="QuickExportItem" Header="{l:Tr Cmd.QuickExport}" Command="{Binding Main.QuickExportCommand}" />
+          <MenuItem Name="RevealItem" Header="{l:Tr Cmd.RevealInFileManager}" Command="{Binding Main.RevealInFileManagerCommand}"
+                    IsVisible="{Binding Main.CanRevealInFileManager}" />
           <Separator />
           <MenuItem Name="ResetPhotoItem" Header="{l:Tr Cmd.ResetSelected}" Command="{Binding Main.ResetPhotoCommand}" />
         </ContextMenu>

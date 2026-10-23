@@ -23,7 +23,8 @@ public sealed class FilmstripMenuTests
         string? clipboardJson = null;
         vm.ClipboardJsonChanged += (_, value) => clipboardJson = value;
         var view = new FilmstripView { DataContext = vm.Filmstrip };
-        var window = new Window { Content = view, DataContext = vm, Width = 800, Height = 240 };
+        // 視窗要高於整個右鍵選單，否則 headless 覆蓋層會裁掉底部的「重設」項目
+        var window = new Window { Content = view, DataContext = vm, Width = 800, Height = 420 };
         window.Show();
         try
         {

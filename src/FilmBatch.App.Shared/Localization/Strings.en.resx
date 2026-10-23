@@ -14,6 +14,8 @@
   <data name="Cmd.OpenSamples" xml:space="preserve"><value>Open Sample Folder</value></data>
   <data name="Cmd.Export" xml:space="preserve"><value>Export…</value></data>
   <data name="Cmd.QuickExport" xml:space="preserve"><value>Quick Export Selected Photos</value></data>
+  <data name="Cmd.RevealInFileManager" xml:space="preserve"><value>Show in File Explorer</value></data>
+  <data name="Cmd.RevealInFileManager.Mac" xml:space="preserve"><value>Show in Finder</value></data>
   <data name="Cmd.ResetSelected" xml:space="preserve"><value>Reset Selected Photos</value></data>
   <data name="Cmd.Rating" xml:space="preserve"><value>Rating</value></data>
   <data name="Cmd.ClearRating" xml:space="preserve"><value>Clear Rating</value></data>
@@ -287,6 +289,7 @@ Clear overrides: use the new preset entirely.</value></data>
   <data name="Toast.UnhandledError" xml:space="preserve"><value>An error occurred: {0} (see log)</value></data>
   <data name="Toast.BackgroundError" xml:space="preserve"><value>A background task failed: {0}</value></data>
   <data name="Toast.SaveProjectFailed" xml:space="preserve"><value>Could not save the project: {0} (closing cancelled)</value></data>
+  <data name="Toast.RevealFailed" xml:space="preserve"><value>Could not open the file browser: {0}</value></data>
   <data name="Preview.Original" xml:space="preserve"><value>Original</value></data>
   <data name="Preview.Effect" xml:space="preserve"><value>Edited</value></data>
   <data name="Gallery.WindowTitle" xml:space="preserve"><value>FilmBatch Widget Gallery</value></data>

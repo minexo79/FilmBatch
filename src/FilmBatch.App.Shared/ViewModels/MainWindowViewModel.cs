@@ -977,6 +977,31 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         Service.SetRating(Selection, rating);
     }
 
+    /// <summary>是否可在系統檔案管理員中顯示照片（iOS 等平台隱藏此動作）。</summary>
+    public bool CanRevealInFileManager => FileReveal.IsSupported;
+
+    /// <summary>實際開啟檔案管理員的動作；測試替換以免真的啟動外部程式。</summary>
+    internal Action<string> RevealFile { get; set; } = FileReveal.Reveal;
+
+    private bool CanRevealFocus() => CanRevealInFileManager && Service is not null && FocusFile is not null && Selection.Count > 0;
+
+    /// <summary>在檔案總管／Finder 中顯示焦點照片。</summary>
+    [RelayCommand(CanExecute = nameof(CanRevealFocus))]
+    private void RevealInFileManager()
+    {
+        if (Service is null || FocusFile is null) return;
+        var path = Service.Project.PathOf(FocusFile);
+        try
+        {
+            RevealFile(path);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error($"無法在檔案管理員中顯示：{path}", ex);
+            Toast.Show(Loc.Format("Toast.RevealFailed", ex.Message));
+        }
+    }
+
     [RelayCommand]
     private Task ManagePresets() => Dialogs.ShowPresetManagerAsync(new PresetManagerViewModel(this));
 
@@ -1120,6 +1145,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         UpdatePresetCommand.NotifyCanExecuteChanged();
         ResetPhotoCommand.NotifyCanExecuteChanged();
         SetRatingCommand.NotifyCanExecuteChanged();
+        RevealInFileManagerCommand.NotifyCanExecuteChanged();
         QuickExportCommand.NotifyCanExecuteChanged();
     }
 
