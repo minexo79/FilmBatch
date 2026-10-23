@@ -111,6 +111,17 @@ public sealed class ProjectService
     public bool ResetAll(IReadOnlyCollection<string> fileNames) =>
         Apply("重設此張", fileNames, PhotoOperations.ResetAll);
 
+    /// <summary>
+    /// 回到原圖：清除覆寫與遮罩，並把預設改回「Neutral (No Effect)」（預設庫中已刪除時改為未指定）。
+    /// 評分保留；一筆復原紀錄。
+    /// </summary>
+    public bool ResetToOriginal(IReadOnlyCollection<string> fileNames)
+    {
+        Guid? neutral = library.Get(SamplePresets.Neutral) is null ? null : SamplePresets.Neutral;
+        if (neutral is { } id) SnapshotPreset(id);
+        return Apply("重設此張", fileNames, e => PhotoOperations.ResetAll(e) with { PresetId = neutral });
+    }
+
     public bool AssignPreset(IReadOnlyCollection<string> fileNames, Guid presetId, bool keepOverrides)
     {
         SnapshotPreset(presetId);

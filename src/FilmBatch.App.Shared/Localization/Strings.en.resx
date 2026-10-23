@@ -756,4 +756,5 @@ Clear overrides: use the new preset entirely.</value></data>
   <data name="Curves.Readout" xml:space="preserve"><value>Input {0:0} → Output {1:0}</value></data>
   <data name="Curves.Edit" xml:space="preserve"><value>Adjust Tone Curves</value></data>
   <data name="Curves.Hint" xml:space="preserve"><value>Click to add a point; drag to adjust. Double-click an interior point or drag it beyond the top/bottom edge to remove it.</value></data>
+  <data name="Param.RandomSeed" xml:space="preserve"><value>Random seed</value></data>
 </root>

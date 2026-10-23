@@ -1280,7 +1280,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private void ResetPhoto()
     {
         FlushEdit();
-        Service?.ResetAll(Selection);
+        Service?.ResetToOriginal(Selection);
     }
 
     /// <summary>設定所有選取照片的星級評分（0 = 清除）；一筆復原紀錄。</summary>
