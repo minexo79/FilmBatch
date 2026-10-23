@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
+using FilmBatch.App.Services.Loupe;
 using FilmBatch.Engine.Imaging;
 using FilmBatch.Engine.Rendering;
 
@@ -30,6 +31,9 @@ namespace FilmBatch.App.Services;
 /// LRU 逐出與尺寸失效均取消排隊工作，避免同一張照片反覆切換選項留下無界解碼。
 /// 縮圖快取鍵為路徑（選項改變即取代同路徑舊條目），LRU 保留最近完成的少量來源；
 /// 逐出只釋放已完成的字典參考，飛行中的解碼任務仍由等待者共享完成，不會被他人的逐出取消。</para>
+/// <para>全解析度來源（<see cref="SourceLevel.Full"/>）只有一個槽：鍵為路徑加 RAW 選項，換照片或選項即取代並取消舊的那筆；
+/// 沿用前景入場與資料夾世代，由 UI 在閒置時呼叫 <see cref="ReleaseFullIfIdle"/> 釋放。
+/// 預覽上限 0 表示自動，以 <see cref="LoupePlan.PreviewLevelEdge"/> 解碼。</para>
 /// </remarks>
 public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge) : IDisposable
 {
@@ -46,7 +50,8 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
     private readonly LinkedList<(string Path, int Edge, RawLoadOptions Options)> _previewOrder = new();
     private readonly LinkedList<string> _thumbOrder = new();
     private readonly object _stateLock = new();
-    private int _previewLongEdge = previewLongEdge;
+    private int _previewLimit = previewLongEdge;
+    private (string Path, RawLoadOptions Options, Task<SourceImage> Task, CancellationTokenSource Cts)? _full;
     private long _folderGeneration;
     private CancellationTokenSource _foregroundCts = new();
     private CancellationTokenSource _backgroundCts = new();
@@ -56,11 +61,22 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
     private TimeSpan _lastPaceCpu = GetProcessCpuTime();
     private bool _disposed;
 
-    /// <summary>目前的預覽代理圖長邊（偏好設定變更後即時更新，不再是建構時的固定值）。</summary>
+    /// <summary>
+    /// 目前實際解碼的預覽代理圖長邊（偏好設定變更後即時更新，不再是建構時的固定值）。
+    /// 偏好上限為 0（自動）時為 <see cref="LoupePlan.PreviewLevelEdge"/>。
+    /// </summary>
     public int PreviewLongEdge
     {
-        get { lock (_stateLock) return _previewLongEdge; }
+        get { lock (_stateLock) return EffectivePreviewEdge(_previewLimit); }
     }
+
+    /// <summary>偏好設定的預覽上限原值；0 表示自動。</summary>
+    public int PreviewLimit
+    {
+        get { lock (_stateLock) return _previewLimit; }
+    }
+
+    private static int EffectivePreviewEdge(int limit) => limit <= 0 ? LoupePlan.PreviewLevelEdge : limit;
 
     /// <summary>目前開啟資料夾的世代：每次開啟推進一次，用於丟棄跨資料夾的舊縮圖結果。</summary>
     public long FolderGeneration
@@ -146,7 +162,8 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
         lock (_stateLock)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            var key = (Path: path, Edge: _previewLongEdge, Options: rawOptions);
+            var edge = EffectivePreviewEdge(_previewLimit);
+            var key = (Path: path, Edge: edge, Options: rawOptions);
             if (_previews.TryGetValue(key, out var cur) && IsReusable(cur.Task))
             {
                 _previewOrder.Remove(key);
@@ -159,7 +176,6 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
                 var entryCts = new CancellationTokenSource();
                 var folderToken = _foregroundCts.Token;
                 var generation = _folderGeneration;
-                var edge = _previewLongEdge;
                 var task = DecodePreviewAsync(path, edge, rawOptions, generation, folderToken, entryCts);
                 task.ContinueWith(static t => { _ = t.Exception; }, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
                 _previews[key] = (task, entryCts);
@@ -193,15 +209,81 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
         return shared.WaitAsync(cancellationToken);
     }
 
-    /// <summary>變更預覽代理圖尺寸：丟棄舊尺寸的預覽（縮圖不受影響），下次請求以新尺寸解碼。</summary>
+    /// <summary>
+    /// 依等級取得來源：<see cref="SourceLevel.Thumb"/> 走背景縮圖、<see cref="SourceLevel.Preview"/> 走
+    /// <see cref="GetPreviewAsync"/>、<see cref="SourceLevel.Full"/> 走前景入場的全解析度單一槽。
+    /// 三者各自獨立的共享任務；等待取消只取消該呼叫的等待。
+    /// </summary>
+    public Task<SourceImage> GetSourceAsync(string path, SourceLevel level, RawLoadOptions rawOptions = default, CancellationToken ct = default) =>
+        level switch
+        {
+            SourceLevel.Thumb => GetThumbnailSourceAsync(path, rawOptions, ct),
+            SourceLevel.Preview => GetPreviewAsync(path, rawOptions, ct),
+            SourceLevel.Full => GetFullAsync(path, rawOptions, ct),
+            _ => throw new ArgumentOutOfRangeException(nameof(level), level, null),
+        };
+
+    /// <summary>
+    /// 全解析度來源：只保留一筆（鍵為路徑加 RAW 選項）。請求不同的照片或選項時取代並取消舊的那筆
+    /// （排隊中的舊解碼不會開檔；已開始的同步解碼最多完成當前一次後丟棄）。沿用前景入場、資料夾世代與取消規則。
+    /// </summary>
+    private Task<SourceImage> GetFullAsync(string path, RawLoadOptions rawOptions, CancellationToken cancellationToken)
+    {
+        Task<SourceImage> shared;
+        CancellationTokenSource? replaced = null;
+        lock (_stateLock)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_full is { } cur && cur.Path == path && cur.Options == rawOptions && IsReusable(cur.Task))
+            {
+                shared = cur.Task;
+            }
+            else
+            {
+                replaced = _full?.Cts;
+                var entryCts = new CancellationTokenSource();
+                var task = DecodeFullAsync(path, rawOptions, _folderGeneration, _foregroundCts.Token, entryCts);
+                task.ContinueWith(static t => { _ = t.Exception; }, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
+                _full = (path, rawOptions, task, entryCts);
+                shared = task;
+            }
+        }
+        replaced?.Cancel();
+        return ApplyWaiter(shared, cancellationToken);
+    }
+
+    /// <summary>是否已持有指定照片與選項、且已成功完成的全解析度來源。</summary>
+    public bool HoldsFull(string path, RawLoadOptions o)
+    {
+        lock (_stateLock)
+            return _full is { } cur && cur.Path == path && cur.Options == o && cur.Task.IsCompletedSuccessfully;
+    }
+
+    /// <summary>
+    /// 釋放持有的全解析度來源（是否閒置由呼叫端判斷，例如沒有窗口且閒置 3 秒）。
+    /// 仍在排隊或解碼中的那筆一併取消，其等待者會收到取消；呼叫端已取得的物件仍可繼續使用。
+    /// </summary>
+    public void ReleaseFullIfIdle()
+    {
+        CancellationTokenSource? cts;
+        lock (_stateLock)
+        {
+            cts = _full?.Cts;
+            _full = null;
+        }
+        cts?.Cancel();
+    }
+
+    /// <summary>變更預覽代理圖上限（0 = 自動，以 <see cref="LoupePlan.PreviewLevelEdge"/> 解碼）：丟棄實際尺寸不同的預覽（縮圖不受影響），下次請求以新尺寸解碼。</summary>
     public void SetPreviewLongEdge(int longEdge)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         lock (_stateLock)
         {
-            if (longEdge == _previewLongEdge) return;
-            _previewLongEdge = longEdge;
-            var stale = _previews.Keys.Where(key => key.Edge != longEdge).ToList();
+            if (longEdge == _previewLimit) return;
+            _previewLimit = longEdge;
+            var edge = EffectivePreviewEdge(longEdge);
+            var stale = _previews.Keys.Where(key => key.Edge != edge).ToList();
             foreach (var path in stale)
             {
                 if (_previews.TryRemove(path, out var evicted))
@@ -258,6 +340,7 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
             _previews.Clear();
             _previewOrder.Clear();
             _thumbOrder.Clear();
+            _full = null;
             _lastPaceTimestamp = paceTimestamp;
             _lastPaceCpu = paceCpu;
             generation = ++_folderGeneration;
@@ -291,6 +374,7 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
             _previews.Clear();
             _previewOrder.Clear();
             _thumbOrder.Clear();
+            _full = null;
             _folderGeneration++;
         }
         // 取消排隊／節流但不 Dispose 閘門或舊 CTS：進行中的解碼 finally 仍會 Release，
@@ -299,8 +383,33 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
         background.Cancel();
     }
 
-    private async Task<SourceImage> DecodePreviewAsync(
+    private Task<SourceImage> DecodePreviewAsync(
         string path, int longEdge, RawLoadOptions rawOptions, long generation,
+        CancellationToken folderToken, CancellationTokenSource entryCts) =>
+        DecodeForegroundAsync(() => ImageLoader.Load(path, longEdge, rawOptions), generation, folderToken, entryCts);
+
+    private async Task<SourceImage> DecodeFullAsync(
+        string path, RawLoadOptions rawOptions, long generation,
+        CancellationToken folderToken, CancellationTokenSource entryCts)
+    {
+        try
+        {
+            return await DecodeForegroundAsync(() => ImageLoader.LoadFull(path, rawOptions), generation, folderToken, entryCts).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // 取消／失敗不佔住單一槽：只清除仍指向本次任務的那筆，已取代的新請求不受影響。
+            lock (_stateLock)
+            {
+                if (_full is { } cur && ReferenceEquals(cur.Cts, entryCts))
+                    _full = null;
+            }
+            throw;
+        }
+    }
+
+    private async Task<SourceImage> DecodeForegroundAsync(
+        Func<SourceImage> load, long generation,
         CancellationToken folderToken, CancellationTokenSource entryCts)
     {
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(folderToken, entryCts.Token);
@@ -311,7 +420,7 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
         {
             ct.ThrowIfCancellationRequested();
             if (!IsCurrent(generation)) throw new OperationCanceledException(ct);
-            var result = await Task.Run(() => ImageLoader.Load(path, longEdge, rawOptions), ct).ConfigureAwait(false);
+            var result = await Task.Run(load, ct).ConfigureAwait(false);
             ct.ThrowIfCancellationRequested();
             if (!IsCurrent(generation)) throw new OperationCanceledException(ct);
             return result;

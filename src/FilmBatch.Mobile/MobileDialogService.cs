@@ -149,7 +149,7 @@ internal sealed class MobileDialogService(Func<TopLevel?> topLevel, Border overl
         body.Children.Add(MobileText.Label(Loc.Get("Cmd.Language")));
         body.Children.Add(Options(vm.Languages, (PreferencesViewModel m) => m.Language));
         body.Children.Add(MobileText.Label(MobileText.T("預覽長邊", "Preview long edge")));
-        body.Children.Add(Options(vm.ProxySizes, (PreferencesViewModel m) => m.ProxySize));
+        body.Children.Add(Options(vm.ProxySizes, (PreferencesViewModel m) => m.ProxySizeOption));
         body.Children.Add(MobileText.Label(MobileText.T("預覽背景", "Preview background")));
         body.Children.Add(Options(vm.Backgrounds, (PreferencesViewModel m) => m.Background));
         body.Children.Add(MobileText.Label(MobileText.T("背景 CPU 目標（%）", "Background CPU target (%)")));

@@ -162,6 +162,7 @@ R {1:P2}　G {2:P2}　B {3:P2}　亮度 {4:P2}</value></data>
   <data name="Pref.Background" xml:space="preserve"><value>預覽背景</value></data>
   <data name="Pref.Background.Desc" xml:space="preserve"><value>預覽畫布的底色，不影響匯出結果</value></data>
   <data name="Pref.ProxySize" xml:space="preserve"><value>預覽代理圖尺寸</value></data>
+  <data name="Pref.ProxySize.Auto" xml:space="preserve"><value>自動</value></data>
   <data name="Pref.ProxySize.Desc" xml:space="preserve"><value>預覽算圖使用的長邊像素；越大越清晰，也越耗資源</value></data>
   <data name="Pref.CurrentGpu" xml:space="preserve"><value>目前使用的 GPU</value></data>
   <data name="Pref.Adapters" xml:space="preserve"><value>可用的介面卡</value></data>

@@ -162,6 +162,7 @@ R {1:P2}  G {2:P2}  B {3:P2}  Luma {4:P2}</value></data>
   <data name="Pref.Background" xml:space="preserve"><value>Preview Background</value></data>
   <data name="Pref.Background.Desc" xml:space="preserve"><value>Canvas color behind the photo; does not affect exports</value></data>
   <data name="Pref.ProxySize" xml:space="preserve"><value>Preview Proxy Size</value></data>
+  <data name="Pref.ProxySize.Auto" xml:space="preserve"><value>Auto</value></data>
   <data name="Pref.ProxySize.Desc" xml:space="preserve"><value>Long edge in pixels used for preview rendering; larger is sharper but slower</value></data>
   <data name="Pref.CurrentGpu" xml:space="preserve"><value>Current GPU</value></data>
   <data name="Pref.Adapters" xml:space="preserve"><value>Available Adapters</value></data>

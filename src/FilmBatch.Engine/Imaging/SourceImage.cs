@@ -123,6 +123,38 @@ public sealed class SourceImage
     /// <summary>外部鏡頭資料庫無法讀取時的錯誤訊息（此來源已退回不使用外部校正）；正常時為 <see langword="null"/>。</summary>
     public string? LensDatabaseWarning { get; init; }
 
+    private const int MaxScaledVariants = 2;
+    private readonly object _scaledLock = new();
+    // 最近使用在前；只存在此物件上，隨來源一起被 GC 回收。
+    private readonly List<(int Edge, SourceImage Image)> _scaled = new(MaxScaledVariants);
+
+    /// <summary>
+    /// 穩定的縮小來源：同一個來源物件、同一個 <paramref name="longEdge"/> 一律回傳<b>同一個</b>物件，
+    /// 讓以參考相等為鍵的 GPU 來源紋理快取命中；<paramref name="longEdge"/> ≥ 長邊時回傳 <see langword="this"/>。
+    /// 以 <see cref="Downscale"/> 產生（保留參考尺寸與中繼資料），每個來源最多保留
+    /// <see cref="MaxScaledVariants"/> 個長邊（LRU）。同一長邊的並行呼叫只計算一次。
+    /// </summary>
+    public SourceImage ScaledTo(int longEdge)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(longEdge);
+        if (longEdge >= Math.Max(Width, Height)) return this;
+        lock (_scaledLock)
+        {
+            for (var i = 0; i < _scaled.Count; i++)
+            {
+                if (_scaled[i].Edge != longEdge) continue;
+                var hit = _scaled[i];
+                _scaled.RemoveAt(i);
+                _scaled.Insert(0, hit);
+                return hit.Image;
+            }
+            var image = Downscale(longEdge);
+            _scaled.Insert(0, (longEdge, image));
+            if (_scaled.Count > MaxScaledVariants) _scaled.RemoveAt(_scaled.Count - 1);
+            return image;
+        }
+    }
+
     /// <summary>縮小（box filter），用於縮圖或拖曳中的降解析度預覽。RAW 來源在場景域縮放並保留中繼資料。</summary>
     public SourceImage Downscale(int maxLongEdge)
     {

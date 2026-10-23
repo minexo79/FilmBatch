@@ -55,7 +55,25 @@ public sealed partial class PreferencesViewModel : ObservableObject
         Option<PreviewBackground>.Localized(PreviewBackground.Black, "Pref.Background.Black"),
     ];
 
-    public IReadOnlyList<int> ProxySizes { get; } = [1200, 1600, 2048, 2560];
+    /// <summary>預覽上限選項；值 0 為「自動」（以 Loupe 的 Preview 等級解碼），其餘為長邊像素。</summary>
+    public IReadOnlyList<Option<int>> ProxySizes { get; } =
+    [
+        Option<int>.Localized(0, "Pref.ProxySize.Auto"),
+        new(1200, "1200"), new(1600, "1600"), new(2048, "2048"), new(2560, "2560"),
+    ];
+
+    /// <summary>
+    /// 下拉選單目前選取的預覽上限項目（與 <see cref="ProxySize"/> 同步）；
+    /// 設定檔中不在清單內的值顯示為未選取，但在未變更前保留原值。
+    /// </summary>
+    public Option<int>? ProxySizeOption
+    {
+        get => ProxySizes.FirstOrDefault(o => o.Value == ProxySize);
+        set
+        {
+            if (value is not null) ProxySize = value.Value;
+        }
+    }
 
     public IReadOnlyList<Option<string>> Backends { get; } = OperatingSystem.IsIOS()
         ? [new("Auto", "CPU")]
@@ -163,6 +181,8 @@ public sealed partial class PreferencesViewModel : ObservableObject
     partial void OnBackgroundChanged(Option<PreviewBackground> value) => _main.ApplyPreviewBackground(value.Value);
 
     partial void OnBackgroundCpuPercentChanged(int value) => _main.BackgroundCpuPercent = value;
+
+    partial void OnProxySizeChanged(int value) => OnPropertyChanged(nameof(ProxySizeOption));
 
     partial void OnApplyErrorChanged(string? value) => OnPropertyChanged(nameof(HasApplyError));
 

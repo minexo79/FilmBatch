@@ -34,7 +34,8 @@ public sealed class AppSettings
     }
 
     public PreviewBackground PreviewBackground { get; set; } = PreviewBackground.DarkGray;
-    public int PreviewLongEdge { get; set; } = 1600;
+    /// <summary>預覽（Main 層）長邊上限；0 = 自動（新安裝預設，以 Loupe 的 Preview 等級 2560 解碼）。既有設定檔保留原值。</summary>
+    public int PreviewLongEdge { get; set; }
 
     private int _backgroundCpuPercent = 70;
 
