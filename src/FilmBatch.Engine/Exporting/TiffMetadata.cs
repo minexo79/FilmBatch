@@ -21,25 +21,29 @@ internal static class TiffMetadata
     /// CR3 傳入合併後的 TIFF 位元組。走同一條正規化路徑，不經相機 JPEG 預覽。
     /// 解碼後的 <paramref name="decoded"/>（通常已合併廠商私有值）用來補齊來源缺少的標準欄位；
     /// 來源既有值與 GPS 一律保留。RAW 的 MakerNote 位移以來源檔為原點、無法搬移，一律省略。</summary>
-    public static byte[] ReadRaw(string path, uint width, uint height, Metadata? decoded = null)
+    public static byte[] ReadRaw(string path, uint width, uint height, Metadata? decoded = null,
+        FilmBatch.Engine.Imaging.RgbEncoding encoding = FilmBatch.Engine.Imaging.RgbEncoding.Srgb)
     {
         using var file = FilmBatch.Engine.Imaging.Raw.RawSourceLoader.OpenExifTiff(path)
             ?? throw new InvalidDataException("RAW file carries no TIFF-structured EXIF block.");
-        return Normalize(file, width, height, omitMakerNote: true, decoded);
+        return Normalize(file, width, height, omitMakerNote: true, decoded, encoding);
     }
 
     /// <summary><paramref name="source"/> 為 canonical EXIF 位元組（<c>Exif\0\0</c>＋TIFF；null 產生全新輸出目錄）。</summary>
-    public static byte[] Normalize(byte[]? source, uint width, uint height, bool omitMakerNote = false, Metadata? decoded = null)
+    /// <param name="encoding">輸出色彩編碼：ProPhoto 時 EXIF ColorSpace 記 0xFFFF（Uncalibrated）且不寫 sRGB 互通性目錄；像素色彩以嵌入 ICC 為準。</param>
+    public static byte[] Normalize(byte[]? source, uint width, uint height, bool omitMakerNote = false, Metadata? decoded = null,
+        FilmBatch.Engine.Imaging.RgbEncoding encoding = FilmBatch.Engine.Imaging.RgbEncoding.Srgb)
     {
         using var file = source is null
             ? new MemoryStream("II\x2a\0\x08\0\0\0\0\0\0\0\0\0"u8.ToArray())
             : source.AsSpan().StartsWith("Exif\0\0"u8)
                 ? new MemoryStream(source, 6, source.Length - 6, writable: false)
                 : throw new InvalidDataException("Invalid EXIF profile header.");
-        return Normalize(file, width, height, omitMakerNote, decoded);
+        return Normalize(file, width, height, omitMakerNote, decoded, encoding);
     }
 
-    private static byte[] Normalize(Stream file, uint width, uint height, bool omitMakerNote, Metadata? decoded = null)
+    private static byte[] Normalize(Stream file, uint width, uint height, bool omitMakerNote, Metadata? decoded = null,
+        FilmBatch.Engine.Imaging.RgbEncoding encoding = FilmBatch.Engine.Imaging.RgbEncoding.Srgb)
     {
         Span<byte> header = stackalloc byte[16];
         file.ReadExactly(header[..8]);
@@ -91,7 +95,7 @@ internal static class TiffMetadata
                     or 315 or 316 or 33432 or 34665 or 34853))
                     continue;
                 // Source interoperability may describe Adobe RGB (R03), or have a stale pointer.
-                // Our output is sRGB: regenerate this directory instead of following/copying it.
+                // Regenerate only for sRGB; ProPhoto omits this directory.
                 if (kind == 34665 && tag == 40965) continue;
                 if (omitMakerNote && kind == 34665 && tag == 37500) continue;
                 var type = (ushort)Number(entryBytes.Slice(2, 2));
@@ -122,8 +126,8 @@ internal static class TiffMetadata
             }
             if (kind == 34665)
             {
-                entries.RemoveAll(entry => entry.Tag is 40961 or 40962 or 40963);
-                entries.AddRange(OutputExif(width, height, writer));
+                entries.RemoveAll(entry => entry.Tag is 40961 or 40962 or 40963 or 40965);
+                entries.AddRange(OutputExif(width, height, writer, encoding));
                 if (decoded is not null) Backfill(entries, decoded, Exif: true, writer);
             }
             if (depth == 0)
@@ -132,7 +136,7 @@ internal static class TiffMetadata
                 entries.Add(new Entry(274, 3, 1, 1));
                 if (!entries.Any(entry => entry.Tag == 34665))
                 {
-                    var exif = OutputExif(width, height, writer).ToList();
+                    var exif = OutputExif(width, height, writer, encoding).ToList();
                     if (decoded is not null) Backfill(exif, decoded, Exif: true, writer);
                     entries.Add(new Entry(34665, 4, 1, WriteDirectory(exif, writer)));
                 }
@@ -151,14 +155,15 @@ internal static class TiffMetadata
     }
     /// <summary>CR3 合併 EXIF（<c>CMT1</c> IFD0＋<c>CMT2</c> Exif IFD＋<c>CMT4</c> GPS IFD；上游 <c>cr3::merged_exif</c> 的正規化版本）。
     /// 每個區塊以自己的位元組序解析、輸出統一為小端序；懸空指標／位移標籤不合併；IFD0 白名單、互通性重建、方向與尺寸覆寫沿用正規化路徑。</summary>
-    internal static byte[] NormalizeCr3(IReadOnlyList<ReadOnlyMemory<byte>?> blocks, uint width, uint height, Metadata? decoded = null)
+    internal static byte[] NormalizeCr3(IReadOnlyList<ReadOnlyMemory<byte>?> blocks, uint width, uint height, Metadata? decoded = null,
+        FilmBatch.Engine.Imaging.RgbEncoding encoding = FilmBatch.Engine.Imaging.RgbEncoding.Srgb)
     {
         if (blocks.Count == 0 || blocks[0] is not { Length: >= 8 })
             throw new InvalidDataException("CR3 file carries no CMT1 metadata block.");
         using var metadata = new MemoryStream();
         using var writer = new BinaryWriter(metadata);
         writer.Write("II\x2a\0\0\0\0\0"u8);
-        var state = new Cr3State(blocks, width, height, writer, decoded);
+        var state = new Cr3State(blocks, width, height, writer, decoded, encoding);
         var rootBlock = blocks[0]!.Value.ToArray();
         var root = state.CopyRoot(rootBlock);
         metadata.Position = 4;
@@ -170,7 +175,7 @@ internal static class TiffMetadata
     }
 
     /// <summary>CR3 合併用的正規化狀態：一次只持有一個區塊位元組（<see cref="ReadOnlySpan{T}"/> 不可為欄位）。</summary>
-    private sealed class Cr3State(IReadOnlyList<ReadOnlyMemory<byte>?> blocks, uint width, uint height, BinaryWriter writer, Metadata? decoded)
+    private sealed class Cr3State(IReadOnlyList<ReadOnlyMemory<byte>?> blocks, uint width, uint height, BinaryWriter writer, Metadata? decoded, FilmBatch.Engine.Imaging.RgbEncoding encoding)
     {
         internal static bool IsBig(byte[] block)
         {
@@ -273,8 +278,8 @@ internal static class TiffMetadata
             }
             if (kind == 34665)
             {
-                entries.RemoveAll(entry => entry.Tag is 40961 or 40962 or 40963);
-                entries.AddRange(OutputExif(width, height, writer));
+                entries.RemoveAll(entry => entry.Tag is 40961 or 40962 or 40963 or 40965);
+                entries.AddRange(OutputExif(width, height, writer, encoding));
                 if (decoded is not null) Backfill(entries, decoded, Exif: true, writer);
             }
             if (depth == 0)
@@ -287,7 +292,7 @@ internal static class TiffMetadata
                 if (!entries.Any(entry => entry.Tag == 34665))
                 {
                     // 同正規化路徑：CMT2 缺席時以 decoded 補齊標準 Exif 欄位。
-                    var exif = OutputExif(width, height, writer).ToList();
+                    var exif = OutputExif(width, height, writer, encoding).ToList();
                     if (decoded is not null) Backfill(exif, decoded, Exif: true, writer);
                     entries.Add(new Entry(34665, 4, 1, WriteDirectory(exif, writer)));
                 }
@@ -310,10 +315,11 @@ internal static class TiffMetadata
     /// <summary>Appends canonical EXIF/GPS to encoder output.
     /// With <paramref name="replaceExif"/>, the writer's own 34665/34853 pointers are replaced by
     /// the canonical copies (for DNG renders whose writer EXIF lacks source standard fields);
-    /// encoder-owned image and DNG tags are otherwise untouched.
+    /// encoder-owned image and DNG tags are otherwise untouched (including the 34675 ICC profile).
     /// <paramref name="profile"/>（canonical <c>Exif\0\0</c> 位元組）在併入前以輸出檔自身尺寸
-    /// 再經 <see cref="Normalize(byte[]?, uint, uint, bool, Metadata?)"/> 正規化一次。</summary>
-    public static void Append(string path, byte[] profile, bool replaceExif = false)
+    /// 再經 <see cref="Normalize(byte[]?, uint, uint, bool, Metadata?, FilmBatch.Engine.Imaging.RgbEncoding)"/> 正規化一次。</summary>
+    public static void Append(string path, byte[] profile, bool replaceExif = false,
+        FilmBatch.Engine.Imaging.RgbEncoding encoding = FilmBatch.Engine.Imaging.RgbEncoding.Srgb)
     {
         using var file = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
         using var reader = new BinaryReader(file, System.Text.Encoding.UTF8, leaveOpen: true);
@@ -342,7 +348,7 @@ internal static class TiffMetadata
             throw new InvalidDataException("Expected TIFF output with IFD0 dimensions.");
 
         // Canonical EXIF is little-endian; ImageIO may emit big-endian TIFF pixels.
-        var bytes = Normalize(profile, width.Value, height.Value);
+        var bytes = Normalize(profile, width.Value, height.Value, encoding: encoding);
         var data = bytes.AsSpan(6);
         if (!bytes.AsSpan(0, 6).SequenceEqual("Exif\0\0"u8) ||
             data.Length < 8 || U16(data, 0) != 0x4949 || U16(data, 2) != 42)
@@ -867,15 +873,26 @@ internal static class TiffMetadata
         _ => throw new InvalidDataException($"Unsupported EXIF field type: {type}")
     };
 
-    private static Entry[] OutputExif(uint width, uint height, BinaryWriter writer) =>
-    [
-        new(40961, 3, 1, 1), // sRGB
-        new(40962, 4, 1, width),
-        new(40963, 4, 1, height),
-        new(40965, 4, 1, WriteDirectory(
+    private static Entry[] OutputExif(uint width, uint height, BinaryWriter writer,
+        FilmBatch.Engine.Imaging.RgbEncoding encoding = FilmBatch.Engine.Imaging.RgbEncoding.Srgb)
+    {
+        if (encoding == FilmBatch.Engine.Imaging.RgbEncoding.ProPhoto)
+            return
+            [
+                new(40961, 3, 1, 0xFFFF), // Uncalibrated；像素色彩以嵌入的 ProPhoto ICC 為準，不宣告 sRGB 互通性
+                new(40962, 4, 1, width),
+                new(40963, 4, 1, height),
+            ];
+        return
         [
-            new Entry(1, 2, 4, U32("R98\0"u8, 0)), // DCF basic file, matching sRGB
-            new Entry(2, 7, 4, U32("0100"u8, 0))
-        ], writer))
-    ];
+            new(40961, 3, 1, 1), // sRGB
+            new(40962, 4, 1, width),
+            new(40963, 4, 1, height),
+            new(40965, 4, 1, WriteDirectory(
+            [
+                new Entry(1, 2, 4, U32("R98\0"u8, 0)), // DCF basic file, matching sRGB
+                new Entry(2, 7, 4, U32("0100"u8, 0))
+            ], writer))
+        ];
+    }
 }

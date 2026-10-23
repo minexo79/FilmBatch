@@ -616,12 +616,19 @@ internal static unsafe partial class AppleImageCodec
 
     /// <summary>
     /// 以 ImageIO 編碼 JPEG（8-bit sRGB，丟棄 alpha）／PNG16／TIFF16（16-bit RGBA，alphaLast）。
+    /// 已編碼樣本直接標籤：CGImage 沿用像素編碼的色彩空間，不經 ColorSync 轉換。
     /// EXIF 以 canonical 位元組在檔案層注入（JPEG APP1／PNG eXIf），TIFF 由呼叫端
-    /// <see cref="TiffMetadata.Append"/> 附加。Orientation 一律為 1（像素已轉正）。
+    /// <see cref="TiffMetadata.Append"/> 附加。Orientation 一律為 1（像素已轉正）。ProPhoto 僅限 TIFF16／PNG16。
     /// </summary>
     internal static void Encode(SourceImage image, string path, ExportFormat format, int quality, byte[]? exif)
     {
         RequireApple();
+        RgbEncodingInfo.Validate(image.Encoding);
+        var proPhoto = image.Encoding == RgbEncoding.ProPhoto;
+        if (proPhoto && format is not (ExportFormat.Tiff16 or ExportFormat.Png16))
+            throw new InvalidDataException(CoreText.T(
+                $"ProPhoto RGB 僅支援 16-bit TIFF／PNG，不支援 {format}。",
+                $"ProPhoto RGB is only supported for 16-bit TIFF/PNG, not {format}."));
         var w = image.Width;
         var h = image.Height;
         using var scope = new OwnedObjects();
@@ -639,7 +646,7 @@ internal static unsafe partial class AppleImageCodec
             throw new InvalidDataException(CoreText.T($"無法建立輸出：{path}", $"Could not create output: {path}"));
         scope.Add(destination);
 
-        var srgb = scope.Add(Native.CGColorSpaceCreateWithName(NameRef(Frameworks.Graphics, "kCGColorSpaceSRGB")));
+        var outputSpace = proPhoto ? ProPhotoColorSpace(scope) : scope.Add(Native.CGColorSpaceCreateWithName(NameRef(Frameworks.Graphics, "kCGColorSpaceSRGB")));
         nint cgImage;
         if (format == ExportFormat.Jpeg)
         {
@@ -655,7 +662,7 @@ internal static unsafe partial class AppleImageCodec
             {
                 var data = scope.Add(Native.CFDataCreate(0, (nint)p, rgb.Length));
                 var provider = scope.Add(Native.CGDataProviderCreateWithCFData(data));
-                cgImage = scope.Add(Native.CGImageCreate((nuint)w, (nuint)h, 8, 24, (nuint)w * 3, srgb,
+                cgImage = scope.Add(Native.CGImageCreate((nuint)w, (nuint)h, 8, 24, (nuint)w * 3, outputSpace,
                     0u, provider, 0, 1, 0));
             }
         }
@@ -665,7 +672,7 @@ internal static unsafe partial class AppleImageCodec
             {
                 var data = scope.Add(Native.CFDataCreate(0, (nint)p, image.Rgba16.Length * sizeof(ushort)));
                 var provider = scope.Add(Native.CGDataProviderCreateWithCFData(data));
-                cgImage = scope.Add(Native.CGImageCreate((nuint)w, (nuint)h, 16, 64, (nuint)w * 8, srgb,
+                cgImage = scope.Add(Native.CGImageCreate((nuint)w, (nuint)h, 16, 64, (nuint)w * 8, outputSpace,
                     AlphaLast16, provider, 0, 1, 0));
             }
         }
@@ -690,10 +697,18 @@ internal static unsafe partial class AppleImageCodec
 
         // ImageIO 不為 plain sRGB 嵌入可用 ICC（JPEG 無 APP2、PNG 只有 sRGB 意圖塊），
         // 且自帶方向 stub 會與 canonical EXIF 重複：一次檔案層改寫同時注入 ICC 與 EXIF。
+        // ProPhoto：一律注入 canonical ICC 精確位元組（PNG iCCP／TIFF 34675），不採用 ImageIO 重建的等效設定檔；
+        // EXIF 重新正規化為 Uncalibrated，避免 sRGB 互通性宣告與 ICC 矛盾。
         byte[]? icc = null;
-        if (format is ExportFormat.Jpeg or ExportFormat.Png16)
+        if (proPhoto)
         {
-            var iccRef = Native.CGColorSpaceCopyICCData(srgb);
+            icc = RgbEncodingInfo.ProPhotoProfile;
+            if (exif is { Length: > 6 })
+                exif = TiffMetadata.Normalize(exif, (uint)w, (uint)h, encoding: RgbEncoding.ProPhoto);
+        }
+        else if (format is ExportFormat.Jpeg or ExportFormat.Png16)
+        {
+            var iccRef = Native.CGColorSpaceCopyICCData(outputSpace);
             if (iccRef == 0)
                 throw new InvalidDataException("Could not obtain the output sRGB ICC profile.");
             scope.Add(iccRef);
@@ -701,8 +716,77 @@ internal static unsafe partial class AppleImageCodec
             if (icc.Length == 0)
                 throw new InvalidDataException("The output sRGB ICC profile is empty.");
         }
-        if (icc is { Length: > 0 } || exif is { Length: > 6 })
+        if (format == ExportFormat.Tiff16 && icc is { Length: > 0 })
+            ReplaceTiffIcc(path, icc);
+        else if (icc is { Length: > 0 } || exif is { Length: > 6 })
             InjectMetadata(path, format, exif, icc);
+    }
+
+    /// <summary>以 canonical ProPhoto ICC 位元組建立 CGColorSpace（CGImage 像素直接標籤，不轉換）。</summary>
+    private static nint ProPhotoColorSpace(OwnedObjects scope)
+    {
+        var profile = RgbEncodingInfo.ProPhotoProfile;
+        fixed (byte* p = profile)
+        {
+            var data = scope.Add(Native.CFDataCreate(0, (nint)p, profile.Length));
+            var space = Native.CGColorSpaceCreateWithICCData(data);
+            if (space == 0)
+                throw new InvalidDataException("Could not create the ProPhoto output color space.");
+            return scope.Add(space);
+        }
+    }
+
+    /// <summary>
+    /// 以 canonical ICC 精確位元組取代 TIFF 34675 設定檔（ImageIO 會寫入等效但非逐位元組的重建設定檔）。
+    /// 保留既有目錄結構：只改寫 34675 的計數／位移並在檔尾附加位元組，其餘 entry 不動。
+    /// </summary>
+    private static void ReplaceTiffIcc(string path, byte[] icc)
+    {
+        using var file = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        using var reader = new BinaryReader(file, Encoding.UTF8, leaveOpen: true);
+        using var writer = new BinaryWriter(file, Encoding.UTF8, leaveOpen: true);
+        var byteOrder = reader.ReadUInt16();
+        var little = byteOrder == 0x4949;
+        ushort Read16() => little ? reader.ReadUInt16() : BinaryPrimitives.ReverseEndianness(reader.ReadUInt16());
+        uint Read32() => little ? reader.ReadUInt32() : BinaryPrimitives.ReverseEndianness(reader.ReadUInt32());
+        void Write32(uint value)
+        {
+            if (little) writer.Write(value);
+            else writer.Write(BinaryPrimitives.ReverseEndianness(value));
+        }
+        if (byteOrder is not (0x4949 or 0x4D4D) || Read16() != 42)
+            throw new InvalidDataException("Expected classic TIFF output.");
+        var ifd = Read32();
+        if (ifd > file.Length - 2)
+            throw new InvalidDataException("Invalid TIFF output directory.");
+        file.Position = ifd;
+        var count = Read16();
+        long? iccEntry = null;
+        for (var i = 0; i < count; i++)
+        {
+            var pos = file.Position;
+            var tag = Read16();
+            var type = Read16();
+            var components = Read32();
+            var value = Read32();
+            if (tag == 34675)
+            {
+                if (type != 1 && type != 7)
+                    throw new InvalidDataException("Unexpected TIFF ICC entry type.");
+                if (components > file.Length)
+                    throw new InvalidDataException("Invalid TIFF ICC entry.");
+                iccEntry = pos;
+            }
+        }
+        if (iccEntry is null)
+            throw new InvalidDataException("TIFF output carries no ICC profile entry to replace.");
+        file.Position = file.Length;
+        if ((file.Position & 1) != 0) writer.Write((byte)0);
+        var offset = checked((uint)file.Position);
+        writer.Write(icc);
+        file.Position = iccEntry.Value + 4;
+        Write32((uint)icc.Length);
+        Write32(offset);
     }
 
     /// <summary>

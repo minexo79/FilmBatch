@@ -134,16 +134,25 @@ internal static class MagickImageCodec
         return null;
     }
 
-    /// <summary>編碼 JPEG／PNG16／TIFF16（EXIF 由呼叫端於檔案層處理；輸出 ICC sRGB、方向 1）。</summary>
+    /// <summary>編碼 JPEG／PNG16／TIFF16（EXIF 由呼叫端於檔案層處理；輸出 ICC 依像素編碼、方向 1）。ProPhoto 僅限 TIFF16／PNG16。</summary>
     internal static void Encode(SourceImage image, string path, ExportFormat format, int quality, byte[]? exif = null)
     {
+        RgbEncodingInfo.Validate(image.Encoding);
+        var proPhoto = image.Encoding == RgbEncoding.ProPhoto;
+        if (proPhoto && format is not (ExportFormat.Tiff16 or ExportFormat.Png16))
+            throw new InvalidDataException(CoreText.T(
+                $"ProPhoto RGB 僅支援 16-bit TIFF／PNG，不支援 {format}。",
+                $"ProPhoto RGB is only supported for 16-bit TIFF/PNG, not {format}."));
         using var picture = new MagickImage();
         var settings = new PixelReadSettings((uint)image.Width, (uint)image.Height, StorageType.Short, PixelMapping.RGBA);
         picture.ReadPixels(System.Runtime.InteropServices.MemoryMarshal.AsBytes(image.Rgba16.AsSpan()), settings);
         picture.Depth = 16;
         if (exif is not null)
-            picture.SetProfile(new ExifProfile(exif));
-        picture.SetProfile(ColorProfiles.SRGB);
+            picture.SetProfile(new ExifProfile(proPhoto
+                ? TiffMetadata.Normalize(exif, (uint)image.Width, (uint)image.Height, encoding: image.Encoding)
+                : exif));
+        // 已編碼樣本直接標籤：SetProfile 只掛 ICC，不做像素轉換（絕不呼叫 TransformColorSpace）。
+        picture.SetProfile(proPhoto ? new ColorProfile(RgbEncodingInfo.ProPhotoProfile) : ColorProfiles.SRGB);
         picture.Orientation = OrientationType.TopLeft;
         switch (format)
         {
