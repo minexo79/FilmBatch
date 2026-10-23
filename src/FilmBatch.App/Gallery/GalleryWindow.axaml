@@ -170,7 +170,7 @@
         <StackPanel Grid.Column="2" Spacing="8">
           <TextBlock Classes="group-title" Text="{l:Tr Gallery.PreviewCanvas}" />
           <c:PreviewCanvas Name="Canvas" Height="260" Image="{Binding Sample}" Original="{Binding SampleOriginal}"
-                           IsSplit="True" SplitPosition="0.4" IsBusy="True" OverlayText="{l:Tr Gallery.OverlaySample}"
+                           IsSplit="True" SplitPosition="0.4" IsBusy="True" ShowsSpinner="True" OverlayText="{l:Tr Gallery.OverlaySample}"
                            ControlPoint="0.65,0.45" CanvasBackground="#161616" />
         </StackPanel>
       </Grid>

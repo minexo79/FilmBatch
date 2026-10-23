@@ -27,7 +27,7 @@
     </StackPanel>
 
     <Grid Grid.Row="1" Name="WorkArea" ColumnDefinitions="*,360" RowDefinitions="*">
-      <v:PreviewView Name="PhotoPreview" Grid.Column="0" DataContext="{Binding Preview}" MinHeight="130"
+      <v:PreviewView Name="PhotoPreview" Grid.Column="0" DataContext="{Binding Preview}" MinHeight="130" ShowsBusySpinner="True"
                      AutomationProperties.AutomationId="Mobile.Preview" />
       <DockPanel Name="EditingPanel" Grid.Column="1" Background="{DynamicResource FB.PanelBrush}">
         <ComboBox Name="PanelSelector" DockPanel.Dock="Top" SelectedIndex="1" SelectionChanged="OnPanelChanged"

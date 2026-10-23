@@ -91,6 +91,11 @@
       </StackPanel>
 
       <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" Margin="14,0" HorizontalAlignment="Right" VerticalAlignment="Center">
+        <!-- 算圖中指示（原本畫在預覽右上角）：弧線由 Controls.axaml 的 Path.busy-spinner 動畫旋轉 -->
+        <Border Name="RenderBusyIndicator" Classes="busy-indicator" Background="Transparent" VerticalAlignment="Center"
+                IsVisible="{Binding Preview.IsBusy}" ToolTip.Tip="{l:Tr Tip.Rendering}">
+          <Path Classes="busy-spinner" />
+        </Border>
         <TextBlock Text="{Binding SelectionText}" />
         <Button Name="BackgroundTasksButton" Classes="icon" Padding="6,2" Background="Transparent"
                 ToolTip.Tip="{Binding BackgroundText}">

@@ -44,6 +44,12 @@ public class PreviewCanvas : Control
         AvaloniaProperty.Register<PreviewCanvas, Vector>(nameof(Pan), defaultBindingMode: BindingMode.TwoWay);
     public static readonly StyledProperty<bool> IsBusyProperty =
         AvaloniaProperty.Register<PreviewCanvas, bool>(nameof(IsBusy));
+    /// <summary>
+    /// 算圖中是否在畫布右上角畫旋轉指示。桌面版的指示在主視窗底列，預設不畫；
+    /// 沒有底列的行動版由 <c>PreviewView.ShowsBusySpinner</c> 開啟。
+    /// </summary>
+    public static readonly StyledProperty<bool> ShowsSpinnerProperty =
+        AvaloniaProperty.Register<PreviewCanvas, bool>(nameof(ShowsSpinner));
     public static readonly StyledProperty<string?> OverlayTextProperty =
         AvaloniaProperty.Register<PreviewCanvas, string?>(nameof(OverlayText));
     public static readonly StyledProperty<Point?> ControlPointProperty =
@@ -130,6 +136,7 @@ public class PreviewCanvas : Control
     public double Zoom { get => GetValue(ZoomProperty); set => SetValue(ZoomProperty, value); }
     public Vector Pan { get => GetValue(PanProperty); set => SetValue(PanProperty, value); }
     public bool IsBusy { get => GetValue(IsBusyProperty); set => SetValue(IsBusyProperty, value); }
+    public bool ShowsSpinner { get => GetValue(ShowsSpinnerProperty); set => SetValue(ShowsSpinnerProperty, value); }
     public string? OverlayText { get => GetValue(OverlayTextProperty); set => SetValue(OverlayTextProperty, value); }
     public Point? ControlPoint { get => GetValue(ControlPointProperty); set => SetValue(ControlPointProperty, value); }
     public IBrush? CanvasBackground { get => GetValue(CanvasBackgroundProperty); set => SetValue(CanvasBackgroundProperty, value); }
@@ -155,12 +162,13 @@ public class PreviewCanvas : Control
     static PreviewCanvas()
     {
         AffectsRender<PreviewCanvas>(ImageProperty, OriginalProperty, ShowOriginalProperty, IsSplitProperty,
-            SplitPositionProperty, ZoomProperty, PanProperty, OverlayTextProperty, ControlPointProperty, CanvasBackgroundProperty, IsBusyProperty, FootprintProperty, ShowTransparencyProperty);
+            SplitPositionProperty, ZoomProperty, PanProperty, OverlayTextProperty, ControlPointProperty, CanvasBackgroundProperty, IsBusyProperty, ShowsSpinnerProperty, FootprintProperty, ShowTransparencyProperty);
         ZoomProperty.Changed.AddClassHandler<PreviewCanvas>((c, e) =>
         {
             if (e.NewValue is <= 0.0) c.Pan = default;
         });
         IsBusyProperty.Changed.AddClassHandler<PreviewCanvas>((c, _) => c.UpdateSpinner());
+        ShowsSpinnerProperty.Changed.AddClassHandler<PreviewCanvas>((c, _) => c.UpdateSpinner());
         ActiveToolProperty.Changed.AddClassHandler<PreviewCanvas>((c, e) =>
         {
             if (e.OldValue is ICanvasTool old) old.Invalidated -= c.InvalidateVisual;
@@ -195,9 +203,11 @@ public class PreviewCanvas : Control
         Localization.Loc.OnCultureChanged(this, static c => c.InvalidateVisual());
     }
 
+    private bool SpinnerVisible => IsBusy && ShowsSpinner;
+
     private void UpdateSpinner()
     {
-        if (IsBusy) _spinTimer.Start();
+        if (SpinnerVisible) _spinTimer.Start();
         else _spinTimer.Stop();
     }
 
@@ -275,7 +285,7 @@ public class PreviewCanvas : Control
         if (ShowOriginal && Original is not null)
             DrawLabel(ctx, Localization.Loc.Get("Preview.Original"), new Point(10, string.IsNullOrEmpty(OverlayText) ? 10 : 36), alignRight: false);
 
-        if (IsBusy) DrawSpinner(ctx, new Point(Bounds.Width - SpinnerRightInset, SpinnerTop));
+        if (SpinnerVisible) DrawSpinner(ctx, new Point(Bounds.Width - SpinnerRightInset, SpinnerTop));
     }
 
     /// <summary>先畫一層深色陰影再畫白線，任何底圖上都看得清楚；帶狀範圍的直線超出影像，裁在影像內。</summary>

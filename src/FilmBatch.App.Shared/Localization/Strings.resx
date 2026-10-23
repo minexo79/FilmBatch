@@ -217,6 +217,7 @@
   <data name="Tip.HasOverrides" xml:space="preserve"><value>有單張覆寫</value></data>
   <data name="Inspector.RelativePath" xml:space="preserve"><value>相對路徑</value></data>
   <data name="Tip.LastRender" xml:space="preserve"><value>最近一次預覽算圖時間</value></data>
+  <data name="Tip.Rendering" xml:space="preserve"><value>算圖中</value></data>
   <data name="Tip.Compare" xml:space="preserve"><value>原圖對比：按住空白鍵；Y 切換左右分割</value></data>
   <data name="Tip.ZoomFit" xml:space="preserve"><value>符合視窗（Ctrl+0）</value></data>
   <data name="Tip.ZoomFit.Mac" xml:space="preserve"><value>符合視窗（⌘0）</value></data>

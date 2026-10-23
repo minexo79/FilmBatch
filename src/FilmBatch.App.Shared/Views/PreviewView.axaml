@@ -17,7 +17,7 @@
     <TextBlock Classes="secondary" Text="{Binding EmptyText}" HorizontalAlignment="Center" VerticalAlignment="Center"
                IsVisible="{Binding Image, Converter={x:Static ObjectConverters.IsNull}}" IsHitTestVisible="False" />
 
-    <!-- 浮動工具列：常用編輯動作，位於右上角（算圖指示畫在其左側）；全螢幕預覽時隱藏 -->
+    <!-- 浮動工具列：常用編輯動作，位於右上角（行動版的算圖指示畫在其左側）；全螢幕預覽時隱藏 -->
     <Border Classes="preview-toolbar" IsVisible="{Binding !Main.IsFullScreen}">
       <StackPanel Classes="preview-toolbar">
         <Button Classes="tool" Command="{Binding Main.UndoCommand}" ToolTip.Tip="{l:Tr Tip.Undo}"><PathIcon Data="{StaticResource Icon.Undo}" /></Button>
