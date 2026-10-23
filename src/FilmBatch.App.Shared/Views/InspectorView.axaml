@@ -145,6 +145,36 @@
               </ComboBox.ItemTemplate>
             </ComboBox>
           </Grid>
+          <!-- 星級評分：按下目前評分的那顆星清除為 0；鍵盤 0 ~ 5 同樣可設定 -->
+          <Grid ColumnDefinitions="Auto,*">
+            <TextBlock Classes="secondary" Text="{l:Tr Inspector.Rating}" VerticalAlignment="Center" Margin="0,0,10,0" />
+            <ItemsControl Grid.Column="1" ItemsSource="{Binding RatingStars}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <StackPanel Orientation="Horizontal" Spacing="2" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.Styles>
+                <Style Selector="TextBlock.star">
+                  <Setter Property="FontSize" Value="15" />
+                  <Setter Property="Foreground" Value="{DynamicResource FB.PlaceholderBrush}" />
+                </Style>
+                <Style Selector="TextBlock.star.filled">
+                  <Setter Property="Foreground" Value="{DynamicResource FB.TextBrush}" />
+                </Style>
+              </ItemsControl.Styles>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:RatingStarViewModel">
+                  <Button Classes="icon" Padding="2,0"
+                          Command="{Binding $parent[ItemsControl].((vm:InspectorViewModel)DataContext).ClickStarCommand}"
+                          CommandParameter="{Binding Value}"
+                          ToolTip.Tip="{Binding Value, StringFormat='★ {0}'}">
+                    <TextBlock Classes="star" Classes.filled="{Binding IsFilled}" Text="★" />
+                  </Button>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </Grid>
           <!-- 動作：外框膠囊按鈕 -->
           <WrapPanel Orientation="Horizontal" ItemSpacing="6" LineSpacing="6">
             <Button Name="ResetButton" Classes="outline" Content="{l:Tr Inspector.ResetPhoto}" />

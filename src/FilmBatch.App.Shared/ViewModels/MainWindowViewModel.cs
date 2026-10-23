@@ -544,8 +544,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     private void OnEntriesChanged(object? sender, IReadOnlyCollection<string> files)
     {
+        // 只改評分（含復原）不影響算圖：只更新標記與面板上的星級，不重算預覽與縮圖。
+        var ratingOnly = Filmstrip.RatingOnlyChanges(files);
         Filmstrip.UpdateMarkers(files);
-        if (FocusFile is not null && files.Contains(FocusFile))
+        if (FocusFile is not null && ratingOnly.Contains(FocusFile))
+            Inspector.RefreshRating();
+        else if (FocusFile is not null && files.Contains(FocusFile))
         {
             // 外部裁切變更（復原、貼上等）才重載工具；RAW／其他效果變更保留未套用的裁切。
             if (CropTool.IsActive && !_committingCrop && Service is not null) CropTool.Reload(Service.SettingsFor(FocusFile));
@@ -557,7 +561,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             RequestPreview();
         }
         // 背景重算縮圖（低優先）
-        foreach (var f in files) Filmstrip.RequestThumbnail(f);
+        foreach (var f in files)
+            if (!ratingOnly.Contains(f)) Filmstrip.RequestThumbnail(f);
     }
 
     // ───────────── 連續編輯（滑桿拖曳／滾輪、曲線拖曳、畫布多欄位拖曳） ─────────────
@@ -963,6 +968,15 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         Service?.ResetAll(Selection);
     }
 
+    /// <summary>設定所有選取照片的星級評分（0 = 清除）；一筆復原紀錄。</summary>
+    [RelayCommand(CanExecute = nameof(CanEditSelection))]
+    private void SetRating(int rating)
+    {
+        if (Service is null || Selection.Count == 0) return;
+        FlushEdit();
+        Service.SetRating(Selection, rating);
+    }
+
     [RelayCommand]
     private Task ManagePresets() => Dialogs.ShowPresetManagerAsync(new PresetManagerViewModel(this));
 
@@ -1105,6 +1119,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         CreatePresetCommand.NotifyCanExecuteChanged();
         UpdatePresetCommand.NotifyCanExecuteChanged();
         ResetPhotoCommand.NotifyCanExecuteChanged();
+        SetRatingCommand.NotifyCanExecuteChanged();
         QuickExportCommand.NotifyCanExecuteChanged();
     }
 

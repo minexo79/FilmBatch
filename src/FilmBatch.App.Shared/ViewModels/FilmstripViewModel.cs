@@ -19,10 +19,16 @@ public enum FilmstripFilter { All, OverridesOnly, Unassigned, ByPreset }
 /// <summary>依檔案類型篩選，與 <see cref="FilmstripFilter"/> 同時生效。</summary>
 public enum FilmstripFileKind { All, RawOnly, NonRaw }
 
+/// <summary>依星級評分篩選，與其他篩選同時生效。</summary>
+public enum FilmstripRatingFilter { All, AtLeast1, AtLeast2, AtLeast3, AtLeast4, Exactly5, Unrated }
+
 /// <summary>縮圖列中的一張照片（計畫書 2.4.4）。</summary>
 public sealed partial class ThumbnailViewModel(string fileName) : ObservableObject
 {
     public string FileName { get; } = fileName;
+
+    /// <summary>上次更新標記時看到的照片設定；用來辨識「只改了評分」而不必重算縮圖。</summary>
+    internal PhotoEntry? MarkedEntry { get; set; }
 
     /// <summary>縮圖來源（200px），設定變更後用來重算縮圖。</summary>
     internal SourceImage? Source { get; set; }
@@ -42,6 +48,15 @@ public sealed partial class ThumbnailViewModel(string fileName) : ObservableObje
     /// <summary>所用預設已在預設庫中更新，可同步（⟳）。</summary>
     [ObservableProperty]
     private bool _presetUpdated;
+
+    /// <summary>星級評分 0 ~ 5；大於 0 時在縮圖右下顯示 ★。</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasRating), nameof(RatingStars))]
+    private int _rating;
+
+    public bool HasRating => Rating > 0;
+
+    public string RatingStars => new('★', Math.Clamp(Rating, 0, PhotoEntry.MaxRating));
 
     [ObservableProperty]
     private string? _error;
@@ -132,6 +147,23 @@ public sealed partial class FilmstripViewModel : ObservableObject
         set { if (value is not null) FileKind = value.Value; }
     }
 
+    public IReadOnlyList<Dialogs.Option<FilmstripRatingFilter>> RatingOptions { get; } =
+    [
+        Dialogs.Option<FilmstripRatingFilter>.Localized(FilmstripRatingFilter.All, "Filmstrip.AllRatings"),
+        Dialogs.Option<FilmstripRatingFilter>.Localized(FilmstripRatingFilter.AtLeast1, "Filmstrip.RatingAtLeast", 1),
+        Dialogs.Option<FilmstripRatingFilter>.Localized(FilmstripRatingFilter.AtLeast2, "Filmstrip.RatingAtLeast", 2),
+        Dialogs.Option<FilmstripRatingFilter>.Localized(FilmstripRatingFilter.AtLeast3, "Filmstrip.RatingAtLeast", 3),
+        Dialogs.Option<FilmstripRatingFilter>.Localized(FilmstripRatingFilter.AtLeast4, "Filmstrip.RatingAtLeast", 4),
+        Dialogs.Option<FilmstripRatingFilter>.Localized(FilmstripRatingFilter.Exactly5, "Filmstrip.Rating5"),
+        Dialogs.Option<FilmstripRatingFilter>.Localized(FilmstripRatingFilter.Unrated, "Filmstrip.Unrated"),
+    ];
+
+    public Dialogs.Option<FilmstripRatingFilter> SelectedRatingOption
+    {
+        get => RatingOptions.First(o => o.Value == RatingFilter);
+        set { if (value is not null) RatingFilter = value.Value; }
+    }
+
     public IEnumerable<PresetItemViewModel> PresetOptions => _main.Library.Presets.Select(p => new PresetItemViewModel(p));
 
 
@@ -143,6 +175,9 @@ public sealed partial class FilmstripViewModel : ObservableObject
 
     [ObservableProperty]
     private FilmstripFileKind _fileKind = FilmstripFileKind.All;
+
+    [ObservableProperty]
+    private FilmstripRatingFilter _ratingFilter = FilmstripRatingFilter.All;
 
     [ObservableProperty]
     private string _countText = "";
@@ -758,7 +793,7 @@ public sealed partial class FilmstripViewModel : ObservableObject
         RecordTerminal(vm);
     }
 
-    /// <summary>更新縮圖上的標記（預設、覆寫 ●、預設已更新 ⟳）。</summary>
+    /// <summary>更新縮圖上的標記（預設、覆寫 ●、預設已更新 ⟳、星級 ★）。</summary>
     public void UpdateMarkers(IEnumerable<string> files)
     {
         if (_main.Service is not { } svc) return;
@@ -770,12 +805,31 @@ public sealed partial class FilmstripViewModel : ObservableObject
             vm.PresetLabel = preset is null ? "—" : Abbreviate(preset.Name);
             vm.PresetBrush = preset is null ? Brushes.Gray : PresetItemViewModel.BrushOf(preset.ColorLabel);
             vm.HasOverrides = entry.HasOverrides;
+            vm.Rating = entry.Rating;
+            vm.MarkedEntry = entry;
             vm.PresetUpdated = entry.PresetId is { } id
                 && svc.Project.PresetSnapshots.TryGetValue(id, out var snap)
                 && _main.Library.Get(id) is { } live
                 && live.UpdatedAt > snap.UpdatedAt;
         }
-        if (Filter != FilmstripFilter.All) ApplyFilter();
+        if (Filter != FilmstripFilter.All || RatingFilter != FilmstripRatingFilter.All) ApplyFilter();
+    }
+
+    /// <summary>
+    /// 相對於上次標記只差在評分的照片（須在 <see cref="UpdateMarkers"/> 之前呼叫）。
+    /// 這些照片的算圖結果不變，不需重算縮圖與預覽。
+    /// </summary>
+    public IReadOnlySet<string> RatingOnlyChanges(IEnumerable<string> files)
+    {
+        var result = new HashSet<string>(StringComparer.Ordinal);
+        if (_main.Service is not { } svc) return result;
+        foreach (var f in files)
+        {
+            if (!_byName.TryGetValue(f, out var vm) || vm.MarkedEntry is not { } before) continue;
+            var after = svc.Project[f];
+            if (before.Rating != after.Rating && (before with { Rating = after.Rating }).Equals(after)) result.Add(f);
+        }
+        return result;
     }
 
     private static string Abbreviate(string name) => name.Length <= 8 ? name : name[..7] + "…";
@@ -790,6 +844,11 @@ public sealed partial class FilmstripViewModel : ObservableObject
         OnPropertyChanged(nameof(SelectedFileKindOption));
         ApplyFilter();
     }
+    partial void OnRatingFilterChanged(FilmstripRatingFilter value)
+    {
+        OnPropertyChanged(nameof(SelectedRatingOption));
+        ApplyFilter();
+    }
     partial void OnFilterPresetChanged(PresetItemViewModel? value)
     {
         if (value is not null) Filter = FilmstripFilter.ByPreset;
@@ -802,6 +861,7 @@ public sealed partial class FilmstripViewModel : ObservableObject
             return false;
         if (_main.Service is not { } svc) return true;
         var e = svc.Project[vm.FileName];
+        if (!MatchesRating(e.Rating)) return false;
         return Filter switch
         {
             FilmstripFilter.OverridesOnly => e.HasOverrides,
@@ -810,6 +870,17 @@ public sealed partial class FilmstripViewModel : ObservableObject
             _ => true,
         };
     }
+
+    private bool MatchesRating(int rating) => RatingFilter switch
+    {
+        FilmstripRatingFilter.AtLeast1 => rating >= 1,
+        FilmstripRatingFilter.AtLeast2 => rating >= 2,
+        FilmstripRatingFilter.AtLeast3 => rating >= 3,
+        FilmstripRatingFilter.AtLeast4 => rating >= 4,
+        FilmstripRatingFilter.Exactly5 => rating >= PhotoEntry.MaxRating,
+        FilmstripRatingFilter.Unrated => rating == 0,
+        _ => true,
+    };
 
     private void ApplyFilter()
     {

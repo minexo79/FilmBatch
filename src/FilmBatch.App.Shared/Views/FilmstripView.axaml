@@ -22,6 +22,7 @@
           </ComboBox.ItemTemplate>
         </ComboBox>
         <ComboBox Classes="flat" ItemsSource="{Binding FileKindOptions}" SelectedItem="{Binding SelectedFileKindOption}" DisplayMemberBinding="{Binding Label, x:DataType=d:OptionBase}" MinWidth="110" />
+        <ComboBox Name="RatingFilterCombo" Classes="flat" ItemsSource="{Binding RatingOptions}" SelectedItem="{Binding SelectedRatingOption}" DisplayMemberBinding="{Binding Label, x:DataType=d:OptionBase}" MinWidth="100" />
         <TextBlock Classes="secondary small numeric" Text="{Binding CountText}" VerticalAlignment="Center" Margin="4,0" />
       </WrapPanel>
     </Border>
@@ -35,6 +36,17 @@
           <MenuItem Name="PasteSettingsItem" Header="{l:Tr Cmd.Paste}" Command="{Binding Main.PasteCommand}" />
           <MenuItem Header="{l:Tr Cmd.PastePresetOnly}" Command="{Binding Main.PastePresetOnlyCommand}" />
           <MenuItem Header="{l:Tr Cmd.PasteSpecial}" Command="{Binding Main.PasteSpecialCommand}" />
+          <Separator />
+          <!-- 評分：套用到所有選取照片（鍵盤 0 ~ 5 亦可） -->
+          <MenuItem Name="RatingItem" Header="{l:Tr Cmd.Rating}">
+            <MenuItem Header="★★★★★" Command="{Binding Main.SetRatingCommand}"><MenuItem.CommandParameter><x:Int32>5</x:Int32></MenuItem.CommandParameter></MenuItem>
+            <MenuItem Header="★★★★" Command="{Binding Main.SetRatingCommand}"><MenuItem.CommandParameter><x:Int32>4</x:Int32></MenuItem.CommandParameter></MenuItem>
+            <MenuItem Header="★★★" Command="{Binding Main.SetRatingCommand}"><MenuItem.CommandParameter><x:Int32>3</x:Int32></MenuItem.CommandParameter></MenuItem>
+            <MenuItem Header="★★" Command="{Binding Main.SetRatingCommand}"><MenuItem.CommandParameter><x:Int32>2</x:Int32></MenuItem.CommandParameter></MenuItem>
+            <MenuItem Header="★" Command="{Binding Main.SetRatingCommand}"><MenuItem.CommandParameter><x:Int32>1</x:Int32></MenuItem.CommandParameter></MenuItem>
+            <Separator />
+            <MenuItem Header="{l:Tr Cmd.ClearRating}" Command="{Binding Main.SetRatingCommand}"><MenuItem.CommandParameter><x:Int32>0</x:Int32></MenuItem.CommandParameter></MenuItem>
+          </MenuItem>
           <Separator />
           <MenuItem Name="QuickExportItem" Header="{l:Tr Cmd.QuickExport}" Command="{Binding Main.QuickExportCommand}" />
           <Separator />
@@ -62,6 +74,11 @@
                   <Border Classes="color-label" Width="6" Height="6" CornerRadius="3" Background="{Binding PresetBrush}" />
                   <TextBlock FontSize="10" Text="{Binding PresetLabel}" Foreground="#EAEAEA" />
                 </StackPanel>
+              </Border>
+              <!-- 右下：星級評分（未評分不顯示） -->
+              <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="4" Padding="5,1" CornerRadius="8" Background="#B0141414"
+                      IsVisible="{Binding HasRating}">
+                <TextBlock FontSize="10" Text="{Binding RatingStars}" Foreground="#EAEAEA" />
               </Border>
               <!-- 右上：● 有單張覆寫、⟳ 預設已更新 -->
               <StackPanel Orientation="Horizontal" Spacing="3" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="5">

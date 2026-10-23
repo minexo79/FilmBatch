@@ -15,6 +15,8 @@
   <data name="Cmd.Export" xml:space="preserve"><value>匯出…</value></data>
   <data name="Cmd.QuickExport" xml:space="preserve"><value>快速匯出選取照片</value></data>
   <data name="Cmd.ResetSelected" xml:space="preserve"><value>重設選取照片</value></data>
+  <data name="Cmd.Rating" xml:space="preserve"><value>評分</value></data>
+  <data name="Cmd.ClearRating" xml:space="preserve"><value>清除評分</value></data>
   <data name="Histogram.Title" xml:space="preserve"><value>直方圖 · RGB / 亮度</value></data>
   <data name="Histogram.Clipping" xml:space="preserve"><value>暗部裁切 {0:P1}　亮部裁切 {1:P1}</value></data>
   <data name="Cmd.Preferences" xml:space="preserve"><value>偏好設定…</value></data>
@@ -64,6 +66,7 @@
   <data name="Toast.CropFocusedOnly" xml:space="preserve"><value>裁切只套用到目前照片</value></data>
   <data name="Inspector.NoPhoto" xml:space="preserve"><value>尚未選取照片</value></data>
   <data name="Inspector.Preset" xml:space="preserve"><value>預設</value></data>
+  <data name="Inspector.Rating" xml:space="preserve"><value>評分</value></data>
   <data name="Inspector.ResetPhoto" xml:space="preserve"><value>重設此張</value></data>
   <data name="Inspector.CreatePreset" xml:space="preserve"><value>以此張建立預設</value></data>
   <data name="Inspector.UpdatePreset" xml:space="preserve"><value>更新回預設</value></data>
@@ -78,6 +81,10 @@
   <data name="Filmstrip.AllFiles" xml:space="preserve"><value>所有檔案</value></data>
   <data name="Filmstrip.RawOnly" xml:space="preserve"><value>只顯示 RAW</value></data>
   <data name="Filmstrip.NonRaw" xml:space="preserve"><value>只顯示非 RAW</value></data>
+  <data name="Filmstrip.AllRatings" xml:space="preserve"><value>全部星級</value></data>
+  <data name="Filmstrip.RatingAtLeast" xml:space="preserve"><value>★{0} 以上</value></data>
+  <data name="Filmstrip.Rating5" xml:space="preserve"><value>★5</value></data>
+  <data name="Filmstrip.Unrated" xml:space="preserve"><value>未評分</value></data>
   <data name="Presets.Apply" xml:space="preserve"><value>套用到選取照片</value></data>
   <data name="Presets.Rename" xml:space="preserve"><value>重新命名…</value></data>
   <data name="Presets.Color" xml:space="preserve"><value>更改色彩標籤</value></data>

@@ -15,6 +15,8 @@
   <data name="Cmd.Export" xml:space="preserve"><value>Export…</value></data>
   <data name="Cmd.QuickExport" xml:space="preserve"><value>Quick Export Selected Photos</value></data>
   <data name="Cmd.ResetSelected" xml:space="preserve"><value>Reset Selected Photos</value></data>
+  <data name="Cmd.Rating" xml:space="preserve"><value>Rating</value></data>
+  <data name="Cmd.ClearRating" xml:space="preserve"><value>Clear Rating</value></data>
   <data name="Histogram.Title" xml:space="preserve"><value>Histogram · RGB / Luminance</value></data>
   <data name="Histogram.Clipping" xml:space="preserve"><value>Shadow clipping {0:P1}  Highlight clipping {1:P1}</value></data>
   <data name="Cmd.Preferences" xml:space="preserve"><value>Preferences…</value></data>
@@ -64,6 +66,7 @@
   <data name="Toast.CropFocusedOnly" xml:space="preserve"><value>Crop applied to the current photo only</value></data>
   <data name="Inspector.NoPhoto" xml:space="preserve"><value>No photo selected</value></data>
   <data name="Inspector.Preset" xml:space="preserve"><value>Preset</value></data>
+  <data name="Inspector.Rating" xml:space="preserve"><value>Rating</value></data>
   <data name="Inspector.ResetPhoto" xml:space="preserve"><value>Reset Photo</value></data>
   <data name="Inspector.CreatePreset" xml:space="preserve"><value>New Preset</value></data>
   <data name="Inspector.UpdatePreset" xml:space="preserve"><value>Update Preset</value></data>
@@ -78,6 +81,10 @@
   <data name="Filmstrip.AllFiles" xml:space="preserve"><value>All files</value></data>
   <data name="Filmstrip.RawOnly" xml:space="preserve"><value>RAW only</value></data>
   <data name="Filmstrip.NonRaw" xml:space="preserve"><value>Non-RAW only</value></data>
+  <data name="Filmstrip.AllRatings" xml:space="preserve"><value>All ratings</value></data>
+  <data name="Filmstrip.RatingAtLeast" xml:space="preserve"><value>★{0} and up</value></data>
+  <data name="Filmstrip.Rating5" xml:space="preserve"><value>★5</value></data>
+  <data name="Filmstrip.Unrated" xml:space="preserve"><value>Unrated</value></data>
   <data name="Presets.Apply" xml:space="preserve"><value>Apply to Selection</value></data>
   <data name="Presets.Rename" xml:space="preserve"><value>Rename…</value></data>
   <data name="Presets.Color" xml:space="preserve"><value>Change Color Label</value></data>
