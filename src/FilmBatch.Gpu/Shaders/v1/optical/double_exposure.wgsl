@@ -1,5 +1,6 @@
 // 雙重曝光（5.3.4）：第二來源以反向仿射映射取樣，於線性光中合成
 #include "common/color.wgsl"
+#include "common/sampling.wgsl"
 
 struct Params {
     source: i32,   // 0 self / 1 photo / 2 file（引擎層把外部影像上傳為第二張紋理）
@@ -20,6 +21,7 @@ struct Params {
 @group(0) @binding(1) var second: texture_2d<f32>; // 第二次曝光（可能與 src 相同）
 @group(0) @binding(2) var dst: texture_storage_2d<rgba32float, write>;
 @group(0) @binding(3) var<uniform> p: Params;
+@group(0) @binding(4) var<uniform> view: FrameView;
 
 fn bilinear(t: texture_2d<f32>, size: vec2i, x: f32, y: f32) -> vec3f {
     let x0 = clamp(i32(floor(x)), 0, size.x - 1);
@@ -40,8 +42,9 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
     let size = vec2i(textureDimensions(src));
     let pos = vec2i(id.xy);
     if (pos.x >= size.x || pos.y >= size.y) { return; }
-    let u = (f32(pos.x) + 0.5) / f32(size.x);
-    let v = (f32(pos.y) + 0.5) / f32(size.y);
+    let fp = frame_pixel(view, id.xy);
+    let u = (f32(fp.x) + 0.5) / view.frame_size.x;
+    let v = (f32(fp.y) + 0.5) / view.frame_size.y;
 
     var su = (u - 0.5 - p.offset_x) / p.scale;
     var sv = (v - 0.5 - p.offset_y) / p.scale;
@@ -51,9 +54,16 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
     var rv = su * sn + sv * cs;
     if (p.mirror == 1) { ru = -ru; }
     else if (p.mirror == 2) { rv = -rv; }
+    // 第二張是本張（source 0）時以畫框尺寸映射，再換回本地紋理；外部影像用自己的尺寸
     let ssize = vec2i(textureDimensions(second));
-    let sx = (ru + 0.5) * f32(ssize.x) - 0.5;
-    let sy = (rv + 0.5) * f32(ssize.y) - 0.5;
+    var map_size = vec2f(ssize);
+    var shift = vec2f(0.0);
+    if (p.source == 0) {
+        map_size = view.frame_size;
+        shift = vec2f(view.origin);
+    }
+    let sx = (ru + 0.5) * map_size.x - 0.5 - shift.x;
+    let sy = (rv + 0.5) * map_size.y - 0.5 - shift.y;
 
     let a = textureLoad(src, pos, 0);
     let b = vec4f(bilinear(second, ssize, sx, sy), 1.0);

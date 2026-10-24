@@ -2,6 +2,7 @@
 // 所有形狀由種子在 CPU 端決定參數範圍，此處以同樣的整數雜湊在 shader 內產生，
 // 保證 CPU / GPU 結果一致（計畫書 5.4：GPU 亂數用整數雜湊）。
 #include "common/color.wgsl"
+#include "common/sampling.wgsl"
 
 struct Params {
     mode: i32,        // 0 procedural / 1 texture（texture 無檔時退化程序化）
@@ -19,6 +20,7 @@ struct Params {
 @group(0) @binding(0) var src: texture_2d<f32>;
 @group(0) @binding(1) var dst: texture_storage_2d<rgba32float, write>;
 @group(0) @binding(2) var<uniform> p: Params;
+@group(0) @binding(3) var<uniform> view: FrameView;
 
 fn dist_seg(px: f32, py: f32, x0: f32, y0: f32, x1: f32, y1: f32) -> f32 {
     let dx = x1 - x0;
@@ -37,10 +39,12 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
     let pos = vec2i(id.xy);
     if (pos.x >= size.x || pos.y >= size.y) { return; }
     var c = textureLoad(src, pos, 0);
-    let px = f32(pos.x) + 0.5;
-    let py = f32(pos.y) + 0.5;
-    let fw = f32(size.x);
-    let fh = f32(size.y);
+    // 形狀以畫框座標產生（種子決定的位置與畫框尺寸成比例）
+    let fp = frame_pixel(view, id.xy);
+    let px = f32(fp.x) + 0.5;
+    let py = f32(fp.y) + 0.5;
+    let fw = view.frame_size.x;
+    let fh = view.frame_size.y;
     let ss = p.short_side;
 
     var delta = 0.0;

@@ -90,6 +90,39 @@ public sealed class GpuSpikeRenderer : IPreviewRenderer
         };
     }
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// GPU 只配置並處理 <see cref="WindowRegion.Expand"/> 算出的區域（工作紋理＝區域尺寸），整張來源紋理照常以參考相等快取；
+    /// 每個以畫框為座標系的 pass 透過共用的 view uniform（畫框尺寸＋區域原點）換算畫框座標。
+    /// 超過 GPU 預算時改用 CPU 等效路徑（同一份區域）。
+    /// </remarks>
+    public RenderResult RenderWindow(SourceImage frameSource, Settings settings, RenderView view, FrameStats stats,
+        CancellationToken cancellationToken = default)
+    {
+        var timer = Stopwatch.StartNew();
+        if (DenoiseSettings.From(settings).IsActive)
+            frameSource = DenoiseProcessor.Shared.Prepare(frameSource, settings, cancellationToken);
+        var parameters = ModuleParams.From(frameSource, settings);
+        _assets.Prepare(frameSource, parameters);
+        var region = WindowRegion.Expand(parameters, view);
+        parameters.View = region;
+        parameters.FrameStats = stats;
+        _cpuReason = _pipeline.CanRender(frameSource, parameters) ? null : CoreText.T("影像超過 GPU 尺寸或記憶體預算", "image exceeds the GPU size or memory budget");
+        byte[] output;
+        if (UsingCpu)
+            output = WindowRegion.CropToBgra8(CpuPipeline.Process(frameSource, parameters, null, cancellationToken).Rgba16, region, view);
+        else
+        {
+            var pixels = new byte[region.W * region.H * 4];
+            _pipeline.Render(frameSource, parameters, pixels, cancellationToken);
+            output = WindowRegion.CropBgra(pixels, region, view);
+        }
+        return new(view.W, view.H, output, timer.Elapsed)
+        {
+            Denoise = frameSource.Denoise, PreparedSource = frameSource, Stats = stats,
+        };
+    }
+
     private ModuleParams Prepare(SourceImage source, Settings settings)
     {
         var parameters = ModuleParams.From(source, settings);
