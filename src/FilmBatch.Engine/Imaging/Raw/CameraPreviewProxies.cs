@@ -147,13 +147,18 @@ internal static partial class CameraPreview
 
     private static RgbImage SensorProxyImage(RgbImage img) => img;
 
-    private static RgbImage? SensorProxy(RawImage raw, int k, int edge)
+    /// <summary>
+    /// 未校正的感光代理。List3 只含鏡頭鏈（原廠或 Lensfun）時照樣分箱、不套用：鏡頭幾何由
+    /// <see cref="Proxies"/> 的 warp 候選處理；否則 Lensfun 會讓沒有檔內矩陣的 RAW 失去相機外觀。
+    /// </summary>
+    internal static RgbImage? SensorProxy(RawImage raw, int k, int edge)
     {
         if (k <= 0)
             return null;
         try
         {
-            var binned = raw.DevelopBinned(k, SensorClip);
+            var list3 = raw.Opcodes.List3;
+            var binned = raw.DevelopBinned(k, SensorClip, list3.Count != 0 && RawSourceGeometry.IsLensChainOnly(list3));
             if (binned is not null)
                 return binned;
         }

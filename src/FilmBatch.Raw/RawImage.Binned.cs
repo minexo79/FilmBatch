@@ -27,6 +27,12 @@ public sealed partial class RawImage
     public RgbImage? DevelopBinned(int k, float clip) => Bin(k, clip, keepMax: true)?.Image;
 
     /// <summary>
+    /// 與 <see cref="DevelopBinned(int, float)"/> 相同；<paramref name="deferList3"/> 為 true 時帶有 OpcodeList3
+    /// 也分箱，輸出尚未套用任何 List3 運算碼（呼叫端只在 List3 僅含鏡頭鏈時使用）。
+    /// </summary>
+    public RgbImage? DevelopBinned(int k, float clip, bool deferList3) => Bin(k, clip, keepMax: true, deferList3)?.Image;
+
+    /// <summary>
     /// 與 <see cref="DevelopBinned"/> 相同，但每個通道皆為區塊平均值；遮罩每輸出像素一個位元組，
     /// <see cref="Highlight.ClippedR"/>/G/B 位元標示該顏色區塊內有大於等於 clip 的樣本。
     /// 與影像一起交給 <see cref="Highlight.ReconstructMasked"/>。
