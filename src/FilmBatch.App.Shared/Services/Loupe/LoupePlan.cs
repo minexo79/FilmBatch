@@ -86,8 +86,13 @@ public static class LoupePlan
             return new(MainEdge(wanted * scale, previewLimit, v.NativeLongPx, v.TextureSide), null);
         }
         var main = MainEdge(Math.Min(drawn, canvas) * scale, previewLimit, v.NativeLongPx, v.TextureSide);
-        if (!v.WindowsAllowed || v.DraftScale is not null || drawn < main * WindowRatio) return new(main, null);
-        return new(main, Math.Min((int)Math.Round(drawn), v.NativeLongPx));
+        if (v.DraftScale is not null) return new(main, null);
+        // 與 Lightcraft 相同：以「窗口畫框長邊（不超過原圖）」對 Main 層比較；使用者自訂了 Main 上限且目前是符合視窗時，
+        // 視為選擇速度而非銳利度，不加窗口
+        var frameEdge = Math.Min((int)Math.Round(drawn), Math.Max(v.NativeLongPx, 8));
+        var fit = drawn <= canvas * 1.05;
+        if (frameEdge <= main * WindowRatio || (fit && previewLimit != 0)) return new(main, null);
+        return new(main, frameEdge);
     }
 
     /// <summary>
