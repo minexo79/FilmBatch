@@ -5,6 +5,7 @@
 // 柔焦仍沿用「與高斯模糊版混合」的既有行為。
 // 演算法須與 CpuPipeline.Grain 逐步相同；模型常數由 CPU 端 DeriveGrain 計算後以 uniform 傳入。
 #include "common/color.wgsl"
+#include "common/sampling.wgsl"
 
 struct Params {
     a: vec4f,       // amount, color, softness-mix, corr_gain
@@ -22,6 +23,7 @@ struct Params {
 @group(0) @binding(1) var blurred: texture_2d<f32>;
 @group(0) @binding(2) var dst: texture_storage_2d<rgba32float, write>;
 @group(0) @binding(3) var<uniform> p: Params;
+@group(0) @binding(4) var<uniform> view: FrameView;
 
 struct Grain { luma: f32, chroma: vec3f, }
 
@@ -249,8 +251,10 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
     let k = p.a.x * band;
     if (k > 0.0) {
         let shadow = 1.0 - s;
-        let gx = p.map_x.x * (f32(pos.x) + 0.5) + p.map_x.y * (f32(pos.y) + 0.5) + p.map_x.z;
-        let gy = p.map_y.x * (f32(pos.x) + 0.5) + p.map_y.y * (f32(pos.y) + 0.5) + p.map_y.z;
+        // 顆粒座標：畫框像素中心經裁切仿射映到來源參考平面（窗口內的顆粒與整張相同）
+        let fp = frame_pixel(view, id.xy);
+        let gx = p.map_x.x * (f32(fp.x) + 0.5) + p.map_x.y * (f32(fp.y) + 0.5) + p.map_x.z;
+        let gy = p.map_y.x * (f32(fp.x) + 0.5) + p.map_y.y * (f32(fp.y) + 0.5) + p.map_y.z;
         let rough_q = i32(p.rough_q);
         let rough = f32(p.rough_q) * (1.0 / 256.0);
         var g = Grain(0.0, vec3f(0.0));

@@ -1,5 +1,6 @@
 // 多格分鏡（5.3.3）：每格的位移 / 縮放 / 曝光 / 色偏由 CPU 端以種子算出，以 uniform 傳入
 #include "common/color.wgsl"
+#include "common/sampling.wgsl"
 
 struct Params {
     arrangement: i32,  // 0 h2 / 1 h3 / 2 h4 / 3 v2 / 4 grid / 5 stagger
@@ -16,6 +17,7 @@ struct Params {
 @group(0) @binding(0) var src: texture_2d<f32>;
 @group(0) @binding(1) var dst: texture_storage_2d<rgba32float, write>;
 @group(0) @binding(2) var<uniform> p: Params;
+@group(0) @binding(3) var<uniform> view: FrameView;
 
 fn cell_params(i: i32) -> vec4f {
     switch i {
@@ -40,8 +42,9 @@ fn sample_cell(size: vec2i, u: f32, v: f32, col: i32, row: i32, cols: i32, rows:
     let lv = v * f32(rows) - f32(row);
     let cu = lu - 0.5;
     let cv = lv - 0.5;
-    let sx = (f32(col) + 0.5 + cu / cp.z + cp.x) * f32(size.x) / f32(cols) - 0.5;
-    let sy = (f32(row) + 0.5 + cv / cp.z + cp.y) * f32(size.y) / f32(rows) - 0.5;
+    // 格的映射以畫框尺寸計算，取樣座標再換回本地紋理
+    let sx = (f32(col) + 0.5 + cu / cp.z + cp.x) * view.frame_size.x / f32(cols) - 0.5 - f32(view.origin.x);
+    let sy = (f32(row) + 0.5 + cv / cp.z + cp.y) * view.frame_size.y / f32(rows) - 0.5 - f32(view.origin.y);
     // bilinear
     let x0 = clamp(i32(floor(sx)), 0, size.x - 1);
     let y0 = clamp(i32(floor(sy)), 0, size.y - 1);
@@ -72,8 +75,9 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
     let size = vec2i(textureDimensions(src));
     let pos = vec2i(id.xy);
     if (pos.x >= size.x || pos.y >= size.y) { return; }
-    let u = (f32(pos.x) + 0.5) / f32(size.x);
-    let v = (f32(pos.y) + 0.5) / f32(size.y);
+    let fp = frame_pixel(view, id.xy);
+    let u = (f32(fp.x) + 0.5) / view.frame_size.x;
+    let v = (f32(fp.y) + 0.5) / view.frame_size.y;
 
     var cols = 2; var rows = 1;
     switch p.arrangement {

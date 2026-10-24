@@ -51,10 +51,13 @@ internal static class ShadowRecovery
     internal readonly record struct ShadowLayout(int Factor, int ProxyWidth, int ProxyHeight, float ProxyRadius,
         float Exposure, float Luma, float Chroma, float LumaSigma, float ChromaSigma, int Support);
 
+    /// <param name="p">模組參數；半徑以畫框短邊（<see cref="ModuleParams.FrameWidth"/>／<see cref="ModuleParams.FrameHeight"/>）計算。</param>
+    /// <param name="width">工作緩衝寬（整張＝畫框寬；窗口模式下為渲染區域寬，原點已對齊區塊格線）。</param>
+    /// <param name="height">工作緩衝高。</param>
     internal static ShadowLayout Layout(ModuleParams p, int width, int height)
     {
         var percent = float.IsFinite(p.ShadowRecoveryRadius) ? Math.Clamp(p.ShadowRecoveryRadius, 0.25f, 10f) : 2f;
-        var radius = percent / 100f * Math.Min(width, height);
+        var radius = percent / 100f * Math.Min(p.FrameWidth, p.FrameHeight);
         var factor = Math.Clamp((int)MathF.Ceiling(radius / ProxyRadius), 1, MaxFactor);
         // 輸出像素在來源參考平面的足跡（與顆粒相同的幾何）：預覽縮小時降噪視窗同比例縮小。
         var footprint = CpuPipeline.GrainGeometry(p, width, height).PixelScale;

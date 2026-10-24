@@ -10,12 +10,14 @@ struct Params {
 @group(0) @binding(0) var src: texture_2d<f32>;
 @group(0) @binding(1) var dst: texture_storage_2d<rgba32float, write>;
 @group(0) @binding(2) var<uniform> p: Params;
+@group(0) @binding(3) var<uniform> view: FrameView;
 
 @compute @workgroup_size(16, 16)
 fn main(@builtin(global_invocation_id) id: vec3u) {
     let size = textureDimensions(dst);
     if (id.x >= size.x || id.y >= size.y) { return; }
-    let o = vec2f(id.xy) + 0.5;
+    // 畫框像素中心（窗口模式下加上渲染區域原點）→ 來源座標
+    let o = frame_px(view, id.xy);
     let s = vec2f(p.m00 * o.x + p.m01 * o.y + p.m02, p.m10 * o.x + p.m11 * o.y + p.m12);
     textureStore(dst, id.xy, sample_bilinear(src, s - 0.5));
 }

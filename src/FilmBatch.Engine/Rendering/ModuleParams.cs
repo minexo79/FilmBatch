@@ -16,11 +16,27 @@ namespace FilmBatch.Engine.Rendering;
 public sealed class ModuleParams
 {
     public RgbEncoding OutputEncoding;
-    // crop（管線最前面；之後所有模組都以裁切後的畫框 OutWidth × OutHeight 計算）
+    // crop（管線最前面；之後所有模組都以裁切後的畫框 FrameWidth × FrameHeight 計算）
     public CropParams Crop;
+    /// <summary>整個畫框的裁切變換（輸出畫框像素 → 來源像素）；窗口模式下仍是整個畫框的變換。</summary>
     public CropTransform CropT;
-    public int OutWidth => CropT.OutWidth;
-    public int OutHeight => CropT.OutHeight;
+    /// <summary>
+    /// 本次實際渲染的區域（畫框座標）。預設為整個畫框；窗口模式下各 pass 以
+    /// 「本地像素 + (View.X, View.Y)」得到畫框像素，所有畫框相對量都以 <see cref="FrameWidth"/>／<see cref="FrameHeight"/> 計算。
+    /// </summary>
+    public RenderView View;
+    /// <summary>Main（整張）渲染時記錄的全畫框統計；窗口渲染時由呼叫端傳入，不在窗口上重算。</summary>
+    public FrameStats? FrameStats;
+    /// <summary>裁切後的畫框寬（與窗口無關）。</summary>
+    public int FrameWidth => CropT.OutWidth;
+    /// <summary>裁切後的畫框高（與窗口無關）。</summary>
+    public int FrameHeight => CropT.OutHeight;
+    /// <summary>是否只渲染畫框中的一塊（<see cref="View"/> 不是整個畫框）。</summary>
+    public bool IsWindow => View.W > 0 && !View.IsWhole;
+    /// <summary>輸出（工作緩衝／紋理）寬：整張時為畫框寬，窗口模式下為 <see cref="View"/> 的寬。</summary>
+    public int OutWidth => View.W > 0 ? View.W : CropT.OutWidth;
+    /// <summary>輸出（工作緩衝／紋理）高：整張時為畫框高，窗口模式下為 <see cref="View"/> 的高。</summary>
+    public int OutHeight => View.H > 0 ? View.H : CropT.OutHeight;
     public int SourceWidth, SourceHeight, ReferenceWidth, ReferenceHeight;
     // basic
     public bool BasicOn;
@@ -329,6 +345,7 @@ public sealed class ModuleParams
         };
 
         m.CropT = CropGeometry.Compute(source.Width, source.Height, m.Crop);
+        m.View = RenderView.Whole(m.FrameWidth, m.FrameHeight);
         m.ShadowRecoveryOn &= m.ShadowRecoveryExposure > 0 || m.ShadowRecoveryLuminance > 0 || m.ShadowRecoveryChroma > 0;
         m.FilmLut = m.FilmOn ? FilmLookLibrary.TryLut(m.FilmLookKey) : null;
         m.FilmLook = FilmLookUniforms.From(m);

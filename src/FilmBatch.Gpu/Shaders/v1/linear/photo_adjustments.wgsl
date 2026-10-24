@@ -9,6 +9,7 @@
 // Alpha 通道不變；兩段旗標皆由 CPU Uniforms() 決定（含參數合法性）。
 // 以 IEEE-754 指數位元檢查有限值，不依賴 fast-math 可將 x-x 消去的算術恆等式。
 #include "common/color.wgsl"
+#include "common/sampling.wgsl"
 
 struct Params {
     region: vec4f,     // cx, cy, rx, ry（正規化來源座標）
@@ -22,6 +23,7 @@ struct Params {
 @group(0) @binding(0) var src: texture_2d<f32>;
 @group(0) @binding(1) var dst: texture_storage_2d<rgba32float, write>;
 @group(0) @binding(2) var<uniform> p: Params;
+@group(0) @binding(3) var<uniform> view: FrameView;
 
 fn is_finite(x: f32) -> bool {
     return (bitcast<u32>(x) & 0x7f800000u) != 0x7f800000u;
@@ -48,7 +50,7 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
         return;
     }
     // 輸出像素中心 → 來源像素座標 → 正規化來源座標（與 CPU Apply 同式）。
-    let o = vec2f(id.xy) + 0.5;
+    let o = frame_px(view, id.xy);
     let s = vec2f(p.map_x.x * o.x + p.map_x.y * o.y + p.map_x.z,
                   p.map_y.x * o.x + p.map_y.y * o.y + p.map_y.z);
     let n = s / vec2f(p.map_x.w, p.map_y.w);

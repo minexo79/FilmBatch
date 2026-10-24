@@ -320,9 +320,9 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
 
     /// <summary>
     /// 以最近回報的畫布尺寸與目前照片的原圖畫框長邊重算 <see cref="ViewSizes"/> 與 <see cref="CurrentPlan"/>。
-    /// 拖曳草稿（Task 5）與窗口（Task 7）尚未接上：DraftScale = null、WindowsAllowed = false。
+    /// <paramref name="draftScale"/> 為拖曳草稿倍率（<see cref="DragScale"/>；靜止時為 null）。窗口（Task 7）尚未接上：WindowsAllowed = false。
     /// </summary>
-    internal LoupePlanResult? UpdatePlan(int nativeLongPx, int textureSide, int previewLimit)
+    internal LoupePlanResult? UpdatePlan(int nativeLongPx, int textureSide, int previewLimit, double? draftScale = null)
     {
         if (_viewReport is not { } report)
         {
@@ -330,10 +330,23 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
             CurrentPlan = null;
             return null;
         }
-        var sizes = new ViewSizes(report.Drawn, report.Canvas, nativeLongPx, textureSide, DraftScale: null, WindowsAllowed: false);
+        var sizes = new ViewSizes(report.Drawn, report.Canvas, nativeLongPx, textureSide, draftScale, WindowsAllowed: false);
         ViewSizes = sizes;
         CurrentPlan = LoupePlan.Plan(previewLimit, sizes);
         return CurrentPlan;
+    }
+
+    /// <summary>
+    /// 顯示目前 <see cref="Image"/> 的那一幀所花的時間（毫秒，由畫布量測）；目前的影像還沒量到時為 null。
+    /// 拖曳草稿送達時以它完成上一張草稿的計時（<see cref="DragScale.Observe"/>）。
+    /// </summary>
+    public double? LastFrameMs { get; private set; }
+
+    /// <summary>畫布回報顯示 <paramref name="image"/> 那一幀的時間；不是目前的影像（已被更新的影格取代）時忽略。</summary>
+    public void ReportFrameTime(Bitmap? image, double ms)
+    {
+        if (image is null || !ReferenceEquals(image, Image) || !double.IsFinite(ms)) return;
+        LastFrameMs = ms;
     }
 
     // ───────────── 畫布工具 ─────────────
@@ -368,6 +381,7 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
             _back = CreateBitmap(r.Width, r.Height);
         Write(_back, r.Bgra, r.Width);
         (_front, _back) = (_back, _front);
+        LastFrameMs = null;
         Image = _front;
         _resultHistogram = histogram;
         _originalHistogram = originalHistogram;

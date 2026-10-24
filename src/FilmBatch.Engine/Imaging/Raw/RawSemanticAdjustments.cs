@@ -63,7 +63,7 @@ internal static class RawSemanticAdjustments
         if (alpha is null) return;
         var m = p.CropT.OutToSource;
         ApplyCore(rgba, width, height, alpha, source.Width, source.Height,
-            m, strength, exp, t, ti, con, sat, p.RawMaskInvert, ct);
+            m, strength, exp, t, ti, con, sat, p.RawMaskInvert, p.View.X, p.View.Y, ct);
     }
 
     /// <summary>
@@ -162,7 +162,7 @@ internal static class RawSemanticAdjustments
     /// </summary>
     private static void ApplyCore(float[] rgba, int width, int height, RawMaskAlpha alpha,
         int srcW, int srcH, Affine2 m, float strength, float exp, float temp, float tint,
-        float con, float sat, bool invert, CancellationToken ct)
+        float con, float sat, bool invert, int ox, int oy, CancellationToken ct)
     {
         var (aw, ah) = (alpha.Width, alpha.Height);
         var data = alpha.Data;
@@ -174,8 +174,9 @@ internal static class RawSemanticAdjustments
             for (var x = 0; x < width; x++)
             {
                 // 輸出像素中心 → 來源像素 → 正規化 → 遮罩平面連續座標（雙線性、邊緣延伸）。
-                var sx = m.M00 * (x + 0.5) + m.M01 * (y + 0.5) + m.M02;
-                var sy = m.M10 * (x + 0.5) + m.M11 * (y + 0.5) + m.M12;
+                // 窗口模式：本地像素 + 窗口原點 = 畫框像素
+                var sx = m.M00 * (x + ox + 0.5) + m.M01 * (y + oy + 0.5) + m.M02;
+                var sy = m.M10 * (x + ox + 0.5) + m.M11 * (y + oy + 0.5) + m.M12;
                 var mx = sx * iw * aw - 0.5;
                 var my = sy * ih * ah - 0.5;
                 var mask = Bilinear(data, aw, ah, mx, my);
