@@ -231,6 +231,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         Renderer.PreviewReady += (r, histogram, originalHistogram) =>
         {
             if (BackgroundRemoval.IsEditing) return;
+            // 草稿送達：以上一張草稿顯示那一幀的時間完成它的計時，再把這張記為待定（DragScale）
+            if (Renderer.LastDelivery is { IsDraft: true } delivery)
+                _dragScale.Observe(delivery.Generation, delivery.Elapsed.TotalMilliseconds, Preview.LastFrameMs);
             Preview.SetResult(r, histogram, originalHistogram);
             // 照片工具以代理圖解析度分析：畫布縮放過的來源換回同一張照片的代理圖來源（降噪後的來源是另一個物件，照舊）
             if (r.PreparedSource is { } prepared)
@@ -538,9 +541,16 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         var crop = CropGeometry.FromSettings(settings);
         Preview.SetCompareCrop(crop);
         Denoise.RefreshContext();
-        // Main 渲染尺寸跟著畫布走；原圖對比用同一份縮放來源，兩者對齊
+        // 連續手勢中的預覽是草稿：倍率在拖曳開始時依實測時間決定（DRAG-01），放手後回到完整品質
+        var drag = _edit is { Interrupted: false, Pending.Count: > 0 } edit
+            ? (Service.Project.PathOf(FocusFile), DragControlOf(edit.Id))
+            : ((string, string)?)null;
+        var shownDraft = Renderer.LastDelivery is { IsDraft: true } shown ? shown.Generation : (long?)null;
+        _draftScale = _dragScale.Scale(drag, gpu: !Renderer.IsSoftware, shownDraft, _dragClock.Elapsed.TotalSeconds);
+        var draft = _draftScale is not null;
+        // Main 渲染尺寸跟著畫布走；原圖對比用同一份縮放來源，兩者對齊（草稿不換對比來源：放手後的完整影格才是要比較的畫面）
         var (scaled, displayFit) = MainRenderSource(Preview.Source, crop, settings);
-        Preview.SetCompareSource(scaled);
+        if (!draft) Preview.SetCompareSource(scaled);
         var source = SourceForPhoto(FocusFile, scaled);
         if (!ReferenceEquals(scaled, Preview.Source))
             _analysisSources.AddOrUpdate(source, SourceForPhoto(FocusFile, Preview.Source));
@@ -548,8 +558,32 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         // 裁切工具的全幅與照片工具的取樣視圖不是照片的最終畫面：送達後不放進 ViewCache
         _lastRequest = new RenderRequest(Service, FocusFile, Service.Project.PathOf(FocusFile), settings, Preview.Source.RawOptions,
             Cacheable: !CropTool.IsActive && PhotoTools.PreviewOverlay is null);
-        Renderer.RequestPreview(FocusFile, source, settings, displayFit);
+        Renderer.RequestPreview(FocusFile, source, settings, displayFit, draft);
+        _lastRequestDraft = draft;
         Preview.IsBusy = true;
+    }
+
+    // ───────────── 拖曳草稿（DRAG-01） ─────────────
+
+    /// <summary>依實測「算圖＋顯示」時間決定拖曳草稿倍率；判定以「照片 × 控制項」保留。</summary>
+    private readonly DragScale _dragScale = new();
+    private readonly Stopwatch _dragClock = Stopwatch.StartNew();
+    /// <summary>目前的草稿倍率；沒有連續手勢時為 null（靜止的計畫尺寸）。</summary>
+    private double? _draftScale;
+    /// <summary>最近一次送出的預覽請求是否為草稿：手勢結束時若是，補送一次完整品質的請求。</summary>
+    private bool _lastRequestDraft;
+
+    /// <summary>
+    /// 手勢 id 去掉每次手勢的 GUID 尾碼，得到控制項身分：滑桿 / 曲線 <c>{flatKey}#{guid}</c>、
+    /// 畫布控制點 <c>cp:{module}:{guid}</c>、範圍輪廓 <c>fp:{dragKey}:{guid}</c>。沒有 GUID 尾碼時原樣回傳。
+    /// </summary>
+    internal static string DragControlOf(string session)
+    {
+        var cut = session.LastIndexOfAny(['#', ':']);
+        if (cut <= 0 || session.Length - cut - 1 != 32) return session;
+        for (var i = cut + 1; i < session.Length; i++)
+            if (!char.IsAsciiHexDigit(session[i])) return session;
+        return session[..cut];
     }
 
     // ───────────── 開圖替身與前後張預取（OPEN-01） ─────────────
@@ -631,10 +665,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     /// <summary>
     /// 預覽送達之後：是最新一筆、不在連續手勢中、也不是裁切／取樣視圖時，放進 ViewCache（回到這張照片時立即顯示）；
-    /// 這張照片第一次完整送達時，開始預取縮圖列中的前後張。拖曳草稿（Task 5）也不得放進快取。
+    /// 這張照片第一次完整送達時，開始預取縮圖列中的前後張。拖曳草稿（送達旗標 <see cref="PreviewDelivery.IsDraft"/>）
+    /// 不是最終畫面：不放進快取，也不觸發預取（等放手後的完整影格）。
     /// </summary>
     private void OnFullPreviewDelivered(RenderResult r)
     {
+        if (Renderer.LastDelivery is { IsDraft: true }) return;
         if (_disposed || Renderer.IsBusy || _lastRequest is not { } request || request.Service != Service || request.File != FocusFile) return;
         if (request.Cacheable && _edit is not { Pending.Count: > 0 })
             ViewCache.Put(request.Path, request.Settings, request.RawOptions, r, Preview.FrameLongEdge);
@@ -744,14 +780,15 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private (SourceImage Source, (int W, int H)? DisplayFit) MainRenderSource(SourceImage proxy, CropParams crop, Settings settings)
     {
         var native = CropGeometry.Compute(proxy.ReferenceWidth, proxy.ReferenceHeight, crop);
-        var plan = Preview.UpdatePlan(Math.Max(native.OutWidth, native.OutHeight), AssumedTextureSide, Images.PreviewLimit);
+        var plan = Preview.UpdatePlan(Math.Max(native.OutWidth, native.OutHeight), AssumedTextureSide, Images.PreviewLimit, _draftScale);
         _requestedMainEdge = plan?.MainEdge;
         _requestedCrop = crop;
         _requestedFitEdge = null;
         if (plan is not { } p || Preview.ViewSizes is not { } sizes) return (proxy, null);
         var drawn = (int)Math.Round(sizes.DrawnLongPx);
-        _requestedFitEdge = drawn;
-        (int, int)? fit = drawn > 0 ? (drawn, drawn) : null;
+        // 草稿不做顯示縮放（每格省一次 Lanczos，由畫布插值）；放手後的完整影格才縮到 1:1
+        if (_draftScale is null) _requestedFitEdge = drawn;
+        (int, int)? fit = drawn > 0 && _draftScale is null ? (drawn, drawn) : null;
         if (DenoiseSettings.From(settings).IsActive) return (proxy, fit);
         var frame = CropGeometry.Compute(proxy.Width, proxy.Height, crop);
         var frameLong = Math.Max(frame.OutWidth, frame.OutHeight);
@@ -768,13 +805,14 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     {
         if (_disposed || Service is null || FocusFile is null || Preview.Source is not { } proxy) return;
         var native = CropGeometry.Compute(proxy.ReferenceWidth, proxy.ReferenceHeight, _requestedCrop);
-        var plan = Preview.UpdatePlan(Math.Max(native.OutWidth, native.OutHeight), AssumedTextureSide, Images.PreviewLimit);
+        var plan = Preview.UpdatePlan(Math.Max(native.OutWidth, native.OutHeight), AssumedTextureSide, Images.PreviewLimit, _draftScale);
         if (plan?.MainEdge != _requestedMainEdge)
         {
             RequestPreview();
             return;
         }
-        if (Preview.ViewSizes is not { } sizes || _suspended || BackgroundRemoval.IsEditing) return;
+        // 拖曳中不 refit 草稿：放手後的完整請求會以當時的繪製尺寸縮放
+        if (Preview.ViewSizes is not { } sizes || _suspended || BackgroundRemoval.IsEditing || _draftScale is not null) return;
         var drawn = (int)Math.Round(sizes.DrawnLongPx);
         if (drawn <= 0 || drawn == _requestedFitEdge) return;
         _requestedFitEdge = drawn;
@@ -919,6 +957,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         FlushEdit();
         _edit = null;
         Stack.CloseMerge();
+        // 結束這次拖曳的計時與判定；畫面上若還是草稿（例如放手時值沒有改變、沒有寫入），補送完整品質的請求
+        _draftScale = _dragScale.Scale(null, gpu: !Renderer.IsSoftware, null, _dragClock.Elapsed.TotalSeconds);
+        if (_lastRequestDraft && !_disposed) RequestPreview();
         // 被中斷的手勢在參數列留下了被丟棄的值：還原成目前照片的設定。
         if (edit is { Interrupted: true } && !_disposed) RefreshModulePanels();
     }

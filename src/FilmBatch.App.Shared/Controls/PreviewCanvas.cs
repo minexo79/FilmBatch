@@ -179,6 +179,12 @@ public class PreviewCanvas : Control
     /// </summary>
     public event Action<double, double>? ViewSizesChanged;
 
+    /// <summary>
+    /// 新的 <see cref="Image"/> 畫上畫面的那一幀所花的時間（毫秒）：以 <see cref="TopLevel.RequestAnimationFrame"/> 量測
+    /// 「畫出它的那一幀開始」到「下一幀開始」。影像在量完之前又被換掉時不回報。供拖曳草稿計時（DragScale）。
+    /// </summary>
+    public event Action<Bitmap, double>? FrameShown;
+
     static PreviewCanvas()
     {
         AffectsRender<PreviewCanvas>(ImageProperty, OriginalProperty, ShowOriginalProperty, IsSplitProperty,
@@ -189,6 +195,7 @@ public class PreviewCanvas : Control
             if (e.NewValue is <= 0.0) c.Pan = default;
         });
         IsBusyProperty.Changed.AddClassHandler<PreviewCanvas>((c, _) => c.UpdateSpinner());
+        ImageProperty.Changed.AddClassHandler<PreviewCanvas>((c, e) => c.MeasureFrame(e.NewValue as Bitmap));
         ShowsSpinnerProperty.Changed.AddClassHandler<PreviewCanvas>((c, _) => c.UpdateSpinner());
         ActiveToolProperty.Changed.AddClassHandler<PreviewCanvas>((c, e) =>
         {
@@ -222,6 +229,25 @@ public class PreviewCanvas : Control
         });
         // 「原圖／效果」標籤直接畫在畫布上，切換語言時重畫。
         Localization.Loc.OnCultureChanged(this, static c => c.InvalidateVisual());
+    }
+
+    private long _frameProbe;
+
+    /// <summary>量測顯示 <paramref name="image"/> 的那一幀：動畫幀回呼在該幀繪製前執行，兩次回呼之間就是那一幀的長度。</summary>
+    private void MeasureFrame(Bitmap? image)
+    {
+        var probe = ++_frameProbe;
+        if (image is null || FrameShown is null || !IsEffectivelyVisible || TopLevel.GetTopLevel(this) is not { } top) return;
+        top.RequestAnimationFrame(_ =>
+        {
+            if (probe != _frameProbe) return;
+            var start = System.Diagnostics.Stopwatch.GetTimestamp();
+            top.RequestAnimationFrame(_ =>
+            {
+                if (probe != _frameProbe) return;
+                FrameShown?.Invoke(image, System.Diagnostics.Stopwatch.GetElapsedTime(start).TotalMilliseconds);
+            });
+        });
     }
 
     private bool SpinnerVisible => IsBusy && ShowsSpinner;

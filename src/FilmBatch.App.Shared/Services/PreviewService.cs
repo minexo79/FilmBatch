@@ -32,6 +32,8 @@ public sealed class PreviewService : IDisposable
     private long _refitSeq;
     // Only the render worker touches the original-statistics cache.
     private SourceImage? _histogramSource;
+    /// <summary>標成草稿的請求世代（UI 執行緒寫入、送達時讀取）；送達後移除不大於送達世代的項目。</summary>
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<long, bool> _draftGenerations = new();
     private ImageHistogram? _originalHistogram;
 
     public bool CollectHistogram { get => _collectHistogram; set => _collectHistogram = value; }
@@ -49,6 +51,15 @@ public sealed class PreviewService : IDisposable
     public event Action<string>? Notice;
     public event Action<RenderFailure>? Failed;
 
+    /// <summary>目前的算圖器是否為軟體（CPU 或軟體介面卡）；在 <see cref="DeviceReady"/> 送達 UI 時更新，之前視為 GPU。</summary>
+    public bool IsSoftware { get; private set; }
+
+    /// <summary>
+    /// 最近一次送達 UI 的預覽影格資訊（世代、是否為草稿、算圖時間）；在 <see cref="PreviewReady"/> 觸發前寫入，
+    /// 處理器可藉此判斷這一格是不是拖曳草稿，而不必依賴手勢狀態。
+    /// </summary>
+    public PreviewDelivery? LastDelivery { get; private set; }
+
     public bool IsBusy => Interlocked.Read(ref _requested) > Interlocked.Read(ref _delivered);
     public int PendingThumbnails => _scheduler.PendingThumbnails;
     public string? DeviceName => _scheduler.DeviceName;
@@ -58,7 +69,11 @@ public sealed class PreviewService : IDisposable
     {
         _post = post;
         _scheduler = new RenderScheduler(factory, cpuFallback ? fallback ?? (() => new CpuFakeRenderer()) : null);
-        _scheduler.DeviceReady += ready => PostAtEpoch(ready.Epoch, () => DeviceReady?.Invoke(ready.DeviceName, ready.IsSoftware));
+        _scheduler.DeviceReady += ready => PostAtEpoch(ready.Epoch, () =>
+        {
+            IsSoftware = ready.IsSoftware;
+            DeviceReady?.Invoke(ready.DeviceName, ready.IsSoftware);
+        });
         _scheduler.Notice += notice =>
         {
             AppLog.Warn(notice.Message);
@@ -104,7 +119,11 @@ public sealed class PreviewService : IDisposable
             {
                 if (IsStalePreview(r.Generation)) return;
                 Interlocked.Exchange(ref _delivered, r.Generation);
-                Volatile.Write(ref _lastDelivered, new DeliveredFrame(r.Result, shown.Width, shown.Height, r.Generation, r.Epoch, histogram, original));
+                var draft = _draftGenerations.ContainsKey(r.Generation);
+                foreach (var g in _draftGenerations.Keys)
+                    if (g <= r.Generation) _draftGenerations.TryRemove(g, out _);
+                Volatile.Write(ref _lastDelivered, new DeliveredFrame(r.Result, shown.Width, shown.Height, r.Generation, r.Epoch, histogram, original, draft));
+                LastDelivery = new PreviewDelivery(r.Generation, draft, r.Result.Elapsed);
                 PreviewReady?.Invoke(shown, histogram, original);
             });
         };
@@ -178,15 +197,19 @@ public sealed class PreviewService : IDisposable
     /// <summary>
     /// 送出預覽請求。<paramref name="displayFit"/> 為顯示尺寸（裝置像素）的上限框：結果在 render worker 上以
     /// Lanczos-3 等比縮到框內（只縮小）再交付；直方圖仍以縮放前的結果計算。null 表示原尺寸交付。
+    /// <paramref name="draft"/> 標記拖曳草稿：旗標隨請求一路帶到送達（<see cref="LastDelivery"/>），草稿影格不做 <see cref="Refit"/>。
     /// </summary>
-    public void RequestPreview(string fileName, SourceImage source, Settings settings, (int W, int H)? displayFit = null)
+    /// <returns>這次請求的世代（即送達時的 render key）。</returns>
+    public long RequestPreview(string fileName, SourceImage source, Settings settings, (int W, int H)? displayFit = null, bool draft = false)
     {
         Volatile.Write(ref _displayFit, displayFit is { W: > 0, H: > 0 } f ? new FitTarget(f.W, f.H) : null);
         var generation = Interlocked.Increment(ref _requested);
+        if (draft) _draftGenerations[generation] = true;
         if (!ReferenceEquals(source, Volatile.Read(ref _source)))
             Interlocked.Exchange(ref _firstSourceGeneration, generation);
         Volatile.Write(ref _source, source);
         _scheduler.RequestPreview(fileName, source, settings, generation);
+        return generation;
     }
 
     /// <summary>
@@ -227,7 +250,8 @@ public sealed class PreviewService : IDisposable
                 seq = _refitSeq;
                 _refitPending = null;
             }
-            if (Volatile.Read(ref _lastDelivered) is not { } frame || !IsCurrentFrame(frame)) continue;
+            // 草稿影格不重新縮放：下一格草稿或放手後的完整影格很快就會取代它
+            if (Volatile.Read(ref _lastDelivered) is not { } frame || frame.IsDraft || !IsCurrentFrame(frame)) continue;
             var shown = DisplayFit.Fit(frame.Unfitted, target.W, target.H);
             if (shown.Width == frame.ShownWidth && shown.Height == frame.ShownHeight) continue;
             PostAtEpoch(frame.Epoch, () =>
@@ -277,5 +301,11 @@ public sealed class PreviewService : IDisposable
     private sealed record FitTarget(int W, int H);
 
     private sealed record DeliveredFrame(RenderResult Unfitted, int ShownWidth, int ShownHeight, long Generation, long Epoch,
-        ImageHistogram? Histogram, ImageHistogram? OriginalHistogram);
+        ImageHistogram? Histogram, ImageHistogram? OriginalHistogram, bool IsDraft);
 }
+
+/// <summary>一次預覽送達的資訊。</summary>
+/// <param name="Generation">請求世代（render key）。</param>
+/// <param name="IsDraft">是否為拖曳草稿：草稿不進 ViewCache、不觸發預取，也不是最終畫面。</param>
+/// <param name="Elapsed">算圖器回報的算圖時間。</param>
+public sealed record PreviewDelivery(long Generation, bool IsDraft, TimeSpan Elapsed);
