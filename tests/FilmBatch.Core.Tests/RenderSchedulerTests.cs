@@ -358,4 +358,97 @@ public sealed class RenderSchedulerTests
             _inner.Render16(source, settings, cancellationToken, encoding);
         public void Dispose() => _inner.Dispose();
     }
+
+    [Fact]
+    public async Task Window_request_is_rendered_with_render_window()
+    {
+        var renderer = new GatedRenderer();
+        using var scheduler = new RenderScheduler(() => renderer);
+        var delivered = new TaskCompletionSource<WindowRendered>(TaskCreationOptions.RunContinuationsAsynchronously);
+        scheduler.WindowRendered += window => delivered.TrySetResult(window);
+        scheduler.RenderFailed += failure => delivered.TrySetException(failure.Error);
+        scheduler.Start();
+        scheduler.RequestWindow("a.nef", WindowSource(), ModuleCatalog.Defaults, WindowView(0), new FrameStats(4, 4), 7);
+        var window = await delivered.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        Assert.Equal(2, window.Result.Width);
+        Assert.Equal(2, window.Result.Height);
+        Assert.Equal(7, window.Generation);
+        Assert.Equal(["window:0"], renderer.Log);
+    }
+
+    [Fact]
+    public async Task Newer_window_request_replaces_pending_one()
+    {
+        var renderer = new GatedRenderer(holdFirstPreview: true);
+        using var scheduler = new RenderScheduler(() => renderer);
+        var delivered = new TaskCompletionSource<WindowRendered>(TaskCreationOptions.RunContinuationsAsynchronously);
+        scheduler.WindowRendered += window => delivered.TrySetResult(window);
+        scheduler.RenderFailed += failure => delivered.TrySetException(failure.Error);
+        scheduler.RequestPreview("hold.nef", WindowSource(), ModuleCatalog.Defaults, 1);
+        scheduler.Start();
+        await renderer.Entered.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        scheduler.RequestWindow("a.nef", WindowSource(), ModuleCatalog.Defaults, WindowView(0), new FrameStats(4, 4), 1);
+        scheduler.RequestWindow("a.nef", WindowSource(), ModuleCatalog.Defaults, WindowView(1), new FrameStats(4, 4), 1);
+        renderer.Release.TrySetResult();
+        await delivered.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        Assert.Equal(["render", "window:1"], renderer.Log);
+    }
+
+    [Fact]
+    public async Task Preview_runs_before_pending_window()
+    {
+        var renderer = new GatedRenderer(holdFirstPreview: true);
+        using var scheduler = new RenderScheduler(() => renderer);
+        var delivered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        scheduler.PreviewRendered += preview => { if (preview.Key == "next.nef") delivered.TrySetResult(); };
+        scheduler.WindowRendered += _ => delivered.TrySetException(new InvalidOperationException("window delivered before the preview"));
+        scheduler.RenderFailed += failure => delivered.TrySetException(failure.Error);
+        scheduler.RequestPreview("hold.nef", WindowSource(), ModuleCatalog.Defaults, 1);
+        scheduler.Start();
+        await renderer.Entered.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        scheduler.RequestWindow("a.nef", WindowSource(), ModuleCatalog.Defaults, WindowView(0), new FrameStats(4, 4), 1);
+        scheduler.RequestPreview("next.nef", WindowSource(), ModuleCatalog.Defaults, 2);
+        renderer.Release.TrySetResult();
+        await delivered.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        Assert.Equal(["render", "render", "window:0"], renderer.Log.Take(3));
+    }
+
+    private static SourceImage WindowSource() => new(4, 4, new ushort[4 * 4 * 4]);
+
+    private static RenderView WindowView(int x) => new(4, 4, x, 0, 2, 2);
+
+    /// <summary>記錄每次算圖呼叫；可選擇讓第一次整張預覽停在 <see cref="Release"/> 前，用來排出確定的順序。</summary>
+    private sealed class GatedRenderer(bool holdFirstPreview = false) : IPreviewRenderer
+    {
+        private readonly CpuFakeRenderer _inner = new();
+        private int _previews;
+        public List<string> Log { get; } = [];
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public string DeviceName => _inner.DeviceName;
+        public bool IsSoftware => _inner.IsSoftware;
+
+        public RenderResult Render(SourceImage source, Settings settings, CancellationToken cancellationToken = default)
+        {
+            lock (Log) Log.Add("render");
+            if (holdFirstPreview && Interlocked.Increment(ref _previews) == 1)
+            {
+                Entered.TrySetResult();
+                Release.Task.GetAwaiter().GetResult();
+            }
+            return _inner.Render(source, settings, cancellationToken);
+        }
+
+        public RenderResult RenderWindow(SourceImage frameSource, Settings settings, RenderView view, FrameStats stats,
+            CancellationToken cancellationToken = default)
+        {
+            lock (Log) Log.Add($"window:{view.X}");
+            return ((IPreviewRenderer)_inner).RenderWindow(frameSource, settings, view, stats, cancellationToken);
+        }
+
+        public SourceImage Render16(SourceImage source, Settings settings, CancellationToken cancellationToken = default,
+            RgbEncoding encoding = RgbEncoding.Srgb) =>
+            _inner.Render16(source, settings, cancellationToken, encoding);
+        public void Dispose() => _inner.Dispose();
+    }
 }

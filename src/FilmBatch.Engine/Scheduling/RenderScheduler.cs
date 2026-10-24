@@ -25,6 +25,14 @@ public sealed record ThumbnailRendered(string Key, RenderResult Result, long Epo
 /// <param name="Epoch">完成資格快照時的算圖世代；重建或換資料夾後送達即丟棄。</param>
 public sealed record PrefetchRendered(string Key, RenderResult Result, long Epoch);
 
+/// <summary>完成的窗口渲染（Loupe 的 Window 層），攜帶送出時的預覽世代與窗口，供 UI 交付圍欄比對。</summary>
+/// <param name="Key">照片鍵。</param>
+/// <param name="Generation">送出時的預覽世代（與 Main 相同的標籤，不遞增）。</param>
+/// <param name="View">窗口在畫框中的位置與畫框尺寸。</param>
+/// <param name="Result">算圖結果（窗口大小的 BGRA）。</param>
+/// <param name="Epoch">完成資格快照時的算圖世代；重建後送達即丟棄。</param>
+public sealed record WindowRendered(string Key, long Generation, RenderView View, RenderResult Result, long Epoch);
+
 /// <summary>算圖器建立完成（或改用備援），攜帶建立當下的算圖世代。</summary>
 /// <param name="DeviceName">裝置名稱。</param>
 /// <param name="IsSoftware">是否為軟體介面卡。</param>
@@ -71,7 +79,10 @@ public sealed class RenderScheduler : IDisposable
     private IPreviewRenderer? _renderer;
     private CancellationTokenSource? _activeRender;
     private SourceImage? _activeSource;
-    private bool _activeIsPreview, _activeDenoise, _activePrefetch;
+    private bool _activeIsPreview, _activeDenoise, _activePrefetch, _activeIsWindow;
+    /// <summary>窗口 slot 只保留最新一筆；<see cref="CancelWindow"/>、重建與清空縮圖時遞增，被讓出的舊世代窗口不重新排隊。</summary>
+    private (string Key, SourceImage Source, Settings Settings, RenderView View, FrameStats Stats, long Generation, long Epoch, long WindowGeneration)? _window;
+    private long _windowGeneration;
     private string? _previewKey, _previewPath, _activeKey;
     private (string? Key, string? Path)? _cancelledPreview;
 
@@ -84,6 +95,8 @@ public sealed class RenderScheduler : IDisposable
     public event Action<ThumbnailRendered>? ThumbnailRendered;
     /// <summary>預取完成（只供快取，不是 UI 影像）；在 GPU 執行緒上觸發。</summary>
     public event Action<PrefetchRendered>? PrefetchRendered;
+    /// <summary>窗口渲染完成；在 GPU 執行緒上觸發。</summary>
+    public event Action<WindowRendered>? WindowRendered;
     /// <summary>需要告知使用者的訊息（例如 GPU 重新初始化），攜帶發出時的算圖世代。</summary>
     public event Action<SchedulerNotice>? Notice;
     public event Action<RenderFailure>? RenderFailed;
@@ -213,6 +226,31 @@ public sealed class RenderScheduler : IDisposable
         }
     }
 
+    /// <summary>
+    /// 排入窗口渲染（Loupe 放大時螢幕上可見的那一塊，從 Full 來源算）。優先序：預覽 > 窗口 > 預取 > 縮圖；只保留最新一筆。
+    /// 正在執行的預取或縮圖會被讓出（之後重新排隊）；正在執行的預覽不受影響。
+    /// </summary>
+    public void RequestWindow(string key, SourceImage frameSource, Settings settings, RenderView view, FrameStats stats, long generation)
+    {
+        lock (_lock)
+        {
+            _window = (key, frameSource, settings, view, stats, generation, _epoch, _windowGeneration);
+            if (!_activeIsPreview) _activeRender?.Cancel();
+        }
+        _signal.Set();
+    }
+
+    /// <summary>丟棄排隊中與執行中的窗口（換照片、取消預覽、重建）；被丟棄的窗口不重新排隊。</summary>
+    public void CancelWindow()
+    {
+        lock (_lock)
+        {
+            _window = null;
+            _windowGeneration++;
+            if (_activeIsWindow) _activeRender?.Cancel();
+        }
+    }
+
     public void CancelThumbnails()
     {
         lock (_lock)
@@ -220,6 +258,8 @@ public sealed class RenderScheduler : IDisposable
             _thumbs.Clear();
             _prefetches.Clear();
             _prefetchGeneration++;
+            _window = null;
+            _windowGeneration++;
             _preview = null;
             _epoch++;
             _activeRender?.Cancel();
@@ -243,6 +283,8 @@ public sealed class RenderScheduler : IDisposable
             _thumbs.Clear();
             _prefetches.Clear();
             _prefetchGeneration++;
+            _window = null;
+            _windowGeneration++;
             _activeRender?.Cancel();
             _signal.Set();
         }
@@ -277,6 +319,7 @@ public sealed class RenderScheduler : IDisposable
                 }
 
                 (string Key, SourceImage Source, Settings Settings, long Generation, long Epoch)? preview;
+                (string Key, SourceImage Source, Settings Settings, RenderView View, FrameStats Stats, long Generation, long Epoch, long WindowGeneration)? window = null;
                 (string Key, SourceImage Source, Settings Settings, long Epoch)? thumb = null;
                 (string Key, SourceImage Source, Settings Settings, long Epoch, long Generation)? prefetch = null;
                 long epoch;
@@ -286,24 +329,30 @@ public sealed class RenderScheduler : IDisposable
                     epoch = _epoch;
                     preview = _preview;
                     _preview = null;
-                    if (preview is null && _prefetches.First is { } next)
+                    if (preview is null && _window is { } pendingWindow)
+                    {
+                        window = pendingWindow;
+                        _window = null;
+                    }
+                    if (preview is null && window is null && _prefetches.First is { } next)
                     {
                         prefetch = next.Value;
                         _prefetches.RemoveFirst();
                     }
-                    else if (preview is null && _thumbs.First is { } first)
+                    else if (preview is null && window is null && _thumbs.First is { } first)
                     {
                         thumb = first.Value;
                         _thumbs.RemoveFirst();
                     }
-                    if (preview is not null || thumb is not null || prefetch is not null)
+                    if (preview is not null || window is not null || thumb is not null || prefetch is not null)
                     {
                         cancellation = _activeRender = new CancellationTokenSource();
                         _activeIsPreview = preview is not null;
+                        _activeIsWindow = window is not null;
                         _activePrefetch = prefetch is not null;
-                        _activeSource = preview?.Source ?? prefetch?.Source ?? thumb!.Value.Source;
-                        _activeKey = preview?.Key ?? prefetch?.Key ?? thumb!.Value.Key;
-                        _activeDenoise = DenoiseSettings.From(preview?.Settings ?? prefetch?.Settings ?? thumb!.Value.Settings).IsActive;
+                        _activeSource = preview?.Source ?? window?.Source ?? prefetch?.Source ?? thumb!.Value.Source;
+                        _activeKey = preview?.Key ?? window?.Key ?? prefetch?.Key ?? thumb!.Value.Key;
+                        _activeDenoise = DenoiseSettings.From(preview?.Settings ?? window?.Settings ?? prefetch?.Settings ?? thumb!.Value.Settings).IsActive;
                     }
                 }
 
@@ -324,6 +373,20 @@ public sealed class RenderScheduler : IDisposable
                                     completed = PreviewRendered;
                             }
                             completed?.Invoke(new PreviewRendered(p.Key, p.Generation, r, p.Epoch));
+                        }
+                    }
+                    else if (window is { } w)
+                    {
+                        if (w.Epoch != epoch) continue;
+                        if (TryRender(w.Key, w.Source, w.Settings, w.Epoch, cancellation!.Token, null, w.View, w.Stats) is { } r)
+                        {
+                            Action<WindowRendered>? completed = null;
+                            lock (_lock)
+                            {
+                                if (w.Epoch == _epoch && !cancellation.IsCancellationRequested)
+                                    completed = WindowRendered;
+                            }
+                            completed?.Invoke(new WindowRendered(w.Key, w.Generation, w.View, r, w.Epoch));
                         }
                     }
                     else if (prefetch is { } f)
@@ -367,12 +430,17 @@ public sealed class RenderScheduler : IDisposable
                             && !MatchesCancelled(interrupted.Key, interrupted.Source)
                             && !_thumbs.Any(item => item.Key == interrupted.Key))
                             _thumbs.AddFirst(interrupted);
+                        // 被預覽或新窗口讓出的窗口重新排隊（只在槽位空著時）；明確取消推進了窗口世代，不再排回
+                        if (window is { } lost && cancellation!.IsCancellationRequested
+                            && !_disposed && lost.Epoch == _epoch && lost.WindowGeneration == _windowGeneration && _window is null)
+                            _window = lost;
                         // 被預覽讓出的預取重新排隊；明確取消（換照片、換資料夾、重建）推進了世代，不再排回
                         if (prefetch is { } yielded && cancellation!.IsCancellationRequested
                             && !_disposed && yielded.Epoch == _epoch && yielded.Generation == _prefetchGeneration
                             && !_prefetches.Any(item => item.Key == yielded.Key))
                             _prefetches.AddFirst(yielded);
                         _activeRender = null;
+                        _activeIsWindow = false;
                         _activePrefetch = false;
                         _activeSource = null;
                     }
@@ -384,7 +452,7 @@ public sealed class RenderScheduler : IDisposable
     }
 
     private RenderResult? TryRender(string key, SourceImage source, Settings settings, long epoch,
-        CancellationToken cancellationToken, long? previewGeneration = null)
+        CancellationToken cancellationToken, long? previewGeneration = null, RenderView? view = null, FrameStats? stats = null)
     {
         if (_renderer is null)
         {
@@ -408,7 +476,9 @@ public sealed class RenderScheduler : IDisposable
             try
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                var result = _renderer!.Render(source, settings, cancellationToken);
+                var result = view is { } v
+                    ? _renderer!.RenderWindow(source, settings, v, stats!, cancellationToken)
+                    : _renderer!.Render(source, settings, cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
                 return result;
             }
