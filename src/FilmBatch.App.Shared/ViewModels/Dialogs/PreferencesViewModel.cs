@@ -120,6 +120,19 @@ public sealed partial class PreferencesViewModel : ObservableObject
     [ObservableProperty]
     private Option<string> _language;
 
+    /// <summary>除錯模式：記錄檔額外寫入 DEBUG 訊息；切換即時生效，關閉對話框時存檔。</summary>
+    [ObservableProperty]
+    private bool _debugLogging;
+
+    /// <summary>記錄檔所在資料夾（顯示用）。</summary>
+    public string LogFolder => Core.AppPaths.Logs;
+
+    /// <summary>是否可在系統檔案管理員中開啟記錄資料夾（iOS 等平台隱藏）。</summary>
+    public bool CanOpenLogFolder => FileReveal.IsSupported;
+
+    /// <summary>實際開啟資料夾的動作；測試替換以免真的啟動外部程式。</summary>
+    internal Action<string> OpenFolder { get; set; } = FileReveal.OpenFolder;
+
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(DownloadLensDatabaseCommand), nameof(CancelLensDownloadCommand))]
     private bool _isDownloadingLensDatabase;
@@ -169,6 +182,7 @@ public sealed partial class PreferencesViewModel : ObservableObject
         _texturesFolder = s.TexturesFolder ?? Core.AppPaths.Textures;
         _lensDatabaseFolder = s.LensDatabaseFolder ?? "";
         _language = Languages.First(l => l.Value == s.EffectiveLanguage);
+        _debugLogging = s.DebugLogging;
         ShowInstalledLensDatabase();
         Loc.OnCultureChanged(this, static vm =>
         {
@@ -212,6 +226,27 @@ public sealed partial class PreferencesViewModel : ObservableObject
 
     [RelayCommand]
     private void ClearLensDatabase() => LensDatabaseFolder = "";
+
+    [RelayCommand(CanExecute = nameof(CanOpenLogFolder))]
+    private void OpenLogFolder()
+    {
+        try
+        {
+            OpenFolder(LogFolder);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error($"無法開啟記錄資料夾：{LogFolder}", ex);
+            _main.Toast.Show(Loc.Format("Toast.RevealFailed", ex.Message));
+        }
+    }
+
+    partial void OnDebugLoggingChanged(bool value)
+    {
+        _main.Settings.DebugLogging = value;
+        AppLog.DebugEnabled = value;
+        AppLog.Info(value ? "除錯模式：開啟" : "除錯模式：關閉");
+    }
 
     private void ShowInstalledLensDatabase()
     {

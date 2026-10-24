@@ -164,6 +164,10 @@ R {1:P2}　G {2:P2}　B {3:P2}　亮度 {4:P2}</value></data>
   <data name="Pref.Section.Gpu" xml:space="preserve"><value>GPU 與效能</value></data>
   <data name="Pref.Section.Folders" xml:space="preserve"><value>資料夾</value></data>
   <data name="Pref.Language.Desc" xml:space="preserve"><value>介面顯示的語言，切換後立即套用</value></data>
+  <data name="Pref.DebugLogging" xml:space="preserve"><value>除錯模式</value></data>
+  <data name="Pref.DebugLogging.Desc" xml:space="preserve"><value>記錄檔額外寫入詳細的除錯訊息（載入與算圖耗時等），回報問題時開啟；切換後立即套用</value></data>
+  <data name="Pref.LogFolder" xml:space="preserve"><value>記錄檔資料夾</value></data>
+  <data name="Pref.LogFolder.Open" xml:space="preserve"><value>開啟資料夾</value></data>
   <data name="Pref.Background" xml:space="preserve"><value>預覽背景</value></data>
   <data name="Pref.Background.Desc" xml:space="preserve"><value>預覽畫布的底色，不影響匯出結果</value></data>
   <data name="Pref.ProxySize" xml:space="preserve"><value>預覽代理圖尺寸</value></data>

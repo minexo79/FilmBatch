@@ -48,6 +48,29 @@ public static class FileReveal
         }
     }
 
+    /// <summary>建立「開啟資料夾」的啟動參數（三個平台都直接開啟該資料夾，不選取項目）。</summary>
+    public static ProcessStartInfo CreateOpenFolderStartInfo(string fullPath, Platform platform)
+    {
+        var info = new ProcessStartInfo(platform switch
+        {
+            Platform.Windows => "explorer.exe",
+            Platform.MacOS => "open",
+            Platform.Linux => "xdg-open",
+            _ => throw new ArgumentOutOfRangeException(nameof(platform)),
+        }) { UseShellExecute = false };
+        info.ArgumentList.Add(fullPath);
+        return info;
+    }
+
+    /// <summary>在目前平台的檔案管理員中開啟資料夾（不存在時先建立）；不支援的平台丟出 <see cref="PlatformNotSupportedException"/>。</summary>
+    public static void OpenFolder(string path)
+    {
+        var platform = Current ?? throw new PlatformNotSupportedException();
+        var full = Path.GetFullPath(path);
+        Directory.CreateDirectory(full);
+        using var _ = Process.Start(CreateOpenFolderStartInfo(full, platform));
+    }
+
     /// <summary>在目前平台的檔案管理員中顯示檔案；不支援的平台丟出 <see cref="PlatformNotSupportedException"/>。</summary>
     public static void Reveal(string path)
     {

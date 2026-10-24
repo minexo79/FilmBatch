@@ -159,6 +159,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         RecentFolderList.Sanitize(settings.RecentFolders, settings.LastFolder, exclude: SamplesFolder);
         SyncRecentFolders();
         RawLoadOptions.LensDatabaseDirectory = settings.LensDatabaseFolder;
+        AppLog.DebugEnabled = settings.DebugLogging;
         Dialogs = dialogs;
         _post = post;
         Library = PresetLibrary.Load();
@@ -237,6 +238,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             Denoise.OnRendered(r);
             PhotoTools.OnPreviewRendered();
             LastRenderText = $"{r.Elapsed.TotalMilliseconds:F1} ms";
+            AppLog.Debug(() => $"預覽算圖：{FocusFile}（{r.Width}×{r.Height}，{r.Elapsed.TotalMilliseconds:F1} ms）");
             UpdateBackgroundText();
             OnFullPreviewDelivered(r);
         };
@@ -471,7 +473,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         ShowStandIns(service, file, rawOptions, generation, cancellationToken);
         try
         {
+            var loadWatch = Stopwatch.StartNew();
             var source = await Images.GetPreviewAsync(service.Project.PathOf(file), rawOptions, cancellationToken);
+            AppLog.Debug(() => $"預覽來源：{file}（{source.Width}×{source.Height}，{loadWatch.Elapsed.TotalMilliseconds:F0} ms）");
             if (_disposed || Service != service || file != FocusFile || generation != _previewLoadGeneration) return;
             if (source.RawOptions != RawLoadOptions.FromSettings(EditingSettings(file)))
             {

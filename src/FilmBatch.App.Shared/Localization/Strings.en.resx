@@ -164,6 +164,10 @@ R {1:P2}  G {2:P2}  B {3:P2}  Luma {4:P2}</value></data>
   <data name="Pref.Section.Gpu" xml:space="preserve"><value>GPU &amp; Performance</value></data>
   <data name="Pref.Section.Folders" xml:space="preserve"><value>Folders</value></data>
   <data name="Pref.Language.Desc" xml:space="preserve"><value>Interface language; applies immediately</value></data>
+  <data name="Pref.DebugLogging" xml:space="preserve"><value>Debug Mode</value></data>
+  <data name="Pref.DebugLogging.Desc" xml:space="preserve"><value>Write detailed debug messages (load and render timings, etc.) to the log; turn on when reporting a problem. Applies immediately</value></data>
+  <data name="Pref.LogFolder" xml:space="preserve"><value>Log Folder</value></data>
+  <data name="Pref.LogFolder.Open" xml:space="preserve"><value>Open Folder</value></data>
   <data name="Pref.Background" xml:space="preserve"><value>Preview Background</value></data>
   <data name="Pref.Background.Desc" xml:space="preserve"><value>Canvas color behind the photo; does not affect exports</value></data>
   <data name="Pref.ProxySize" xml:space="preserve"><value>Preview Proxy Size</value></data>

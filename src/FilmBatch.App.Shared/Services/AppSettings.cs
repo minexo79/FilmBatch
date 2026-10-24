@@ -52,6 +52,8 @@ public sealed class AppSettings
     public string? TexturesFolder { get; set; }
     /// <summary>外部 Lensfun 格式鏡頭資料庫資料夾（RAW 無內嵌校正時的備援）；未設定時改用 FILMBATCH_LENSFUN_DIR，皆缺省為不使用。</summary>
     public string? LensDatabaseFolder { get; set; }
+    /// <summary>除錯模式：記錄檔額外寫入 DEBUG 等級的詳細訊息（見 <see cref="AppLog.DebugEnabled"/>）。</summary>
+    public bool DebugLogging { get; set; }
     public AssignOverridesChoice AssignOverrides { get; set; } = AssignOverridesChoice.Ask;
     public bool HideDisabledModules { get; set; }
     public bool HistogramExpanded { get; set; } = true;

@@ -42,6 +42,26 @@
               <ComboBox Grid.Column="1" Classes="settings-control" ItemsSource="{Binding Languages}" SelectedItem="{Binding Language}" />
             </Grid>
           </Border>
+          <Border Classes="settings-card">
+            <StackPanel>
+              <Grid Classes="settings-row" ColumnDefinitions="*,Auto">
+                <StackPanel Classes="settings-label">
+                  <TextBlock Text="{l:Tr Pref.DebugLogging}" />
+                  <TextBlock Classes="settings-desc" Text="{l:Tr Pref.DebugLogging.Desc}" TextWrapping="Wrap" />
+                </StackPanel>
+                <CheckBox Grid.Column="1" AutomationProperties.AutomationId="Pref.DebugLogging" IsChecked="{Binding DebugLogging}" VerticalAlignment="Center" />
+              </Grid>
+              <Border Classes="settings-divider" />
+              <Grid Classes="settings-row" ColumnDefinitions="*,Auto">
+                <StackPanel Classes="settings-label">
+                  <TextBlock Text="{l:Tr Pref.LogFolder}" />
+                  <TextBlock Classes="settings-desc" Text="{Binding LogFolder}" TextWrapping="Wrap" />
+                </StackPanel>
+                <Button Grid.Column="1" Classes="outline" AutomationProperties.AutomationId="Pref.LogFolder.Open" Content="{l:Tr Pref.LogFolder.Open}"
+                        Command="{Binding OpenLogFolderCommand}" IsVisible="{Binding CanOpenLogFolder}" VerticalAlignment="Center" />
+              </Grid>
+            </StackPanel>
+          </Border>
         </StackPanel>
 
         <!-- 預覽 -->
