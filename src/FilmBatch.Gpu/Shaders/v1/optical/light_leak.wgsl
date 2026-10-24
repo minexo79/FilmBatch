@@ -28,6 +28,7 @@ struct Params {
 @group(0) @binding(0) var src: texture_2d<f32>;
 @group(0) @binding(1) var dst: texture_storage_2d<rgba32float, write>;
 @group(0) @binding(2) var<uniform> p: Params;
+@group(0) @binding(3) var<uniform> view: FrameView;
 
 @compute @workgroup_size(16, 16)
 fn main(@builtin(global_invocation_id) id: vec3u) {
@@ -36,8 +37,9 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
     if (pos.x >= size.x || pos.y >= size.y) { return; }
     let c = textureLoad(src, pos, 0);
 
-    let u = (f32(pos.x) + 0.5) / f32(size.x);
-    let v = (f32(pos.y) + 0.5) / f32(size.y);
+    let fp = frame_pixel(view, id.xy);
+    let u = (f32(fp.x) + 0.5) / view.frame_size.x;
+    let v = (f32(fp.y) + 0.5) / view.frame_size.y;
     let cu = u - 0.5;
     let cv = v - 0.5;
     let dirX = cos(p.angle);

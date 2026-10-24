@@ -11,6 +11,11 @@ public sealed record RenderResult(int Width, int Height, byte[] Bgra, TimeSpan E
     public DenoiseReport? Denoise { get; init; }
     /// <summary>供照片工具分析的效果前來源；原圖比較仍保留未降噪的原始來源。</summary>
     public SourceImage? PreparedSource { get; init; }
+    /// <summary>
+    /// 全畫框統計：<see cref="IPreviewRenderer.Render"/>（整張）時填入，之後同一張照片、同一組設定的
+    /// <see cref="IPreviewRenderer.RenderWindow"/> 原樣傳回去；窗口渲染結果帶的是傳入的那一份。
+    /// </summary>
+    public FrameStats? Stats { get; init; }
 }
 
 /// <summary>
@@ -30,6 +35,35 @@ public interface IPreviewRenderer : IDisposable
     /// </summary>
     SourceImage Render16(SourceImage source, Settings settings, CancellationToken cancellationToken = default,
         RgbEncoding encoding = RgbEncoding.Srgb);
+
+    /// <summary>
+    /// 窗口渲染：只渲染輸出畫框中的 <paramref name="view"/> 子矩形，輸出 <c>view.W × view.H</c> 的 8-bit BGRA。
+    /// <para>
+    /// 契約：<paramref name="frameSource"/> 是已縮放的來源，套用 <paramref name="settings"/> 的裁切後畫框恰為
+    /// <c>view.FrameW × view.FrameH</c>（呼叫端以 <c>SourceImage.ScaledTo</c> 產生，且應重用同一個物件，
+    /// GPU 端以參考相等快取上傳的紋理）。結果等於「以同一個 <paramref name="frameSource"/> 呼叫
+    /// <see cref="Render"/> 後裁出 <paramref name="view"/>」，逐通道誤差 ≤ 1 LSB、平均 &lt; 0.05 LSB。
+    /// 所有畫框相對量（短邊、中心、控制點、顆粒／雜訊座標、鏡頭中心）都以畫框計算；空間濾波所需的外圍像素由算圖器
+    /// 依設定自動加算（<see cref="WindowRegion.Expand"/>），呼叫端不需另留 margin。
+    /// <paramref name="stats"/> 是 Main（整張）渲染的 <see cref="RenderResult.Stats"/>，不會在窗口上重算。
+    /// </para>
+    /// 預設實作：整張渲染後裁切（永遠正確，但沒有節省）；正式的算圖器覆寫為只渲染所需區域。
+    /// </summary>
+    /// <exception cref="ArgumentException">畫框尺寸與 <paramref name="frameSource"/>＋設定算出的不符。</exception>
+    /// <exception cref="ArgumentOutOfRangeException">窗口不在畫框內或為空。</exception>
+    RenderResult RenderWindow(SourceImage frameSource, Settings settings, RenderView view, FrameStats stats,
+        CancellationToken cancellationToken = default)
+    {
+        var frame = CropGeometry.Compute(frameSource.Width, frameSource.Height, CropGeometry.FromSettings(settings));
+        if (view.FrameW != frame.OutWidth || view.FrameH != frame.OutHeight)
+            throw new ArgumentException($"窗口的畫框 {view.FrameW}×{view.FrameH} 與設定算出的畫框 {frame.OutWidth}×{frame.OutHeight} 不符。", nameof(view));
+        view.Validate();
+        var full = Render(frameSource, settings, cancellationToken);
+        return new RenderResult(view.W, view.H, WindowRegion.CropBgra(full.Bgra, RenderView.Whole(full.Width, full.Height), view), full.Elapsed)
+        {
+            Denoise = full.Denoise, PreparedSource = full.PreparedSource, Stats = stats,
+        };
+    }
 }
 
 /// <summary>獨立 GPU benchmark 的參數；產品算圖使用完整的 Settings 管線。</summary>

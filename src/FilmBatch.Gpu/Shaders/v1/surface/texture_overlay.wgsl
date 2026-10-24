@@ -10,6 +10,7 @@ struct Params {
 @group(0) @binding(1) var asset: texture_2d<f32>;
 @group(0) @binding(2) var dst: texture_storage_2d<rgba32float, write>;
 @group(0) @binding(3) var<uniform> p: Params;
+@group(0) @binding(4) var<uniform> view: FrameView;
 @compute @workgroup_size(16, 16)
 fn main(@builtin(global_invocation_id) id: vec3u) {
     let size = textureDimensions(src);
@@ -18,7 +19,7 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
     let input = textureLoad(src, id.xy, 0);
     var rgb = input.rgb;
     for (var n = 0; n < p.count; n++) {
-        let uv = (vec2f(id.xy) + .5 - vec2f(size) * .5) / p.short_side / p.scale;
+        let uv = (vec2f(frame_pixel(view, id.xy)) + .5 - view.frame_size * .5) / p.short_side / p.scale;
         var rx = uv.x * p.cosine - uv.y * p.sine;
         var ry = uv.x * p.sine + uv.y * p.cosine;
         if (n == 1) { rx = -rx; }
