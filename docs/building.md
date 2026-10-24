@@ -438,7 +438,7 @@ filmbatch-cli raw masks "/path/input.dng"
 - `--color-space srgb|prophoto` 預設為 `srgb`。ProPhoto 只支援 `--format tiff`／`png`，輸出為 16-bit、D50、純 gamma 1.8，嵌入自建的匹配 ICC；JPEG／DNG 或未知色彩空間回傳結束碼 2，不產生輸出檔。每筆匯出紀錄的 `ColorSpace` 保留實際選擇。
 - GUI 在匯出面板選 TIFF／PNG 後可選「ProPhoto RGB」；切回 JPEG／DNG 會重設為 sRGB。此選項不改變預覽與直方圖，也不改寫照片設定。RAW 中性輸出可保留 sRGB 外的色彩；一般 raster 匯入與會裁切色域的既有效果仍有原有限制，詳見[色彩契約](architecture.md#48-engine影像讀取與批次匯出imaging--exporting)與[驗收記錄](superpowers/plans/2026-10-23-prophoto-output.md)。
 - AI 降噪另記於每筆匯出紀錄的 `Denoise`：模型身分與 SHA-256、實際推論 provider、推論時間、tile 數及快取命中。效果 renderer 的 GPU 名稱不代表神經網路全部在同一裝置執行。
-- RAW 處理啟用時，「基本調整」提供 As Shot／自訂 2500–9900 K＋色偏，取代相對色溫／色偏；RAW 面板仍提供實際內嵌語意遮罩，沒有對應遮罩的照片保留設定但不全圖套用。外部 Lensfun-format 目錄在「偏好設定 → 資料夾」指定（存於 settings.json，全部專案共用）；CLI 匯出用 `--lens-database`，兩者皆未設定時使用 `FILMBATCH_LENSFUN_DIR`。不會下載資料庫。
+- RAW 處理啟用時，「基本調整」提供 As Shot／自訂 2500–9900 K＋色偏，取代相對色溫／色偏；RAW 面板仍提供實際內嵌語意遮罩，沒有對應遮罩的照片保留設定但不全圖套用。外部 Lensfun-format 目錄在「偏好設定 → 資料夾」指定（存於 settings.json，全部專案共用）；CLI 匯出用 `--lens-database`，兩者皆未設定時使用 `FILMBATCH_LENSFUN_DIR`，再其次為使用者在同一頁按「下載最新版」（或 CLI `lens-database download`）取得的資料庫。下載只取 Lensfun 儲存庫的 `data/db` XML（CC BY-SA 3.0），存於 `AppPaths.Root/lensfun/db-<commit>`，逐檔以 git blob SHA-1 驗證並整批解析通過後才以 `installed.json` 原子切換；這是獨立實作，不連結也不移植 Lensfun 的 LGPL 函式庫或 GPL 的 `lensfun-update-data`，資料庫也不隨程式散布。RAW 讀取絕不自動下載。
 - Lensfun 校正以 RAW 的預設裁切區（`DefaultCrop`）建立光學中心與半徑，再換算至完整感光區（`ActiveArea`）座標；非置中裁切的變形與暗角共用相同映射。
 - `raw convert` 補上可用的相機色彩矩陣、hue/saturation table 與 tone，保留感光樣本、幾何及標準拍攝中繼資料；沒有可用色彩描述或目的檔已存在時拒絕寫入。標準 DNG profile 無法完整表示檔案內 JPEG 擬合外觀的逐像素亮度還原／chroma 曲線，不能宣稱轉前與轉後逐像素相同；相同色彩模型的對照與此限制分開記錄。
 
