@@ -101,6 +101,23 @@ public sealed class LoupePlanTests
     public void WindowFor_returns_null_when_nothing_visible(double x0, double y0, double x1, double y1) =>
         Assert.Null(LoupePlan.WindowFor(1000, 1000, (x0, y0, x1, y1), LoupePlan.MaxSpan));
 
+    // 窗口畫框（不超過原圖）只比 Main 層大一點時不值得多算一層（Lightcraft：frame_edge > main × 1.25）
+    [Fact]
+    public void Small_native_gains_no_window_when_frame_is_barely_larger_than_main()
+    {
+        var p = LoupePlan.Plan(0, Sizes(12000, 2560, 3000));
+        Assert.Equal(2560, p.MainEdge);
+        Assert.Null(p.WindowFrameEdge); // 3000 ≤ 2560 × 1.25
+    }
+
+    // 使用者自訂 Main 上限且符合視窗：選擇速度，不加窗口；放大後仍有窗口
+    [Fact]
+    public void Custom_preview_limit_at_fit_gets_no_window()
+    {
+        Assert.Null(LoupePlan.Plan(1600, Sizes(3840, 3840, 6000)).WindowFrameEdge);
+        Assert.NotNull(LoupePlan.Plan(1600, Sizes(9000, 3840, 6000)).WindowFrameEdge);
+    }
+
     [Fact]
     public void WindowFor_rejects_non_finite() =>
         Assert.Null(LoupePlan.WindowFor(1000, 1000, (double.NaN, 0, 10, 10), LoupePlan.MaxSpan));

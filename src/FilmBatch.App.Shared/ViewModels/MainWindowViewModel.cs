@@ -235,6 +235,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             if (Renderer.LastDelivery is { IsDraft: true } delivery)
                 _dragScale.Observe(delivery.Generation, delivery.Elapsed.TotalMilliseconds, Preview.LastFrameMs);
             Preview.SetResult(r, histogram, originalHistogram);
+            OnMainResultDelivered(r);
+            RequestWindowIfNeeded();
             // 照片工具以代理圖解析度分析：畫布縮放過的來源換回同一張照片的代理圖來源（降噪後的來源是另一個物件，照舊）
             if (r.PreparedSource is { } prepared)
                 PhotoTools.SetAnalysisSource(_analysisSources.TryGetValue(prepared, out var full) ? full : prepared);
@@ -246,6 +248,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             OnFullPreviewDelivered(r);
         };
         Renderer.PrefetchReady += OnPrefetchReady;
+        Renderer.WindowReady += OnWindowReady;
         // 同一級內改變畫布尺寸：只換 bitmap（直方圖沿用），不是新影格
         Renderer.PreviewRefitted += (r, histogram, originalHistogram) =>
         {
@@ -471,6 +474,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         var rawOptions = RawLoadOptions.FromSettings(EditingSettings(file));
         // 換照片（或重新載入）：舊的前後張預取作廢；這張第一次完整送達後再預取它的前後張
         CancelPrefetch();
+        CancelWindowForPhotoChange();
         _prefetchArmedFor = file;
         // 解碼前先顯示替身（同步命中的只在這一個 UI 影格內完成；內嵌 JPEG 在背景解碼，不佔前景解碼入場）
         ShowStandIns(service, file, rawOptions, generation, cancellationToken);
@@ -549,6 +553,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         _draftScale = _dragScale.Scale(drag, gpu: !Renderer.IsSoftware, shownDraft, _dragClock.Elapsed.TotalSeconds);
         var draft = _draftScale is not null;
         // Main 渲染尺寸跟著畫布走；原圖對比用同一份縮放來源，兩者對齊（草稿不換對比來源：放手後的完整影格才是要比較的畫面）
+        OnMainPreviewRequested(settings);
         var (scaled, displayFit) = MainRenderSource(Preview.Source, crop, settings);
         if (!draft) Preview.SetCompareSource(scaled);
         var source = SourceForPhoto(FocusFile, scaled);
@@ -780,7 +785,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private (SourceImage Source, (int W, int H)? DisplayFit) MainRenderSource(SourceImage proxy, CropParams crop, Settings settings)
     {
         var native = CropGeometry.Compute(proxy.ReferenceWidth, proxy.ReferenceHeight, crop);
-        var plan = Preview.UpdatePlan(Math.Max(native.OutWidth, native.OutHeight), AssumedTextureSide, Images.PreviewLimit, _draftScale);
+        var plan = Preview.UpdatePlan(Math.Max(native.OutWidth, native.OutHeight), AssumedTextureSide, Images.PreviewLimit, _draftScale,
+            WindowsAllowedFor(settings));
         _requestedMainEdge = plan?.MainEdge;
         _requestedCrop = crop;
         _requestedFitEdge = null;
@@ -805,12 +811,15 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     {
         if (_disposed || Service is null || FocusFile is null || Preview.Source is not { } proxy) return;
         var native = CropGeometry.Compute(proxy.ReferenceWidth, proxy.ReferenceHeight, _requestedCrop);
-        var plan = Preview.UpdatePlan(Math.Max(native.OutWidth, native.OutHeight), AssumedTextureSide, Images.PreviewLimit, _draftScale);
+        var plan = Preview.UpdatePlan(Math.Max(native.OutWidth, native.OutHeight), AssumedTextureSide, Images.PreviewLimit, _draftScale,
+            WindowsAllowedFor(_windowSettings));
         if (plan?.MainEdge != _requestedMainEdge)
         {
             RequestPreview();
             return;
         }
+        // 窗口跟著畫布尺寸走（Main 層同一級時窗口仍可能改變）
+        RequestWindowIfNeeded();
         // 拖曳中不 refit 草稿：放手後的完整請求會以當時的繪製尺寸縮放
         if (Preview.ViewSizes is not { } sizes || _suspended || BackgroundRemoval.IsEditing || _draftScale is not null) return;
         var drawn = (int)Math.Round(sizes.DrawnLongPx);
@@ -1592,6 +1601,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         Denoise.Dispose();
         ++_openGeneration;
         _loadingTimer.Stop();
+        _windowCts.Cancel();
+        _fullReleaseSeq++;
         _previewWait?.Cancel();
         _previewWait?.Dispose();
         Filmstrip.CancelLoading();

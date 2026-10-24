@@ -47,6 +47,8 @@ public sealed class PreviewService : IDisposable
     public event Action<string, RenderResult>? ThumbnailReady;
     /// <summary>預取渲染完成（UI 執行緒；換代後的舊結果已丟棄）。只供快取，不得當成預覽影像。</summary>
     public event Action<string, RenderResult>? PrefetchReady;
+    /// <summary>Loupe 窗口渲染完成（UI 執行緒；換照片、取消或重建後的舊窗口已丟棄）。</summary>
+    public event Action<WindowDelivery>? WindowReady;
     public event Action<string, bool>? DeviceReady;
     public event Action<string>? Notice;
     public event Action<RenderFailure>? Failed;
@@ -125,6 +127,16 @@ public sealed class PreviewService : IDisposable
                 Volatile.Write(ref _lastDelivered, new DeliveredFrame(r.Result, shown.Width, shown.Height, r.Generation, r.Epoch, histogram, original, draft));
                 LastDelivery = new PreviewDelivery(r.Generation, draft, r.Result.Elapsed);
                 PreviewReady?.Invoke(shown, histogram, original);
+            });
+        };
+        // 窗口沿用主預覽的世代標籤；換照片後（世代早於第一個世代）或重建後的結果一律丟棄，不進直方圖、不做顯示縮放。
+        _scheduler.WindowRendered += w =>
+        {
+            if (w.Generation < Interlocked.Read(ref _firstSourceGeneration)) return;
+            PostAtEpoch(w.Epoch, () =>
+            {
+                if (w.Generation < Interlocked.Read(ref _firstSourceGeneration)) return;
+                WindowReady?.Invoke(new WindowDelivery(w.View, w.Result, w.Generation));
             });
         };
         _scheduler.ThumbnailRendered += t => PostAtEpoch(t.Epoch, () => ThumbnailReady?.Invoke(t.Key, t.Result));
@@ -273,8 +285,29 @@ public sealed class PreviewService : IDisposable
     {
         Interlocked.Exchange(ref _delivered, Interlocked.Increment(ref _requested));
         _scheduler.CancelPreview(cancelMatchingThumbnails);
+        _scheduler.CancelWindow();
         Volatile.Write(ref _source, null);
     }
+
+    /// <summary>
+    /// 送出窗口渲染（放大時螢幕上可見的那一塊，從 Full 來源算）。世代沿用目前的主預覽世代，不遞增，
+    /// 因此不會讓正常的主預覽結果被判成過期。結果經 <see cref="WindowReady"/> 送出，不進直方圖、不做顯示縮放。
+    /// </summary>
+    /// <param name="fileName">照片鍵。</param>
+    /// <param name="frameSource">已縮放到窗口畫框尺寸的來源（同一個物件應被重用，GPU 端以參考相等快取紋理）。</param>
+    /// <param name="settings">目前的算圖設定。</param>
+    /// <param name="view">窗口在畫框中的位置與畫框尺寸。</param>
+    /// <param name="stats">Main 渲染記錄的全畫框統計。</param>
+    /// <returns>送出時的主預覽世代。</returns>
+    public long RequestWindow(string fileName, SourceImage frameSource, Settings settings, RenderView view, FrameStats stats)
+    {
+        var generation = Interlocked.Read(ref _requested);
+        _scheduler.RequestWindow(fileName, frameSource, settings, view, stats, generation);
+        return generation;
+    }
+
+    /// <summary>丟棄排隊中與執行中的窗口（換照片、取消、重建前）。</summary>
+    public void CancelWindow() => _scheduler.CancelWindow();
 
     public void RequestThumbnail(string fileName, SourceImage source, Settings settings) =>
         _scheduler.RequestThumbnail(fileName, source, settings);
@@ -309,3 +342,9 @@ public sealed class PreviewService : IDisposable
 /// <param name="IsDraft">是否為拖曳草稿：草稿不進 ViewCache、不觸發預取，也不是最終畫面。</param>
 /// <param name="Elapsed">算圖器回報的算圖時間。</param>
 public sealed record PreviewDelivery(long Generation, bool IsDraft, TimeSpan Elapsed);
+
+/// <summary>一次窗口渲染的送達資訊。</summary>
+/// <param name="View">窗口在畫框中的位置與畫框尺寸。</param>
+/// <param name="Result">窗口大小的 BGRA 結果（GPU 原尺寸，由畫布縮放到繪製位置）。</param>
+/// <param name="Generation">送出時的主預覽世代。</param>
+public sealed record WindowDelivery(RenderView View, RenderResult Result, long Generation);

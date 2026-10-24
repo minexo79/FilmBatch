@@ -23,6 +23,7 @@ public partial class PreviewView : UserControl
         Canvas.FitScaleChanged += scale => (DataContext as PreviewViewModel)?.ReportFitScale(scale);
         Canvas.ViewSizesChanged += (drawn, canvas) => (DataContext as PreviewViewModel)?.ReportViewSizes(drawn, canvas);
         Canvas.FrameShown += (image, ms) => (DataContext as PreviewViewModel)?.ReportFrameTime(image, ms);
+        Canvas.VisibleFrameRectChanged += (u0, v0, u1, v1) => (DataContext as PreviewViewModel)?.ReportVisibleFrameRect(u0, v0, u1, v1);
         DragDrop.AddDragOverHandler(Root, (_, e) =>
             e.DragEffects = e.DataTransfer.Contains(PresetLibraryView.PresetFormat) ? DragDropEffects.Copy : DragDropEffects.None);
         DragDrop.AddDropHandler(Root, async (_, e) =>
