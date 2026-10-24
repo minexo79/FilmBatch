@@ -60,7 +60,7 @@ var presetsFolderOption = new Option<string?>("--presets-folder") { Description 
 var embeddedLensOption = new Option<bool>("--embedded-lens") { Description = "啟用 RAW 內嵌鏡頭校正（只影響本次匯出）" };
 var cameraLocalToneOption = new Option<bool>("--camera-local-tone") { Description = "啟用 DNG 相機局部色調（只影響本次匯出）" };
 var denoiseOption = new Option<double?>("--denoise") { Description = "本次匯出的 AI 降噪強度 0–100（省略則沿用專案；須先安裝模型）" };
-var lensDatabaseOption = new Option<string?>("--lens-database") { Description = "外部 Lensfun 鏡頭資料庫資料夾（RAW 無內嵌校正時使用；預設讀 FILMBATCH_LENSFUN_DIR）" };
+var lensDatabaseOption = new Option<string?>("--lens-database") { Description = "外部 Lensfun 鏡頭資料庫資料夾（RAW 無內嵌校正時使用；預設讀 FILMBATCH_LENSFUN_DIR，再其次為 lens-database download 下載的版本）" };
 
 var export = new Command("export", "批次匯出（與 GUI 共用匯出器）")
 {
@@ -232,5 +232,5 @@ static Func<IPreviewRenderer> CreateExportFactory(GpuDeviceOptions deviceOptions
     }
 }
 
-var root = new RootCommand("FilmBatch 命令列") { gpuInfo, spike, samples, export, RawCommands.Create(), DenoiseCommands.Create(), ForegroundCommands.Create() };
+var root = new RootCommand("FilmBatch 命令列") { gpuInfo, spike, samples, export, RawCommands.Create(), DenoiseCommands.Create(), LensDatabaseCommands.Create(), ForegroundCommands.Create() };
 return root.Parse(args).Invoke();

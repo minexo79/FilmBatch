@@ -6,8 +6,9 @@ namespace FilmBatch.Engine.Imaging.Raw;
 
 internal static partial class LensProfiles
 {
-    private const long MaxFileBytes = 16 << 20;
-    private const long MaxDatabaseBytes = 64 << 20;
+    internal const long MaxFileBytes = 16 << 20;
+    internal const long MaxDatabaseBytes = 64 << 20;
+    internal const int MaxFiles = 2000;
 
     private const int MaxCachedDatabases = 8;
     private static readonly Lock CacheLock = new();
@@ -19,10 +20,7 @@ internal static partial class LensProfiles
     /// </summary>
     private static Database Load(string directory)
     {
-        var files = Directory.EnumerateFiles(directory).Where(p => Path.GetExtension(p).Equals(".xml", StringComparison.OrdinalIgnoreCase))
-            .Take(2001).ToArray();
-        if (files.Length > 2000) throw new InvalidDataException("Lens database exceeds 2000 XML files.");
-        Array.Sort(files, StringComparer.Ordinal);
+        var files = ListFiles(directory);
         var key = Path.GetFullPath(directory);
         var stamp = string.Join("\n", files.Select(f =>
         {
@@ -38,6 +36,25 @@ internal static partial class LensProfiles
             Cache[key] = (stamp, db);
         }
         return db;
+    }
+
+    private static string[] ListFiles(string directory)
+    {
+        var files = Directory.EnumerateFiles(directory).Where(p => Path.GetExtension(p).Equals(".xml", StringComparison.OrdinalIgnoreCase))
+            .Take(MaxFiles + 1).ToArray();
+        if (files.Length > MaxFiles) throw new InvalidDataException($"Lens database exceeds {MaxFiles} XML files.");
+        Array.Sort(files, StringComparer.Ordinal);
+        return files;
+    }
+
+    /// <summary>
+    /// 以與讀取相同的上限與解析規則驗證資料夾（不進快取），傳回相機與鏡頭校正筆數。
+    /// 下載的資料庫在取代現有版本前必須先通過這裡。
+    /// </summary>
+    internal static (int Cameras, int Profiles) Validate(string directory)
+    {
+        var db = Parse(ListFiles(directory));
+        return (db.Cameras.Count, db.Profiles.Count);
     }
 
     private static Database Parse(string[] files)
