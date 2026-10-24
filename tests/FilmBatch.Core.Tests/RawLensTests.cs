@@ -114,6 +114,20 @@ public sealed class RawLensTests
     }
 
     [Fact]
+    public void LensChainInList3StillYieldsUncorrectedSensorProxy()
+    {
+        // Lensfun 備援把 warp/vignette 加進 List3 後，camera-fit 仍須取得未校正代理；
+        // 否則沒有檔內矩陣的 RAW（Sony ARW）失去相機外觀、退回偏暗偏平的起點。
+        var plain = CameraPreview.SensorProxy(SensorRaw(), 2, 48);
+        var lensed = SensorRaw();
+        lensed.Opcodes.List3.AddRange(LensOps());
+        var proxy = CameraPreview.SensorProxy(lensed, 2, 48);
+        Assert.NotNull(plain);
+        Assert.NotNull(proxy);
+        Assert.Equal(plain!.Data, proxy!.Data);
+    }
+
+    [Fact]
     public void FitSelectsBetterAlignedProxy()
     {
         // warp 候選與未 warp 候選中，擇優者應為對齊度高者（上游 alignment 語意）。

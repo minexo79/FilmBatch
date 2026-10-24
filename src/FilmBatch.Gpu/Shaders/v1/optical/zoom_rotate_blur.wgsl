@@ -1,5 +1,6 @@
 // 縮放旋轉模糊（5.3.6）：沿放射方向與圓弧方向取樣平均；中心保護區混合
 #include "common/color.wgsl"
+#include "common/sampling.wgsl"
 
 struct Params {
     cx: f32, cy: f32,      // 中心（0..1）
@@ -14,6 +15,7 @@ struct Params {
 @group(0) @binding(0) var src: texture_2d<f32>;
 @group(0) @binding(1) var dst: texture_storage_2d<rgba32float, write>;
 @group(0) @binding(2) var<uniform> p: Params;
+@group(0) @binding(3) var<uniform> view: FrameView;
 
 fn bilinear(t: texture_2d<f32>, size: vec2i, x: f32, y: f32) -> vec4f {
     let x0 = clamp(i32(floor(x)), 0, size.x - 1);
@@ -32,10 +34,12 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
     let pos = vec2i(id.xy);
     if (pos.x >= size.x || pos.y >= size.y) { return; }
 
-    let u = (f32(pos.x) + 0.5) / f32(size.x) - p.cx;
-    let v = (f32(pos.y) + 0.5) / f32(size.y) - p.cy;
-    let dcx = u * f32(size.x);
-    let dcy = v * f32(size.y);
+    let fp = frame_pixel(view, id.xy);
+    let fs = view.frame_size;
+    let u = (f32(fp.x) + 0.5) / fs.x - p.cx;
+    let v = (f32(fp.y) + 0.5) / fs.y - p.cy;
+    let dcx = u * fs.x;
+    let dcy = v * fs.y;
     let dist = sqrt(dcx * dcx + dcy * dcy);
     let protectPx = p.protect * p.short_side;
     let transPx = max(1e-3, p.transition * p.short_side);
@@ -59,9 +63,9 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
         let sa = sin(angle);
         let rx = dcx * ca - dcy * sa - z * nx;
         let ry = dcx * sa + dcy * ca - z * ny;
-        let sx = p.cx * f32(size.x) + rx - 0.5;
-        let sy = p.cy * f32(size.y) + ry - 0.5;
-        sum += bilinear(src, size, sx, sy);
+        let sx = p.cx * fs.x + rx - 0.5;
+        let sy = p.cy * fs.y + ry - 0.5;
+        sum += bilinear(src, size, sx - f32(view.origin.x), sy - f32(view.origin.y));
     }
     let avg = sum / f32(S);
     textureStore(dst, pos, mix(orig, avg, protectT));

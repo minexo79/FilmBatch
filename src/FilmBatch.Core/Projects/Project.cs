@@ -17,7 +17,9 @@ public sealed class Project
         ".rw2", ".rwl", ".raw", ".orf", ".pef", ".srw", ".erf", ".mef", ".3fr", ".fff",
     ];
 
-    public static readonly string[] SupportedExtensions = [".tif", ".tiff", ".jpg", ".jpeg", ".png", .. RawExtensions];
+    public static readonly string[] SupportedExtensions = OperatingSystem.IsIOS()
+        ? [".tif", ".tiff", ".jpg", ".jpeg", ".png", ".heic", ".heif", .. RawExtensions]
+        : [".tif", ".tiff", ".jpg", ".jpeg", ".png", .. RawExtensions];
 
     /// <summary>依副檔名判斷是否為 RAW 檔（不讀檔頭）。</summary>
     public static bool IsRawFile(string path) =>
@@ -69,7 +71,11 @@ public sealed class Project
             foreach (var (id, preset) in saved.PresetSnapshots) project.PresetSnapshots.Add(id, preset.ToPreset(id));
             foreach (var (id, updatedAt) in saved.KeptPresetUpdates) project._keptPresetUpdates.Add(id, updatedAt);
             foreach (var (name, photo) in saved.Photos)
-                project._photos.Add(name, new PhotoEntry(name, photo.PresetId, photo.Overrides));
+                project._photos.Add(name, new PhotoEntry(name, photo.PresetId, photo.Overrides)
+                {
+                    ForegroundMask = photo.ForegroundMask is { } mask ? ForegroundMask.FromDocument(mask) : null,
+                    Rating = Math.Clamp(photo.Rating, 0, PhotoEntry.MaxRating),
+                });
         }
         foreach (var file in Directory.EnumerateFiles(folder)
             .Where(f => SupportedExtensions.Contains(Path.GetExtension(f), StringComparer.OrdinalIgnoreCase))
@@ -121,7 +127,11 @@ public sealed class Project
         var photos = _photos.ToDictionary(pair => pair.Key, pair =>
         {
             var photo = changes?.GetValueOrDefault(pair.Key) ?? pair.Value;
-            return new PhotoDocument { PresetId = photo.PresetId, Overrides = photo.Overrides };
+            return new PhotoDocument
+            {
+                PresetId = photo.PresetId, Overrides = photo.Overrides, ForegroundMask = photo.ForegroundMask?.ToDocument(),
+                Rating = photo.Rating,
+            };
         }, StringComparer.Ordinal);
         var document = new ProjectDocument
         {

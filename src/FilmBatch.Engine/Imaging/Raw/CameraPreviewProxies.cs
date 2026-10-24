@@ -147,13 +147,18 @@ internal static partial class CameraPreview
 
     private static RgbImage SensorProxyImage(RgbImage img) => img;
 
-    private static RgbImage? SensorProxy(RawImage raw, int k, int edge)
+    /// <summary>
+    /// 未校正的感光代理。List3 只含鏡頭鏈（原廠或 Lensfun）時照樣分箱、不套用：鏡頭幾何由
+    /// <see cref="Proxies"/> 的 warp 候選處理；否則 Lensfun 會讓沒有檔內矩陣的 RAW 失去相機外觀。
+    /// </summary>
+    internal static RgbImage? SensorProxy(RawImage raw, int k, int edge)
     {
         if (k <= 0)
             return null;
         try
         {
-            var binned = raw.DevelopBinned(k, SensorClip);
+            var list3 = raw.Opcodes.List3;
+            var binned = raw.DevelopBinned(k, SensorClip, list3.Count != 0 && RawSourceGeometry.IsLensChainOnly(list3));
             if (binned is not null)
                 return binned;
         }
@@ -247,8 +252,8 @@ internal static partial class CameraPreview
     /// JPEG 自帶 ICC／Exif 詮釋優先（上游 <c>decode_with_fallback</c>；僅兩者皆無時用容器宣告當 fallback，
     /// 於線性化前套用，絕不套到已重採樣像素）。線性光下縮放（`factor &gt;= 2 ? Box : Mitchell`）。
     /// JPEG 位元組來自 RawPreview（SonyPreview 切片）；解碼上限 <see cref="FitPreviewMaxPixels"/>。
-    /// 與上游 JPEG 解碼非逐位元一致：IDCT／上採樣由 ImageMagick（libjpeg-turbo）執行而非 jpeg-decoder／zune，
-    /// LUT 型 ICC 無 CMS 而按上游「存在但不可用 → sRGB」分支處理；parent 以 load/display oracle 比對。
+    /// 與上游 JPEG 解碼非逐位元一致：IDCT／上採樣由托管解碼器執行而非 jpeg-decoder／zune；
+    /// LUT/CMYK 型 ICC 的 CMS 依後端：桌面經 Magick.NET/LCMS、iOS 經 ColorSync（見 <see cref="PreviewCms"/>）。
     /// </summary>
     internal static bool TryDecodePreview(ReadOnlyMemory<byte> bytes, uint edge, out RgbImage image, out int sourceW, out int sourceH)
     {

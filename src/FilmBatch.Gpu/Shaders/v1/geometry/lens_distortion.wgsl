@@ -1,5 +1,6 @@
 // 鏡頭變形（5.3.2）：r' = r·(1+k1·r²+k2·r⁴) 反算來源座標；R/B 通道以不同 k 產生色散
 #include "common/color.wgsl"
+#include "common/sampling.wgsl"
 
 struct Params {
     amount: f32,       // -1..1
@@ -16,6 +17,7 @@ struct Params {
 @group(0) @binding(1) var blurSrc: texture_2d<f32>; // 邊緣柔化用的小半徑模糊版
 @group(0) @binding(2) var dst: texture_storage_2d<rgba32float, write>;
 @group(0) @binding(3) var<uniform> p: Params;
+@group(0) @binding(4) var<uniform> view: FrameView;
 
 fn bilinear(t: texture_2d<f32>, size: vec2i, x: f32, y: f32) -> vec4f {
     let x0 = i32(floor(x));
@@ -39,11 +41,14 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
     let pos = vec2i(id.xy);
     if (pos.x >= size.x || pos.y >= size.y) { return; }
 
+    // 鏡頭中心與短邊以畫框計算；取樣座標減去渲染區域原點後在本地紋理內夾取
+    let fp = frame_pixel(view, id.xy);
+    let o = vec2f(view.origin);
     let half = p.short_side * 0.5;
-    let cx = f32(size.x) * 0.5 / half;
-    let cy = f32(size.y) * 0.5 / half;
-    let u = (f32(pos.x) + 0.5) / half - cx;
-    let v = (f32(pos.y) + 0.5) / half - cy;
+    let cx = view.frame_size.x * 0.5 / half;
+    let cy = view.frame_size.y * 0.5 / half;
+    let u = (f32(fp.x) + 0.5) / half - cx;
+    let v = (f32(fp.y) + 0.5) / half - cy;
     let r2 = u * u + v * v;
 
     let k1 = p.amount * 0.6;
@@ -67,16 +72,16 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
     let syb = (v * fb * crop + cy) * half - 0.5;
 
     var col = vec4f(
-        bilinear(src, size, sxr, syr).r,
-        bilinear(src, size, sxg, syg).g,
-        bilinear(src, size, sxb, syb).b,
-        bilinear(src, size, sxg, syg).a);
+        bilinear(src, size, sxr - o.x, syr - o.y).r,
+        bilinear(src, size, sxg - o.x, syg - o.y).g,
+        bilinear(src, size, sxb - o.x, syb - o.y).b,
+        bilinear(src, size, sxg - o.x, syg - o.y).a);
 
     // 邊緣柔化：依半徑混入小半徑模糊版
     if (p.edge_soften > 0.0) {
         let edgeT = smoothstep_f(0.55, 0.95, sqrt(r2));
         let k = edgeT * p.edge_soften;
-        let bc = bilinear(blurSrc, size, sxg, syg);
+        let bc = bilinear(blurSrc, size, sxg - o.x, syg - o.y);
         col = vec4f(mix(col.rgb, bc.rgb, k), col.a);
     }
     textureStore(dst, pos, col);

@@ -1,0 +1,60 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:l="using:FilmBatch.App.Localization"
+             xmlns:vm="using:FilmBatch.App.ViewModels"
+             xmlns:c="using:FilmBatch.App.Controls"
+             x:Class="FilmBatch.App.Views.PreviewView"
+             x:DataType="vm:PreviewViewModel">
+  <Panel DragDrop.AllowDrop="True" Name="Root">
+    <c:PreviewCanvas Name="Canvas"
+                     Image="{Binding Image}" Original="{Binding Original}"
+                     ShowOriginal="{Binding ShowOriginal}" IsSplit="{Binding IsSplit}"
+                     SplitPosition="{Binding SplitPosition}" Zoom="{Binding Zoom}" Pan="{Binding Pan}"
+                     IsBusy="{Binding IsBusy}" OverlayText="{Binding OverlayText}"
+                     ControlPoint="{Binding ControlPoint}" Footprint="{Binding Footprint}" CanvasBackground="{Binding Background}"
+                     ShowTransparency="{Binding ShowTransparency}"
+                     ActiveTool="{Binding ActiveTool}" LayoutLongEdge="{Binding FrameLongEdge}"
+                     WindowImage="{Binding WindowImage}" WindowRegion="{Binding WindowRegion}" WindowVisible="{Binding WindowVisible}" />
+    <TextBlock Classes="secondary" Text="{Binding EmptyText}" HorizontalAlignment="Center" VerticalAlignment="Center"
+               IsVisible="{Binding Image, Converter={x:Static ObjectConverters.IsNull}}" IsHitTestVisible="False" />
+
+    <!-- 浮動工具列：常用編輯動作，位於右上角（行動版的算圖指示畫在其左側）；全螢幕預覽時隱藏 -->
+    <Border Classes="preview-toolbar" IsVisible="{Binding !Main.IsFullScreen}">
+      <StackPanel Classes="preview-toolbar">
+        <Button Classes="tool" Command="{Binding Main.UndoCommand}" ToolTip.Tip="{l:Tr Tip.Undo}"><PathIcon Data="{StaticResource Icon.Undo}" /></Button>
+        <Button Classes="tool" Command="{Binding Main.RedoCommand}" ToolTip.Tip="{l:Tr Tip.Redo}"><PathIcon Data="{StaticResource Icon.Redo}" /></Button>
+        <Border Classes="preview-toolbar-divider" />
+        <Button Classes="tool" Command="{Binding Main.CopyCommand}" ToolTip.Tip="{l:Tr Tip.Copy}"><PathIcon Data="{StaticResource Icon.Copy}" /></Button>
+        <Button Classes="tool" Command="{Binding Main.PasteCommand}" ToolTip.Tip="{l:Tr Tip.Paste}"><PathIcon Data="{StaticResource Icon.Paste}" /></Button>
+        <Button Classes="tool" Command="{Binding Main.PasteSpecialCommand}" ToolTip.Tip="{l:Tr Tip.PasteSpecial}"><PathIcon Data="{StaticResource Icon.PasteSpecial}" /></Button>
+      </StackPanel>
+    </Border>
+
+    <!-- 拍攝資訊：右下角，不攔截滑鼠；缺少的欄位不顯示；全螢幕預覽時隱藏 -->
+    <Border Classes="preview-exif" IsHitTestVisible="False">
+      <Border.IsVisible>
+        <MultiBinding Converter="{x:Static BoolConverters.And}">
+          <Binding Path="!Main.IsFullScreen" />
+          <Binding Path="Exif" Converter="{x:Static ObjectConverters.IsNotNull}" />
+        </MultiBinding>
+      </Border.IsVisible>
+      <StackPanel>
+        <TextBlock Classes="title" Text="{Binding Exif.FileName}" />
+        <TextBlock Text="{Binding Exif.TakenText}" IsVisible="{Binding Exif.TakenText, Converter={x:Static ObjectConverters.IsNotNull}}" />
+        <TextBlock Text="{Binding Exif.Camera}" IsVisible="{Binding Exif.Camera, Converter={x:Static ObjectConverters.IsNotNull}}" />
+        <TextBlock Text="{Binding Exif.Lens}" IsVisible="{Binding Exif.Lens, Converter={x:Static ObjectConverters.IsNotNull}}" />
+        <TextBlock Classes="numeric" Text="{Binding Exif.ExposureText}" IsVisible="{Binding Exif.ExposureText, Converter={x:Static ObjectConverters.IsNotNull}}" />
+      </StackPanel>
+    </Border>
+
+    <!-- 檢視控制：分割比較、符合視窗、100%、縮放比例，浮在預覽區正下方中央；全螢幕預覽時隱藏 -->
+    <Border Classes="preview-zoombar" IsVisible="{Binding !Main.IsFullScreen}">
+      <StackPanel Orientation="Horizontal">
+        <ToggleButton Classes="tool" IsChecked="{Binding IsSplit}" ToolTip.Tip="{l:Tr Tip.Compare}"><PathIcon Data="{StaticResource Icon.Compare}" /></ToggleButton>
+        <Button Classes="tool" Command="{Binding Main.ZoomFitCommand}" ToolTip.Tip="{l:Tr Tip.ZoomFit}"><PathIcon Data="{StaticResource Icon.ZoomFit}" /></Button>
+        <Button Classes="tool" Command="{Binding Main.Zoom100Command}" ToolTip.Tip="{OnPlatform '100%（Ctrl+1）', macOS='100%（⌘1）'}"><PathIcon Data="{StaticResource Icon.Zoom100}" /></Button>
+        <TextBlock Classes="numeric" Text="{Binding ZoomText}" Margin="6,0,10,0" MinWidth="64" TextAlignment="Center" VerticalAlignment="Center" />
+      </StackPanel>
+    </Border>
+  </Panel>
+</UserControl>

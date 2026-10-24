@@ -80,15 +80,8 @@ public static class RawDecoder
     /// </summary>
     public static RawInfo ProbeInfoFile(string path)
     {
-        long length = new FileInfo(path).Length;
-        byte[] buffer;
-        RawHeaderPlan plan;
-        using (var stream = File.OpenRead(path))
-        {
-            (buffer, _, plan) = RawSparse.LoadIntoCore(stream, length, includePreview: false);
-        }
-        if (plan is RawHeaderPlan.Ready) return ProbeInfo(new ReadOnlyMemory<byte>(buffer));
-        return ProbeInfo(File.ReadAllBytes(path));
+        // 與 RawSparse.ReadFile 同一回退：Whole 時填滿同一緩衝區，不做第二次整檔配置。
+        return ProbeInfo(new ReadOnlyMemory<byte>(RawSparse.ReadFile(path, includePreview: false)));
     }
 
     /// <summary>只讀解碼幾何、相機色彩與中繼資料；依格式讀取判斷遮光邊所需的最少感光列。</summary>

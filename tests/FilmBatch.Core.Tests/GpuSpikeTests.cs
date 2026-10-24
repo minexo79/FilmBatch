@@ -1,3 +1,4 @@
+using FilmBatch.Core.Params;
 using FilmBatch.Engine.Rendering;
 using FilmBatch.Gpu.Device;
 
@@ -89,5 +90,30 @@ public class GpuSpikeTests
         var device = GpuDevice.Create(new GpuDeviceOptions { Backend = GpuBackend.Dx12 });
         device.Dispose();
         return new WeakReference(device);
+    }
+    [Theory]
+    [InlineData("screen", 0.0, 7.0)]
+    [InlineData("add", 0.0, 21.0)]
+    [InlineData("lighten", 0.0, 3.0)]
+    [InlineData("screen", 140.0, 11.0)]
+    public void Gpu_LightLeak_MatchesCpu(string blend, double hue, double seed)
+    {
+        using var gpu = TryCreateGpu();
+        Assert.SkipWhen(gpu is null, "沒有可用的 GPU 介面卡");
+        var src = GpuSpikeBenchmark.Synthetic(320, 200);
+        var settings = ModuleCatalog.Defaults
+            .With("light_leak.enabled", true)
+            .With("light_leak.mode", "procedural")
+            .With("light_leak.blend", blend)
+            .With("light_leak.amount", 80.0)
+            .With("light_leak.size", 70.0)
+            .With("light_leak.blue", 60.0)
+            .With("light_leak.hue", hue)
+            .With("light_leak.count", 2.0)
+            .With("light_leak.seed", seed);
+        var g = gpu!.Render16(src, settings, TestContext.Current.CancellationToken).Rgba16;
+        var c = new CpuFakeRenderer().Render16(src, settings, TestContext.Current.CancellationToken).Rgba16;
+        var maxDiff = g.Zip(c, (a, b) => Math.Abs(a - b)).Max();
+        Assert.True(maxDiff <= 512, $"GPU 與 CPU 漏光差異 {maxDiff}/65535");
     }
 }

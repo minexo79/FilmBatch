@@ -1,3 +1,21 @@
+// 窗口渲染的畫框視圖（GpuEffectPipeline 的 ViewUniforms，16 bytes）：frame_size 為裁切後畫框尺寸，
+// origin 為本次渲染區域左上角在畫框中的像素位置。整張渲染時 origin = 0、frame_size = 紋理尺寸，
+// 所有畫框相對量（短邊、中心、正規化座標、雜訊與顆粒座標）都以畫框計算、與窗口無關。
+struct FrameView {
+    frame_size: vec2f,
+    origin: vec2i,
+}
+
+// 本地像素 → 畫框整數像素（像素中心為 + 0.5）。
+fn frame_pixel(v: FrameView, id: vec2u) -> vec2i {
+    return vec2i(id) + v.origin;
+}
+
+// 本地像素 → 畫框像素中心。
+fn frame_px(v: FrameView, id: vec2u) -> vec2f {
+    return vec2f(frame_pixel(v, id)) + 0.5;
+}
+
 fn sample_bilinear(t: texture_2d<f32>, point: vec2f) -> vec4f {
     let size = vec2i(textureDimensions(t));
     let base = vec2i(floor(point));

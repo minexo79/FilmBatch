@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Preserve the app RID through the shared layer; never select host macOS native assets for iOS. -->
+    <IsRidAgnostic>false</IsRidAgnostic>
+    <!-- Apple bundle placement metadata must survive transitive content collection. -->
+    <MSBuildDisableGetCopyToOutputDirectoryItemsOptimization>true</MSBuildDisableGetCopyToOutputDirectoryItemsOptimization>
+    <MSBuildDisableGetCopyToPublishDirectoryItemsOptimization>true</MSBuildDisableGetCopyToPublishDirectoryItemsOptimization>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../src/FilmBatch.Core/FilmBatch.Core.csproj" />
+    <ProjectReference Include="../../../src/FilmBatch.Raw/FilmBatch.Raw.csproj" />
+    <ProjectReference Include="../../../src/FilmBatch.Gpu/FilmBatch.Gpu.csproj" />
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" GeneratePathProperty="true" />
+  </ItemGroup>
+  <ItemGroup Condition="$(RuntimeIdentifier.StartsWith('ios'))">
+    <!-- ORT's netstandard props add Windows DLLs for AnyCPU; iOS uses the app's static xcframework. -->
+    <None Remove="$(PkgMicrosoft_ML_OnnxRuntime)/runtimes/win-*/native/*.dll" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="$(PkgMicrosoft_ML_OnnxRuntime)/LICENSE;$(PkgMicrosoft_ML_OnnxRuntime)/ThirdPartyNotices.txt;$(PkgMicrosoft_ML_OnnxRuntime)/Privacy.md"
+          Link="native-onnxruntime/%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" PublishFolderType="Resource" />
+  </ItemGroup>
+</Project>

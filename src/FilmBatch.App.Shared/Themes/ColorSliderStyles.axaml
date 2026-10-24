@@ -1,0 +1,50 @@
+<!--
+  具有色彩語意的參數滑桿。
+  只負責語意變體；滑桿的尺寸、互動與通用外觀仍由 Controls.axaml 集中管理。
+  這樣新增其他色彩軸時，只需在此檔增加 class 與漸層，不必修改每個 View。
+-->
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:c="using:FilmBatch.App.Controls">
+  <!-- 色溫：左側冷色、右側暖色，中點保持中性。 -->
+  <Style Selector="Slider.temperature /template/ Border#TrackLine">
+    <Setter Property="Background">
+      <Setter.Value>
+        <LinearGradientBrush StartPoint="0%,50%" EndPoint="100%,50%">
+          <GradientStop Offset="0" Color="#5BA6E6" />
+          <GradientStop Offset="0.5" Color="#8A8174" />
+          <GradientStop Offset="1" Color="#E6A24A" />
+        </LinearGradientBrush>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <!-- 色偏：左側綠色、右側洋紅，中點保持中性。 -->
+  <Style Selector="Slider.tint /template/ Border#TrackLine">
+    <Setter Property="Background">
+      <Setter.Value>
+        <LinearGradientBrush StartPoint="0%,50%" EndPoint="100%,50%">
+          <GradientStop Offset="0" Color="#66B87A" />
+          <GradientStop Offset="0.5" Color="#8A8174" />
+          <GradientStop Offset="1" Color="#D67AA8" />
+        </LinearGradientBrush>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <!-- 色相、各色強度、色相帶等依參數計算的漸層（ParamTrackBrushes）。 -->
+  <Style Selector="Slider:colored /template/ Border#TrackLine">
+    <Setter Property="Background" Value="{Binding $parent[c:ParamSlider].TrackBrush}" />
+  </Style>
+
+  <!-- 保留原本的 hover 提示，只提高語意漸層的亮度。 -->
+  <Style Selector="Slider.temperature:pointerover /template/ Border#TrackLine">
+    <Setter Property="Opacity" Value="0.9" />
+  </Style>
+  <Style Selector="Slider.tint:pointerover /template/ Border#TrackLine">
+    <Setter Property="Opacity" Value="0.9" />
+  </Style>
+  <Style Selector="Slider:colored:pointerover /template/ Border#TrackLine">
+    <Setter Property="Background" Value="{Binding $parent[c:ParamSlider].TrackBrush}" />
+    <Setter Property="Opacity" Value="0.9" />
+  </Style>
+</Styles>

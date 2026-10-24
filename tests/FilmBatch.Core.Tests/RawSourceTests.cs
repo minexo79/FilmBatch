@@ -3,6 +3,7 @@ using FilmBatch.Engine.Imaging;
 using FilmBatch.Engine.Imaging.Raw;
 using FilmBatch.Raw;
 using FilmBatch.Raw.Color;
+using FilmBatch.Raw.Tiff;
 using ImageMagick;
 namespace FilmBatch.Core.Tests;
 
@@ -107,11 +108,10 @@ public sealed class RawSourceTests
     public void ReadRawExif_PreservesIfd0AndExifSubdirectoryTags(string fileName, string expectedMake, string expectedModel, ushort expectedIso)
     {
         var profile = TiffMetadata.ReadRaw(Sample(fileName), 1600, 1067);
-        Assert.Equal(expectedMake, profile.GetValue(ExifTag.Make)?.Value?.Trim());
-        Assert.Equal(expectedModel, profile.GetValue(ExifTag.Model)?.Value?.Trim());
-        var iso = profile.GetValue(ExifTag.ISOSpeedRatings)?.Value;
-        Assert.NotNull(iso);
-        Assert.Contains(expectedIso, iso!);
+        var tiff = TiffFile.Parse(profile.AsMemory(6));
+        Assert.Equal(expectedMake, tiff.Ifds[0].String(Tags.Make));
+        Assert.Equal(expectedModel, tiff.Ifds[0].String(Tags.Model));
+        Assert.Equal(expectedIso, tiff.Exif()?.U16(Tags.IsoSpeed));
     }
 
     private static string Sample(string name)

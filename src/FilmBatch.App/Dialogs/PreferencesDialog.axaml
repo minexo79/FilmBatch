@@ -42,6 +42,26 @@
               <ComboBox Grid.Column="1" Classes="settings-control" ItemsSource="{Binding Languages}" SelectedItem="{Binding Language}" />
             </Grid>
           </Border>
+          <Border Classes="settings-card">
+            <StackPanel>
+              <Grid Classes="settings-row" ColumnDefinitions="*,Auto">
+                <StackPanel Classes="settings-label">
+                  <TextBlock Text="{l:Tr Pref.DebugLogging}" />
+                  <TextBlock Classes="settings-desc" Text="{l:Tr Pref.DebugLogging.Desc}" TextWrapping="Wrap" />
+                </StackPanel>
+                <CheckBox Grid.Column="1" AutomationProperties.AutomationId="Pref.DebugLogging" IsChecked="{Binding DebugLogging}" VerticalAlignment="Center" />
+              </Grid>
+              <Border Classes="settings-divider" />
+              <Grid Classes="settings-row" ColumnDefinitions="*,Auto">
+                <StackPanel Classes="settings-label">
+                  <TextBlock Text="{l:Tr Pref.LogFolder}" />
+                  <TextBlock Classes="settings-desc" Text="{Binding LogFolder}" TextWrapping="Wrap" />
+                </StackPanel>
+                <Button Grid.Column="1" Classes="outline" AutomationProperties.AutomationId="Pref.LogFolder.Open" Content="{l:Tr Pref.LogFolder.Open}"
+                        Command="{Binding OpenLogFolderCommand}" IsVisible="{Binding CanOpenLogFolder}" VerticalAlignment="Center" />
+              </Grid>
+            </StackPanel>
+          </Border>
         </StackPanel>
 
         <!-- 預覽 -->
@@ -62,7 +82,7 @@
                   <TextBlock Text="{l:Tr Pref.ProxySize}" />
                   <TextBlock Classes="settings-desc" Text="{l:Tr Pref.ProxySize.Desc}" />
                 </StackPanel>
-                <ComboBox Grid.Column="1" Classes="settings-control" ItemsSource="{Binding ProxySizes}" SelectedItem="{Binding ProxySize}" />
+                <ComboBox Grid.Column="1" Classes="settings-control" ItemsSource="{Binding ProxySizes}" SelectedItem="{Binding ProxySizeOption}" DisplayMemberBinding="{Binding Label, x:DataType=d:OptionBase}" />
               </Grid>
             </StackPanel>
           </Border>
@@ -151,6 +171,39 @@
                 <TextBox Text="{Binding TexturesFolder}" />
                 <Button Grid.Column="1" Classes="outline" Content="{l:Tr Pref.Browse}" Command="{Binding BrowseTexturesCommand}" />
               </Grid>
+            </StackPanel>
+          </Border>
+          <Border Classes="settings-card">
+            <StackPanel Classes="settings-row-block">
+              <StackPanel Classes="settings-label">
+                <TextBlock Text="{l:Tr Pref.LensDatabase}" />
+                <TextBlock Classes="settings-desc" Text="{l:Tr Pref.LensDatabase.Desc}" TextWrapping="Wrap" />
+              </StackPanel>
+              <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                <TextBox Text="{Binding LensDatabaseFolder}" PlaceholderText="{l:Tr Pref.LensDatabase.None}" />
+                <Button Grid.Column="1" Classes="outline" Content="{l:Tr Pref.Browse}" Command="{Binding BrowseLensDatabaseCommand}" />
+                <Button Grid.Column="2" Classes="outline" Content="{l:Tr Pref.Clear}" Command="{Binding ClearLensDatabaseCommand}" />
+              </Grid>
+            </StackPanel>
+          </Border>
+          <Border Classes="settings-card">
+            <StackPanel Classes="settings-row-block">
+              <StackPanel Classes="settings-label">
+                <TextBlock Text="{l:Tr Pref.LensDownload}" />
+                <TextBlock Classes="settings-desc" Text="{l:Tr Pref.LensDownload.Desc}" TextWrapping="Wrap" />
+                <TextBlock Classes="settings-desc" Text="{Binding LensDownloadAttribution}" TextWrapping="Wrap" />
+              </StackPanel>
+              <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                <TextBlock AutomationProperties.AutomationId="Pref.LensDownload.Status" Classes="secondary" VerticalAlignment="Center"
+                           Text="{Binding LensDownloadStatus}" TextWrapping="Wrap" />
+                <Button Grid.Column="1" Classes="outline" AutomationProperties.AutomationId="Pref.LensDownload.Button"
+                        Content="{l:Tr Pref.LensDownload.Button}" Command="{Binding DownloadLensDatabaseCommand}" />
+                <Button Grid.Column="2" Classes="outline" Content="{l:Tr Dialog.Cancel}" Command="{Binding CancelLensDownloadCommand}"
+                        IsVisible="{Binding IsDownloadingLensDatabase}" />
+              </Grid>
+              <ProgressBar Minimum="0" Maximum="100" Value="{Binding LensDownloadProgress}" IsVisible="{Binding IsDownloadingLensDatabase}" />
+              <TextBlock Classes="warning small" Text="{Binding LensDownloadError}" TextWrapping="Wrap"
+                         IsVisible="{Binding LensDownloadError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
             </StackPanel>
           </Border>
         </StackPanel>

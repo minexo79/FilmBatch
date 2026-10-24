@@ -9,6 +9,17 @@ Dawn (WebGPU)               BSD-3-Clause https://dawn.googlesource.com/dawn
 Magick.NET / ImageMagick    Apache-2.0 / ImageMagick License  https://github.com/dlemstra/Magick.NET
 System.CommandLine          MIT          https://github.com/dotnet/command-line-api
 .NET Runtime                MIT          https://github.com/dotnet/runtime
+ONNX Runtime 1.25.0（macOS／iOS 與 tools/apple-mobile） MIT https://github.com/microsoft/onnxruntime
+  Copyright (c) Microsoft Corporation。原生套件來源 commit：7a71bc575b189cdedea7fa2c0f87389f870bd10e。
+ONNX Runtime 1.24.4（Windows DirectML） MIT https://github.com/microsoft/onnxruntime
+  Copyright (c) Microsoft Corporation. Native runtime package source commit:
+  2d924974ef147392ced8409d36bd6d2e7fcc8a74.
+  各平台套件的完整 LICENSE、ThirdPartyNotices.txt 及 Privacy.md 隨 App／CLI 輸出放在 native-onnxruntime/。
+Microsoft.AI.DirectML 1.15.4 (Windows only) Microsoft Software License Terms
+  https://www.nuget.org/packages/Microsoft.AI.DirectML/1.15.4
+  This is NOT covered by ONNX Runtime's MIT license. The original redistributable
+  terms accompany Windows App/CLI outputs in native-onnxruntime/directml/LICENSE.txt.
+  Distributed only as part of the Windows application, not as a standalone product.
 RawTherapee Film Simulation Collection（2015-09-20 版，底片 LUT） CC BY-SA 4.0 http://rawtherapee.com/shared/HaldCLUT.zip
   原作者：Pat David、Pavlov Dmitry、Michael Ezra。授權：Creative Commons Attribution-ShareAlike 4.0
   International（https://creativecommons.org/licenses/by-sa/4.0/）。
@@ -18,13 +29,16 @@ RawTherapee Film Simulation Collection（2015-09-20 版，底片 LUT） CC BY-SA
   這些 LUT 檔依 CC BY-SA 4.0 散布；詳見 src/FilmBatch.Core/Film/Looks/LICENSE.txt 與 docs/film-looks.md。
   商標聲明：底片名稱（Kodak、Fuji、Agfa、Ilford、Lomography、Polaroid 等）為各公司商標，僅用於說明
   LUT 意圖模擬的底片，FilmBatch 與上述商標所有者無任何關係，亦未獲其背書。
-LightCraft（RAW 解碼、相機色彩與色調） MIT OR Apache-2.0（FilmBatch 依 MIT 使用） https://github.com/storytold/lightcraft
+LightCraft（RAW 解碼、相機色彩、色調及分段曲線） MIT OR Apache-2.0（FilmBatch 依 MIT 使用） https://github.com/storytold/lightcraft
   Copyright (c) 2026 ArtCraft Team and the LightCraft contributors。src/FilmBatch.Raw 與 src/FilmBatch.Engine/Imaging/Raw
   為釘選 commit f34c7a8a89e0d1bade0a6889185f40acecc84a9f 的 C# 移植（已修改；各檔檔頭標示上游路徑）。
   src/FilmBatch.Engine/Imaging/Raw/Profiles/*.json 搬移自上游 assets/camera-profiles/ 與 assets/camera-tone/：
   相機描述檔由 Harald Hoyer（ILCE-7M4）、Michael Anderson（@endthestart；NIKON Z 6II、Z 8、D5300）與
   LightCraft contributors（ILCA-99M2 樣張 @PiMinusMax、ILCE-7CR 樣張 @AlexChambers、X-H2S／X-T4 樣張
   Sebastian Pfluegelmeier）擬合；sony-dro-off.json 由 LightCraft contributors 以 raw.pixls.us CC0 樣張擬合。
+  部分修正另移植自 v0.13.0（23e181283cb448205d865e8cd288b56afe987986）：Canon CRX coded width、
+  Fujifilm plain-radius 鏡頭插值；不是整體升版。Core/Curves/ToneCurveSet.cs 與 GPU tone_curves.wgsl 的
+  分段曲線、單調化及飽和度修正改寫自 crates/pipeline/src/finish.rs；控制點沿用 FilmBatch 的 ToneCurve。
 zune-jpeg 0.5.15（失真 JPEG 解碼） MIT OR Apache-2.0 OR Zlib（FilmBatch 依 MIT 使用） https://github.com/etemesi254/zune-image
   Copyright (c) zune-image developers。src/FilmBatch.Raw/Codecs/Jpeg8*.cs 為其解碼器的 C# 移植（已修改）。
 rawtoaces-data v1.1.0（相機光譜靈敏度） Apache-2.0 https://github.com/AcademySoftwareFoundation/rawtoaces-data
@@ -35,6 +49,65 @@ rawtoaces-data v1.1.0（相機光譜靈敏度） Apache-2.0 https://github.com/A
 CIE 1931 色彩配對函數 CC BY 4.0 https://creativecommons.org/licenses/by/4.0/
   © CIE（International Commission on Illumination），隨 rawtoaces-data 發佈；只用來擬合上列相機矩陣（修改：
   FilmBatch 不含原始資料）。
+LightLeaksUnity（程序化漏光） MIT https://github.com/danielzeller/LightLeaksUnity
+  Copyright (c) 2016 Daniel Zeller。src/FilmBatch.Engine/Rendering/CpuPipeline.cs 的 LightLeak 與
+  optical/light_leak.wgsl 的三色電漿改編自 Assets/LightLeaks/LightLeaks.shader（已修改：以種子取代動畫時間、
+  黃色轉線性光、各場重新映射並以 smoothstep 提高對比、加入色相旋轉、逐色權重與 screen/add/lighten 混合，並以既有邊緣包絡遮罩）。
+FilmBatch ProPhoto output profile（自行產生的 ICC 位元組；非第三方散布物，工具鏈需聲明） https://www.littlecms.com/
+  src/FilmBatch.Engine/Imaging/Raw/Profiles/prophoto-gamma18.icc（784 bytes，
+  SHA-256 44ef82ec4a2b2539ca31862738f2b211f10ae1438a50e121ff58a1eea9a0253d）
+  由 tools/prophoto-icc/gen.c 以 Little CMS 2.17（MIT，Copyright (c) 2023 Marti Maria Saguer；
+  Homebrew little-cms2 2.17）自數值色度產生，未複製或下載任何廠商設定檔。
+  數值定義：三原色 (0.734699,0.265301)、(0.159597,0.840403)、(0.036598,0.000105)，
+  白點 (0.3457,0.3585)（與 src/FilmBatch.Raw/Color/ColorMath.cs 的 ColorSpaces.ProPhoto 一致），
+  三通道純 gamma 1.8（ICC v4.3 display，D50 PCS）。本設定檔無嚴格 ROMM 的低亮度線性段、
+  無參考 flare；三原色與白點與 ROMM 相同。TRC 使用 para type 0，以 s15Fixed16
+  儲存 gamma 1.8000030517578125；不使用 v2 單值 curv 的低精度 gamma。
+  下方附 Little CMS 的 MIT 授權全文（LCMS 函式庫本身不隨本工具連結進應用程式）。
+Optional external AI model data (not embedded in the application)
+----------------------------------------------------------------
+Packages: darktable-ai nightly-5.7.0
+https://github.com/darktable-org/darktable-ai/releases/tag/nightly-5.7.0
+Source contract revision: f1a46e2d3feebc917a94f14705d128316fcf8114.
+FilmBatch extracts only pinned ONNX model data; it does not include the GPL
+training/export/packaging tools or the different legacy NIND model.
+
+RawNIND Linear: Creative Commons Attribution 4.0 International (CC BY 4.0).
+https://creativecommons.org/licenses/by/4.0/
+RawNIND by Benoit Brummer; Benoit Brummer and Christophe De Vleeschouwer,
+"Joint Denoising, Demosaicing, and Compression: A Recommended Paradigm for
+Learning-Based Image Workflows" (EUVIP 2026).
+https://github.com/trougnouf/rawnind_jddc
+The author explicitly dual-licenses the weights under GPL-3 and CC-BY-4.0:
+https://github.com/storytold/lightcraft/issues/1760
+FilmBatch uses the CC-BY-4.0 option for these weights, not a license conversion
+of the GPL tools. The ONNX conversion is supplied by darktable-ai; FilmBatch
+does not retrain or modify its weights.
+
+NAFNet-SIDD width32: MIT License.
+Copyright (c) 2022 megvii-model
+https://github.com/megvii-research/NAFNet
+Model data license declaration:
+https://github.com/darktable-org/darktable-ai/blob/f1a46e2d3feebc917a94f14705d128316fcf8114/models/denoise-nafnet/README.md
+Paper: "Simple Baselines for Image Restoration" (ECCV 2022).
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 
 MIT License (LightCraft)
 Copyright (c) 2026 ArtCraft Team and the LightCraft contributors
@@ -59,6 +132,48 @@ SOFTWARE.
 
 MIT License (zune-jpeg)
 Copyright (c) zune-image developers
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+MIT License (LightLeaksUnity)
+Copyright (c) 2016 Daniel Zeller
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+MIT License (Little CMS, ProPhoto profile generator toolchain only)
+Copyright (c) 2023 Marti Maria Saguer
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

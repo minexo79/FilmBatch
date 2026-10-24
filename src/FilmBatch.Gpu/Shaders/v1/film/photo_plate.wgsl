@@ -1,5 +1,6 @@
 // 古典版材（5.3.12）：單色轉換 + 版材染色 + 邊緣剝落 / 污漬 / 塗佈不均（程序化，以種子驅動）
 #include "common/color.wgsl"
+#include "common/sampling.wgsl"
 
 struct Params {
     plate_type: i32,    // 0 tintype / 1 wetplate / 2 cyanotype / 3 albumen
@@ -19,6 +20,7 @@ struct Params {
 @group(0) @binding(0) var src: texture_2d<f32>;
 @group(0) @binding(1) var dst: texture_storage_2d<rgba32float, write>;
 @group(0) @binding(2) var<uniform> p: Params;
+@group(0) @binding(3) var<uniform> view: FrameView;
 
 @compute @workgroup_size(16, 16)
 fn main(@builtin(global_invocation_id) id: vec3u) {
@@ -47,8 +49,9 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
     var g = lum * tint.g * 1.6;
     var b = lum * tint.b * 1.6;
 
-    let u = (f32(pos.x) + 0.5) / f32(size.x);
-    let v = (f32(pos.y) + 0.5) / f32(size.y);
+    let fp = frame_pixel(view, id.xy);
+    let u = (f32(fp.x) + 0.5) / view.frame_size.x;
+    let v = (f32(fp.y) + 0.5) / view.frame_size.y;
     // 邊緣剝落
     if (p.edge_erosion > 0.0) {
         let edge = min(u, min(v, min(1.0 - u, 1.0 - v)));

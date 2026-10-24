@@ -56,6 +56,29 @@ public sealed class BulkLoadingTests
         }
     }
 
+    [AvaloniaFact]
+    public async Task SuspendedEditor_DefersEditsAndPreferenceRendersUntilResume()
+    {
+        using var main = TestEnv.CreateViewModel();
+        await TestEnv.OpenSamplesAsync(main);
+        TestEnv.PumpUntil(() => !main.Preview.IsBusy && main.Filmstrip.Items.All(photo => photo.Bitmap is not null));
+        var file = main.FocusFile!;
+        var original = main.Service!.SettingsFor(file).Number("basic.exposure");
+        main.Suspend();
+        main.Inspector.SetValue("basic.exposure", original + 1, null);
+        main.Filmstrip.SetVisibleRange(0, 2);
+        main.ApplyRenderPreferences();
+        Assert.False(main.Preview.IsBusy);
+        Assert.True(main.Stack.CanUndo);
+        Assert.Equal(original + 1, main.Service.SettingsFor(file).Number("basic.exposure"));
+
+        main.Resume();
+        TestEnv.PumpUntil(() => !main.Preview.IsBusy && !main.Renderer.IsBusy);
+        Assert.Equal(file, main.FocusFile);
+        main.UndoCommand.Execute(null);
+        Assert.Equal(original, main.Service.SettingsFor(file).Number("basic.exposure"));
+    }
+
     private static SemaphoreSlim DecoderGate(ImageCache cache, string name = "_decodeGate") =>
         (SemaphoreSlim)typeof(ImageCache).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(cache)!;
 

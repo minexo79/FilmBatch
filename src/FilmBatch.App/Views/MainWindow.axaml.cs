@@ -41,17 +41,39 @@ public partial class MainWindow : Window
             if (Clipboard is { } cb) await cb.SetTextAsync(json);
         };
         vm.PropertyChanged += OnViewModelPropertyChanged;
-        Deactivated += (_, _) => { vm.Preview.ShowOriginal = false; vm.PhotoTools.CancelStale(); };
+        Deactivated += (_, _) =>
+        {
+            vm.Preview.ShowOriginal = false;
+            vm.PhotoTools.CancelStale();
+            vm.BackgroundRemoval.CancelCommand.Execute(null);
+        };
         Loc.Instance.PropertyChanged += (_, _) =>
         {
             if (DockHost.Layout is { } l) _factory.UpdateTitles(l);
         };
 
+        vm.RecentFolders.CollectionChanged += (_, _) => UpdateRecentFoldersMenu(vm);
+        UpdateRecentFoldersMenu(vm);
         ExitItem.Click += (_, _) => Close();
         ConfigureTitleBar();
         AddHandler(KeyDownEvent, OnKeyDown, RoutingStrategies.Tunnel);
         AddHandler(KeyUpEvent, OnKeyUp, RoutingStrategies.Tunnel);
         RestoreWindowPlacement(vm.Settings);
+    }
+
+    /// <summary>
+    /// 「開啟...」子選單：把最近資料夾的項目放在「（無）」佔位項之前，
+    /// 分隔線與「清除清單」固定在 XAML 中（Avalonia 選單無法混合 ItemsSource 與固定項目）。
+    /// </summary>
+    private void UpdateRecentFoldersMenu(MainWindowViewModel vm)
+    {
+        var items = RecentFoldersMenu.Items;
+        while (items.Count > 0 && items[0] is MenuItem { Tag: RecentFolderItemViewModel }) items.RemoveAt(0);
+        for (var i = 0; i < vm.RecentFolders.Count; i++)
+        {
+            var recent = vm.RecentFolders[i];
+            items.Insert(i, new MenuItem { Header = recent.Header, Command = recent.OpenCommand, Tag = recent });
+        }
     }
 
     /// <summary>
@@ -201,6 +223,13 @@ public partial class MainWindow : Window
 
         // ── 單鍵（輸入文字時不處理）──
         var crop = _vm.CropTool;
+        if (e.Key == Key.Escape && mods == KeyModifiers.None && !_vm.IsFullScreen
+            && (_vm.BackgroundRemoval.IsBusy || _vm.BackgroundRemoval.IsEditing))
+        {
+            _vm.BackgroundRemoval.CancelCommand.Execute(null);
+            e.Handled = true;
+            return;
+        }
         // Esc 在輸入焦點中也要生效：照片工具提案／取樣不允許被文字輸入吞掉。
         if (e.Key == Key.Escape && mods == KeyModifiers.None
             && (_vm.PhotoTools.IsSampling || _vm.PhotoTools.IsPicking) && !_vm.IsFullScreen)
@@ -209,7 +238,21 @@ public partial class MainWindow : Window
             e.Handled = true;
             return;
         }
+        // Shift + 1–9：套用第 N 個釘選預設（單獨的數字鍵留給星級評分）
+        if (!typing && mods == KeyModifiers.Shift && DigitOf(e.Key) is >= 1 and var pin)
+        {
+            _vm.ApplyPinnedCommand.Execute(pin);
+            e.Handled = true;
+            return;
+        }
         if (typing || mods != KeyModifiers.None) return;
+        // 0–5（含數字鍵台）：設定選取照片的星級評分，0 清除
+        if (DigitOf(e.Key) is >= 0 and <= FilmBatch.Core.Projects.PhotoEntry.MaxRating and var rating)
+        {
+            if (_vm.SetRatingCommand.CanExecute(rating)) _vm.SetRatingCommand.Execute(rating);
+            e.Handled = true;
+            return;
+        }
         switch (e.Key)
         {
             // 裁切工具（cut-and-mask Task 1.7）：R 進入 / 套用並返回，其餘只在工具啟用時有效
@@ -224,11 +267,18 @@ public partial class MainWindow : Window
             case Key.F: Run(_vm.ToggleFullScreenCommand); break;
             case Key.Tab: Run(_vm.TogglePanelsCommand); break;
             case Key.Escape when _vm.IsFullScreen: _vm.IsFullScreen = false; break;
-            case >= Key.D1 and <= Key.D9: _vm.ApplyPinnedCommand.Execute(e.Key - Key.D0); break;
             default: return;
         }
         e.Handled = true;
     }
+
+    /// <summary>主鍵盤或數字鍵台的數字 0–9；其他按鍵為 null。</summary>
+    private static int? DigitOf(Key key) => key switch
+    {
+        >= Key.D0 and <= Key.D9 => key - Key.D0,
+        >= Key.NumPad0 and <= Key.NumPad9 => key - Key.NumPad0,
+        _ => null,
+    };
 
     private void OnKeyUp(object? sender, KeyEventArgs e)
     {

@@ -21,7 +21,7 @@ public sealed class RawSourceLifecycleTests
         File.WriteAllBytes(path, DngWriter.WriteRenderedDng(16, 12,
             Enumerable.Repeat(.18f, 16 * 12 * 3).ToArray(), ColorSpaces.Srgb, new()));
         await main.OpenFolderAsync(folder);
-        main.Inspector.SetValue("raw.enabled", true, null);
+        // A：RAW 處理啟用（預設）並已快取。之後毀損檔案，只有尚未解碼的 B（停用 RAW）會失敗。
         TestEnv.PumpUntil(() => main.Preview.Source is { } source
             && source.RawOptions == RawLoadOptions.FromSettings(main.FocusedResolved)
             && main.Preview.Image is not null && !main.Preview.IsBusy && !main.Renderer.IsBusy);
@@ -33,7 +33,8 @@ public sealed class RawSourceLifecycleTests
         while (gate.Wait(0, TestContext.Current.CancellationToken)) permits++;
         try
         {
-            main.Inspector.SetValue("raw.lens_database", FilmBatch.Core.Params.ParamValue.Of("missing-db"), null);
+            File.WriteAllBytes(path, [0x49, 0x49, 0x2A, 0x00, 0xFF, 0xFF, 0xFF, 0x7F]);
+            main.Inspector.SetValue("raw.enabled", false, null);
             var pending = main.Images.GetPreviewAsync(path, RawLoadOptions.FromSettings(main.FocusedResolved), TestContext.Current.CancellationToken);
             Assert.False(pending.IsCompleted);
             main.UndoCommand.Execute(null);
@@ -42,7 +43,7 @@ public sealed class RawSourceLifecycleTests
             var image = main.Preview.Image;
             gate.Release(permits);
             permits = 0;
-            await Assert.ThrowsAnyAsync<IOException>(async () => { await pending; });
+            await Assert.ThrowsAnyAsync<Exception>(async () => { await pending; });
             await Task.Yield();
             Dispatcher.UIThread.RunJobs();
             Assert.Same(original, main.Preview.Source);
@@ -57,7 +58,7 @@ public sealed class RawSourceLifecycleTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task ExplicitRequestAfterRepair_DecodesInsteadOfReplayingFault(bool thumbnail)
+    public async Task LensDatabaseRepair_DecodesAgainInsteadOfReplayingFallback(bool thumbnail)
     {
         var folder = Path.Combine(Path.GetTempPath(), "filmbatch-cache-recovery-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(folder);
@@ -72,9 +73,14 @@ public sealed class RawSourceLifecycleTests
             Task<SourceImage> Request() => thumbnail
                 ? cache.GetThumbnailSourceAsync(path, options, TestContext.Current.CancellationToken)
                 : cache.GetPreviewAsync(path, options, TestContext.Current.CancellationToken);
-            await Assert.ThrowsAnyAsync<IOException>(async () => { await Request(); });
+            // 資料庫不存在：照片照常載入（退回不校正）並帶警告，而不是整張失敗。
+            var fallback = await Request();
+            Assert.NotNull(fallback.LensDatabaseWarning);
+            // 修好資料夾（路徑不變）：帶警告的結果不重用，下次請求重新比對。
             Directory.CreateDirectory(directory);
             var source = await Request();
+            Assert.NotSame(fallback, source);
+            Assert.Null(source.LensDatabaseWarning);
             Assert.Equal(ImageLoader.Load(path, thumbnail ? 200 : 1600, options).Rgba16, source.Rgba16);
         }
         finally { Directory.Delete(folder, recursive: true); }

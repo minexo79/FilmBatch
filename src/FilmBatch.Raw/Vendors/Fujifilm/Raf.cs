@@ -21,8 +21,8 @@ internal static class Raf
     /// <summary>raw IFD 旗標 0xf006：1 表示樣本裝在 32-bit word 中（無論位元深度）。</summary>
     internal const ushort PackedWords = 0xf006;
 
-    /// <summary>固定位置檔頭指標（上游 <c>Header</c>）。</summary>
-    internal readonly record struct Header(byte[]? Jpeg, (ushort Tag, byte[] Data)[] Records, byte[]? Raw);
+    /// <summary>固定位置檔頭指標（上游 <c>Header</c>）：借用容器記憶體的唯讀切片，不複製 JPEG／raw 酬載。</summary>
+    internal readonly record struct Header(ReadOnlyMemory<byte>? Jpeg, (ushort Tag, ReadOnlyMemory<byte> Data)[] Records, ReadOnlyMemory<byte>? Raw);
 
     internal static int Be32(ReadOnlySpan<byte> b, int at)
     {
@@ -30,13 +30,12 @@ internal static class Raf
         return (int)System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(b.Slice(at, 4));
     }
 
-    private static byte[]? Slice(ReadOnlySpan<byte> b, int off, int len)
+    private static ReadOnlyMemory<byte>? Slice(ReadOnlyMemory<byte> bytes, int off, int len)
     {
         if (off <= 0 || len <= 0) return null;
-        var end = (long)off + len;
-        if (end > b.Length) end = b.Length;
+        var end = Math.Min((long)off + len, bytes.Length);
         if (end <= off) return null;
-        return b.Slice(off, (int)(end - off)).ToArray();
+        return bytes.Slice(off, (int)(end - off));
     }
 
     /// <summary>檔頭：magic 不符或過短時丟 <see cref="RawErrorKind.NotRaw"/>。</summary>
@@ -45,29 +44,29 @@ internal static class Raf
         var b = bytes.Span;
         if (!b.StartsWith("FUJIFILMCCD-RAW"u8) || b.Length < 108)
             throw RawException.NotRaw();
-        var jpeg = Slice(b, Be32(b, 84), Be32(b, 88));
-        var raw = Slice(b, Be32(b, 100), Be32(b, 104));
-        var records = new List<(ushort Tag, byte[] Data)>();
-        var dir = Slice(b, Be32(b, 92), Be32(b, 96));
+        var jpeg = Slice(bytes, Be32(b, 84), Be32(b, 88));
+        var raw = Slice(bytes, Be32(b, 100), Be32(b, 104));
+        var records = new List<(ushort Tag, ReadOnlyMemory<byte> Data)>();
+        var dir = Slice(bytes, Be32(b, 92), Be32(b, 96));
         if (dir is not null)
         {
-            var n = Math.Min(Be32(dir, 0), 4096);
+            var span = dir.Value.Span;
+            var n = Math.Min(Be32(span, 0), 4096);
             var p = 4;
             for (var i = 0; i < n; i++)
             {
-                var d = dir;
-                if ((uint)(p + 4) > (uint)d.Length) break;
-                var tag = System.Buffers.Binary.BinaryPrimitives.ReadUInt16BigEndian(d.AsSpan(p, 4));
-                var size = System.Buffers.Binary.BinaryPrimitives.ReadUInt16BigEndian(d.AsSpan(p + 2, 2));
-                if ((uint)(p + 4 + size) > (uint)d.Length) break;
-                records.Add((tag, d.AsSpan(p + 4, size).ToArray()));
+                if ((uint)(p + 4) > (uint)span.Length) break;
+                var tag = System.Buffers.Binary.BinaryPrimitives.ReadUInt16BigEndian(span.Slice(p, 4));
+                var size = System.Buffers.Binary.BinaryPrimitives.ReadUInt16BigEndian(span.Slice(p + 2, 2));
+                if ((uint)(p + 4 + size) > (uint)span.Length) break;
+                records.Add((tag, dir.Value.Slice(p + 4, size)));
                 p += 4 + size;
             }
         }
         return new Header(jpeg, records.ToArray(), raw);
     }
 
-    private static byte[]? Record(Header h, ushort tag)
+    private static ReadOnlyMemory<byte>? Record(Header h, ushort tag)
     {
         foreach (var (t, d) in h.Records)
             if (t == tag) return d;
@@ -78,8 +77,9 @@ internal static class Raf
     private static (int Top, int Left)? Pair(Header h, ushort tag)
     {
         var d = Record(h, tag);
-        if (d is null || d.Length < 4) return null;
-        return ((d[0] << 8) | d[1], (d[2] << 8) | d[3]);
+        if (d is null || d.Value.Length < 4) return null;
+        var s = d.Value.Span;
+        return ((s[0] << 8) | s[1], (s[2] << 8) | s[3]);
     }
 
     /// <summary>raw 區塊中的小端序 TIFF raw IFD（tag 0xf000 指向）。</summary>
@@ -113,11 +113,17 @@ internal static class Raf
     internal static Cfa CfaOf(Header h)
     {
         var l = Record(h, XTransLayout);
-        if (l is { Length: 36 } && Array.TrueForAll(l, c => c <= 2))
+        if (l is { } mem && mem.Length == 36)
         {
-            var pattern = new byte[36];
-            for (var i = 0; i < 36; i++) pattern[i] = l[35 - i];
-            return new Cfa(6, 6, pattern);
+            var span = mem.Span;
+            var ok = true;
+            for (var i = 0; i < 36; i++) if (span[i] > 2) { ok = false; break; }
+            if (ok)
+            {
+                var pattern = new byte[36];
+                for (var i = 0; i < 36; i++) pattern[i] = span[35 - i];
+                return new Cfa(6, 6, pattern);
+            }
         }
         return Cfa.BayerStatic("RGGB");
     }
@@ -148,7 +154,7 @@ internal static class Raf
     internal static RawImage Decode(ReadOnlyMemory<byte> bytes, DecodeMode mode)
     {
         var h = ParseHeader(bytes);
-        var rawMem = h.Raw is not null ? h.Raw.AsMemory() : throw RawException.Corrupt("RAF without raw data");
+        var rawMem = h.Raw ?? throw RawException.Corrupt("RAF without raw data");
         var ifd = RawIfd(rawMem);
         var raw = rawMem.Span;
         int? Get(ushort tag) => CheckedU64(ifd.U64(tag));
@@ -279,17 +285,16 @@ internal static class Raf
         return img;
     }
 
-    /// <summary>給 <c>RawPreview</c> 的嵌入 JPEG 切片（未裁 EOI）。</summary>
-    internal static byte[]? PreviewJpeg(ReadOnlyMemory<byte> bytes)
+    /// <summary>
+    /// 給 <c>RawPreview</c> 的嵌入 JPEG 切片（未裁 EOI）：只讀檔頭的 JPEG 指標，
+    /// 不解析記錄目錄也不複製 raw 酬載；呼叫端持有期間不得更動底層緩衝區。
+    /// </summary>
+    internal static ReadOnlyMemory<byte>? PreviewJpeg(ReadOnlyMemory<byte> bytes)
     {
-        try
-        {
-            return ParseHeader(bytes).Jpeg;
-        }
-        catch (RawException)
-        {
+        var b = bytes.Span;
+        if (!b.StartsWith("FUJIFILMCCD-RAW"u8) || b.Length < 108)
             return null;
-        }
+        return Slice(bytes, Be32(b, 84), Be32(b, 88));
     }
 
     private static int? CheckedU64(ulong? v)
@@ -307,31 +312,30 @@ internal static class Raf
 /// </summary>
 internal static class RafMeta
 {
-    internal static Metadata Extract(byte[]? jpeg)
+    internal static Metadata Extract(ReadOnlyMemory<byte>? jpeg)
     {
-        if (jpeg is null || jpeg.Length < 4) return new Metadata();
-        if (jpeg[0] != 0xFF || jpeg[1] != 0xD8) return new Metadata();
+        if (jpeg is null || jpeg.Value.Length < 4) return new Metadata();
+        var span = jpeg.Value.Span;
+        if (span[0] != 0xFF || span[1] != 0xD8) return new Metadata();
         var i = 2;
-        while (i + 4 <= jpeg.Length)
+        while (i + 4 <= span.Length)
         {
-            if (jpeg[i] != 0xFF) break;
-            var marker = jpeg[i + 1];
+            if (span[i] != 0xFF) break;
+            var marker = span[i + 1];
             if (marker == 0xFF) { i++; continue; }
             if (marker == 0xD8 || (marker >= 0xD0 && marker <= 0xD7) || marker == 0x01) { i += 2; continue; }
             if (marker == 0xD9 || marker == 0xDA) break;
-            var len = (jpeg[i + 2] << 8) | jpeg[i + 3];
+            var len = (span[i + 2] << 8) | span[i + 3];
             if (len < 2) break;
-            var end = Math.Min(i + 2 + len, jpeg.Length);
+            var end = Math.Min(i + 2 + len, span.Length);
             if (marker == 0xE1 && end - (i + 4) >= 6
-                && jpeg[i + 4] == (byte)'E' && jpeg[i + 5] == (byte)'x'
-                && jpeg[i + 6] == (byte)'i' && jpeg[i + 7] == (byte)'f'
-                && jpeg[i + 8] == 0 && jpeg[i + 9] == 0)
+                && span[i + 4] == (byte)'E' && span[i + 5] == (byte)'x'
+                && span[i + 6] == (byte)'i' && span[i + 7] == (byte)'f'
+                && span[i + 8] == 0 && span[i + 9] == 0)
             {
-                var payload = new byte[end - (i + 10)];
-                Array.Copy(jpeg, i + 10, payload, 0, payload.Length);
                 try
                 {
-                    return MetadataReader.FromTiff(TiffFile.Parse(new ReadOnlyMemory<byte>(payload)));
+                    return MetadataReader.FromTiff(TiffFile.Parse(jpeg.Value.Slice(i + 10, end - (i + 10))));
                 }
                 catch (RawException)
                 {

@@ -1,4 +1,4 @@
-// 顯示空間 sRGB → 真正 16-bit RGBA；輸入已完成 linear_to_display。
+// 已完成輸出色域／TRC 的顯示樣本 → 真正 16-bit RGBA；sRGB 與 ProPhoto 共用量化。
 // 以列帶（band）輸出：dst 只容納 band.rows 列，大影像分段讀回以符合緩衝區上限。
 #include "common/color.wgsl"
 

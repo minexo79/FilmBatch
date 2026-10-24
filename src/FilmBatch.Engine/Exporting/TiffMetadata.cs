@@ -1,19 +1,17 @@
 using System.Buffers.Binary;
 using FilmBatch.Raw.Meta;
-using ImageMagick;
 namespace FilmBatch.Engine.Exporting;
 
 /// <summary>
-/// Magick.NET 14 writes TIFF pixels/ICC but not the EXIF/GPS directories. Append those
-/// directories to our temporary output; leave compressed strips and their offsets untouched.
-/// Normalize bounded source directories without copying image containers or stale color declarations.
+/// 影像編碼器寫 TIFF 像素/ICC 但不保證 EXIF/GPS 目錄：Append 把 canonical 目錄併入暫存輸出；
+/// 壓縮條帶與其位移保持不動。Normalize 邊界內正規化來源目錄，不複製影像容器或過時色彩宣告。
+/// canonical EXIF 位元組一律為 <c>Exif\0\0</c> 標頭＋小端 TIFF 目錄。
 /// </summary>
 internal static class TiffMetadata
 {
     private readonly record struct Entry(ushort Tag, ushort Type, uint Count, uint Value);
-    /// <summary>Magick exposes TIFF EXIF as formatted attributes, not an ExifProfile.
-    /// Read only metadata directories, never the (potentially very large) pixel strips.</summary>
-    public static ExifProfile Read(string path, uint width, uint height)
+    /// <summary>只讀整檔 TIFF 的 metadata 目錄（絕不讀可能很大的像素條帶），回傳 canonical EXIF 位元組。</summary>
+    public static byte[] Read(string path, uint width, uint height)
     {
         using var file = File.OpenRead(path);
         return Normalize(file, width, height, omitMakerNote: false);
@@ -23,25 +21,29 @@ internal static class TiffMetadata
     /// CR3 傳入合併後的 TIFF 位元組。走同一條正規化路徑，不經相機 JPEG 預覽。
     /// 解碼後的 <paramref name="decoded"/>（通常已合併廠商私有值）用來補齊來源缺少的標準欄位；
     /// 來源既有值與 GPS 一律保留。RAW 的 MakerNote 位移以來源檔為原點、無法搬移，一律省略。</summary>
-    public static ExifProfile ReadRaw(string path, uint width, uint height, Metadata? decoded = null)
+    public static byte[] ReadRaw(string path, uint width, uint height, Metadata? decoded = null,
+        FilmBatch.Engine.Imaging.RgbEncoding encoding = FilmBatch.Engine.Imaging.RgbEncoding.Srgb)
     {
         using var file = FilmBatch.Engine.Imaging.Raw.RawSourceLoader.OpenExifTiff(path)
             ?? throw new InvalidDataException("RAW file carries no TIFF-structured EXIF block.");
-        return Normalize(file, width, height, omitMakerNote: true, decoded);
+        return Normalize(file, width, height, omitMakerNote: true, decoded, encoding);
     }
 
-    public static ExifProfile Normalize(IExifProfile? source, uint width, uint height, bool omitMakerNote = false, Metadata? decoded = null)
+    /// <summary><paramref name="source"/> 為 canonical EXIF 位元組（<c>Exif\0\0</c>＋TIFF；null 產生全新輸出目錄）。</summary>
+    /// <param name="encoding">輸出色彩編碼：ProPhoto 時 EXIF ColorSpace 記 0xFFFF（Uncalibrated）且不寫 sRGB 互通性目錄；像素色彩以嵌入 ICC 為準。</param>
+    public static byte[] Normalize(byte[]? source, uint width, uint height, bool omitMakerNote = false, Metadata? decoded = null,
+        FilmBatch.Engine.Imaging.RgbEncoding encoding = FilmBatch.Engine.Imaging.RgbEncoding.Srgb)
     {
-        var bytes = source?.ToByteArray();
-        using var file = bytes is null
+        using var file = source is null
             ? new MemoryStream("II\x2a\0\x08\0\0\0\0\0\0\0\0\0"u8.ToArray())
-            : bytes.AsSpan().StartsWith("Exif\0\0"u8)
-                ? new MemoryStream(bytes, 6, bytes.Length - 6, writable: false)
+            : source.AsSpan().StartsWith("Exif\0\0"u8)
+                ? new MemoryStream(source, 6, source.Length - 6, writable: false)
                 : throw new InvalidDataException("Invalid EXIF profile header.");
-        return Normalize(file, width, height, omitMakerNote, decoded);
+        return Normalize(file, width, height, omitMakerNote, decoded, encoding);
     }
 
-    private static ExifProfile Normalize(Stream file, uint width, uint height, bool omitMakerNote, Metadata? decoded = null)
+    private static byte[] Normalize(Stream file, uint width, uint height, bool omitMakerNote, Metadata? decoded = null,
+        FilmBatch.Engine.Imaging.RgbEncoding encoding = FilmBatch.Engine.Imaging.RgbEncoding.Srgb)
     {
         Span<byte> header = stackalloc byte[16];
         file.ReadExactly(header[..8]);
@@ -93,7 +95,7 @@ internal static class TiffMetadata
                     or 315 or 316 or 33432 or 34665 or 34853))
                     continue;
                 // Source interoperability may describe Adobe RGB (R03), or have a stale pointer.
-                // Our output is sRGB: regenerate this directory instead of following/copying it.
+                // Regenerate only for sRGB; ProPhoto omits this directory.
                 if (kind == 34665 && tag == 40965) continue;
                 if (omitMakerNote && kind == 34665 && tag == 37500) continue;
                 var type = (ushort)Number(entryBytes.Slice(2, 2));
@@ -124,8 +126,8 @@ internal static class TiffMetadata
             }
             if (kind == 34665)
             {
-                entries.RemoveAll(entry => entry.Tag is 40961 or 40962 or 40963);
-                entries.AddRange(OutputExif(width, height, writer));
+                entries.RemoveAll(entry => entry.Tag is 40961 or 40962 or 40963 or 40965);
+                entries.AddRange(OutputExif(width, height, writer, encoding));
                 if (decoded is not null) Backfill(entries, decoded, Exif: true, writer);
             }
             if (depth == 0)
@@ -133,7 +135,11 @@ internal static class TiffMetadata
                 entries.RemoveAll(entry => entry.Tag == 274);
                 entries.Add(new Entry(274, 3, 1, 1));
                 if (!entries.Any(entry => entry.Tag == 34665))
-                    entries.Add(new Entry(34665, 4, 1, WriteDirectory(OutputExif(width, height, writer), writer)));
+                {
+                    var exif = OutputExif(width, height, writer, encoding).ToList();
+                    if (decoded is not null) Backfill(exif, decoded, Exif: true, writer);
+                    entries.Add(new Entry(34665, 4, 1, WriteDirectory(exif, writer)));
+                }
                 if (decoded is not null) Backfill(entries, decoded, Exif: false, writer);
             }
             return WriteDirectory(entries, writer);
@@ -145,18 +151,19 @@ internal static class TiffMetadata
         var result = new byte[checked((int)metadata.Length + 6)];
         "Exif\0\0"u8.CopyTo(result);
         metadata.GetBuffer().AsSpan(0, (int)metadata.Length).CopyTo(result.AsSpan(6));
-        return new ExifProfile(result);
+        return result;
     }
     /// <summary>CR3 合併 EXIF（<c>CMT1</c> IFD0＋<c>CMT2</c> Exif IFD＋<c>CMT4</c> GPS IFD；上游 <c>cr3::merged_exif</c> 的正規化版本）。
     /// 每個區塊以自己的位元組序解析、輸出統一為小端序；懸空指標／位移標籤不合併；IFD0 白名單、互通性重建、方向與尺寸覆寫沿用正規化路徑。</summary>
-    internal static ExifProfile NormalizeCr3(IReadOnlyList<ReadOnlyMemory<byte>?> blocks, uint width, uint height, Metadata? decoded = null)
+    internal static byte[] NormalizeCr3(IReadOnlyList<ReadOnlyMemory<byte>?> blocks, uint width, uint height, Metadata? decoded = null,
+        FilmBatch.Engine.Imaging.RgbEncoding encoding = FilmBatch.Engine.Imaging.RgbEncoding.Srgb)
     {
         if (blocks.Count == 0 || blocks[0] is not { Length: >= 8 })
             throw new InvalidDataException("CR3 file carries no CMT1 metadata block.");
         using var metadata = new MemoryStream();
         using var writer = new BinaryWriter(metadata);
         writer.Write("II\x2a\0\0\0\0\0"u8);
-        var state = new Cr3State(blocks, width, height, writer, decoded);
+        var state = new Cr3State(blocks, width, height, writer, decoded, encoding);
         var rootBlock = blocks[0]!.Value.ToArray();
         var root = state.CopyRoot(rootBlock);
         metadata.Position = 4;
@@ -164,11 +171,11 @@ internal static class TiffMetadata
         var result = new byte[checked((int)metadata.Length + 6)];
         "Exif\0\0"u8.CopyTo(result);
         metadata.GetBuffer().AsSpan(0, (int)metadata.Length).CopyTo(result.AsSpan(6));
-        return new ExifProfile(result);
+        return result;
     }
 
     /// <summary>CR3 合併用的正規化狀態：一次只持有一個區塊位元組（<see cref="ReadOnlySpan{T}"/> 不可為欄位）。</summary>
-    private sealed class Cr3State(IReadOnlyList<ReadOnlyMemory<byte>?> blocks, uint width, uint height, BinaryWriter writer, Metadata? decoded)
+    private sealed class Cr3State(IReadOnlyList<ReadOnlyMemory<byte>?> blocks, uint width, uint height, BinaryWriter writer, Metadata? decoded, FilmBatch.Engine.Imaging.RgbEncoding encoding)
     {
         internal static bool IsBig(byte[] block)
         {
@@ -271,8 +278,8 @@ internal static class TiffMetadata
             }
             if (kind == 34665)
             {
-                entries.RemoveAll(entry => entry.Tag is 40961 or 40962 or 40963);
-                entries.AddRange(OutputExif(width, height, writer));
+                entries.RemoveAll(entry => entry.Tag is 40961 or 40962 or 40963 or 40965);
+                entries.AddRange(OutputExif(width, height, writer, encoding));
                 if (decoded is not null) Backfill(entries, decoded, Exif: true, writer);
             }
             if (depth == 0)
@@ -283,7 +290,12 @@ internal static class TiffMetadata
                 AttachChild(entries, 34665, 1, depth);
                 AttachChild(entries, 34853, 3, depth);
                 if (!entries.Any(entry => entry.Tag == 34665))
-                    entries.Add(new Entry(34665, 4, 1, WriteDirectory(OutputExif(width, height, writer), writer)));
+                {
+                    // 同正規化路徑：CMT2 缺席時以 decoded 補齊標準 Exif 欄位。
+                    var exif = OutputExif(width, height, writer, encoding).ToList();
+                    if (decoded is not null) Backfill(exif, decoded, Exif: true, writer);
+                    entries.Add(new Entry(34665, 4, 1, WriteDirectory(exif, writer)));
+                }
                 if (decoded is not null) Backfill(entries, decoded, Exif: false, writer);
             }
             return WriteDirectory(entries, writer);
@@ -303,38 +315,40 @@ internal static class TiffMetadata
     /// <summary>Appends canonical EXIF/GPS to encoder output.
     /// With <paramref name="replaceExif"/>, the writer's own 34665/34853 pointers are replaced by
     /// the canonical copies (for DNG renders whose writer EXIF lacks source standard fields);
-    /// encoder-owned image and DNG tags are otherwise untouched.
-    /// <paramref name="profile"/> is re-canonicalized through <see cref="Normalize(IExifProfile?, uint, uint, bool, Metadata?)"/>
-    /// before its bytes are trusted: once any value is read from a profile, Magick.NET re-serializes
-    /// with its own writer (PixelX/YDimension become SHORT). Re-canonicalization restores the emitted
-    /// dimension block and declared types; fields the writer dropped entirely stay dropped.</summary>
-    public static void Append(string path, IExifProfile profile, bool replaceExif = false)
+    /// encoder-owned image and DNG tags are otherwise untouched (including the 34675 ICC profile).
+    /// <paramref name="profile"/>（canonical <c>Exif\0\0</c> 位元組）在併入前以輸出檔自身尺寸
+    /// 再經 <see cref="Normalize(byte[]?, uint, uint, bool, Metadata?, FilmBatch.Engine.Imaging.RgbEncoding)"/> 正規化一次。</summary>
+    public static void Append(string path, byte[] profile, bool replaceExif = false,
+        FilmBatch.Engine.Imaging.RgbEncoding encoding = FilmBatch.Engine.Imaging.RgbEncoding.Srgb)
     {
         using var file = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
         using var reader = new BinaryReader(file, System.Text.Encoding.UTF8, leaveOpen: true);
         using var writer = new BinaryWriter(file, System.Text.Encoding.UTF8, leaveOpen: true);
-        if (reader.ReadUInt16() != 0x4949 || reader.ReadUInt16() != 42)
-            throw new InvalidDataException("Expected classic little-endian TIFF output.");
-        file.Position = reader.ReadUInt32();
-        var count = reader.ReadUInt16();
+        var byteOrder = reader.ReadUInt16();
+        var little = byteOrder == 0x4949;
+        ushort Read16() => little ? reader.ReadUInt16() : BinaryPrimitives.ReverseEndianness(reader.ReadUInt16());
+        uint Read32() => little ? reader.ReadUInt32() : BinaryPrimitives.ReverseEndianness(reader.ReadUInt32());
+        if (byteOrder is not (0x4949 or 0x4D4D) || Read16() != 42)
+            throw new InvalidDataException("Expected classic TIFF output.");
+        file.Position = Read32();
+        var count = Read16();
         var entries = new Dictionary<ushort, Entry>(count);
         for (var i = 0; i < count; i++)
         {
-            var entry = new Entry(reader.ReadUInt16(), reader.ReadUInt16(), reader.ReadUInt32(), reader.ReadUInt32());
+            var entry = new Entry(Read16(), Read16(), Read32(), Read32());
             entries.Add(entry.Tag, entry);
         }
-        if (reader.ReadUInt32() != 0)
+        if (Read32() != 0)
             throw new InvalidDataException("Expected single-frame TIFF output.");
 
         // Re-canonicalize against the appended file's own dimensions.
-        var width = Scalar(entries, 256);
-        var height = Scalar(entries, 257);
+        var width = Scalar(entries, 256, little);
+        var height = Scalar(entries, 257, little);
         if (width is null || height is null)
             throw new InvalidDataException("Expected TIFF output with IFD0 dimensions.");
 
-        // Normalize emits little-endian metadata; the TIFF encoder is explicitly LSB.
-        var bytes = Normalize(profile, width.Value, height.Value).ToByteArray();
-        if (bytes is null) return;
+        // Canonical EXIF is little-endian; ImageIO may emit big-endian TIFF pixels.
+        var bytes = Normalize(profile, width.Value, height.Value, encoding: encoding);
         var data = bytes.AsSpan(6);
         if (!bytes.AsSpan(0, 6).SequenceEqual("Exif\0\0"u8) ||
             data.Length < 8 || U16(data, 0) != 0x4949 || U16(data, 2) != 42)
@@ -346,7 +360,7 @@ internal static class TiffMetadata
             entries.Remove(34665);
             entries.Remove(34853);
         }
-        foreach (var entry in CopyDirectory(data, U32(data, 4), writer, depth: 0))
+        foreach (var entry in CopyDirectory(data, U32(data, 4), writer, depth: 0, little))
         {
             // The encoder owns dimensions, orientation, compression, ICC, and pixel offsets.
             // Never introduce an old image/thumbnail pointer from source metadata.
@@ -358,30 +372,31 @@ internal static class TiffMetadata
             }
             entries.TryAdd(entry.Tag, entry);
         }
-        var root = WriteDirectory(entries.Values, writer);
+        var root = WriteDirectory(entries.Values, writer, little);
         file.Position = 4;
-        writer.Write(root);
+        Write32(writer, root, little);
     }
 
-    private static uint? Scalar(IReadOnlyDictionary<ushort, Entry> entries, ushort tag)
+    private static uint? Scalar(IReadOnlyDictionary<ushort, Entry> entries, ushort tag, bool little)
     {
         if (!entries.TryGetValue(tag, out var entry) || entry.Count != 1)
             return null;
         // SHORT values sit in the first two bytes of the inline value field; LONG fills it.
         return entry.Type switch
         {
-            3 => entry.Value & 0xFFFF,
+            3 => little ? entry.Value & 0xFFFF : entry.Value >> 16,
             4 => entry.Value,
             _ => null,
         };
     }
 
-    private static Entry[] CopyDirectory(ReadOnlySpan<byte> data, uint offset, BinaryWriter writer, int depth)
+    private static Entry[] CopyDirectory(ReadOnlySpan<byte> data, uint offset, BinaryWriter writer, int depth, bool little = true)
     {
         if (depth > 2) throw new InvalidDataException("Unexpected nested EXIF directory.");
         var start = checked((int)offset);
         var count = U16(data, start);
         var entries = new List<Entry>(count);
+        Span<byte> inline = stackalloc byte[4];
         for (var i = 0; i < count; i++)
         {
             var pos = checked(start + 2 + i * 12);
@@ -397,7 +412,7 @@ internal static class TiffMetadata
             {
                 if (type != 4 || components != 1)
                     throw new InvalidDataException("Invalid EXIF directory pointer.");
-                value = WriteDirectory(CopyDirectory(data, value, writer, depth + 1), writer);
+                value = WriteDirectory(CopyDirectory(data, value, writer, depth + 1, little), writer, little);
             }
             else if (length > 4)
             {
@@ -405,7 +420,19 @@ internal static class TiffMetadata
                 if (length > (ulong)data.Length || value > (ulong)data.Length - length) continue;
                 var payload = data.Slice(checked((int)value), checked((int)length));
                 value = Align(writer);
-                writer.Write(payload);
+                if (little) writer.Write(payload);
+                else
+                {
+                    var converted = payload.ToArray();
+                    ReverseComponents(converted, type);
+                    writer.Write(converted);
+                }
+            }
+            else if (!little)
+            {
+                BinaryPrimitives.WriteUInt32LittleEndian(inline, value);
+                ReverseComponents(inline[..checked((int)length)], type);
+                value = BinaryPrimitives.ReadUInt32BigEndian(inline);
             }
             entries.Add(new Entry(tag, type, components, value));
         }
@@ -418,20 +445,34 @@ internal static class TiffMetadata
         return entries.ToArray();
     }
 
-    private static uint WriteDirectory(IEnumerable<Entry> entries, BinaryWriter writer)
+    private static uint WriteDirectory(IEnumerable<Entry> entries, BinaryWriter writer, bool little = true)
     {
         var sorted = entries.OrderBy(entry => entry.Tag).ToArray();
         var offset = Align(writer);
-        writer.Write(checked((ushort)sorted.Length));
+        Write16(writer, checked((ushort)sorted.Length), little);
         foreach (var entry in sorted)
         {
-            writer.Write(entry.Tag);
-            writer.Write(entry.Type);
-            writer.Write(entry.Count);
-            writer.Write(entry.Value);
+            Write16(writer, entry.Tag, little);
+            Write16(writer, entry.Type, little);
+            Write32(writer, entry.Count, little);
+            Write32(writer, entry.Value, little);
         }
-        writer.Write(0u);
+        Write32(writer, 0u, little);
         return offset;
+    }
+
+    private static void Write16(BinaryWriter writer, ushort value, bool little) =>
+        writer.Write(little ? value : BinaryPrimitives.ReverseEndianness(value));
+
+    private static void Write32(BinaryWriter writer, uint value, bool little) =>
+        writer.Write(little ? value : BinaryPrimitives.ReverseEndianness(value));
+
+    private static void ReverseComponents(Span<byte> payload, ushort type)
+    {
+        var size = type switch { 3 or 8 => 2, 4 or 5 or 9 or 10 or 11 => 4, 12 => 8, _ => 1 };
+        if (size == 1) return;
+        for (var offset = 0; offset < payload.Length; offset += size)
+            payload.Slice(offset, size).Reverse();
     }
 
     /// <summary>Canonical (type, fixed count) for standard EXIF/GPS tags. Count -1 keeps source values.</summary>
@@ -832,15 +873,26 @@ internal static class TiffMetadata
         _ => throw new InvalidDataException($"Unsupported EXIF field type: {type}")
     };
 
-    private static Entry[] OutputExif(uint width, uint height, BinaryWriter writer) =>
-    [
-        new(40961, 3, 1, 1), // sRGB
-        new(40962, 4, 1, width),
-        new(40963, 4, 1, height),
-        new(40965, 4, 1, WriteDirectory(
+    private static Entry[] OutputExif(uint width, uint height, BinaryWriter writer,
+        FilmBatch.Engine.Imaging.RgbEncoding encoding = FilmBatch.Engine.Imaging.RgbEncoding.Srgb)
+    {
+        if (encoding == FilmBatch.Engine.Imaging.RgbEncoding.ProPhoto)
+            return
+            [
+                new(40961, 3, 1, 0xFFFF), // Uncalibrated；像素色彩以嵌入的 ProPhoto ICC 為準，不宣告 sRGB 互通性
+                new(40962, 4, 1, width),
+                new(40963, 4, 1, height),
+            ];
+        return
         [
-            new Entry(1, 2, 4, U32("R98\0"u8, 0)), // DCF basic file, matching sRGB
-            new Entry(2, 7, 4, U32("0100"u8, 0))
-        ], writer))
-    ];
+            new(40961, 3, 1, 1), // sRGB
+            new(40962, 4, 1, width),
+            new(40963, 4, 1, height),
+            new(40965, 4, 1, WriteDirectory(
+            [
+                new Entry(1, 2, 4, U32("R98\0"u8, 0)), // DCF basic file, matching sRGB
+                new Entry(2, 7, 4, U32("0100"u8, 0))
+            ], writer))
+        ];
+    }
 }

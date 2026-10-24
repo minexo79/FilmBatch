@@ -1,3 +1,5 @@
+using FilmBatch.Engine.Denoising;
+using FilmBatch.Core.Curves;
 using FilmBatch.Core.Params;
 using FilmBatch.Core.Random;
 using FilmBatch.Engine.Imaging;
@@ -14,22 +16,31 @@ namespace FilmBatch.Engine.Rendering;
 public static class CpuPipeline
 {
     /// <summary>
-    /// 完整處理到 16-bit sRGB RGBA。若 <paramref name="outRgba16"/> 非 null 則寫入其中（長度必須為 w*h*4）。
+    /// 完整處理到指定編碼的 16-bit RGBA。若 <paramref name="outRgba16"/> 非 null 則寫入其中（長度必須為 w*h*4）。
     /// 取消：在 pass 之間檢查，丟出 <see cref="OperationCanceledException"/>。
     /// </summary>
-    public static SourceImage Process(SourceImage source, Settings settings, ushort[]? outRgba16, CancellationToken ct)
+    public static SourceImage Process(SourceImage source, Settings settings, ushort[]? outRgba16, CancellationToken ct,
+        RgbEncoding encoding = RgbEncoding.Srgb)
     {
-        var p = ModuleParams.From(source, settings);
+        if (DenoiseSettings.From(settings).IsActive)
+            source = DenoiseProcessor.Shared.Prepare(source, settings, ct);
+        var p = ModuleParams.From(source, settings, encoding);
         return Process(source, p, outRgba16, ct);
     }
 
     public static SourceImage Process(SourceImage source, ModuleParams p, ushort[]? outRgba16, CancellationToken ct)
     {
+        RgbEncodingInfo.Validate(p.OutputEncoding);
+        var proPhoto = p.OutputEncoding == RgbEncoding.ProPhoto;
         var cur = DecodeLinear(source);
         ct.ThrowIfCancellationRequested();
 
-        // 裁切（旋轉 90°、翻轉、拉直、裁切）：之後所有模組都以裁切後的畫框計算
-        if (p.Crop.On) cur = Crop(cur, source.Width, source.Height, p.CropT);
+        // 去背遮罩：在任何幾何之前把覆蓋率乘進 alpha（只乘一次；RGB 維持 straight）
+        ForegroundAlpha.Apply(cur, source);
+
+        // 裁切（旋轉 90°、翻轉、拉直、裁切）：之後所有模組都以裁切後的畫框計算。
+        // 窗口模式下即使沒有裁切也要執行：從整張來源取出 View 範圍（畫框像素 → 來源像素）。
+        if (p.Crop.On || p.IsWindow) cur = Crop(cur, source.Width, source.Height, p.CropT, p.View);
         int w = p.OutWidth, h = p.OutHeight, n = w * h;
         ct.ThrowIfCancellationRequested();
 
@@ -47,6 +58,9 @@ public static class CpuPipeline
         if (p.BasicOn && (p.Exposure != 0 || p.Temperature != 0 || p.Tint != 0))
             BasicLinear(cur, n, p);
         if (p.SkinOn || p.ZoneOn) PhotoAdjustments.Apply(cur, w, h, p, ct);
+        ct.ThrowIfCancellationRequested();
+        // 場景線性暗部還原（局部增益＋增益前亮度／色度降噪）：曝光／膚色／Zone 之後、幾何與顯示映射之前
+        if (p.ShadowRecoveryOn && ShadowRecovery.Apply(cur, a, b, w, h, p, ct)) (cur, a) = (a, cur);
         ct.ThrowIfCancellationRequested();
 
         // ① 幾何（線性）：鏡頭變形 → 多格分鏡
@@ -82,19 +96,24 @@ public static class CpuPipeline
         ct.ThrowIfCancellationRequested();
 
         // ③→④ 顯示空間
-        if (source.Scene is { } scene) RawDisplay.FinishLinear(cur, scene.Tone);
+        if (source.Scene is { } scene) RawDisplay.FinishLinear(cur, scene.Tone, proPhoto);
         else Parallel.For(0, n, i =>
         {
             var s = i * 4;
             // MathF.Pow 保留純量：M3 實測 Exp(Log) 向量組合反而較慢。
             var px = Vector128.LoadUnsafe(ref cur[s]);
-            Vector128.Create(LinearToSrgb(px[0]), LinearToSrgb(px[1]), LinearToSrgb(px[2]), px[3])
-                .CopyTo(cur, s);
+            var rgb = proPhoto
+                ? Vector128.Create(RgbEncodingInfo.EncodeExtendedSrgb(px[0]), RgbEncodingInfo.EncodeExtendedSrgb(px[1]),
+                    RgbEncodingInfo.EncodeExtendedSrgb(px[2]), px[3])
+                : Vector128.Create(LinearToSrgb(px[0]), LinearToSrgb(px[1]), LinearToSrgb(px[2]), px[3]);
+            rgb.CopyTo(cur, s);
         });
         ct.ThrowIfCancellationRequested();
 
-        // ④ 顯示：基本調整（顯示部分）→ 色調分離 → 清晰銳化
+        // ④ 顯示：基本調整（顯示部分）→ 色調曲線 → 色調分離 → 清晰銳化
         if (p.BasicOn) BasicDisplay(cur, a, w, h, p);
+        ct.ThrowIfCancellationRequested();
+        if (p.Curves is { } curves) ToneCurves(cur, n, curves);
         ct.ThrowIfCancellationRequested();
         if (p.ToneOn) ToneSplit(cur, w, h, p);
         ct.ThrowIfCancellationRequested();
@@ -111,22 +130,28 @@ public static class CpuPipeline
         if (p.GrainOn && (p.GrainAmount > 0 || p.GrainSoftness > 0)) Grain(cur, a, b, w, h, p);
         ct.ThrowIfCancellationRequested();
 
-        // 編碼回 16-bit sRGB RGBA
+        // 最後才轉到輸出色域／TRC，再量化；sRGB 路徑沿用既有運算。
         var outArr = outRgba16 ?? new ushort[n * 4];
         if (outArr.Length != n * 4) throw new ArgumentException("outRgba16 長度必須為 w*h*4", nameof(outRgba16));
         Parallel.For(0, n, i =>
         {
             var s = i * 4;
             var px = Vector128.LoadUnsafe(ref cur[s]);
+            if (proPhoto)
+            {
+                var (r, g, b0) = RgbEncodingInfo.EncodeProPhoto(px[0], px[1], px[2]);
+                px = Vector128.Create(r, g, b0, px[3]);
+            }
             var q = Vector128.ConvertToInt32(
                 Vector128.Round(Vector128.Max(Vector128.Min(px, Vector128.Create(1f)), Vector128.Create(0f)) * 65535f));
             var packed = Vector128.Narrow(q.AsUInt32(), q.AsUInt32());
             packed.GetLower().StoreUnsafe(ref outArr[s]);
         });
-        return new SourceImage(w, h, outArr)
+        return new SourceImage(w, h, outArr, p.OutputEncoding)
         {
             FilePath = source.FilePath, RawOptions = source.RawOptions,
             RawInfo = source.RawInfo, SemanticMasks = source.SemanticMasks,
+            Denoise = source.Denoise,
         };
     }
 
@@ -150,6 +175,16 @@ public static class CpuPipeline
             return result;
         }
         var input = source.Rgba16;
+        if (source.Encoding == RgbEncoding.ProPhoto)
+        {
+            Parallel.For(0, source.Width * source.Height, pixel =>
+            {
+                var i = pixel * 4;
+                var (r, g, b) = RgbEncodingInfo.DecodeProPhoto(input[i] / 65535f, input[i + 1] / 65535f, input[i + 2] / 65535f);
+                result[i] = r; result[i + 1] = g; result[i + 2] = b; result[i + 3] = input[i + 3] / 65535f;
+            });
+            return result;
+        }
         var scale = Vector128.Create(65535f);
         Parallel.For(0, source.Width * source.Height, pixel =>
         {
@@ -179,16 +214,20 @@ public static class CpuPipeline
     /// 裁切取樣（與 geometry/crop.wgsl 同演算法）：輸出像素中心經 <see cref="CropTransform.OutToSource"/>
     /// 映到來源，雙線性取樣，超出邊界以邊緣像素延伸。
     /// </summary>
-    public static float[] Crop(float[] srcLinear, int srcW, int srcH, CropTransform t)
+    public static float[] Crop(float[] srcLinear, int srcW, int srcH, CropTransform t) =>
+        Crop(srcLinear, srcW, srcH, t, RenderView.Whole(t.OutWidth, t.OutHeight));
+
+    /// <summary>只取樣畫框中 <paramref name="view"/> 的範圍：本地像素 (x, y) 對應畫框像素 (x + X, y + Y)。</summary>
+    public static float[] Crop(float[] srcLinear, int srcW, int srcH, CropTransform t, RenderView view)
     {
-        int w = t.OutWidth, h = t.OutHeight;
+        int w = view.W, h = view.H, ox = view.X, oy = view.Y;
         var dst = new float[w * h * 4];
         var m = t.OutToSource;
         Parallel.For(0, h, y =>
         {
             for (var x = 0; x < w; x++)
             {
-                var (sx, sy) = m.Apply(x + 0.5, y + 0.5);
+                var (sx, sy) = m.Apply(x + ox + 0.5, y + oy + 0.5);
                 var fx = (float)(sx - 0.5);
                 var fy = (float)(sy - 0.5);
                 var o = (y * w + x) * 4;
@@ -280,9 +319,11 @@ public static class CpuPipeline
         // auto_crop：放大到變形邊緣仍在畫面內（|r'| 最大時 r'≈r·(1+k1+k2)，負變形時反向）
         var crop = p.AutoCrop ? 1f / MathF.Max(1e-3f, 1f + k1 + k2) : 1f;
         if (k1 + k2 < 0) crop = p.AutoCrop ? 1f / MathF.Max(0.5f, 1f + k1 + k2) : 1f;
-        var cx = w * 0.5f;
-        var cy = h * 0.5f;
-        var half = MathF.Min(w, h) * 0.5f;
+        // 鏡頭中心與短邊一律以畫框計算；窗口模式下本地像素 + (ox, oy) = 畫框像素
+        int fw = p.FrameWidth, fh = p.FrameHeight, ox = p.View.X, oy = p.View.Y;
+        var cx = fw * 0.5f;
+        var cy = fh * 0.5f;
+        var half = MathF.Min(fw, fh) * 0.5f;
         var cxn = cx / half;
         var cyn = cy / half;
 
@@ -294,8 +335,8 @@ public static class CpuPipeline
         {
             for (var x = 0; x < w; x++)
             {
-                var u = (x + 0.5f) / half - cxn;
-                var v = (y + 0.5f) / half - cyn;
+                var u = (x + ox + 0.5f) / half - cxn;
+                var v = (y + oy + 0.5f) / half - cyn;
                 var r2 = u * u + v * v;
                 var f = 1f + k1 * r2 + k2 * r2 * r2;
                 // R：k 增加 chroma；B：k 減少 chroma；G：中央
@@ -307,10 +348,10 @@ public static class CpuPipeline
                 var srcYg = (v * f * crop + cyn) * half - 0.5f;
                 var srcXb = (u * fxB * crop + cxn) * half - 0.5f;
                 var srcYb = (v * fxB * crop + cyn) * half - 0.5f;
-                var rr = SampleBilinear(src, w, h, srcXr, srcYr, 0);
-                var gg = SampleBilinear(src, w, h, srcXg, srcYg, 1);
-                var bb = SampleBilinear(src, w, h, srcXb, srcYb, 2);
-                var aa = SampleBilinear(src, w, h, srcXg, srcYg, 3);
+                var rr = SampleBilinear(src, w, h, srcXr - ox, srcYr - oy, 0);
+                var gg = SampleBilinear(src, w, h, srcXg - ox, srcYg - oy, 1);
+                var bb = SampleBilinear(src, w, h, srcXb - ox, srcYb - oy, 2);
+                var aa = SampleBilinear(src, w, h, srcXg - ox, srcYg - oy, 3);
                 var i = (y * w + x) * 4;
                 dst[i] = rr; dst[i + 1] = gg; dst[i + 2] = bb; dst[i + 3] = aa;
 
@@ -377,20 +418,21 @@ public static class CpuPipeline
         }
 
         var divider = p.Divider / 100f;
+        var frame = new FrameWindow(p, w, h);
         Parallel.For(0, h, y =>
         {
             for (var x = 0; x < w; x++)
             {
-                var u = (x + 0.5f) / w;
-                var v = (y + 0.5f) / h;
+                var u = (x + frame.X + 0.5f) / frame.Width;
+                var v = (y + frame.Y + 0.5f) / frame.Height;
                 // 所屬格
                 var col = Math.Min(cols - 1, (int)(u * cols));
                 var row = Math.Min(rows - 1, (int)(v * rows));
                 var i0 = stagger ? row * cols + col : row * cols + col;
                 var o = (y * w + x) * 4;
-                dst[o] = SampleMultiLens(src, w, h, u, v, col, row, cols, rows, i0, dx, dy, zoom, exp, cr, cg, cb, 0);
-                dst[o + 1] = SampleMultiLens(src, w, h, u, v, col, row, cols, rows, i0, dx, dy, zoom, exp, cr, cg, cb, 1);
-                dst[o + 2] = SampleMultiLens(src, w, h, u, v, col, row, cols, rows, i0, dx, dy, zoom, exp, cr, cg, cb, 2);
+                dst[o] = SampleMultiLens(src, frame, u, v, col, row, cols, rows, i0, dx, dy, zoom, exp, cr, cg, cb, 0);
+                dst[o + 1] = SampleMultiLens(src, frame, u, v, col, row, cols, rows, i0, dx, dy, zoom, exp, cr, cg, cb, 1);
+                dst[o + 2] = SampleMultiLens(src, frame, u, v, col, row, cols, rows, i0, dx, dy, zoom, exp, cr, cg, cb, 2);
                 dst[o + 3] = src[o + 3];
                 // divider 羽化：接近格邊界時混合另一側的取樣
                 if (divider > 0)
@@ -404,9 +446,9 @@ public static class CpuPipeline
                         var nrow = Math.Clamp(row + (v * rows - row - 0.5f > 0 ? 1 : -1), 0, rows - 1);
                         var ni = nrow * cols + ncol;
                         var mix = 1 - t;
-                        dst[o] = dst[o] * (1 - mix) + SampleMultiLens(src, w, h, u, v, ncol, nrow, cols, rows, ni, dx, dy, zoom, exp, cr, cg, cb, 0) * mix;
-                        dst[o + 1] = dst[o + 1] * (1 - mix) + SampleMultiLens(src, w, h, u, v, ncol, nrow, cols, rows, ni, dx, dy, zoom, exp, cr, cg, cb, 1) * mix;
-                        dst[o + 2] = dst[o + 2] * (1 - mix) + SampleMultiLens(src, w, h, u, v, ncol, nrow, cols, rows, ni, dx, dy, zoom, exp, cr, cg, cb, 2) * mix;
+                        dst[o] = dst[o] * (1 - mix) + SampleMultiLens(src, frame, u, v, ncol, nrow, cols, rows, ni, dx, dy, zoom, exp, cr, cg, cb, 0) * mix;
+                        dst[o + 1] = dst[o + 1] * (1 - mix) + SampleMultiLens(src, frame, u, v, ncol, nrow, cols, rows, ni, dx, dy, zoom, exp, cr, cg, cb, 1) * mix;
+                        dst[o + 2] = dst[o + 2] * (1 - mix) + SampleMultiLens(src, frame, u, v, ncol, nrow, cols, rows, ni, dx, dy, zoom, exp, cr, cg, cb, 2) * mix;
                     }
                 }
             }
@@ -420,7 +462,7 @@ public static class CpuPipeline
         return MathF.Min(du, dv);
     }
 
-    private static float SampleMultiLens(float[] src, int w, int h, float u, float v,
+    private static float SampleMultiLens(float[] src, FrameWindow frame, float u, float v,
         int col, int row, int cols, int rows, int i,
         float[] dx, float[] dy, float[] zoom, float[] exp, float[] cr, float[] cg, float[] cb, int channel)
     {
@@ -430,9 +472,9 @@ public static class CpuPipeline
         // 全圖座標 → 格中心為原點的取樣座標（含 zoom/位移）
         var cu = lu - 0.5f;
         var cv = lv - 0.5f;
-        var sx = (col + 0.5f + cu / zoom[i] + dx[i]) * w / cols - 0.5f;
-        var sy = (row + 0.5f + cv / zoom[i] + dy[i]) * h / rows - 0.5f;
-        var c = SampleBilinear(src, w, h, sx, sy, channel);
+        var sx = (col + 0.5f + cu / zoom[i] + dx[i]) * frame.Width / cols - 0.5f;
+        var sy = (row + 0.5f + cv / zoom[i] + dy[i]) * frame.Height / rows - 0.5f;
+        var c = frame.Sample(src, sx, sy, channel);
         // 曝光差異（線性增益）
         c *= MathF.Pow(2f, exp[i]);
         // 色偏差異：把通道乘上彩色權重
@@ -448,9 +490,12 @@ public static class CpuPipeline
     /// </summary>
     public static void DoubleExposure(float[] src, float[] dst, int w, int h, ModuleParams p)
     {
+        // 第二張為本張時以畫框尺寸映射、在窗口緩衝中取樣（畫框像素 − 窗口原點）
+        var frame = new FrameWindow(p, w, h);
+        var self = p.DoubleAsset is null;
         var second = p.DoubleAsset?.Linear ?? src;
-        var sw2 = p.DoubleAsset?.Image.Width ?? w;
-        var sh2 = p.DoubleAsset?.Image.Height ?? h;
+        var sw2 = p.DoubleAsset?.Image.Width ?? frame.Width;
+        var sh2 = p.DoubleAsset?.Image.Height ?? frame.Height;
 
         var opacity = p.Opacity / 100f;
         var scale = p.DoubleScale / 100f;
@@ -463,8 +508,8 @@ public static class CpuPipeline
         {
             for (var x = 0; x < w; x++)
             {
-                var u = (x + 0.5f) / w;
-                var v = (y + 0.5f) / h;
+                var u = (x + frame.X + 0.5f) / frame.Width;
+                var v = (y + frame.Y + 0.5f) / frame.Height;
                 // 反向映射：uv → 第二影像座標
                 var su = (u - 0.5f - p.OffsetX) / scale;
                 var sv = (v - 0.5f - p.OffsetY) / scale;
@@ -480,9 +525,19 @@ public static class CpuPipeline
                 var ar = src[i];
                 var ag = src[i + 1];
                 var ab = src[i + 2];
-                var br = SampleBilinear(second, sw2, sh2, sx2, sy2, 0);
-                var bg = SampleBilinear(second, sw2, sh2, sx2, sy2, 1);
-                var bb = SampleBilinear(second, sw2, sh2, sx2, sy2, 2);
+                float br, bg, bb;
+                if (self)
+                {
+                    br = frame.Sample(src, sx2, sy2, 0);
+                    bg = frame.Sample(src, sx2, sy2, 1);
+                    bb = frame.Sample(src, sx2, sy2, 2);
+                }
+                else
+                {
+                    br = SampleBilinear(second, sw2, sh2, sx2, sy2, 0);
+                    bg = SampleBilinear(second, sw2, sh2, sx2, sy2, 1);
+                    bb = SampleBilinear(second, sw2, sh2, sx2, sy2, 2);
+                }
 
                 var k2 = opacity;
                 float r, g, b;
@@ -517,7 +572,8 @@ public static class CpuPipeline
     /// <summary>以共用的圓形／多邊形光圈取樣線性光；清晰區不改色，貓眼光圈隨離軸距離壓縮。</summary>
     public static void Bokeh(float[] src, float[] dst, int w, int h, ModuleParams p)
     {
-        var shortSide = MathF.Min(w, h);
+        var frame = new FrameWindow(p, w, h);
+        var shortSide = frame.ShortSide;
         var radius = p.BokehBlur / 100f * shortSide * .03f;
         var transition = MathF.Max(.001f, p.BokehTransition / 100f);
         var focusSize = p.FocusSize / 200f;
@@ -531,8 +587,8 @@ public static class CpuPipeline
         {
             for (var x = 0; x < w; x++)
             {
-                var u = (x + .5f - p.BokehCx * w) / shortSide;
-                var v = (y + .5f - p.BokehCy * h) / shortSide;
+                var u = (x + frame.X + .5f - p.BokehCx * frame.Width) / shortSide;
+                var v = (y + frame.Y + .5f - p.BokehCy * frame.Height) / shortSide;
                 var ru = u * cos - v * sin;
                 var rv = u * sin + v * cos;
                 var distance = p.FocusShape switch
@@ -551,7 +607,7 @@ public static class CpuPipeline
                     if (mix > 0)
                         foreach (var point in points)
                         {
-                            var value = SampleBilinear(src, w, h, x + point.X * radius * squeeze, y + point.Y * radius, c);
+                            var value = frame.Sample(src, x + frame.X + point.X * radius * squeeze, y + frame.Y + point.Y * radius, c);
                             var bright = Math.Clamp(value, 0, 1);
                             sum += value + boost * bright * bright * bright * bright * .8f;
                         }
@@ -568,7 +624,8 @@ public static class CpuPipeline
     /// </summary>
     public static void ZoomRotate(float[] src, float[] dst, int w, int h, ModuleParams p)
     {
-        var shortSide = MathF.Min(w, h);
+        var frame = new FrameWindow(p, w, h);
+        var shortSide = frame.ShortSide;
         var cx = p.ZrCx;
         var cy = p.ZrCy;
         var zoomLen = p.Zoom / 100f * 0.15f * shortSide;   // 像素
@@ -582,10 +639,10 @@ public static class CpuPipeline
             for (var x = 0; x < w; x++)
             {
                 var i = (y * w + x) * 4;
-                var u = (x + 0.5f) / w - cx;
-                var v = (y + 0.5f) / h - cy;
-                var dcx = u * w;
-                var dcy = v * h;
+                var u = (x + frame.X + 0.5f) / frame.Width - cx;
+                var v = (y + frame.Y + 0.5f) / frame.Height - cy;
+                var dcx = u * frame.Width;
+                var dcy = v * frame.Height;
                 var dist = MathF.Sqrt(dcx * dcx + dcy * dcy);
                 var protectT = SmoothStep(protect, protect + trans, dist);
                 if (protectT <= 0)
@@ -608,12 +665,12 @@ public static class CpuPipeline
                     var sa = MathF.Sin(angle);
                     var rx = dcx * ca - dcy * sa - z * nx;
                     var ry = dcx * sa + dcy * ca - z * ny;
-                    var sx = (cx * w + rx) - 0.5f;
-                    var sy = (cy * h + ry) - 0.5f;
-                    r += SampleBilinear(src, w, h, sx, sy, 0);
-                    g += SampleBilinear(src, w, h, sx, sy, 1);
-                    b += SampleBilinear(src, w, h, sx, sy, 2);
-                    a += SampleBilinear(src, w, h, sx, sy, 3);
+                    var sx = (cx * frame.Width + rx) - 0.5f;
+                    var sy = (cy * frame.Height + ry) - 0.5f;
+                    r += frame.Sample(src, sx, sy, 0);
+                    g += frame.Sample(src, sx, sy, 1);
+                    b += frame.Sample(src, sx, sy, 2);
+                    a += frame.Sample(src, sx, sy, 3);
                 }
                 r /= S; g /= S; b /= S; a /= S;
                 dst[i] = src[i] * (1 - protectT) + r * protectT;
@@ -627,7 +684,8 @@ public static class CpuPipeline
     /// <summary>動態模糊（5.3.7）：沿指定方向取樣平均，保護區混合。</summary>
     public static void MotionBlur(float[] src, float[] dst, int w, int h, ModuleParams p)
     {
-        var shortSide = MathF.Min(w, h);
+        var frame = new FrameWindow(p, w, h);
+        var shortSide = frame.ShortSide;
         var len = p.MotionLength / 100f * 0.2f * shortSide;
         var ang = p.MotionAngle * MathF.PI / 180f;
         var dx = MathF.Cos(ang);
@@ -644,9 +702,9 @@ public static class CpuPipeline
                 var pmask = 1f;
                 if (p.MotionProtectOn)
                 {
-                    var du = (x + 0.5f) / w - px;
-                    var dv = (y + 0.5f) / h - py;
-                    var d = MathF.Sqrt(du * du * w * w + dv * dv * h * h);
+                    var du = (x + frame.X + 0.5f) / frame.Width - px;
+                    var dv = (y + frame.Y + 0.5f) / frame.Height - py;
+                    var d = MathF.Sqrt(du * du * frame.Width * frame.Width + dv * dv * frame.Height * frame.Height);
                     pmask = SmoothStep(psize, psize + 0.15f * shortSide, d);
                 }
                 float r = 0, g = 0, b = 0, a = 0;
@@ -654,12 +712,12 @@ public static class CpuPipeline
                 for (var s = 0; s < S; s++)
                 {
                     var t = s / (float)(S - 1) - 0.5f;
-                    var sx = x + 0.5f + t * len * dx - 0.5f;
-                    var sy = y + 0.5f + t * len * dy - 0.5f;
-                    r += SampleBilinear(src, w, h, sx, sy, 0);
-                    g += SampleBilinear(src, w, h, sx, sy, 1);
-                    b += SampleBilinear(src, w, h, sx, sy, 2);
-                    a += SampleBilinear(src, w, h, sx, sy, 3);
+                    var sx = x + frame.X + 0.5f + t * len * dx - 0.5f;
+                    var sy = y + frame.Y + 0.5f + t * len * dy - 0.5f;
+                    r += frame.Sample(src, sx, sy, 0);
+                    g += frame.Sample(src, sx, sy, 1);
+                    b += frame.Sample(src, sx, sy, 2);
+                    a += frame.Sample(src, sx, sy, 3);
                 }
                 r /= S; g /= S; b /= S; a /= S;
                 dst[i] = src[i] * (1 - pmask) + r * pmask;
@@ -679,15 +737,16 @@ public static class CpuPipeline
         var feather = MathF.Max(0.001f, p.VigFeather / 100f);
         var cx = p.VigCx;
         var cy = p.VigCy;
-        var aspect = w / (float)h;
+        var frame = new FrameWindow(p, w, h);
+        var aspect = frame.Width / (float)frame.Height;
 
         Parallel.For(0, h, y =>
         {
             for (var x = 0; x < w; x++)
             {
                 var i = (y * w + x) * 4;
-                var u = (x + 0.5f) / w - cx;
-                var v = (y + 0.5f) / h - cy;
+                var u = (x + frame.X + 0.5f) / frame.Width - cx;
+                var v = (y + frame.Y + 0.5f) / frame.Height - cy;
                 var uu = u * aspect;
                 var rr = MathF.Sqrt(uu * uu + v * v);
                 // 超橢圓：roundness 0 = 橢圓（等比），±100 趨近矩形/圓
@@ -706,7 +765,7 @@ public static class CpuPipeline
     /// <summary>光暈（5.3.9）：取超過閾值的高光，模糊後加回（染色）。</summary>
     public static void Halation(float[] src, float[] dst, int w, int h, ModuleParams p)
     {
-        var shortSide = MathF.Min(w, h);
+        var shortSide = MathF.Min(p.FrameWidth, p.FrameHeight);
         var amount = p.HalAmount / 100f;
         var thr = p.HalThreshold / 100f;
         var radius = Math.Max(1, (int)MathF.Round(p.HalRadius / 100f * 0.08f * shortSide));
@@ -757,12 +816,24 @@ public static class CpuPipeline
         var sMax = 0.5f * (MathF.Abs(dirX) + MathF.Abs(dirY));
         var range = sMax * 2f;
 
+        // 三色電漿改編自 danielzeller/LightLeaksUnity（MIT, (c) 2016 Daniel Zeller），Assets/LightLeaks/LightLeaks.shader；
+        // 以種子決定的「時間」取代動畫時間，原黃 (1, .9, .63) 轉為線性光 ≈ (1, .787, .355)。須與 light_leak.wgsl 逐式一致。
+        var time = 8f + 56f * SeedHash.ToUnitFloat(SeedHash.Pcg(seed + 4099u));
+        var cosT = MathF.Cos(time);
+        var sinT = MathF.Sin(time);
+        var red = p.LeakRed / 100f;
+        var yellow = p.LeakYellow / 100f;
+        var blue = p.LeakBlue / 100f;
+        var blend = p.LeakBlend;
+        var frame = new FrameWindow(p, w, h);
+
         Parallel.For(0, h, y =>
         {
+            var v = (y + frame.Y + 0.5f) / frame.Height;
             for (var x = 0; x < w; x++)
             {
-                var cu = (x + 0.5f) / w - 0.5f;
-                var cv = (y + 0.5f) / h - 0.5f;
+                var cu = (x + frame.X + 0.5f) / frame.Width - 0.5f;
+                var cv = (y + frame.Y + 0.5f) / frame.Height - 0.5f;
                 float leak = 0;
                 for (var c = 0; c < count; c++)
                 {
@@ -783,27 +854,51 @@ public static class CpuPipeline
                 }
                 if (leak <= 0) continue;
                 leak = MathF.Min(1f, leak);
-                var (lr, lg, lb) = HsvToRgb(hue, 0.9f, 1f);
+                // 三色電漿：黃、紅、藍各一組低頻正弦場
+                // 各場 -2..2 映到 0..1 再 smoothstep 拉對比（原 shader 直接截負值，部分種子會整片無光）
+                var u = (x + frame.X + 0.5f) / frame.Width;
+                var yp = MathF.Sin(u * cosT * 6f * MathF.Cos(v * time / 232f)) + MathF.Sin(v * sinT * 3f * MathF.Cos(u * time / 212f));
+                var rp = MathF.Cos(u * sinT * 5f * MathF.Cos(v * time / 211f)) + MathF.Sin(v * sinT * 6f * MathF.Cos(u * time / 234f));
+                var bp = MathF.Cos(u * cosT * 4f * MathF.Cos(v * time / 311f)) + MathF.Sin(v * sinT * 7f * MathF.Cos(u * time / 321f));
+                var yw = SmoothStep(0.1f, 0.9f, yp * 0.25f + 0.5f) * yellow;
+                var rw = SmoothStep(0.1f, 0.9f, rp * 0.25f + 0.5f) * red;
+                var bw = SmoothStep(0.1f, 0.9f, bp * 0.25f + 0.5f) * blue;
+                var lr = yw + rw;
+                var lg = 0.787f * yw;
+                var lb = 0.355f * yw + bw;
+                if (hue != 0)
+                {
+                    var hsv = RgbToHsv(lr, lg, lb);
+                    (lr, lg, lb) = HsvToRgb(hsv.H + hue, hsv.S, hsv.V);
+                }
+                lr *= leak; lg *= leak; lb *= leak;
                 var i = (y * w + x) * 4;
-                // 線性光中「增加曝光」：以 add 為主，亮處趨白
-                var k = amount * leak;
-                buf[i] += (0.85f + 0.15f * lr) * k * 0.6f;
-                buf[i + 1] += (0.85f + 0.15f * lg) * k * 0.55f;
-                buf[i + 2] += (0.85f + 0.15f * lb) * k * 0.5f;
+                buf[i] = BlendLeak(buf[i], lr, amount, blend);
+                buf[i + 1] = BlendLeak(buf[i + 1], lg, amount, blend);
+                buf[i + 2] = BlendLeak(buf[i + 2], lb, amount, blend);
             }
         });
     }
+
+    /// <summary>漏光層混合（線性光）：0 screen / 1 add / 2 lighten；k 為強度。</summary>
+    private static float BlendLeak(float c, float l, float k, int blend) => blend switch
+    {
+        1 => c + k * l,
+        2 => c + k * MathF.Max(l - c, 0f),
+        _ => c + k * l * (1f - MathF.Min(c, 1f)),
+    };
 
     private static void TextureOverlay(float[] pixels, int width, int height, ModuleParams p, bool leak)
     {
         var asset = (leak ? p.LeakAsset : p.DirtAsset)!;
         var image = asset.Image;
         var texture = asset.Linear;
-        var shortSide = MathF.Min(width, height);
+        var frame = new FrameWindow(p, width, height);
+        var shortSide = frame.ShortSide;
         var scale = MathF.Max(.05f, (leak ? p.LeakSize : p.DirtScale) / 100f);
         var amount = (leak ? p.LeakAmount : p.DirtStrength) / 100f;
         var angle = (leak ? p.LeakAngle : SeedHash.ToUnitFloat(SeedHash.Pcg(p.SeedDirt)) * 360f) * MathF.PI / 180f;
-        if ((width > height) != (image.Width > image.Height)) angle += MathF.PI / 2;
+        if ((frame.Width > frame.Height) != (image.Width > image.Height)) angle += MathF.PI / 2;
         var cos = MathF.Cos(angle);
         var sin = MathF.Sin(angle);
         var repeat = leak ? Math.Clamp(p.LeakCount, 1, 3) : 1;
@@ -814,8 +909,8 @@ public static class CpuPipeline
                 var i = (y * width + x) * 4;
                 for (var n = 0; n < repeat; n++)
                 {
-                    var u = (x + .5f - width * .5f) / shortSide / scale;
-                    var v = (y + .5f - height * .5f) / shortSide / scale;
+                    var u = (x + frame.X + .5f - frame.Width * .5f) / shortSide / scale;
+                    var v = (y + frame.Y + .5f - frame.Height * .5f) / shortSide / scale;
                     var rx = u * cos - v * sin;
                     var ry = u * sin + v * cos;
                     if (n == 1) rx = -rx;
@@ -832,10 +927,10 @@ public static class CpuPipeline
                         var hsv = RgbToHsv(r, g, b);
                         (r, g, b) = HsvToRgb(hsv.H + p.LeakHue, hsv.S, hsv.V);
                         var noise = 1 - p.LeakIrregularity / 100f * ValueNoise2(rx * 4, ry * 4, p.SeedLightLeak + (uint)n);
-                        var strength = amount * alpha * noise;
-                        pixels[i] = 1 - (1 - pixels[i]) * (1 - r * strength);
-                        pixels[i + 1] = 1 - (1 - pixels[i + 1]) * (1 - g * strength);
-                        pixels[i + 2] = 1 - (1 - pixels[i + 2]) * (1 - b * strength);
+                        var cover = alpha * noise;
+                        pixels[i] = BlendLeak(pixels[i], r * cover, amount, p.LeakBlend);
+                        pixels[i + 1] = BlendLeak(pixels[i + 1], g * cover, amount, p.LeakBlend);
+                        pixels[i + 2] = BlendLeak(pixels[i + 2], b * cover, amount, p.LeakBlend);
                     }
                     else
                     {
@@ -881,6 +976,7 @@ public static class CpuPipeline
 
         var orig = new float[n * 4];
         Array.Copy(buf, orig, orig.Length);
+        var frame = new FrameWindow(p, w, h);
         Parallel.For(0, h, y =>
         {
             for (var x = 0; x < w; x++)
@@ -898,8 +994,8 @@ public static class CpuPipeline
                 var b = lum * tb * 1.6f;
 
                 // 邊緣剝落：到邊緣距離 + 多層雜訊閾值
-                var u = (x + 0.5f) / w;
-                var v = (y + 0.5f) / h;
+                var u = (x + frame.X + 0.5f) / frame.Width;
+                var v = (y + frame.Y + 0.5f) / frame.Height;
                 var edge = MathF.Min(u, MathF.Min(v, MathF.Min(1f - u, 1f - v)));
                 var erosion = p.PlateEdgeErosion / 100f;
                 if (erosion > 0)
@@ -957,7 +1053,7 @@ public static class CpuPipeline
         float[]? structBlur = null;
         if (p.Structure != 0)
         {
-            var r = Math.Max(1, (int)MathF.Round(MathF.Min(w, h) * 0.012f));
+            var r = Math.Max(1, (int)MathF.Round(MathF.Min(p.FrameWidth, p.FrameHeight) * 0.012f));
             var sigma = Math.Max(0.5f, r / 3f);
             structBlur = new float[n * 4];
             var tt = new float[n * 4];
@@ -968,10 +1064,20 @@ public static class CpuPipeline
         var gm = brightness != 0 ? MathF.Pow(2f, -brightness) : 0f;
         var cMul = contrast != 0 ? 1f + contrast : 0f;
         var satK = 1f + saturation;
+        var shadowToe = shadows != 0 ? MathF.Pow(2f, -2f * shadows) - 1f : 0f;
         Parallel.For(0, n, i =>
         {
             var s = i * 4;
             var v = Vector128.LoadUnsafe(ref buf[s]);
+            // 細節必須與同一階段的模糊基底比較；先於全域階調，避免對比後近零亮度放大色差。
+            if (structBlur != null && p.Structure != 0)
+            {
+                var l = Luminance(v);
+                var bl = Luminance(Vector128.LoadUnsafe(ref structBlur[s]));
+                var diff = (l - bl) * p.Structure / 100f * 0.6f;
+                var scale = l > 1e-4f ? (l + diff) / l : 1f;
+                v = Vector128.Max(v * Vector128.Create(scale), Vector128<float>.Zero);
+            }
             // 亮度：中間調 gamma（0 恆等）
             if (brightness != 0)
             {
@@ -983,28 +1089,36 @@ public static class CpuPipeline
             // 對比：圍繞中間調
             if (contrast != 0)
                 v = (v - Vector128.Create(0.5f)) * Vector128.Create(cMul) + Vector128.Create(0.5f);
-            // 亮部/暗部：分段加權
+            // 暗部：共同 RGB 增益保留黑點與色彩比例，於 Y=0.45 平滑接回恆等。
+            // Y' = Y / (1 + a(1-Y/0.45)²)，a > -1：整段嚴格遞增，不反轉灰階。
             var lum = Luminance(v);
+            if (shadows != 0 && lum > 0 && lum < 0.45f)
+            {
+                var toe = 1f - lum / 0.45f;
+                v *= Vector128.Create(1f / (1f + shadowToe * toe * toe));
+            }
             var hi = SmoothStep(0.45f, 0.95f, lum);
-            var lo = 1f - SmoothStep(0.05f, 0.45f, lum);
-            var k = highlights * hi * 0.35f + shadows * lo * 0.35f;
-            v += Vector128.Create(k);
+            v += Vector128.Create(highlights * hi * 0.35f);
             // 飽和度
             if (saturation != 0)
             {
                 var l = Vector128.Create(Luminance(v));
                 v = Vector128.Max(l + (v - l) * Vector128.Create(satK), Vector128<float>.Zero);
             }
-            // 細節提取：以中頻差異增強局部對比
-            if (structBlur != null && p.Structure != 0)
-            {
-                var l = Luminance(v);
-                var bl = Luminance(Vector128.LoadUnsafe(ref structBlur[s]));
-                var diff = (l - bl) * p.Structure / 100f * 0.6f;
-                var scale = l > 1e-4f ? (l + diff) / l : 1f;
-                v = Vector128.Max(v * Vector128.Create(scale), Vector128<float>.Zero);
-            }
             buf[s] = v[0]; buf[s + 1] = v[1]; buf[s + 2] = v[2];
+        });
+    }
+
+    /// <summary>
+    /// 色調曲線（顯示編碼）：分段 → 主曲線 → 各通道的合成查表＋曲線飽和度（<see cref="ToneCurveSet.Apply"/>，
+    /// 與 linear/tone_curves.wgsl 一致）；alpha 不變。停用或恆等時 <see cref="ModuleParams.Curves"/> 為 null，整段略過。
+    /// </summary>
+    public static void ToneCurves(float[] buf, int n, ToneCurveSet curves)
+    {
+        Parallel.For(0, n, i =>
+        {
+            var s = i * 4;
+            (buf[s], buf[s + 1], buf[s + 2]) = curves.Apply(buf[s], buf[s + 1], buf[s + 2]);
         });
     }
 
@@ -1043,7 +1157,7 @@ public static class CpuPipeline
     public static void Detail(float[] buf, float[] tmp, float[] tmp2, int w, int h, ModuleParams p)
     {
         var n = w * h;
-        var shortSide = MathF.Min(w, h);
+        var shortSide = MathF.Min(p.FrameWidth, p.FrameHeight);
 
         if (p.Clarity != 0)
         {
@@ -1103,7 +1217,8 @@ public static class CpuPipeline
     /// </summary>
     public static void DirtScratches(float[] buf, int w, int h, ModuleParams p)
     {
-        var shortSide = MathF.Min(w, h);
+        var frame = new FrameWindow(p, w, h);
+        var shortSide = frame.ShortSide;
         var strength = p.DirtStrength / 100f;
         var scale = p.DirtScale / 100f * shortSide / 800f;
         var seed = p.SeedDirt;
@@ -1123,43 +1238,43 @@ public static class CpuPipeline
                 0 => -1f, 1 => 1f,
                 _ => SeedHash.ToUnitFloat(SeedHash.Pcg(s + 3)) > 0.5f ? 1f : -1f,
             };
-            ApplySpot(mask, w, h, cx * w, cy * h, r, pol * strength * 0.5f);
+            ApplySpot(mask, frame, cx * frame.Width, cy * frame.Height, r, pol * strength * 0.5f);
         }
         // 刮痕（線段）
         var scrN = (int)MathF.Round(p.DirtScratches / 100f * 25f);
         for (var d = 0; d < scrN; d++)
         {
             var s = seed + 977u + (uint)d * 173u;
-            var x0 = SeedHash.ToUnitFloat(SeedHash.Pcg(s)) * w;
-            var y0 = SeedHash.ToUnitFloat(SeedHash.Pcg(s + 1)) * h;
-            var x1 = x0 + (SeedHash.ToUnitFloat(SeedHash.Pcg(s + 2)) - 0.5f) * w * 0.4f;
-            var y1 = y0 + (SeedHash.ToUnitFloat(SeedHash.Pcg(s + 3)) - 0.5f) * h * 0.4f;
+            var x0 = SeedHash.ToUnitFloat(SeedHash.Pcg(s)) * frame.Width;
+            var y0 = SeedHash.ToUnitFloat(SeedHash.Pcg(s + 1)) * frame.Height;
+            var x1 = x0 + (SeedHash.ToUnitFloat(SeedHash.Pcg(s + 2)) - 0.5f) * frame.Width * 0.4f;
+            var y1 = y0 + (SeedHash.ToUnitFloat(SeedHash.Pcg(s + 3)) - 0.5f) * frame.Height * 0.4f;
             var wd = (0.8f + SeedHash.ToUnitFloat(SeedHash.Pcg(s + 4)) * 2.5f) * scale;
             var pol = polarity switch
             {
                 0 => -1f, 1 => 1f,
                 _ => SeedHash.ToUnitFloat(SeedHash.Pcg(s + 5)) > 0.5f ? 1f : -1f,
             };
-            ApplyLine(mask, w, h, x0, y0, x1, y1, wd, pol * strength * 0.4f);
+            ApplyLine(mask, frame, x0, y0, x1, y1, wd, pol * strength * 0.4f);
         }
         // 毛髮/纖維（二次貝茲）
         var hairN = (int)MathF.Round(p.DirtHairs / 100f * 12f);
         for (var d = 0; d < hairN; d++)
         {
             var s = seed + 2027u + (uint)d * 211u;
-            var x0 = SeedHash.ToUnitFloat(SeedHash.Pcg(s)) * w;
-            var y0 = SeedHash.ToUnitFloat(SeedHash.Pcg(s + 1)) * h;
-            var cx2 = x0 + (SeedHash.ToUnitFloat(SeedHash.Pcg(s + 2)) - 0.5f) * w * 0.3f;
-            var cy2 = y0 + (SeedHash.ToUnitFloat(SeedHash.Pcg(s + 3)) - 0.5f) * h * 0.3f;
-            var x1 = x0 + (SeedHash.ToUnitFloat(SeedHash.Pcg(s + 4)) - 0.5f) * w * 0.5f;
-            var y1 = y0 + (SeedHash.ToUnitFloat(SeedHash.Pcg(s + 5)) - 0.5f) * h * 0.5f;
+            var x0 = SeedHash.ToUnitFloat(SeedHash.Pcg(s)) * frame.Width;
+            var y0 = SeedHash.ToUnitFloat(SeedHash.Pcg(s + 1)) * frame.Height;
+            var cx2 = x0 + (SeedHash.ToUnitFloat(SeedHash.Pcg(s + 2)) - 0.5f) * frame.Width * 0.3f;
+            var cy2 = y0 + (SeedHash.ToUnitFloat(SeedHash.Pcg(s + 3)) - 0.5f) * frame.Height * 0.3f;
+            var x1 = x0 + (SeedHash.ToUnitFloat(SeedHash.Pcg(s + 4)) - 0.5f) * frame.Width * 0.5f;
+            var y1 = y0 + (SeedHash.ToUnitFloat(SeedHash.Pcg(s + 5)) - 0.5f) * frame.Height * 0.5f;
             var wd = (0.6f + SeedHash.ToUnitFloat(SeedHash.Pcg(s + 6)) * 1.4f) * scale;
             var pol = polarity switch
             {
                 0 => -1f, 1 => 1f,
                 _ => SeedHash.ToUnitFloat(SeedHash.Pcg(s + 7)) > 0.5f ? 1f : -1f,
             };
-            ApplyBezier(mask, w, h, x0, y0, cx2, cy2, x1, y1, wd, pol * strength * 0.35f);
+            ApplyBezier(mask, frame, x0, y0, cx2, cy2, x1, y1, wd, pol * strength * 0.35f);
         }
         Parallel.For(0, w * h, pixel =>
         {
@@ -1191,8 +1306,9 @@ public static class CpuPipeline
         var amount = p.GrainAmount / 100f;
         var color = p.GrainColor / 100f;
         var seed = p.SeedGrain;
-        var d = DeriveGrain(p, w, h);
+        var d = DeriveGrain(p, p.FrameWidth, p.FrameHeight);
         var geom = d.Geom;
+        int ox = p.View.X, oy = p.View.Y;
         var soft = GrainSoftBlur(geom.RefShort, p.GrainSoftness / 100f, geom.PixelScale);
         var mix = soft is null ? 0f : p.GrainSoftness / 100f;
         if (soft is { } blur)
@@ -1230,8 +1346,8 @@ public static class CpuPipeline
                     continue;
                 }
                 var shadow = 1f - s;
-                var px = x + 0.5f;
-                var py = y + 0.5f;
+                var px = x + ox + 0.5f;
+                var py = y + oy + 0.5f;
                 var gx = geom.A00 * px + geom.A01 * py + geom.B0;
                 var gy = geom.A10 * px + geom.A11 * py + geom.B1;
                 float luma, cr, cg, cb;
@@ -1581,6 +1697,26 @@ public static class CpuPipeline
 
     // ───────────── 共用工具 ─────────────
 
+    /// <summary>
+    /// 窗口渲染的座標換算：本地像素 (x, y) 對應畫框像素 (x + X, y + Y)；Width／Height 為畫框尺寸，
+    /// LocalWidth／LocalHeight 為工作緩衝（渲染區域）尺寸。整張渲染時 X = Y = 0、兩組尺寸相同，
+    /// 所有運算與原本逐位元相同。
+    /// </summary>
+    private readonly struct FrameWindow(ModuleParams p, int localWidth, int localHeight)
+    {
+        public int X { get; } = p.View.X;
+        public int Y { get; } = p.View.Y;
+        public int Width { get; } = p.FrameWidth;
+        public int Height { get; } = p.FrameHeight;
+        public int LocalWidth { get; } = localWidth;
+        public int LocalHeight { get; } = localHeight;
+        public float ShortSide => MathF.Min(Width, Height);
+
+        /// <summary>以畫框座標雙線性取樣窗口緩衝（減去窗口原點後在緩衝內夾取）。</summary>
+        public float Sample(float[] buf, float frameX, float frameY, int channel) =>
+            SampleBilinear(buf, LocalWidth, LocalHeight, frameX - X, frameY - Y, channel);
+    }
+
     /// <summary>雙線性取樣（clamp 邊界）。</summary>
     public static float SampleBilinear(float[] buf, int w, int h, float x, float y, int channel)
     {
@@ -1690,29 +1826,30 @@ public static class CpuPipeline
         return (h00 * (1 - ux) + h10 * ux) * (1 - uy) + (h01 * (1 - ux) + h11 * ux) * uy;
     }
 
-    private static void ApplySpot(float[] buf, int w, int h, float cx, float cy, float r, float amount)
+    /// <summary>形狀以畫框座標描述；只走訪落在窗口內的畫框像素，寫入窗口本地索引。</summary>
+    private static void ApplySpot(float[] buf, FrameWindow f, float cx, float cy, float r, float amount)
     {
         var r2 = r * r;
-        var x0 = Math.Max(0, (int)(cx - r * 2));
-        var x1 = Math.Min(w - 1, (int)(cx + r * 2));
-        var y0 = Math.Max(0, (int)(cy - r * 2));
-        var y1 = Math.Min(h - 1, (int)(cy + r * 2));
+        var x0 = Math.Max(f.X, (int)(cx - r * 2));
+        var x1 = Math.Min(f.X + f.LocalWidth - 1, Math.Min(f.Width - 1, (int)(cx + r * 2)));
+        var y0 = Math.Max(f.Y, (int)(cy - r * 2));
+        var y1 = Math.Min(f.Y + f.LocalHeight - 1, Math.Min(f.Height - 1, (int)(cy + r * 2)));
         for (var y = y0; y <= y1; y++)
         for (var x = x0; x <= x1; x++)
         {
             var d2 = (x + .5f - cx) * (x + .5f - cx) + (y + .5f - cy) * (y + .5f - cy);
             var t = MathF.Exp(-d2 / (r2 * 0.5f));
             if (t < 0.01f) continue;
-            buf[y * w + x] += amount * t;
+            buf[(y - f.Y) * f.LocalWidth + x - f.X] += amount * t;
         }
     }
 
-    private static void ApplyLine(float[] buf, int w, int h, float x0, float y0, float x1, float y1, float width, float amount)
+    private static void ApplyLine(float[] buf, FrameWindow f, float x0, float y0, float x1, float y1, float width, float amount)
     {
-        var minX = Math.Max(0, (int)(MathF.Min(x0, x1) - width * 3));
-        var maxX = Math.Min(w - 1, (int)(MathF.Max(x0, x1) + width * 3));
-        var minY = Math.Max(0, (int)(MathF.Min(y0, y1) - width * 3));
-        var maxY = Math.Min(h - 1, (int)(MathF.Max(y0, y1) + width * 3));
+        var minX = Math.Max(f.X, (int)(MathF.Min(x0, x1) - width * 3));
+        var maxX = Math.Min(f.X + f.LocalWidth - 1, Math.Min(f.Width - 1, (int)(MathF.Max(x0, x1) + width * 3)));
+        var minY = Math.Max(f.Y, (int)(MathF.Min(y0, y1) - width * 3));
+        var maxY = Math.Min(f.Y + f.LocalHeight - 1, Math.Min(f.Height - 1, (int)(MathF.Max(y0, y1) + width * 3)));
         var dx = x1 - x0;
         var dy = y1 - y0;
         var len2 = dx * dx + dy * dy;
@@ -1725,11 +1862,11 @@ public static class CpuPipeline
             var d = MathF.Sqrt((x + .5f - px) * (x + .5f - px) + (y + .5f - py) * (y + .5f - py));
             var m = MathF.Exp(-d * d / (width * width));
             if (m < 0.01f) continue;
-            buf[y * w + x] += amount * m;
+            buf[(y - f.Y) * f.LocalWidth + x - f.X] += amount * m;
         }
     }
 
-    private static void ApplyBezier(float[] buf, int w, int h, float x0, float y0, float cx, float cy, float x1, float y1, float width, float amount)
+    private static void ApplyBezier(float[] buf, FrameWindow f, float x0, float y0, float cx, float cy, float x1, float y1, float width, float amount)
     {
         // 以線段序列近似二次貝茲
         const int Segs = 40;
@@ -1741,7 +1878,7 @@ public static class CpuPipeline
             var ay = (1 - t0) * (1 - t0) * y0 + 2 * (1 - t0) * t0 * cy + t0 * t0 * y1;
             var bx = (1 - t1) * (1 - t1) * x0 + 2 * (1 - t1) * t1 * cx + t1 * t1 * x1;
             var by = (1 - t1) * (1 - t1) * y0 + 2 * (1 - t1) * t1 * cy + t1 * t1 * y1;
-            ApplyLine(buf, w, h, ax, ay, bx, by, width, amount / Segs * 3f);
+            ApplyLine(buf, f, ax, ay, bx, by, width, amount / Segs * 3f);
         }
     }
 

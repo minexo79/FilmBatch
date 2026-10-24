@@ -321,6 +321,66 @@ public sealed class CanonCr3Tests
     }
 
     [Fact]
+    public void AmbiguousEntropyFitsTwoWidthsWithDifferentCoefficients()
+    {
+        // Upstream #899: entropy alignment alone does not identify the coded width.
+        Assert.Equal(new[] { 0, 0, 5, -2 }, Crx.HighFrequencyBand([0xc0, 0x0f], 2, 2));
+        Assert.Equal(new[] { 0, 0, 5, 0, 0, 0 }, Crx.HighFrequencyBand([0xc0, 0x0f], 3, 2));
+        Assert.Equal(new[] { 5, 0, -1 }, Crx.HighFrequencyBand([0x00, 0x33], 3, 1));
+        Assert.Equal(new[] { 5, 0, 0, 0 }, Crx.HighFrequencyBand([0x00, 0x33], 4, 1));
+    }
+
+    private static (byte[] Sample, Cr3Compression Config) CodedWidthSample(uint height, int ambiguousBand)
+    {
+        var config = Coding();
+        config.Width = 8; config.Height = height; config.TileWidth = 4; config.TileHeight = height;
+        config.Levels = 3; config.HeaderSize = 1080;
+        // Bands 5 and 8 of the left tile code an even synthesis width one column wider, so
+        // their silent payloads are coded-width streams: [0xe0] is one 3-wide zero row and
+        // [0xff] three 3-wide zero rows. The ambiguous stream keeps a nonzero only in its
+        // coded column. Every other payload fits its exact synthesis width.
+        byte[][] left = ambiguousBand == 8
+            ? [[0x60], [0xc0], [0xc0], [0xc0], [0xf0], [0xe0], [0xc0], [0xfc], [0xc0, 0x0f], [0xf0]]
+            : [[0x60], [0xc0], [0xc0], [0xc0], [0xf0], [0xc0, 0x0f], [0xf0], [0xff], [0xff], [0xfc]];
+        byte[][] right = ambiguousBand == 8
+            ? [[0x80], [0x80], [0x80], [0x80], [0xc0], [0x80], [0x80], [0xfc], [0xc0], [0xf0]]
+            : [[0x80], [0x80], [0x80], [0x80], [0xc0], [0xc0], [0xc0], [0xff], [0xe0], [0xfc]];
+        var sample = new List<byte>();
+        for (uint tile = 0; tile < 2; tile++)
+        {
+            var bands = tile == 0 ? left : right;
+            uint planeSize = 0; foreach (var band in bands) planeSize += (uint)band.Length;
+            Marker(sample, 0xff01, 4 * planeSize, tile << 16);
+            for (uint plane = 0; plane < 4; plane++)
+            {
+                Marker(sample, 0xff02, planeSize, plane << 28 | 0x0800_0000);
+                for (uint band = 0; band < 10; band++) Marker(sample, 0xff03, (uint)bands[band].Length, band << 28 | 0x0020_0000);
+            }
+        }
+        Assert.Equal(1080, sample.Count);
+        for (uint tile = 0; tile < 2; tile++)
+        {
+            var bands = tile == 0 ? left : right;
+            for (uint plane = 0; plane < 4; plane++) foreach (var band in bands) sample.AddRange(band);
+        }
+        return (sample.ToArray(), config);
+    }
+
+    [Theory]
+    [InlineData(10u, 8)]
+    [InlineData(14u, 5)]
+    public void LeftTileHighPassBandsDecodeAtTheirCodedWidth(uint height, int ambiguousBand)
+    {
+        // Bands 5 and 8 of a tile with a right neighbour code an even synthesis width one
+        // column wider; the width probe instead keeps the first width that aligns (2), which
+        // yields different retained coefficients for this stream. Every other band is silent,
+        // so a correct decode is exactly the mid-grey sensor mosaic.
+        var (sample, config) = CodedWidthSample(height, ambiguousBand);
+        Crx.Validate(sample, config);
+        Assert.Equal(Enumerable.Repeat((ushort)8192, (int)(8 * height)), Crx.Decode(sample, config));
+    }
+
+    [Fact]
     public void UnsupportedWaveletVariantIsExplicit()
     {
         var config = Coding(); config.Levels = 2;

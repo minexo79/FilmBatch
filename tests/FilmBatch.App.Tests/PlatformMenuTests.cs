@@ -40,6 +40,43 @@ public class PlatformMenuTests
         finally { window.Close(); }
     }
 
+    /// <summary>單獨的數字鍵 0–5 設定星級評分（0 清除），Shift + 1–9 套用釘選預設；Ctrl/⌘ + 0/1 仍是縮放。</summary>
+    [AvaloniaFact]
+    public async Task NumberKeys_RatePhotos_AndShiftNumberKeys_ApplyPinnedPresets()
+    {
+        using var vm = TestEnv.CreateViewModel();
+        await TestEnv.OpenSamplesAsync(vm);
+        var file = vm.FocusFile!;
+        var presetBefore = vm.Service!.Project[file].PresetId;
+        var window = new MainWindow(vm);
+        window.Show();
+        try
+        {
+            void Press(Key key, KeyModifiers modifiers = KeyModifiers.None) =>
+                window.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = key, KeyModifiers = modifiers });
+
+            Press(Key.D3);
+            Assert.Equal(3, vm.Service.Project[file].Rating);
+            Assert.Equal(presetBefore, vm.Service.Project[file].PresetId);
+            Press(Key.NumPad5);
+            Assert.Equal(5, vm.Service.Project[file].Rating);
+            Press(Key.D0);
+            Assert.Equal(0, vm.Service.Project[file].Rating);
+            Press(Key.D7);
+            Assert.Equal(0, vm.Service.Project[file].Rating);
+
+            Assert.NotEqual(presetBefore, vm.Library.Pinned[2].Id);
+            Press(Key.D3, KeyModifiers.Shift);
+            TestEnv.PumpUntil(() => vm.Service.Project[file].PresetId == vm.Library.Pinned[2].Id);
+            Assert.Equal(vm.Library.Pinned[2].Id, vm.Service.Project[file].PresetId);
+            Assert.Equal(0, vm.Service.Project[file].Rating);
+
+            var modifier = Application.Current!.PlatformSettings!.HotkeyConfiguration.CommandModifiers;
+            Press(Key.D1, modifier);
+            Assert.Equal(0, vm.Service.Project[file].Rating);
+        }
+        finally { window.Close(); }
+    }
 
     /// <summary>關閉視窗時寫回專案檔（三層設定模型永續化；失敗時取消關閉）。</summary>
     [AvaloniaFact]

@@ -1,3 +1,5 @@
+using FilmBatch.Core.Projects;
+using FilmBatch.Engine.Denoising;
 using FilmBatch.Engine.Imaging.Raw;
 using FilmBatch.Raw;
 using FilmBatch.Raw.Raster;
@@ -12,8 +14,8 @@ namespace FilmBatch.Engine.Imaging;
 internal sealed record RawSceneData(RgbImage Image, CameraTone? Tone, RawWhiteBalance? WhiteBalance, RawSourceGeometry Geometry);
 
 /// <summary>
-/// 解碼後的影像來源。一般影像保存 16-bit sRGB RGBA；RAW 來源保存未量化的場景線性
-/// <see cref="Scene"/>，<see cref="Rgba16"/> 僅為顯示用途的延遲編碼副本，絕不作為 RAW 編輯輸入。
+/// 解碼後的影像來源或已渲染輸出。一般影像保存 16-bit sRGB RGBA，輸出以 <see cref="Encoding"/> 標明編碼；
+/// RAW 來源保存未量化的場景線性 <see cref="Scene"/>，<see cref="Rgba16"/> 僅為顯示用途的延遲副本。
 /// 以參考相等作為 GPU 端來源紋理快取的鍵：同一個物件只上傳一次。
 /// </summary>
 public sealed class SourceImage
@@ -21,10 +23,12 @@ public sealed class SourceImage
     private readonly ushort[]? _rgba16;
     private readonly Lazy<ushort[]>? _display;
 
-    public SourceImage(int width, int height, ushort[] rgba16)
+    public SourceImage(int width, int height, ushort[] rgba16, RgbEncoding encoding = RgbEncoding.Srgb)
     {
         if (width <= 0 || height <= 0 || rgba16.Length != (long)width * height * 4)
             throw new ArgumentException("RGBA16 data length must be width × height × 4.", nameof(rgba16));
+        RgbEncodingInfo.Validate(encoding);
+        Encoding = encoding;
         Width = width;
         Height = height;
         ReferenceWidth = width;
@@ -43,6 +47,20 @@ public sealed class SourceImage
         _display = new(() => RawDisplay.Encode(scene.Image, scene.Tone), LazyThreadSafetyMode.ExecutionAndPublication);
     }
 
+    /// <summary>
+    /// <see cref="WithForegroundMask"/> 專用：共享原始像素／RAW 場景緩衝與延遲顯示編碼；
+    /// 複製建構子讓遮蔽包裝與原始來源保持同一份 <see cref="Lazy{T}"/>，不重新求值 RAW 顯示轉換。
+    /// </summary>
+    private SourceImage(SourceImage source)
+    {
+        Width = source.Width;
+        Height = source.Height;
+        Scene = source.Scene;
+        Encoding = source.Encoding;
+        _rgba16 = source._rgba16;
+        _display = source._display;
+    }
+
     public int Width { get; }
     public int Height { get; }
     public int ShortSide => Math.Min(Width, Height);
@@ -51,9 +69,10 @@ public sealed class SourceImage
     public int ReferenceWidth { get; init; }
     public int ReferenceHeight { get; init; }
     public bool IsSceneLinear => Scene is not null;
+    public RgbEncoding Encoding { get; }
 
     /// <summary>
-    /// 每像素 4 個 ushort（R、G、B、A）的 16-bit sRGB 顯示表示。
+    /// 每像素 4 個 ushort（R、G、B、A）；RGB 依 <see cref="Encoding"/> 編碼，alpha 是線性覆蓋率。
     /// RAW 來源為延遲產生的顯示編碼（一次性相機色調／色域映射／sRGB 量化）；不得用於 RAW 編輯。
     /// </summary>
     public ushort[] Rgba16 => _rgba16 ?? _display!.Value;
@@ -76,6 +95,70 @@ public sealed class SourceImage
     /// <summary>取得原始 RAW 座標的語意遮罩；依 RawInfo 的有效區域、裁切與方向對齊來源影像。</summary>
     public IReadOnlyList<SemanticMask> SemanticMasks { get; init; } = [];
 
+    /// <summary>實際來源階段 AI 推論資訊；不影響原始檔與 RAW 場景的色彩／幾何中繼資料。</summary>
+    public DenoiseReport? Denoise { get; init; }
+
+    /// <summary>
+    /// 已套用的逐張去背遮罩（<see cref="FilmBatch.Core.Projects.ForegroundMask"/>）；算圖於
+    /// 任何裁切／旋轉／翻轉／輸出尺寸幾何之前，把覆蓋率與來源 alpha 相乘一次。
+    /// 算圖後的 <see cref="SourceImage"/> 一律為 <see langword="null"/>：透明度已烘入像素。
+    /// </summary>
+    public ForegroundMask? ForegroundMask { get; init; }
+
+    /// <summary>
+    /// 回傳同一張影像但帶（或不帶）<paramref name="mask"/> 的來源：像素／RAW 場景緩衝、
+    /// 延遲顯示編碼與中繼資料全部共享，不重複 RAW 顯示轉換。遮罩值描述整張已轉正、
+    /// 未裁切來源，渲染時重採樣到目前來源尺寸；遮罩的參考尺寸必須與來源
+    /// <see cref="ReferenceWidth"/>／<see cref="ReferenceHeight"/> 一致，否則明確失敗。
+    /// </summary>
+    public SourceImage WithForegroundMask(ForegroundMask? mask)
+    {
+        if (ReferenceEquals(mask, ForegroundMask)) return this;
+        if (mask is not null) Rendering.ForegroundAlpha.RequireCompatible(this, mask);
+        return new SourceImage(this)
+        {
+            ReferenceWidth = ReferenceWidth, ReferenceHeight = ReferenceHeight,
+            FilePath = FilePath, RawOptions = RawOptions, RawInfo = RawInfo,
+            SemanticMasks = SemanticMasks, Denoise = Denoise, ForegroundMask = mask,
+            LensDatabaseWarning = LensDatabaseWarning,
+        };
+    }
+
+    /// <summary>外部鏡頭資料庫無法讀取時的錯誤訊息（此來源已退回不使用外部校正）；正常時為 <see langword="null"/>。</summary>
+    public string? LensDatabaseWarning { get; init; }
+
+    private const int MaxScaledVariants = 2;
+    private readonly object _scaledLock = new();
+    // 最近使用在前；只存在此物件上，隨來源一起被 GC 回收。
+    private readonly List<(int Edge, SourceImage Image)> _scaled = new(MaxScaledVariants);
+
+    /// <summary>
+    /// 穩定的縮小來源：同一個來源物件、同一個 <paramref name="longEdge"/> 一律回傳<b>同一個</b>物件，
+    /// 讓以參考相等為鍵的 GPU 來源紋理快取命中；<paramref name="longEdge"/> ≥ 長邊時回傳 <see langword="this"/>。
+    /// 以 <see cref="Downscale"/> 產生（保留參考尺寸與中繼資料），每個來源最多保留
+    /// <see cref="MaxScaledVariants"/> 個長邊（LRU）。同一長邊的並行呼叫只計算一次。
+    /// </summary>
+    public SourceImage ScaledTo(int longEdge)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(longEdge);
+        if (longEdge >= Math.Max(Width, Height)) return this;
+        lock (_scaledLock)
+        {
+            for (var i = 0; i < _scaled.Count; i++)
+            {
+                if (_scaled[i].Edge != longEdge) continue;
+                var hit = _scaled[i];
+                _scaled.RemoveAt(i);
+                _scaled.Insert(0, hit);
+                return hit.Image;
+            }
+            var image = Downscale(longEdge);
+            _scaled.Insert(0, (longEdge, image));
+            if (_scaled.Count > MaxScaledVariants) _scaled.RemoveAt(_scaled.Count - 1);
+            return image;
+        }
+    }
+
     /// <summary>縮小（box filter），用於縮圖或拖曳中的降解析度預覽。RAW 來源在場景域縮放並保留中繼資料。</summary>
     public SourceImage Downscale(int maxLongEdge)
     {
@@ -83,6 +166,11 @@ public sealed class SourceImage
         if (scale >= 1) return this;
         var w = Math.Max(1, (int)Math.Round(Width * scale));
         var h = Math.Max(1, (int)Math.Round(Height * scale));
+        return Resize(w, h);
+    }
+
+    internal SourceImage Resize(int w, int h)
+    {
         if (Scene is { } scene)
         {
             return new SourceImage(scene with
@@ -92,6 +180,7 @@ public sealed class SourceImage
             {
                 FilePath = FilePath, RawOptions = RawOptions, RawInfo = RawInfo, SemanticMasks = SemanticMasks,
                 ReferenceWidth = ReferenceWidth, ReferenceHeight = ReferenceHeight,
+                Denoise = Denoise, ForegroundMask = ForegroundMask, LensDatabaseWarning = LensDatabaseWarning,
             };
         }
         var dst = new ushort[w * h * 4];
@@ -109,23 +198,29 @@ public sealed class SourceImage
                 for (var sx = x0; sx < x1; sx++)
                 {
                     var i = (sy * Width + sx) * 4;
-                    r += rgba16[i];
-                    g += rgba16[i + 1];
-                    b += rgba16[i + 2];
-                    a += rgba16[i + 3];
+                    var alpha = (long)rgba16[i + 3];
+                    r += rgba16[i] * alpha;
+                    g += rgba16[i + 1] * alpha;
+                    b += rgba16[i + 2] * alpha;
+                    a += alpha;
                 }
                 var n = (x1 - x0) * (y1 - y0);
                 var o = (y * w + x) * 4;
-                dst[o] = (ushort)(r / n);
-                dst[o + 1] = (ushort)(g / n);
-                dst[o + 2] = (ushort)(b / n);
+                // Filter premultiplied color, then return straight RGBA. Invisible RGB contributes nothing.
+                if (a != 0)
+                {
+                    dst[o] = (ushort)(r / a);
+                    dst[o + 1] = (ushort)(g / a);
+                    dst[o + 2] = (ushort)(b / a);
+                }
                 dst[o + 3] = (ushort)(a / n);
             }
         }
-        return new SourceImage(w, h, dst)
+        return new SourceImage(w, h, dst, Encoding)
         {
             FilePath = FilePath, RawOptions = RawOptions, RawInfo = RawInfo, SemanticMasks = SemanticMasks,
             ReferenceWidth = ReferenceWidth, ReferenceHeight = ReferenceHeight,
+            Denoise = Denoise, ForegroundMask = ForegroundMask, LensDatabaseWarning = LensDatabaseWarning,
         };
     }
 }

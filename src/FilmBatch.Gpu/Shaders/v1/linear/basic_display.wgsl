@@ -5,7 +5,7 @@ struct Params {
     brightness: f32,   // -1..1
     contrast: f32,     // -1..1
     highlights: f32,   // -1..1
-    shadows: f32,      // -1..1
+    shadow_toe: f32,   // exp2(-2 * shadows/100) - 1, precomputed per dispatch
     saturation: f32,   // -1..1
     structure: f32,    // -1..1
     short_side: f32,
@@ -23,6 +23,17 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
     if (id.x >= size.x || id.y >= size.y) { return; }
     var c = textureLoad(src, id.xy, 0);
     var r = c.r; var g = c.g; var b = c.b;
+    // 與 CPU 相同：細節先比較未做全域階調的像素／模糊基底，不能混用對比前後的亮度。
+    if (p.structure != 0.0) {
+        let bl = textureLoad(structBlur, id.xy, 0);
+        let l = luminance(vec3f(r, g, b));
+        let blum = luminance(bl.rgb);
+        let diff = (l - blum) * p.structure * 0.6;
+        let scale = select(1.0, (l + diff) / l, l > 1e-4);
+        r = max(r * scale, 0.0);
+        g = max(g * scale, 0.0);
+        b = max(b * scale, 0.0);
+    }
 
     // 亮度：中間調 gamma（0 恆等）
     if (p.brightness != 0.0) {
@@ -38,11 +49,15 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
         g = (g - 0.5) * ck + 0.5;
         b = (b - 0.5) * ck + 0.5;
     }
-    // 亮部 / 暗部：分段加權
-    var lum = luminance(vec3f(r, g, b));
+    // 與 CPU 相同的單調暗部 toe：固定黑點、共同 RGB 增益，Y=0.45 接回恆等。
+    let lum = luminance(vec3f(r, g, b));
+    if (p.shadow_toe != 0.0 && lum > 0.0 && lum < 0.45) {
+        let toe = 1.0 - lum / 0.45;
+        let gain = 1.0 / (1.0 + p.shadow_toe * toe * toe);
+        r *= gain; g *= gain; b *= gain;
+    }
     let hi = smoothstep_f(0.45, 0.95, lum);
-    let lo = 1.0 - smoothstep_f(0.05, 0.45, lum);
-    let k = p.highlights * hi * 0.35 + p.shadows * lo * 0.35;
+    let k = p.highlights * hi * 0.35;
     r += k; g += k; b += k;
     // 飽和度
     if (p.saturation != 0.0) {
@@ -51,17 +66,6 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
         r = max(l + (r - l) * kk, 0.0);
         g = max(l + (g - l) * kk, 0.0);
         b = max(l + (b - l) * kk, 0.0);
-    }
-    // 細節提取：中頻局部對比（以模糊版的亮度差增強）
-    if (p.structure != 0.0) {
-        let bl = textureLoad(structBlur, id.xy, 0);
-        let l = luminance(vec3f(r, g, b));
-        let blum = luminance(bl.rgb);
-        let diff = (l - blum) * p.structure * 0.6;
-        let scale = select(1.0, (l + diff) / l, l > 1e-4);
-        r = max(r * scale, 0.0);
-        g = max(g * scale, 0.0);
-        b = max(b * scale, 0.0);
     }
     textureStore(dst, id.xy, vec4f(r, g, b, c.a));
 }

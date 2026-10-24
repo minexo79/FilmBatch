@@ -3,10 +3,13 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.VisualTree;
 using FilmBatch.App.Controls;
 using FilmBatch.App.ViewModels;
+using FilmBatch.Core;
 using FilmBatch.Core.Curves;
-using FilmBatch.Core.Params;
+using FilmBatch.Core.Presets;
+using FilmBatch.Core.Projects;
 
 namespace FilmBatch.App.Tests;
 
@@ -123,29 +126,69 @@ public class CurveEditorTests
     }
 
     [AvaloniaFact]
-    public void CurveParamViewModel_PushesNormalizedText_AndEndsEditOnFinal()
+    public async Task PointGesture_KeepsOneUndoStepWithOriginalPhotoAfterSelectionChanges()
     {
-        var host = new RecordingHost();
-        var vm = new CurveParamViewModel("curves", ParamDef.Curve("master", "主曲線"), host);
-        vm.Load("0,0;0.5,0.6;1,1", overridden: false);
-        Assert.Equal(3, vm.Points.Count);
+        using var main = TestEnv.CreateViewModel();
+        await TestEnv.OpenSamplesAsync(main);
+        var first = main.FocusFile!;
+        var second = main.Service!.Project.FileNames.First(f => f != first);
+        var curve = main.Inspector.Modules.Single(m => m.Key == "curves").Curves!.SelectedCurve!;
+        main.SaveProject();
+        var sidecar = Path.Combine(AppPaths.ProjectFolder(main.Folder!), "project.json");
+        var disk = File.ReadAllBytes(sidecar);
+        main.Stack.Clear();
 
-        vm.OnEdited([new(0, 0), new(0.5, 0.612345), new(1, 1)], isFinal: false);
-        vm.OnEdited([new(0, 0), new(0.5, 0.7), new(1, 1)], isFinal: true);
+        curve.OnEdited([new(0, 0), new(.5, .612345), new(1, 1)], isFinal: false);
+        Assert.Equal(disk, File.ReadAllBytes(sidecar));
+        Assert.False(main.Service.Project[first].HasOverrides);
+        Assert.False(main.Stack.CanUndo);
 
-        Assert.Equal(["0,0;0.5,0.6123;1,1", "0,0;0.5,0.7;1,1"], host.Values.Select(v => v.Value.AsText));
-        Assert.All(host.Values, v => Assert.Equal("curves.master", v.Key));
-        Assert.NotNull(host.Values[0].MergeKey);
-        Assert.Equal(host.Values[0].MergeKey, host.Values[1].MergeKey);
-        Assert.Equal(1, host.EndEdits);
+        main.Filmstrip.SelectOnly(second);
+        // A late move/release still belongs to the interrupted gesture, not the new photo.
+        curve.OnEdited([new(0, 0), new(.5, .8), new(1, 1)], isFinal: true);
+        Assert.Equal("0,0;0.5,0.6123;1,1", main.Service.SettingsFor(first).Text("curves.master"));
+        var reopened = Project.Open(main.Folder!, SamplePresets.Neutral);
+        Assert.Equal("0,0;0.5,0.6123;1,1", reopened[first].Overrides.Text("curves.master"));
+        Assert.False(reopened[second].HasOverrides);
+        Assert.Equal(ToneCurve.Identity.Points, curve.Points);
+
+        main.UndoCommand.Execute(null);
+        Assert.False(main.Service.Project[first].HasOverrides);
+        Assert.False(main.Service.Project[second].HasOverrides);
+        Assert.False(main.UndoCommand.CanExecute(null));
     }
 
-    private sealed class RecordingHost : IParamHost
+    [AvaloniaFact]
+    public async Task ChannelChange_ReleasesCapturedPointWithoutEditingTheNewChannel()
     {
-        public List<(string Key, ParamValue Value, string? MergeKey)> Values { get; } = [];
-        public int EndEdits { get; private set; }
-        public void SetValue(string flatKey, ParamValue value, string? mergeKey) => Values.Add((flatKey, value, mergeKey));
-        public void ResetParam(string flatKey) { }
-        public void EndEdit() => EndEdits++;
+        using var main = TestEnv.CreateViewModel();
+        await TestEnv.OpenSamplesAsync(main);
+        var file = main.FocusFile!;
+        var curves = main.Inspector.Modules.Single(m => m.Key == "curves").Curves!;
+        var control = new ToneCurvesControl { DataContext = curves, Width = 300 };
+        var window = new Window { Content = control, Width = 320, Height = 700 };
+        window.Show();
+        try
+        {
+            window.CaptureRenderedFrame()?.Dispose();
+            var editor = control.GetVisualDescendants().OfType<CurveEditor>().Single();
+            Point PlotAt(double x, double y) => editor.TranslatePoint(
+                new Point(CurveEditor.Inset + x * (editor.Bounds.Width - 2 * CurveEditor.Inset),
+                    CurveEditor.Inset + (1 - y) * (editor.Bounds.Height - 2 * CurveEditor.Inset)), window)!.Value;
+            main.Stack.Clear();
+            window.MouseDown(PlotAt(.5, .6), MouseButton.Left);
+            window.MouseMove(PlotAt(.5, .7));
+            Assert.False(main.Service!.Project[file].HasOverrides);
+            curves.Channel = "red";
+            window.MouseMove(PlotAt(.6, .9));
+            window.MouseUp(PlotAt(.6, .9), MouseButton.Left);
+
+            Assert.Equal("0,0;0.5,0.7;1,1", main.Service.SettingsFor(file).Text("curves.master"));
+            Assert.Equal(ToneCurve.IdentityText, main.Service.SettingsFor(file).Text("curves.red"));
+            main.UndoCommand.Execute(null);
+            Assert.False(main.Service.Project[file].HasOverrides);
+            Assert.False(main.UndoCommand.CanExecute(null));
+        }
+        finally { window.Close(); }
     }
 }

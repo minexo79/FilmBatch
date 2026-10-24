@@ -105,4 +105,39 @@ public sealed class DemosaicTests
     [Theory]
     [InlineData(-1, 5, 1)] [InlineData(-2, 5, 2)] [InlineData(5, 5, 3)] [InlineData(6, 5, 2)] [InlineData(3, 1, 0)] [InlineData(-7, 2, 1)]
     public void ReflectIndices(int i, int n, int expected) => Assert.Equal(expected, Demosaic.Reflect(i, n));
+    [Fact]
+    public void AhdTileBordersAndRepeatedParallelRunsAreStable()
+    {
+        var cfa = Cfa.Bayer("RGGB")!;
+        // Cross tile boundaries: 260x200 => 3x2 tiles with 4px and 72px edge tiles.
+        var image = Edgy(260, 200);
+        var input = Demosaic.MosaicFromRgb(image, cfa);
+        var baseline = Demosaic.Run(input, DemosaicMethod.Ahd);
+        Assert.Equal((260, 200), (baseline.Width, baseline.Height));
+        // Known samples preserved at tile borders (128px boundaries).
+        foreach (var y in new[] { 0, 126, 127, 128, 129, 130, 198, 199 })
+            foreach (var x in new[] { 0, 126, 127, 128, 129, 130, 254, 258, 259 })
+            {
+                var i = (y * 260 + x) * 3 + cfa.ColorAt(x, y);
+                Assert.InRange(MathF.Abs(image.Data[i] - baseline.Data[i]), 0, 1e-6f);
+            }
+        // Sequential repeat must be identical (no pooled scratch leakage).
+        var second = Demosaic.Run(input, DemosaicMethod.Ahd);
+        Assert.Equal(baseline.Data, second.Data);
+        // Concurrent repeats must also be identical.
+        Parallel.For(0, 8, _ =>
+        {
+            var outp = Demosaic.Run(input, DemosaicMethod.Ahd);
+            Assert.Equal(baseline.Data, outp.Data);
+        });
+        // Edge tile sizes: exact, 1px over, and small inputs.
+        foreach (var (w, h) in new[] { (4, 4), (5, 7), (8, 8), (127, 127), (128, 128), (129, 129), (128, 1), (1, 128) })
+        {
+            var scene = Edgy(w, h);
+            var outp = Demosaic.Run(Demosaic.MosaicFromRgb(scene, cfa), DemosaicMethod.Ahd);
+            Assert.Equal((w, h), (outp.Width, outp.Height));
+            Assert.All(outp.Data, v => Assert.True(float.IsFinite(v)));
+        }
+    }
+
 }

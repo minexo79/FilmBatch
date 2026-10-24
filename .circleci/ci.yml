@@ -1,0 +1,214 @@
+# 完整建置設定，由 config.yml 的 webhook admission setup workflow 接續。
+# 平台、命令預算與必要 gate 沿用既有設定；run_ci 僅由 admission 決定。
+version: 2.1
+parameters:
+  run_ci:
+    type: boolean
+    default: false
+
+executors:
+  # 與 Actions windows-2022 同為 Server 2022；GUI smoke 使用 -gui 映像。
+  windows:
+    machine:
+      image: windows-server-2022-gui:current
+    resource_class: windows.medium
+    shell: bash.exe -eo pipefail
+  # 2026-10-18 核對官方 manifest v17723：Xcode 26.4.1 的宿主為 macOS 26.3、arm64。
+  # WebGPUSharp 0.5.7 內附 Dawn 的 minos 為 26.0，不能以 Xcode 26.0.1／macOS 15.6 代替。
+  macos-26:
+    macos:
+      xcode: "26.4.1"
+    resource_class: m4pro.medium
+  ubuntu:
+    machine:
+      image: ubuntu-2404:current
+commands:
+  # 累計命令預算，不是整個 job 的硬性上限；初始化、checkout、產物上傳仍受供應商限制。
+  start-job-timer:
+    parameters:
+      minutes:
+        type: integer
+    steps:
+      - run:
+          name: Start job timer (<< parameters.minutes >> min)
+          command: |
+            echo $(( $(date +%s) + << parameters.minutes >> * 60 )) > "$HOME/.job-deadline"
+            # Git Bash 的 /usr/bin/timeout 優先，避免叫到 Windows 的 timeout.exe。
+            if [ -x /usr/bin/timeout ]; then
+              t=/usr/bin/timeout
+            elif command -v gtimeout >/dev/null 2>&1; then
+              t=gtimeout
+            elif command -v timeout >/dev/null 2>&1; then
+              t=timeout
+            elif command -v python3 >/dev/null 2>&1; then
+              # Mac 使用 runner 內建 Python3；腳本在 checkout 後由 timed-run 執行，不安裝 Homebrew 套件。
+              t=python3
+            else
+              echo "CI timeout requires GNU timeout or python3." >&2
+              exit 1
+            fi
+            echo "$t" > "$HOME/.job-timeout-bin"
+
+  timed-run:
+    parameters:
+      label:
+        type: string
+      command:
+        type: string
+    steps:
+      - run:
+          name: << parameters.label >>
+          environment:
+            FILMBATCH_CI_COMMAND: << parameters.command >>
+          command: |
+            remaining=$(( $(cat "$HOME/.job-deadline") - $(date +%s) ))
+            if [ "$remaining" -le 0 ]; then
+              echo "CI command budget exhausted." >&2
+              exit 124
+            fi
+            timeout_bin=$(cat "$HOME/.job-timeout-bin")
+            if [ "$timeout_bin" = python3 ]; then
+              python3 build/ci-timeout.py "$remaining" bash -eo pipefail -c "$FILMBATCH_CI_COMMAND"
+            else
+              "$timeout_bin" --kill-after=30s "$remaining" bash -eo pipefail -c "$FILMBATCH_CI_COMMAND"
+            fi
+
+  # 與 actions/setup-dotnet@v4 的 global-json-file 一致：安裝 sdk.version 指定版本。
+  # rollForward 只控制已安裝 SDK 的選擇，不改成安裝最新 major.minor 通道。
+  setup-dotnet:
+    steps:
+      - timed-run:
+          label: Setup .NET (global.json)
+          command: |
+            sdk_version=$(sed -n 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' global.json)
+            if [ -z "$sdk_version" ]; then
+              echo "global.json must specify sdk.version." >&2
+              exit 1
+            fi
+            dotnet_root="$HOME/.dotnet"
+            export_root="$dotnet_root"
+            case "$(uname -s)" in
+              MINGW*|MSYS*|CYGWIN*)
+                curl -fsSL https://dot.net/v1/dotnet-install.ps1 -o "$HOME/dotnet-install.ps1"
+                export_root=$(cygpath -w "$dotnet_root")
+                powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(cygpath -w "$HOME/dotnet-install.ps1")" -Version "$sdk_version" -InstallDir "$export_root"
+                ;;
+              *)
+                curl -fsSL https://dot.net/v1/dotnet-install.sh -o "$HOME/dotnet-install.sh"
+                bash "$HOME/dotnet-install.sh" --version "$sdk_version" --install-dir "$dotnet_root"
+                ;;
+            esac
+            printf 'export DOTNET_ROOT=%q\n' "$export_root" >> "$BASH_ENV"
+            printf 'export PATH=%q:$PATH\n' "$dotnet_root" >> "$BASH_ENV"
+            installed=$("$dotnet_root/dotnet" --version)
+            echo "Installed SDK $sdk_version; selected $installed using global.json."
+
+jobs:
+  desktop:
+    parameters:
+      os:
+        type: executor
+      rid:
+        type: string
+    executor: << parameters.os >>
+    steps:
+      - start-job-timer:
+          minutes: 30
+      - checkout
+      - setup-dotnet
+
+      - timed-run:
+          label: Restore
+          command: dotnet restore FilmBatch.sln
+
+      - timed-run:
+          label: Build
+          command: dotnet build FilmBatch.sln -c Release --no-restore
+
+      # 只有沒有可用 WebGPU 介面卡時才略過 GPU 測試；軟體介面卡也實際執行，裝置／像素錯誤仍會失敗。
+      - timed-run:
+          label: Test
+          command: |
+            # Windows 同時限制專案與 xUnit 集合併發，不變更 GPU 測試與像素容差。
+            if [ "<< parameters.rid >>" = "win-x64" ]; then
+              dotnet test FilmBatch.sln -c Release --no-build -m:1 --logger "console;verbosity=detailed" --logger trx --results-directory dist/test-results/win-x64 -- xUnit.ParallelizeTestCollections=false
+            else
+              dotnet test FilmBatch.sln -c Release --no-build
+            fi
+      - when:
+          condition:
+            equal: [win-x64, << parameters.rid >>]
+          steps:
+            - store_artifacts:
+                path: dist/test-results/win-x64
+                destination: FilmBatch-win-x64/test-results
+
+      # Native availability/ABI is required on BOTH executors; a missing bundle is a failure.
+      - timed-run:
+          label: Bundled JXL ABI and sample decode
+          command: dotnet test tests/FilmBatch.Raw.Tests/FilmBatch.Raw.Tests.csproj -c Release --no-build --filter "FullyQualifiedName~PortableJxlTests|FullyQualifiedName~JpegXlTests"
+
+      # 發佈 + 冒煙測試（無 GPU 時改用 CPU 算圖，仍會驗證原生函式庫與視窗）
+      - timed-run:
+          label: Publish (<< parameters.rid >>) + smoke
+          command: dotnet run build/Build.cs -- --rid << parameters.rid >> --smoke --zip
+
+      # 對應 actions/upload-artifact@v4（名稱 FilmBatch-<rid>）
+      - store_artifacts:
+          path: dist/FilmBatch-<< parameters.rid >>.zip
+          destination: FilmBatch-<< parameters.rid >>/FilmBatch-<< parameters.rid >>.zip
+      - store_artifacts:
+          path: dist/smoke-<< parameters.rid >>.txt
+          destination: FilmBatch-<< parameters.rid >>/smoke-<< parameters.rid >>.txt
+      - store_artifacts:
+          path: dist/smoke-<< parameters.rid >>.png
+          destination: FilmBatch-<< parameters.rid >>/smoke-<< parameters.rid >>.png
+
+  shaders:
+    executor: ubuntu
+    steps:
+      - start-job-timer:
+          minutes: 15
+      - checkout
+      - setup-dotnet
+      # Actions ubuntu-24.04 內建 Rust stable；這裡安裝 stable toolchain。
+      - timed-run:
+          label: Install Rust toolchain
+          command: |
+            curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable
+            echo "export PATH=\"\$HOME/.cargo/bin:\$PATH\"" >> "$BASH_ENV"
+      - timed-run:
+          label: Install naga-cli
+          command: cargo install --locked --version 30.0.1 naga-cli
+      - timed-run:
+          label: Validate embedded WGSL
+          command: dotnet run build/CheckShaders.cs
+
+
+  # 對應 Actions 的 pre-merge；只有全部前置工作成功才回報成功。
+  pre-merge:
+    docker:
+      - image: cimg/base:current
+    resource_class: small
+    steps:
+      - run:
+          name: Require all checks
+          command: echo "desktop-win-x64, desktop-osx-arm64, shaders all succeeded"
+
+workflows:
+  ci:
+    when: << pipeline.parameters.run_ci >>
+    jobs:
+      # 對應 Actions matrix（fail-fast: false：CircleCI 各工作本來就互不中止）
+      - desktop:
+          name: desktop-win-x64
+          os: windows
+          rid: win-x64
+      - desktop:
+          name: desktop-osx-arm64
+          os: macos-26
+          rid: osx-arm64
+      - shaders
+      - pre-merge:
+          requires: [desktop-win-x64, desktop-osx-arm64, shaders]
+

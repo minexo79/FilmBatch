@@ -1,0 +1,34 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:l="using:FilmBatch.App.Localization"
+             xmlns:vm="using:FilmBatch.App.ViewModels"
+             xmlns:c="using:FilmBatch.App.Controls"
+             x:Class="FilmBatch.App.Controls.ParamRow"
+             x:DataType="vm:SliderParamViewModel">
+  <!-- 兩行式參數列（計畫書 2.5 ParamRow）：上行「名稱 ● ｜ 數值」，下行整寬滑桿 -->
+  <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+    <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+      <TextBlock Name="NameText" Classes="param-name" Classes.overridden="{Binding IsOverridden}"
+                 Text="{Binding Label}" Background="Transparent"
+                 ToolTip.Tip="{l:Tr Tip.ResetParam}" ToolTip.ShowDelay="800" />
+      <Ellipse Classes="override-dot" IsVisible="{Binding IsOverridden}" />
+    </StackPanel>
+    <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Spacing="4">
+    <NumericUpDown Classes="inline-value" Value="{Binding NumericValue, Mode=TwoWay}" FormatString="{Binding FormatString}"
+                   Minimum="{Binding Minimum, Converter={x:Static c:ParamRow.ToDecimal}}"
+                   Maximum="{Binding Maximum, Converter={x:Static c:ParamRow.ToDecimal}}"
+                   Increment="{Binding Step, Converter={x:Static c:ParamRow.ToDecimal}}"
+                   AutomationProperties.AutomationId="{Binding FlatKey}" AutomationProperties.Name="{Binding Label}"
+                   VerticalAlignment="Center" />
+    <TextBlock Text="{Binding Unit}" VerticalAlignment="Center" Classes="secondary small" />
+    </StackPanel>
+    <c:ParamSlider Grid.Row="1" Grid.ColumnSpan="2" Name="Slider" Height="20" MinHeight="0" VerticalAlignment="Center"
+                   Classes.temperature="{Binding IsTemperature}"
+                   Classes.tint="{Binding IsTint}"
+                   TrackBrush="{Binding TrackBrush}"
+                   Minimum="{Binding Minimum}" Maximum="{Binding Maximum}"
+                   SmallChange="{Binding Step}" TickFrequency="{Binding Step}"
+                   AutomationProperties.Name="{Binding Label}"
+                   Value="{Binding Value, Mode=TwoWay}" />
+  </Grid>
+</UserControl>

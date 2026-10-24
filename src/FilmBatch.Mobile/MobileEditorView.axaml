@@ -1,0 +1,91 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:FilmBatch.App.ViewModels"
+             xmlns:v="using:FilmBatch.App.Views"
+             xmlns:c="using:FilmBatch.App.Controls"
+             xmlns:l="using:FilmBatch.App.Localization"
+             xmlns:d="using:FilmBatch.App.ViewModels.Dialogs"
+             x:Class="FilmBatch.Mobile.MobileEditorView"
+             x:DataType="vm:MainWindowViewModel">
+  <Grid Name="SafeRoot" Background="{DynamicResource FB.WindowBrush}" RowDefinitions="Auto,*,Auto,Auto">
+    <StackPanel Grid.Row="0" Spacing="2" Margin="6,4">
+      <WrapPanel>
+        <Button Name="ImportFilesButton" Content="Files" Click="OnImportFiles" AutomationProperties.AutomationId="Mobile.ImportFiles" MinHeight="44" MinWidth="70" Margin="2" />
+        <Button Name="ImportPhotosButton" Content="Photos" Click="OnImportPhotos" AutomationProperties.AutomationId="Mobile.ImportPhotos" MinHeight="44" MinWidth="70" Margin="2" />
+        <Button Name="ProjectsButton" Content="Projects" Click="OnProjects" AutomationProperties.AutomationId="Mobile.Projects" MinHeight="44" MinWidth="70" Margin="2" />
+        <Button Name="MoreButton" Content="More" Click="OnMore" AutomationProperties.AutomationId="Mobile.More" MinHeight="44" MinWidth="60" Margin="2" />
+      </WrapPanel>
+      <ScrollViewer HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled">
+        <StackPanel Orientation="Horizontal" Spacing="4">
+          <Button Content="{l:Tr Cmd.Undo}" Command="{Binding UndoCommand}" AutomationProperties.AutomationId="Mobile.Undo" MinHeight="44" />
+          <Button Content="{l:Tr Cmd.Redo}" Command="{Binding RedoCommand}" AutomationProperties.AutomationId="Mobile.Redo" MinHeight="44" />
+          <Button Content="{l:Tr Cmd.Copy}" Command="{Binding CopyCommand}" AutomationProperties.AutomationId="Mobile.Copy" MinHeight="44" />
+          <Button Content="{l:Tr Cmd.Paste}" Command="{Binding PasteCommand}" AutomationProperties.AutomationId="Mobile.Paste" MinHeight="44" />
+          <Button Content="{l:Tr Cmd.ResetSelected}" Command="{Binding ResetPhotoCommand}" AutomationProperties.AutomationId="Mobile.Reset" MinHeight="44" />
+        </StackPanel>
+      </ScrollViewer>
+    </StackPanel>
+
+    <Grid Grid.Row="1" Name="WorkArea" ColumnDefinitions="*,360" RowDefinitions="*">
+      <v:PreviewView Name="PhotoPreview" Grid.Column="0" DataContext="{Binding Preview}" MinHeight="130" ShowsBusySpinner="True"
+                     AutomationProperties.AutomationId="Mobile.Preview" />
+      <DockPanel Name="EditingPanel" Grid.Column="1" Background="{DynamicResource FB.PanelBrush}">
+        <ComboBox Name="PanelSelector" DockPanel.Dock="Top" SelectedIndex="1" SelectionChanged="OnPanelChanged"
+                  HorizontalAlignment="Stretch" MinHeight="44" Margin="8,4" AutomationProperties.AutomationId="Mobile.PanelSelector">
+          <ComboBoxItem Content="{l:Tr Panel.Presets}" />
+          <ComboBoxItem Content="{l:Tr Panel.Inspector}" />
+          <ComboBoxItem Content="{l:Tr Panel.Crop}" />
+          <ComboBoxItem Content="{l:Tr Panel.FilmEffects}" />
+          <ComboBoxItem Content="{l:Tr Panel.Export}" />
+        </ComboBox>
+        <Panel DataContext="{Binding Sidebar}" x:DataType="vm:SidebarViewModel">
+          <DockPanel IsVisible="{Binding IsPresets}">
+            <Button DockPanel.Dock="Top" Name="ApplyPresetButton" Content="{l:Tr Presets.Apply}" Click="OnApplyPreset"
+                    MinHeight="44" Margin="8,0" AutomationProperties.AutomationId="Mobile.ApplyPreset" />
+            <v:PresetLibraryView DataContext="{Binding Presets}" />
+          </DockPanel>
+          <ScrollViewer IsVisible="{Binding IsInspector}" HorizontalScrollBarVisibility="Disabled">
+            <v:InspectorView DataContext="{Binding Inspector}" />
+          </ScrollViewer>
+          <Panel IsVisible="{Binding IsCrop}"><v:CropPanelView DataContext="{Binding CropTool}" /></Panel>
+          <Panel IsVisible="{Binding IsFilmEffects}"><v:InspectorView DataContext="{Binding FilmEffects}" /></Panel>
+          <ScrollViewer IsVisible="{Binding IsExport}" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel DataContext="{Binding Export}" x:DataType="d:ExportViewModel" Margin="12,4" Spacing="8">
+              <TextBlock Text="{l:Tr Export.Field.Scope}" />
+              <ComboBox ItemsSource="{Binding Scopes}" SelectedItem="{Binding SelectedScope}" HorizontalAlignment="Stretch" MinHeight="44" AutomationProperties.AutomationId="Mobile.ExportScope" />
+              <ComboBox ItemsSource="{Binding Presets}" SelectedItem="{Binding Preset}" IsVisible="{Binding IsByPreset}" HorizontalAlignment="Stretch" MinHeight="44" />
+              <TextBlock Text="{l:Tr Export.Field.Format}" />
+              <ComboBox ItemsSource="{Binding Formats}" SelectedItem="{Binding SelectedFormat}" HorizontalAlignment="Stretch" MinHeight="44" AutomationProperties.AutomationId="Mobile.ExportFormat" />
+              <NumericUpDown Value="{Binding Quality}" Minimum="1" Maximum="100" IsVisible="{Binding IsJpeg}" MinHeight="44" />
+              <TextBlock Text="{l:Tr Export.Field.ColorSpace}" />
+              <ComboBox ItemsSource="{Binding ColorSpaces}" SelectedItem="{Binding SelectedColorSpace}" HorizontalAlignment="Stretch" MinHeight="44" IsEnabled="{Binding IsColorSpaceAvailable}" AutomationProperties.AutomationId="Mobile.ExportColorSpace" />
+              <TextBlock Text="{l:Tr Export.Field.Size}" />
+              <ComboBox ItemsSource="{Binding Sizes}" SelectedItem="{Binding SelectedSize}" HorizontalAlignment="Stretch" MinHeight="44" AutomationProperties.AutomationId="Mobile.ExportSize" />
+              <NumericUpDown Value="{Binding LongEdge}" Minimum="100" Maximum="20000" IsVisible="{Binding IsLongEdge}" MinHeight="44" AutomationProperties.AutomationId="Mobile.ExportLongEdge" />
+              <TextBlock Text="{l:Tr Export.Field.FileName}" />
+              <TextBox Text="{Binding FileNameTemplate}" MinHeight="44" AutomationProperties.AutomationId="Mobile.ExportTemplate" />
+              <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" />
+              <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" AutomationProperties.AutomationId="Mobile.ExportStatus" />
+              <TextBlock Text="{Binding LastError}" TextWrapping="Wrap" Classes="warning" />
+              <ProgressBar Minimum="0" Maximum="100" Value="{Binding ProgressValue}" IsVisible="{Binding IsExporting}" />
+              <Button Content="{l:Tr Dialog.Export}" Command="{Binding StartExportCommand}" IsVisible="{Binding !IsExporting}" MinHeight="44" AutomationProperties.AutomationId="Mobile.Export" />
+              <Button Content="{l:Tr Dialog.Cancel}" Command="{Binding CancelExportCommand}" IsVisible="{Binding IsExporting}" MinHeight="44" AutomationProperties.AutomationId="Mobile.CancelExport" />
+              <Button Name="SaveOutputsButton" Content="Save outputs to Files" Click="OnSaveOutputs" MinHeight="44" AutomationProperties.AutomationId="Mobile.SaveOutputs" />
+              <TextBlock Name="ExportLocationNote" TextWrapping="Wrap" FontSize="12" />
+            </StackPanel>
+          </ScrollViewer>
+        </Panel>
+      </DockPanel>
+    </Grid>
+
+    <v:FilmstripView Grid.Row="2" Name="PhotoFilmstrip" DataContext="{Binding Filmstrip}" Height="166"
+                     AutomationProperties.AutomationId="Mobile.Filmstrip" />
+    <StackPanel Grid.Row="3" Margin="10,4" Spacing="2">
+      <TextBlock Text="{Binding SelectionText}" FontSize="12" />
+      <TextBlock Text="{Binding BackgroundText}" FontSize="11" TextWrapping="Wrap" />
+      <TextBlock Name="MobileStatus" FontSize="12" TextWrapping="Wrap" AutomationProperties.AutomationId="Mobile.Status" />
+      <TextBlock Text="{Binding Toast.Message}" TextWrapping="Wrap" FontSize="12" />
+    </StackPanel>
+    <Border Grid.RowSpan="4" Name="ModalOverlay" IsVisible="False" Background="#B0000000" />
+  </Grid>
+</UserControl>

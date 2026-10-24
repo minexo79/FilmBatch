@@ -5,7 +5,10 @@ using FilmBatch.Raw.Opcodes;
 
 namespace FilmBatch.Engine.Imaging.Raw;
 
-/// <summary>Opt-in, bounded Lensfun-format database. No database is distributed or downloaded.</summary>
+/// <summary>
+/// Opt-in, bounded Lensfun-format database. No database is distributed; it is read from a user folder
+/// or from the copy the user explicitly downloads with <see cref="LensDatabaseStore"/>.
+/// </summary>
 internal static partial class LensProfiles
 {
     internal static void ApplyFallback(RawImage raw, string? directory)

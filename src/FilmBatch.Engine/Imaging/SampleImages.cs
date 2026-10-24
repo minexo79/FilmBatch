@@ -1,5 +1,3 @@
-using ImageMagick;
-
 namespace FilmBatch.Engine.Imaging;
 
 /// <summary>
@@ -27,11 +25,7 @@ public static class SampleImages
             if (File.Exists(path)) continue;
             var (w, h) = portrait ? (longEdge * 2 / 3, longEdge) : (longEdge, longEdge * 2 / 3);
             var data = Render(w, h, hue);
-            using var image = new MagickImage();
-            image.ReadPixels(System.Runtime.InteropServices.MemoryMarshal.AsBytes(data.AsSpan()).ToArray(), new PixelReadSettings((uint)w, (uint)h, StorageType.Short, PixelMapping.RGB));
-            image.Depth = 16;
-            image.Settings.Compression = CompressionMethod.Zip;
-            image.Write(path, MagickFormat.Tiff);
+            ImageBackend.WriteTiff16Rgb(path, w, h, data);
         }
         return files;
     }

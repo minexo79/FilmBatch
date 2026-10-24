@@ -1,3 +1,4 @@
+using FilmBatch.Core.Presets;
 using System.Globalization;
 using System.Text.Json;
 using Avalonia;
@@ -23,7 +24,8 @@ public sealed class FilmstripMenuTests
         string? clipboardJson = null;
         vm.ClipboardJsonChanged += (_, value) => clipboardJson = value;
         var view = new FilmstripView { DataContext = vm.Filmstrip };
-        var window = new Window { Content = view, DataContext = vm, Width = 800, Height = 240 };
+        // 視窗要高於整個右鍵選單，否則 headless 覆蓋層會裁掉底部的「重設」項目
+        var window = new Window { Content = view, DataContext = vm, Width = 800, Height = 420 };
         window.Show();
         try
         {
@@ -50,6 +52,7 @@ public sealed class FilmstripMenuTests
             Assert.Equal([files[1]], vm.Selection);
             Click(view, "ResetPhotoItem");
             Assert.False(vm.Service.Project[files[1]].HasOverrides);
+            Assert.Equal(SamplePresets.Neutral, vm.Service.Project[files[1]].PresetId);
             Assert.Equal(0.75, vm.Service.SettingsFor(files[3]).Number("basic.exposure"));
             vm.UndoCommand.Execute(null);
             Assert.Equal(0.75, vm.Service.SettingsFor(files[1]).Number("basic.exposure"));

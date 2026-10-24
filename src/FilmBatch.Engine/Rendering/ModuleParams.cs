@@ -1,8 +1,11 @@
+using FilmBatch.Core.Curves;
 using FilmBatch.Core.Film;
 using FilmBatch.Core.Params;
 using FilmBatch.Core.Random;
 using FilmBatch.Engine.Imaging;
 using FilmBatch.Raw.Color;
+// FilmBatch.Raw.Color 也有 DNG 的 ToneCurve；本檔的曲線參數一律是 Core 的控制點曲線。
+using ToneCurve = FilmBatch.Core.Curves.ToneCurve;
 
 namespace FilmBatch.Engine.Rendering;
 
@@ -12,15 +15,34 @@ namespace FilmBatch.Engine.Rendering;
 /// </summary>
 public sealed class ModuleParams
 {
-    // crop（管線最前面；之後所有模組都以裁切後的畫框 OutWidth × OutHeight 計算）
+    public RgbEncoding OutputEncoding;
+    // crop（管線最前面；之後所有模組都以裁切後的畫框 FrameWidth × FrameHeight 計算）
     public CropParams Crop;
+    /// <summary>整個畫框的裁切變換（輸出畫框像素 → 來源像素）；窗口模式下仍是整個畫框的變換。</summary>
     public CropTransform CropT;
-    public int OutWidth => CropT.OutWidth;
-    public int OutHeight => CropT.OutHeight;
+    /// <summary>
+    /// 本次實際渲染的區域（畫框座標）。預設為整個畫框；窗口模式下各 pass 以
+    /// 「本地像素 + (View.X, View.Y)」得到畫框像素，所有畫框相對量都以 <see cref="FrameWidth"/>／<see cref="FrameHeight"/> 計算。
+    /// </summary>
+    public RenderView View;
+    /// <summary>Main（整張）渲染時記錄的全畫框統計；窗口渲染時由呼叫端傳入，不在窗口上重算。</summary>
+    public FrameStats? FrameStats;
+    /// <summary>裁切後的畫框寬（與窗口無關）。</summary>
+    public int FrameWidth => CropT.OutWidth;
+    /// <summary>裁切後的畫框高（與窗口無關）。</summary>
+    public int FrameHeight => CropT.OutHeight;
+    /// <summary>是否只渲染畫框中的一塊（<see cref="View"/> 不是整個畫框）。</summary>
+    public bool IsWindow => View.W > 0 && !View.IsWhole;
+    /// <summary>輸出（工作緩衝／紋理）寬：整張時為畫框寬，窗口模式下為 <see cref="View"/> 的寬。</summary>
+    public int OutWidth => View.W > 0 ? View.W : CropT.OutWidth;
+    /// <summary>輸出（工作緩衝／紋理）高：整張時為畫框高，窗口模式下為 <see cref="View"/> 的高。</summary>
+    public int OutHeight => View.H > 0 ? View.H : CropT.OutHeight;
     public int SourceWidth, SourceHeight, ReferenceWidth, ReferenceHeight;
     // basic
     public bool BasicOn;
     public float Exposure, Temperature, Tint, Brightness, Contrast, Highlights, Shadows, Saturation, Structure;
+    // curves（色調曲線：分段 → 主曲線 → 各通道合成的顯示編碼查表；停用或恆等時為 null，不解析也不配置查表）
+    public ToneCurveSet? Curves;
     // RAW：場景線性來源的白平衡與語意遮罩；舊 basic.temperature/tint 仍是相對效果。
     public bool RawProcessingOn, RawCustomWhiteBalance;
     public float RawTemperature, RawTint;
@@ -32,6 +54,9 @@ public sealed class ModuleParams
     public bool SkinOn, ZoneOn;
     public float SkinCx, SkinCy, SkinRadiusX, SkinRadiusY, SkinFeather, SkinStrength, SkinTemperature, SkinTint;
     public float SkinRefRed, SkinRefGreen, SkinRefBlue, ZoneSlope, ZoneOffset;
+    // 場景線性暗部還原；半徑為裁切後短邊百分比，降噪為 0..1 混合量。
+    public bool ShadowRecoveryOn;
+    public float ShadowRecoveryExposure, ShadowRecoveryRadius, ShadowRecoveryLuminance, ShadowRecoveryChroma;
     // lens_distortion
     public bool LensOn, AutoCrop;
     public float LensAmount, Chromatic, EdgeSoften;
@@ -64,7 +89,9 @@ public sealed class ModuleParams
     public bool LeakOn;
     public int LeakMode;
     public string LeakTexture = "";
+    public int LeakBlend; // 0 screen / 1 add / 2 lighten
     public float LeakAmount, LeakAngle, LeakSize, LeakHue, LeakIrregularity;
+    public float LeakRed, LeakYellow, LeakBlue;
     public int LeakCount;
     // film（底片風格：LUT ＋ 色相帶；FilmLut 為 null 時不套用）
     public bool FilmOn;
@@ -98,8 +125,9 @@ public sealed class ModuleParams
     internal EffectImage? DoubleAsset, LeakAsset, DirtAsset;
 
 
-    public static ModuleParams From(SourceImage source, Settings s)
+    public static ModuleParams From(SourceImage source, Settings s, RgbEncoding encoding = RgbEncoding.Srgb)
     {
+        RgbEncodingInfo.Validate(encoding);
         string? fileName = null;
         if (source.FilePath is { Length: > 0 } p)
             fileName = Path.GetFileName(p);
@@ -109,6 +137,7 @@ public sealed class ModuleParams
         static string T(Settings s, string k, string def) => s.ContainsKey(k) ? s.Text(k) : def;
         static int I(Settings s, string k, int def) => s.ContainsKey(k) ? (int)Math.Round(s.Number(k)) : def;
         static bool B(Settings s, string k, bool def) => s.ContainsKey(k) ? s.Bool(k) : def;
+        static double D(Settings s, string k, double def) => s.ContainsKey(k) ? s.Number(k) : def;
         int C(string key)
         {
             var definition = ModuleCatalog.Param(key)!;
@@ -117,10 +146,18 @@ public sealed class ModuleParams
                 if (definition.Choices[index].Key == value) return index;
             throw new InvalidDataException($"Unknown choice for {key}: {value}");
         }
+        ToneCurve Curve(string key)
+        {
+            // 預設恆等的正規化文字不必解析；設定載入時已驗證，仍無法解析就和未知選項一樣明確失敗。
+            var text = T(s, key, ToneCurve.IdentityText);
+            if (text == ToneCurve.IdentityText) return ToneCurve.Identity;
+            return ToneCurve.TryParse(text, out var curve) ? curve : throw new InvalidDataException($"Invalid curve for {key}: {text}");
+        }
 
         var rawTemperature = ModuleCatalog.Param("raw.temperature")!;
         var m = new ModuleParams
         {
+            OutputEncoding = encoding,
             // crop
             SourceWidth = source.Width, SourceHeight = source.Height,
             ReferenceWidth = source.ReferenceWidth, ReferenceHeight = source.ReferenceHeight,
@@ -164,6 +201,11 @@ public sealed class ModuleParams
             SkinRefRed = N(s, "skin.ref_red", 1), SkinRefGreen = N(s, "skin.ref_green", 1), SkinRefBlue = N(s, "skin.ref_blue", 1),
             ZoneOn = source.Scene is not null && B(s, "zone.enabled", false),
             ZoneSlope = N(s, "zone.slope", 1), ZoneOffset = N(s, "zone.offset", 0),
+            ShadowRecoveryOn = B(s, "shadow_recovery.enabled", false),
+            ShadowRecoveryExposure = Math.Clamp(N(s, "shadow_recovery.exposure", 3), 0, 5),
+            ShadowRecoveryRadius = Math.Clamp(N(s, "shadow_recovery.radius", 2), 0.25f, 10),
+            ShadowRecoveryLuminance = Math.Clamp(N(s, "shadow_recovery.luminance", 35), 0, 100) / 100f,
+            ShadowRecoveryChroma = Math.Clamp(N(s, "shadow_recovery.chroma", 80), 0, 100) / 100f,
             // lens_distortion
             LensOn = B(s, "lens_distortion.enabled", false),
             LensAmount = N(s, "lens_distortion.amount", 0),
@@ -236,10 +278,14 @@ public sealed class ModuleParams
             LeakOn = B(s, "light_leak.enabled", false),
             LeakMode = C("light_leak.mode"),
             LeakTexture = T(s, "light_leak.texture", "random"),
+            LeakBlend = C("light_leak.blend"),
             LeakAmount = N(s, "light_leak.amount", 35),
             LeakAngle = N(s, "light_leak.angle", 30),
             LeakSize = N(s, "light_leak.size", 40),
-            LeakHue = N(s, "light_leak.hue", 25),
+            LeakHue = N(s, "light_leak.hue", 0),
+            LeakRed = N(s, "light_leak.red", 100),
+            LeakYellow = N(s, "light_leak.yellow", 100),
+            LeakBlue = N(s, "light_leak.blue", 30),
             LeakIrregularity = N(s, "light_leak.irregularity", 50),
             LeakCount = I(s, "light_leak.count", 1),
             // film：底片風格（docs/film-looks.md）
@@ -299,19 +345,40 @@ public sealed class ModuleParams
         };
 
         m.CropT = CropGeometry.Compute(source.Width, source.Height, m.Crop);
+        m.View = RenderView.Whole(m.FrameWidth, m.FrameHeight);
+        m.ShadowRecoveryOn &= m.ShadowRecoveryExposure > 0 || m.ShadowRecoveryLuminance > 0 || m.ShadowRecoveryChroma > 0;
         m.FilmLut = m.FilmOn ? FilmLookLibrary.TryLut(m.FilmLookKey) : null;
         m.FilmLook = FilmLookUniforms.From(m);
+        // 色調曲線：停用時完全不讀取；啟用但恆等時 Create 回傳 null。分段量與分界比例以 double 讀取，
+        // 與介面 ToneCurveSet.BakeParametric(滑桿值, …, 分界 / 100) 的輸入逐位相同。
+        m.Curves = B(s, "curves.enabled", true)
+            ? ToneCurveSet.Create(Curve("curves.master"), Curve("curves.red"), Curve("curves.green"), Curve("curves.blue"),
+                D(s, "curves.shadows", 0), D(s, "curves.darks", 0), D(s, "curves.lights", 0), D(s, "curves.highlights", 0),
+                D(s, "curves.split_shadows", 25) / 100, D(s, "curves.split_mid", 50) / 100,
+                D(s, "curves.split_highlights", 75) / 100, D(s, "curves.refine_saturation", 100) / 100)
+            : null;
         m.RawWhiteBalanceMatrix = m.RawProcessingOn && m.RawCustomWhiteBalance
             ? source.WhiteBalance?.MatrixFor(m.RawTemperature, m.RawTint)
             : null;
+        // RAW 白平衡接手「基本調整」的色溫／色調：相對值保留在設定中，但只在非 RAW（或 RAW 處理停用）時生效。
+        if (UsesRawWhiteBalance(source, s)) { m.Temperature = 0; m.Tint = 0; }
         return m;
     }
 
+
+    /// <summary>
+    /// 這張照片的色溫／色調是否由 RAW 白平衡（Kelvin）負責：場景線性來源、具白平衡模型且 RAW 處理啟用。
+    /// 成立時 basic.temperature/tint 不套用；面板也以同一條件把基本調整的色溫／色調換成 RAW 白平衡。
+    /// </summary>
+    public static bool UsesRawWhiteBalance(SourceImage? source, Settings s) =>
+        source is { Scene: not null, WhiteBalance: not null }
+        && s.ContainsKey("raw.enabled") && s.Bool("raw.enabled");
 
     /// <summary>是否需要任何 spatial（非逐像素）pass——供尺寸/記憶體規劃與分塊 apron 估算。</summary>
     public bool HasSpatialPasses =>
         Crop.On
         || (BasicOn && Structure != 0)
+        || ShadowRecoveryOn
         || LensOn || MultiOn || DoubleOn
         || (BokehOn && BokehBlur > 0)
         || (ZoomRotateOn && (Zoom != 0 || Rotate != 0))

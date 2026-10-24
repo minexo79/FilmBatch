@@ -6,6 +6,7 @@ using FilmBatch.Core.Presets;
 using FilmBatch.Core.Projects;
 using FilmBatch.Engine.Exporting;
 using FilmBatch.Engine.Rendering;
+using FilmBatch.Raw.Tiff;
 using ImageMagick;
 
 namespace FilmBatch.Core.Tests;
@@ -252,8 +253,9 @@ public sealed class TiffMetadataTests
             else BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(2), (ushort)magic);
             File.WriteAllBytes(path, bytes);
             var profile = TiffMetadata.ReadRaw(path, 2, 2);
-            Assert.Equal("RawBrand", profile.GetValue(ExifTag.Make)?.Value?.Trim());
-            Assert.Equal("RawModel", profile.GetValue(ExifTag.Model)?.Value?.Trim());
+            var tiff = TiffFile.Parse(profile.AsMemory(6));
+            Assert.Equal("RawBrand", tiff.Ifds[0].String(Tags.Make));
+            Assert.Equal("RawModel", tiff.Ifds[0].String(Tags.Model));
         }
         finally { File.Delete(path); }
     }
@@ -271,13 +273,50 @@ public sealed class TiffMetadataTests
         {
             File.WriteAllBytes(path, Cr3Fixture(rootBig, exifBig, gpsBig));
             var profile = TiffMetadata.ReadRaw(path, 2, 2);
-            Assert.Equal("Canon", profile.GetValue(ExifTag.Make)?.Value?.Trim());
-            var iso = profile.GetValue(ExifTag.ISOSpeedRatings)?.Value;
-            Assert.NotNull(iso);
-            Assert.Contains((ushort)640, iso!);
-            Assert.Equal("N", profile.GetValue(ExifTag.GPSLatitudeRef)?.Value);
+            var tiff = TiffFile.Parse(profile.AsMemory(6));
+            Assert.Equal("Canon", tiff.Ifds[0].String(Tags.Make));
+            Assert.Equal((ushort)640, tiff.Exif()?.U16(Tags.IsoSpeed));
+            Assert.Equal("N", tiff.Gps()?.String(Tags.GpsLatitudeRef));
             // CMT2 內的 MakerNote 位移以原區塊為原點：合併時不帶入。
-            Assert.Null(profile.GetValue(ExifTag.MakerNote)?.Value);
+            Assert.Null(tiff.Exif()?.Value(Tags.MakerNote));
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
+    public void ReadRaw_Cr3WithoutCmt2_BackfillsExifFromDecodedMetadata()
+    {
+        // CMT2 缺席時合併目錄合成 Exif IFD：decoded 攜帶的標準欄位
+        // （ISO、曝光、光圈、原始時間）必須補齊，不得只剩尺寸覆寫。
+        var path = Path.Combine(Path.GetTempPath(), "filmbatch-cr3-noexif-" + Guid.NewGuid().ToString("N") + ".cr3");
+        try
+        {
+            var cmt1 = TiffBlock(false, [(271, 2, 6, "Canon\0"u8.ToArray()), (272, 2, 8, "EOS R5\0\0"u8.ToArray())]);
+            var canon = Concat(Box("CMT1", cmt1));
+            var moov = Box("moov", Box("uuid", Concat(Cr3ContainerUuid(), canon)));
+            File.WriteAllBytes(path, Concat(Box("ftyp", "crx \0\0\0\0crx "u8.ToArray()), moov));
+
+            var decoded = new Raw.Meta.Metadata
+            {
+                Iso = 640, ExposureTime = 1.0 / 125, FNumber = 2.8,
+                CaptureTime = new Raw.Meta.RawDateTime(2026, 3, 4, 5, 6, 7, 0, null),
+            };
+            void AssertExif(byte[] profile)
+            {
+                var tiff = TiffFile.Parse(profile.AsMemory(6));
+                Assert.Equal("Canon", tiff.Ifds[0].String(Tags.Make));
+                var exif = Assert.IsType<Ifd>(tiff.Exif());
+                Assert.Equal((ushort)640, exif.U16(Tags.IsoSpeed));
+                Assert.Equal(1.0 / 125, exif.F64(Tags.ExposureTime) ?? -1, 4);
+                Assert.Equal(2.8, exif.F64(Tags.FNumber) ?? -1, 4);
+                Assert.Equal("2026:03:04 05:06:07", exif.String(Tags.DateTimeOriginal));
+            }
+            // 檔案路徑：合併目錄後再正規化（consumer 保證）。
+            AssertExif(TiffMetadata.ReadRaw(path, 2, 2, decoded));
+            // 直接合併路徑：CMT2 缺席時 Cr3State 合成 Exif IFD 同樣補齊（修復點）。
+            var gpsBlock = TiffBlock(true, [(1, 2, 2, "N\0"u8.ToArray())]);
+            ReadOnlyMemory<byte>?[] blocks = [cmt1, null, null, gpsBlock];
+            AssertExif(TiffMetadata.NormalizeCr3(blocks, 2, 2, decoded));
         }
         finally { File.Delete(path); }
     }

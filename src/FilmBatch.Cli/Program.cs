@@ -10,8 +10,8 @@ using FilmBatch.Engine.Rendering;
 using FilmBatch.Gpu.Device;
 
 // filmbatch 命令列：與 GUI 共用 Core / Engine（計畫書第 10 章）。
-// export 子命令使用已持久化的 Project.Open + PresetLibrary.Load；
-// CLI 只讀取快照匯出，絕不靜默更新預設快照。
+// export 子命令使用已持久化的 Project.Open + PresetLibrary.Load，只讀取快照匯出，絕不靜默更新預設快照。
+// remove-background 子命令批次產生本機 AI 去背遮罩並保存到專案；不匯出圖片檔，不同步預設。
 
 var backendOption = new Option<GpuBackend>("--backend") { Description = "GPU 後端：Auto、Dx12、Vulkan、Metal", DefaultValueFactory = _ => GpuBackend.Auto };
 var softwareOption = new Option<bool>("--software") { Description = "強制使用軟體介面卡" };
@@ -51,6 +51,7 @@ samples.SetAction(r =>
 var exportFolder = new Argument<string>("folder") { Description = "照片資料夾（已含 .filmbatch/project.json 或即時掃描）" };
 var outOption = new Option<string?>("--out") { Description = "輸出資料夾（預設 <照片資料夾>/export/）" };
 var formatOption = new Option<string>("--format") { Description = "jpg | tiff | png | dng（預設 jpg；DNG 保留已套用效果的線性資料）", DefaultValueFactory = _ => "jpg" };
+var colorSpaceOption = new Option<string>("--color-space") { Description = "srgb | prophoto（預設 srgb；prophoto 僅支援 tiff／png）", DefaultValueFactory = _ => "srgb" };
 var qualityOption = new Option<int>("--quality") { Description = "JPEG 品質 1–100（預設 95）", DefaultValueFactory = _ => 95 };
 var longEdgeOption = new Option<int>("--long-edge") { Description = "長邊像素；0 = 原尺寸（預設 0）", DefaultValueFactory = _ => 0 };
 var presetOption = new Option<string?>("--preset") { Description = "只匯出使用此預設的照片（名稱或 Id）" };
@@ -58,13 +59,15 @@ var onlyUnassignedOption = new Option<bool>("--only-unassigned") { Description =
 var presetsFolderOption = new Option<string?>("--presets-folder") { Description = "預設庫資料夾（預設使用者 presets）" };
 var embeddedLensOption = new Option<bool>("--embedded-lens") { Description = "啟用 RAW 內嵌鏡頭校正（只影響本次匯出）" };
 var cameraLocalToneOption = new Option<bool>("--camera-local-tone") { Description = "啟用 DNG 相機局部色調（只影響本次匯出）" };
+var denoiseOption = new Option<double?>("--denoise") { Description = "本次匯出的 AI 降噪強度 0–100（省略則沿用專案；須先安裝模型）" };
+var lensDatabaseOption = new Option<string?>("--lens-database") { Description = "外部 Lensfun 鏡頭資料庫資料夾（RAW 無內嵌校正時使用；預設讀 FILMBATCH_LENSFUN_DIR，再其次為 lens-database download 下載的版本）" };
 
 var export = new Command("export", "批次匯出（與 GUI 共用匯出器）")
 {
-    exportFolder, outOption, formatOption, qualityOption, longEdgeOption,
+    exportFolder, outOption, formatOption, colorSpaceOption, qualityOption, longEdgeOption,
     presetOption, onlyUnassignedOption, presetsFolderOption,
     backendOption, softwareOption, lowPowerOption,
-    embeddedLensOption, cameraLocalToneOption,
+    embeddedLensOption, cameraLocalToneOption, denoiseOption, lensDatabaseOption,
 };
 export.SetAction(async (r, ct) =>
 {
@@ -75,6 +78,7 @@ export.SetAction(async (r, ct) =>
         return 2;
     }
     ExportFormat format;
+    RgbEncoding colorSpace;
     try
     {
         format = r.GetValue(formatOption)!.ToLowerInvariant() switch
@@ -85,11 +89,27 @@ export.SetAction(async (r, ct) =>
             "dng" => ExportFormat.Dng,
             var f => throw new InvalidDataException($"未知格式：{f}（可用 jpg、tiff、png、dng）。"),
         };
+        colorSpace = r.GetValue(colorSpaceOption)!.ToLowerInvariant() switch
+        {
+            "srgb" => RgbEncoding.Srgb,
+            "prophoto" => RgbEncoding.ProPhoto,
+            var c => throw new InvalidDataException($"未知色彩空間：{c}（可用 srgb、prophoto）。"),
+        };
     }
     catch (InvalidDataException ex)
     {
         Console.Error.WriteLine(ex.Message);
         return 2;
+    }
+    if (r.GetValue(lensDatabaseOption) is { Length: > 0 } lensDatabase)
+    {
+        lensDatabase = Path.GetFullPath(lensDatabase);
+        if (!Directory.Exists(lensDatabase))
+        {
+            Console.Error.WriteLine($"找不到鏡頭資料庫資料夾：{lensDatabase}");
+            return 2;
+        }
+        RawLoadOptions.LensDatabaseDirectory = lensDatabase;
     }
     var quality = r.GetValue(qualityOption);
     var longEdge = r.GetValue(longEdgeOption);
@@ -98,11 +118,13 @@ export.SetAction(async (r, ct) =>
         Destination = r.GetValue(outOption) ?? Path.Combine(folder, "export"),
         FileNameTemplate = "{name}_{preset}",
         Format = format,
+        ColorSpace = colorSpace,
         Quality = quality,
         Size = longEdge > 0 ? ExportSize.LongEdge : ExportSize.Original,
         LongEdgePx = longEdge,
         EmbeddedLensCorrections = r.GetValue(embeddedLensOption) ? true : null,
         CameraLocalTone = r.GetValue(cameraLocalToneOption) ? true : null,
+        DenoiseAmount = r.GetValue(denoiseOption),
     };
     try
     {
@@ -210,5 +232,5 @@ static Func<IPreviewRenderer> CreateExportFactory(GpuDeviceOptions deviceOptions
     }
 }
 
-var root = new RootCommand("FilmBatch 命令列") { gpuInfo, spike, samples, export, RawCommands.Create() };
+var root = new RootCommand("FilmBatch 命令列") { gpuInfo, spike, samples, export, RawCommands.Create(), DenoiseCommands.Create(), LensDatabaseCommands.Create(), ForegroundCommands.Create() };
 return root.Parse(args).Invoke();

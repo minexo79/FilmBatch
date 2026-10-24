@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>filmbatch-mobile</AssemblyName>
+    <IsRidAgnostic>false</IsRidAgnostic>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\FilmBatch.Mobile\FilmBatch.Mobile.csproj" />
+    <PackageReference Include="Avalonia.Desktop" />
+  </ItemGroup>
+</Project>

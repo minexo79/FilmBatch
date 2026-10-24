@@ -1,6 +1,7 @@
 using Avalonia.Headless.XUnit;
 using FilmBatch.App.Services;
 using FilmBatch.Engine.Exporting;
+using FilmBatch.Engine.Imaging;
 using ImageMagick;
 
 namespace FilmBatch.App.Tests;
@@ -14,17 +15,28 @@ public class ExportPanelTests
         using var vm = TestEnv.CreateViewModel();
         await TestEnv.OpenSamplesAsync(vm);
         var export = vm.Sidebar.Export;
-        export.Refresh();
-        Assert.Equal(ViewModels.Dialogs.ExportScope.All, export.Scope);
-        Assert.Equal(vm.Service!.Project.FileNames.Count, export.Count);
-        Assert.EndsWith("export", export.Destination);
-        Assert.Contains(export.Count.ToString(), export.Summary);
-
-        vm.OnSelectionChanged([vm.Service.Project.FileNames[0]], vm.Service.Project.FileNames[0]);
+        var files = vm.Service!.Project.FileNames;
+        vm.OnSelectionChanged([files[0]], files[0]);
         vm.Sidebar.IsExport = true;
-        export.Scope = ViewModels.Dialogs.ExportScope.Selected;
-        export.Refresh();
+        // 預設為「選取的照片」，單選也一樣
+        Assert.Equal(ViewModels.Dialogs.ExportScope.Selected, export.Scope);
         Assert.Equal(1, export.Count);
+        Assert.EndsWith("export", export.Destination);
+        Assert.Contains("1", export.Summary);
+
+        // 張數與摘要跟著縮圖列選取即時更新
+        var changed = new List<string?>();
+        export.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+        vm.OnSelectionChanged([files[0], files[1], files[2]], files[2]);
+        Assert.Equal(3, export.Count);
+        Assert.Contains(nameof(export.Count), changed);
+        Assert.Contains(nameof(export.Summary), changed);
+
+        // 手動選「全部」後不會因多選被改回「選取的照片」
+        export.Scope = ViewModels.Dialogs.ExportScope.All;
+        vm.OnSelectionChanged([files[0], files[1]], files[1]);
+        Assert.Equal(ViewModels.Dialogs.ExportScope.All, export.Scope);
+        Assert.Equal(files.Count, export.Count);
     }
 
     [AvaloniaFact]
@@ -100,5 +112,62 @@ public class ExportPanelTests
         export.Quality = 90;
         export.Refresh();
         Assert.Null(export.LastError);
+    }
+
+    [AvaloniaFact]
+    public async Task Export_ColorSpace_ResetsOnUnsupportedFormat_AndBlocksInvalidSnapshot()
+    {
+        using var vm = TestEnv.CreateViewModel();
+        await TestEnv.OpenSamplesAsync(vm);
+        var export = vm.Sidebar.Export;
+        // TIFF 下可選 ProPhoto；轉到 JPEG 時選擇器停用且選項重設為 sRGB。
+        export.Format = ExportFormat.Tiff16;
+        export.ColorSpace = RgbEncoding.ProPhoto;
+        Assert.True(export.IsColorSpaceAvailable);
+        Assert.Equal(RgbEncoding.ProPhoto, export.ColorSpace);
+        export.Format = ExportFormat.Jpeg;
+        Assert.False(export.IsColorSpaceAvailable);
+        Assert.Equal(RgbEncoding.Srgb, export.ColorSpace);
+        Assert.Null(export.LastError);
+        Assert.True(export.CanExport);
+        // 不支援的組合在開始前即被擋下：直接構造快照驗證，而非等到寫檔才失敗。
+        Assert.Throws<InvalidDataException>(() => BatchExporter.ValidateOptions(new ExportOptions
+        {
+            Destination = export.Destination, Format = ExportFormat.Dng, ColorSpace = RgbEncoding.ProPhoto,
+        }));
+    }
+
+    [AvaloniaFact]
+    public async Task Export_ProPhoto_Png16_WritesRealFileWithProfileAndLog()
+    {
+        using var vm = TestEnv.CreateViewModel();
+        await TestEnv.OpenSamplesAsync(vm);
+        var export = vm.Sidebar.Export;
+        export.Scope = ViewModels.Dialogs.ExportScope.All;
+        export.Format = ExportFormat.Png16;
+        export.ColorSpace = RgbEncoding.ProPhoto;
+        export.Size = ExportSize.Original;
+        export.FileNameTemplate = "{name}_{preset}";
+        export.Destination = Path.Combine(Path.GetTempPath(), "filmbatch-gui-prophoto-" + Guid.NewGuid().ToString("N"));
+        export.Refresh();
+
+        Assert.True(export.CanExport);
+        var summary = await export.ExportAsync(ct: TestContext.Current.CancellationToken);
+        Assert.Equal(export.Count, summary.Succeeded);
+        Assert.Equal(0, summary.Failed);
+        foreach (var f in summary.OutputFiles) Assert.True(File.Exists(f));
+        using var image = new MagickImage(summary.OutputFiles[0]);
+        Assert.Equal(MagickFormat.Png, image.Format);
+        Assert.Equal(16u, image.Depth);
+        var profile = image.GetColorProfile();
+        Assert.NotNull(profile);
+        // 與引擎內嵌的 gamma 1.8 ProPhoto 設定檔逐位元組一致（經公開 manifest 資源讀取，不依賴 internal）。
+        var engine = typeof(BatchExporter).Assembly;
+        using var stream = engine.GetManifestResourceStream("FilmBatch.Engine.Imaging.Raw.Profiles.prophoto-gamma18.icc");
+        Assert.NotNull(stream);
+        using var expected = new MemoryStream();
+        stream.CopyTo(expected);
+        Assert.Equal(expected.ToArray(), profile.ToByteArray());
+        Assert.NotEqual(ColorProfiles.SRGB.ToByteArray(), profile.ToByteArray());
     }
 }

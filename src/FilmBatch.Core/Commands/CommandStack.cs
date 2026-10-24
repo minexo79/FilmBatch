@@ -56,8 +56,8 @@ public sealed class CommandStack(int limit = 200)
     public void Undo()
     {
         if (_undo.Last is not { } node) return;
-        _undo.RemoveLast();
         node.Value.Undo();
+        _undo.RemoveLast();
         _redo.Push(node.Value);
         _openMergeKey = null;
         Changed?.Invoke(this, EventArgs.Empty);
@@ -65,8 +65,9 @@ public sealed class CommandStack(int limit = 200)
 
     public void Redo()
     {
-        if (!_redo.TryPop(out var cmd)) return;
+        if (!_redo.TryPeek(out var cmd)) return;
         cmd.Execute();
+        _redo.Pop();
         _undo.AddLast(cmd);
         _openMergeKey = null;
         Changed?.Invoke(this, EventArgs.Empty);

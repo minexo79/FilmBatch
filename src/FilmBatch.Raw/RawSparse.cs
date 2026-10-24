@@ -150,20 +150,33 @@ public static class RawSparse
 
     /// <summary>
     /// 以稀疏讀取回傳檔案位元組：規劃 <c>Ready</c> 時只含檔頭／預覽所需範圍（其餘為零，
-    /// 探測結果與整檔一致）；規劃 <c>Whole</c> 時回退整檔，絕不以零填充冒充。
+    /// 探測結果與整檔一致）；規劃 <c>Whole</c> 時填滿同一緩衝區回退整檔，絕不以零填充冒充，
+    /// 且不另行配置第二個整檔緩衝區。
     /// </summary>
     public static byte[] ReadFile(string path, bool includePreview = false)
     {
-        long length;
         byte[] buffer;
+        RawRanges loaded;
         RawHeaderPlan plan;
+        long length;
         using (var stream = File.OpenRead(path))
         {
             length = stream.Length;
             if (length > Array.MaxLength) throw new IOException($"file too large ({length} bytes)");
-            (buffer, _, plan) = LoadIntoCore(stream, length, includePreview);
+            (buffer, loaded, plan) = LoadIntoCore(stream, length, includePreview);
+            if (plan is RawHeaderPlan.Ready) return buffer;
+            if ((long)buffer.Length == length)
+            {
+                // Whole：把未載入的缺口補齊，沿用同一緩衝區，不再 File.ReadAllBytes 第二次整檔配置。
+                foreach (var (a, b) in loaded.Gaps(0, length).Spans)
+                {
+                    stream.Seek(a, SeekOrigin.Begin);
+                    ReadExactly(stream, buffer, a, b - a);
+                }
+                return buffer;
+            }
         }
-        if (plan is RawHeaderPlan.Ready) return buffer;
+        // 超過規劃器上限（LoadIntoCore 未配置整檔緩衝區）：與基線相同，整檔讀取。
         return File.ReadAllBytes(path);
     }
 

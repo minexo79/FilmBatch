@@ -1,7 +1,7 @@
 # AI 降噪 Survey
 
 - 調查日期：2026-10-18。
-- 狀態：**來源調查完成，尚未採用模型或推論函式庫**。本文件不是實作決策、品質測評、效能承諾或法律意見。
+- 狀態：**來源調查完成；2026-10-19 已選用 RawNIND linear、NAFNet-SIDD 與 ONNX Runtime**。現行決策見 [ADR 0002](adr/0002-ai-denoise.md)，實際整合驗收見[計畫與證據](superpowers/plans/2026-10-19-ai-denoising.md)；下方保留調查當時的候選與未完成條件，不是品質排名或法律意見。
 - 來源：本次 LightCraft、Lightroom、darktable-ai、stefanpenner/ai-denoise 與其他候選的原始碼／官方文件調查。下方保留實際查閱的 commit 與主要證據，不依賴對話、暫存目錄或未提交的產物。
 - 範圍：優先尋找 MIT、Apache-2.0、zlib 或類似寬鬆授權的本機攝影降噪方案；分開檢查程式碼、模型權重、訓練資料與推論環境。
 
@@ -22,7 +22,7 @@ RawNIND 作者提供權重的 **GPL3 與 CC-BY-4.0 雙授權**。CC-BY-4.0 是�
 
 目前已具備 [RAW 場景線性管線](architecture.md#48-engine影像讀取與批次匯出imaging--exporting)，不是只有 sRGB JPEG／TIFF 的程式。`RawSourceLoader` 先解碼、分箱／去馬賽克、處理高光與色彩，產生浮點 Rec.2020 來源；後續 CPU／GPU 算圖保留晚期 RAW 顯示收尾。
 
-[ADR 0002](adr/0002-ai-denoise.md) 保留的是早期、未實作的設計。其「沒有 RAW 管線」、sRGB 首選模型與 FP16 匯出策略不能直接視為現行決策。重新啟動功能前，必須按模型資料域及本次限制重新選型。
+[ADR 0002](adr/0002-ai-denoise.md) 已取代早期「沒有 RAW 管線」的 sRGB／FP16 提案，分別選用場景線性 RawNIND 與顯示 RGB NAFNet，維持 FP32 輸入與各自的模型契約。此處候選比較保留為 2026-10-18 的調查歷史，不是目前執行入口。
 
 ## 指定專案調查
 
@@ -118,4 +118,4 @@ Sony NMiOH、PMN、ELD 亦列入來源調查，但權重散布條件與感光元
 
 ## 本次證據邊界
 
-已查閱原始碼、官方產品文件、模型文件、授權文字及發行資訊；沒有下載 checkpoint／ONNX 權重，沒有執行推論、畫質／效能測試、模型轉換或相依套件安裝。所有候選與加速路徑仍未在 FilmBatch 採用；本文件只保存調查結果與重啟評估時必須遵守的界線。
+2026-10-18 的調查只查閱原始碼、官方產品文件、模型文件、授權文字及發行資訊，沒有下載權重或執行推論。2026-10-19 的實作階段已另外下載並驗證兩個固定 ONNX 套件，完成 CPU／CoreML 實拍裁切、HDR／alpha、取消後重新推論、完整預覽／16-bit 匯出、原生介面與 macOS 封裝執行驗證；結果及未覆蓋平台集中記錄於[實作計畫](superpowers/plans/2026-10-19-ai-denoising.md#observed-acceptance-evidence--2026-10-19)，不將這份歷史 Survey 本身充當 runtime 證據。NIND 的線性測試輸入來自 inverse-sRGB 轉換，不是原始感光樣本或獨立 RAW benchmark；Windows 仍需 DirectML 實機驗證。

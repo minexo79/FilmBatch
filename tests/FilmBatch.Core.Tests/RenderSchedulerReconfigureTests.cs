@@ -30,7 +30,7 @@ public sealed class RenderSchedulerReconfigureTests
     {
         public string DeviceName => tag;
         public bool IsSoftware => true;
-        public RenderResult Render(SourceImage source, Settings settings)
+        public RenderResult Render(SourceImage source, Settings settings, CancellationToken cancellationToken = default)
         {
             var bgra = new byte[source.Width * source.Height * 4];
             for (var i = 0; i < bgra.Length; i += 4)
@@ -42,7 +42,8 @@ public sealed class RenderSchedulerReconfigureTests
             }
             return new RenderResult(source.Width, source.Height, bgra, TimeSpan.Zero);
         }
-        public SourceImage Render16(SourceImage source, Settings settings, CancellationToken cancellationToken = default) => source;
+        public SourceImage Render16(SourceImage source, Settings settings, CancellationToken cancellationToken = default,
+            RgbEncoding encoding = RgbEncoding.Srgb) => source;
         public void Dispose() { }
     }
 
@@ -51,7 +52,7 @@ public sealed class RenderSchedulerReconfigureTests
     {
         public string DeviceName => "blocking";
         public bool IsSoftware => true;
-        public RenderResult Render(SourceImage source, Settings settings)
+        public RenderResult Render(SourceImage source, Settings settings, CancellationToken cancellationToken = default)
         {
             started.TrySetResult();
             release.Task.Wait(TimeSpan.FromSeconds(10));
@@ -60,7 +61,8 @@ public sealed class RenderSchedulerReconfigureTests
             for (var i = 0; i < bgra.Length; i += 4) { bgra[i] = 10; bgra[i + 1] = 10; bgra[i + 2] = 10; }
             return new RenderResult(source.Width, source.Height, bgra, TimeSpan.Zero);
         }
-        public SourceImage Render16(SourceImage source, Settings settings, CancellationToken cancellationToken = default) => source;
+        public SourceImage Render16(SourceImage source, Settings settings, CancellationToken cancellationToken = default,
+            RgbEncoding encoding = RgbEncoding.Srgb) => source;
         public void Dispose() { }
     }
 
@@ -84,10 +86,10 @@ public sealed class RenderSchedulerReconfigureTests
         var previews = new List<byte>();
         var previewReady = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var rebuilt = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        scheduler.DeviceReady += (name, _) =>
+        scheduler.DeviceReady += ready =>
         {
-            lock (devices) devices.Add(name);
-            if (name == "second") rebuilt.TrySetResult();
+            lock (devices) devices.Add(ready.DeviceName);
+            if (ready.DeviceName == "second") rebuilt.TrySetResult();
         };
         scheduler.PreviewRendered += r =>
         {
@@ -131,7 +133,7 @@ public sealed class RenderSchedulerReconfigureTests
         Assert.NotNull(scheduler.InitError);
 
         var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        scheduler.DeviceReady += (_, _) => ready.TrySetResult();
+        scheduler.DeviceReady += _ => ready.TrySetResult();
         var done = new TaskCompletionSource<RenderResult>(TaskCreationOptions.RunContinuationsAsynchronously);
         scheduler.PreviewRendered += result => done.TrySetResult(result.Result);
         scheduler.ResetRenderer(() => new CpuFakeRenderer());

@@ -1,4 +1,6 @@
 using System.Text.Json.Serialization;
+using FilmBatch.Engine.Denoising;
+using FilmBatch.Engine.Imaging;
 
 namespace FilmBatch.Engine.Exporting;
 
@@ -14,6 +16,8 @@ public sealed record ExportOptions
     public required string Destination { get; init; }
     public string FileNameTemplate { get; init; } = "{name}_{preset}";
     public ExportFormat Format { get; init; } = ExportFormat.Jpeg;
+    /// <summary>輸出色彩空間（預設 sRGB；ProPhoto 僅限 TIFF16／PNG16，由呼叫端驗證）。</summary>
+    public RgbEncoding ColorSpace { get; init; } = RgbEncoding.Srgb;
     /// <summary>JPEG 品質 1–100（非 JPEG 時忽略）。超出範圍由呼叫端驗證。</summary>
     public int Quality { get; init; } = 95;
     public ExportSize Size { get; init; } = ExportSize.Original;
@@ -25,6 +29,9 @@ public sealed record ExportOptions
 
     /// <summary>暫時覆蓋照片的相機局部色調選項；不修改專案或預設。</summary>
     public bool? CameraLocalTone { get; init; }
+
+    /// <summary>僅覆蓋本次匯出的 AI 降噪強度（0–100）；null 沿用專案設定。</summary>
+    public double? DenoiseAmount { get; init; }
 }
 
 /// <summary>單張匯出的不可變快照（匯出期間的編輯不影響已排入的照片，計畫書 2.6）。</summary>
@@ -38,6 +45,8 @@ public sealed record ExportJob
     public required string PresetName { get; init; }
     public required int Index { get; init; }
     public required int PipelineVersion { get; init; }
+    /// <summary>建立 job 時擷取的逐張去背遮罩快照；匯出期間的遮罩編輯不影響已排入的照片。</summary>
+    public FilmBatch.Core.Projects.ForegroundMask? ForegroundMask { get; init; }
 }
 
 /// <summary>單張匯出的 IProgress 回報。</summary>
@@ -72,12 +81,17 @@ public sealed class ExportLogEntry
     public required int Width { get; set; }
     public required int Height { get; set; }
     public required string Format { get; set; }
+    /// <summary>輸出色彩空間（"sRGB" 或 "ProPhoto RGB"，供重現匯出位元組）。</summary>
+    public required string ColorSpace { get; set; }
     public int Quality { get; set; }
     public required string Renderer { get; set; }
     public required string Status { get; set; }
     public string? Error { get; set; }
     /// <summary>Pixels were exported, but source EXIF was omitted or reduced; null when preserved.</summary>
     public string? MetadataWarning { get; set; }
+    public DenoiseReport? Denoise { get; set; }
+    /// <summary>Pixels were exported without external Lensfun corrections because the database could not be read; null otherwise.</summary>
+    public string? LensDatabaseWarning { get; set; }
 }
 
 public sealed class ExportLogDocument

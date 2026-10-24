@@ -1,0 +1,187 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:FilmBatch.App.ViewModels"
+             xmlns:d="using:FilmBatch.App.ViewModels.Dialogs"
+             xmlns:l="using:FilmBatch.App.Localization"
+             x:Class="FilmBatch.App.Views.FilmstripView"
+             x:DataType="vm:FilmstripViewModel">
+  <!-- 縮圖列（計畫書 2.4.4）：水平虛擬化；Ctrl/⌘、Shift 多選；可拖放預設到縮圖上；在空白處按兩下選擇照片資料夾 -->
+  <UserControl.Styles>
+    <Style Selector="Border.file-kind ToggleButton.segment">
+      <Setter Property="MinHeight" Value="22" />
+      <Setter Property="Padding" Value="10,1" />
+      <Setter Property="FontSize" Value="11" />
+    </Style>
+    <Style Selector="Border.rating-filter">
+      <Setter Property="Background" Value="{DynamicResource FB.BaseBrush}" />
+      <Setter Property="CornerRadius" Value="6" />
+      <Setter Property="Padding" Value="4,2" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.rating-filter TextBlock.star">
+      <Setter Property="FontSize" Value="14" />
+      <Setter Property="Foreground" Value="{DynamicResource FB.PlaceholderBrush}" />
+    </Style>
+    <Style Selector="Border.rating-filter TextBlock.star.filled">
+      <Setter Property="Foreground" Value="#F2C14E" />
+    </Style>
+    <Style Selector="Button.filter-star:pointerover TextBlock.star">
+      <Setter Property="Foreground" Value="{DynamicResource FB.TextBrush}" />
+    </Style>
+    <Style Selector="Button.filter-star:pointerover TextBlock.star.filled">
+      <Setter Property="Foreground" Value="#F7D27A" />
+    </Style>
+    <Style Selector="Border.rating-filter-divider">
+      <Setter Property="Width" Value="1" />
+      <Setter Property="Height" Value="14" />
+      <Setter Property="Margin" Value="4,0" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Background" Value="{DynamicResource FB.BorderLightBrush}" />
+    </Style>
+    <Style Selector="ToggleButton.rating-unrated">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="CornerRadius" Value="4" />
+      <Setter Property="Padding" Value="6,1" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="Foreground" Value="{DynamicResource FB.SecondaryTextBrush}" />
+    </Style>
+    <Style Selector="ToggleButton.rating-unrated:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource FB.HoverOverlayBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource FB.TextBrush}" />
+    </Style>
+    <Style Selector="ToggleButton.rating-unrated:checked /template/ ContentPresenter, ToggleButton.rating-unrated:checked:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource FB.ButtonHoverBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource FB.TextBrush}" />
+    </Style>
+  </UserControl.Styles>
+  <DockPanel Background="{DynamicResource FB.WindowBrush}">
+    <Border DockPanel.Dock="Top" Padding="12,8,12,2">
+      <WrapPanel Orientation="Horizontal" ItemSpacing="8" LineSpacing="8" VerticalAlignment="Center">
+        <PathIcon Data="{StaticResource Icon.Filter}" Width="12" Height="12" Foreground="{DynamicResource FB.PlaceholderBrush}" VerticalAlignment="Center" />
+        <ComboBox Classes="flat" ItemsSource="{Binding FilterOptions}" SelectedItem="{Binding SelectedFilterOption}" DisplayMemberBinding="{Binding Label, x:DataType=d:OptionBase}" MinWidth="120" />
+        <ComboBox Classes="flat" ItemsSource="{Binding PresetOptions}" SelectedItem="{Binding FilterPreset}" MinWidth="140" PlaceholderText="{l:Tr Common.ChoosePreset}">
+          <ComboBox.ItemTemplate>
+            <DataTemplate x:DataType="vm:PresetItemViewModel">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <Border Classes="color-label" Background="{Binding ColorBrush}" />
+                <TextBlock Text="{Binding Name}" />
+              </StackPanel>
+            </DataTemplate>
+          </ComboBox.ItemTemplate>
+        </ComboBox>
+        <!-- 檔案類型：分段按鈕一鍵切換（全部／RAW／非 RAW） -->
+        <Border Name="FileKindBar" Classes="segmented file-kind" VerticalAlignment="Center">
+          <StackPanel Orientation="Horizontal" Spacing="2">
+            <ToggleButton Name="AllFilesToggle" Classes="segment" Content="{l:Tr Filmstrip.KindAll}" ToolTip.Tip="{l:Tr Filmstrip.AllFiles}"
+                          IsChecked="{Binding IsAllFiles, Mode=OneWay}" Command="{Binding SelectFileKindCommand}" CommandParameter="{x:Static vm:FilmstripFileKind.All}" />
+            <ToggleButton Name="RawOnlyToggle" Classes="segment" Content="RAW" ToolTip.Tip="{l:Tr Filmstrip.RawOnly}"
+                          IsChecked="{Binding IsRawOnly, Mode=OneWay}" Command="{Binding SelectFileKindCommand}" CommandParameter="{x:Static vm:FilmstripFileKind.RawOnly}" />
+            <ToggleButton Name="NonRawToggle" Classes="segment" Content="{l:Tr Filmstrip.KindNonRaw}" ToolTip.Tip="{l:Tr Filmstrip.NonRaw}"
+                          IsChecked="{Binding IsNonRawOnly, Mode=OneWay}" Command="{Binding SelectFileKindCommand}" CommandParameter="{x:Static vm:FilmstripFileKind.NonRaw}" />
+          </StackPanel>
+        </Border>
+        <!-- 星級篩選：點第 N 顆星只看 ★N 以上（再點一次取消）；右側切換鈕只看未評分 -->
+        <Border Name="RatingFilterBar" Classes="rating-filter" ToolTip.Tip="{Binding RatingFilterText}">
+          <StackPanel Orientation="Horizontal" Spacing="2">
+            <ItemsControl ItemsSource="{Binding RatingFilterStars}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <StackPanel Orientation="Horizontal" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:RatingStarViewModel">
+                  <Button Classes="icon filter-star" Padding="3,0"
+                          Command="{Binding $parent[ItemsControl].((vm:FilmstripViewModel)DataContext).ClickFilterStarCommand}"
+                          CommandParameter="{Binding Value}">
+                    <TextBlock Classes="star" Classes.filled="{Binding IsFilled}" Text="★" />
+                  </Button>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <Border Classes="rating-filter-divider" />
+            <ToggleButton Name="UnratedFilterToggle" Classes="rating-unrated" IsChecked="{Binding IsUnratedFilter, Mode=OneWay}"
+                          Command="{Binding ToggleUnratedFilterCommand}" Content="{l:Tr Filmstrip.Unrated}" />
+          </StackPanel>
+        </Border>
+        <TextBlock Classes="secondary small numeric" Text="{Binding CountText}" VerticalAlignment="Center" Margin="4,0" />
+      </WrapPanel>
+    </Border>
+    <Panel>
+    <ListBox Name="List" Classes="filmstrip" ItemsSource="{Binding Items}" Selection="{Binding Selection}"
+             SelectionMode="Multiple" DragDrop.AllowDrop="True"
+             ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Disabled">
+      <ListBox.ContextMenu>
+        <ContextMenu Name="PhotoMenu">
+          <MenuItem Name="CopySettingsItem" Header="{l:Tr Cmd.Copy}" Command="{Binding Main.CopyCommand}" />
+          <MenuItem Name="PasteSettingsItem" Header="{l:Tr Cmd.Paste}" Command="{Binding Main.PasteCommand}" />
+          <MenuItem Header="{l:Tr Cmd.PastePresetOnly}" Command="{Binding Main.PastePresetOnlyCommand}" />
+          <MenuItem Header="{l:Tr Cmd.PasteSpecial}" Command="{Binding Main.PasteSpecialCommand}" />
+          <Separator />
+          <!-- 評分：套用到所有選取照片（鍵盤 0 ~ 5 亦可） -->
+          <MenuItem Name="RatingItem" Header="{l:Tr Cmd.Rating}">
+            <MenuItem Header="★★★★★" Command="{Binding Main.SetRatingCommand}"><MenuItem.CommandParameter><x:Int32>5</x:Int32></MenuItem.CommandParameter></MenuItem>
+            <MenuItem Header="★★★★" Command="{Binding Main.SetRatingCommand}"><MenuItem.CommandParameter><x:Int32>4</x:Int32></MenuItem.CommandParameter></MenuItem>
+            <MenuItem Header="★★★" Command="{Binding Main.SetRatingCommand}"><MenuItem.CommandParameter><x:Int32>3</x:Int32></MenuItem.CommandParameter></MenuItem>
+            <MenuItem Header="★★" Command="{Binding Main.SetRatingCommand}"><MenuItem.CommandParameter><x:Int32>2</x:Int32></MenuItem.CommandParameter></MenuItem>
+            <MenuItem Header="★" Command="{Binding Main.SetRatingCommand}"><MenuItem.CommandParameter><x:Int32>1</x:Int32></MenuItem.CommandParameter></MenuItem>
+            <Separator />
+            <MenuItem Header="{l:Tr Cmd.ClearRating}" Command="{Binding Main.SetRatingCommand}"><MenuItem.CommandParameter><x:Int32>0</x:Int32></MenuItem.CommandParameter></MenuItem>
+          </MenuItem>
+          <Separator />
+          <MenuItem Name="QuickExportItem" Header="{l:Tr Cmd.QuickExport}" Command="{Binding Main.QuickExportCommand}" />
+          <MenuItem Name="RevealItem" Header="{l:Tr Cmd.RevealInFileManager}" Command="{Binding Main.RevealInFileManagerCommand}"
+                    IsVisible="{Binding Main.CanRevealInFileManager}" />
+          <Separator />
+          <MenuItem Name="ResetPhotoItem" Header="{l:Tr Cmd.ResetSelected}" Command="{Binding Main.ResetPhotoCommand}" />
+        </ContextMenu>
+      </ListBox.ContextMenu>
+      <ListBox.ItemsPanel>
+        <ItemsPanelTemplate>
+          <VirtualizingStackPanel Orientation="Horizontal" />
+        </ItemsPanelTemplate>
+      </ListBox.ItemsPanel>
+      <ListBox.ItemTemplate>
+        <DataTemplate x:DataType="vm:ThumbnailViewModel">
+          <Border Classes="thumb" ToolTip.Tip="{Binding FileName}" AutomationProperties.Name="{Binding FileName}">
+            <Grid Width="128" Height="88">
+              <Image Source="{Binding Bitmap}" Stretch="Uniform" />
+              <TextBlock Classes="secondary small" Text="…" HorizontalAlignment="Center" VerticalAlignment="Center"
+                         IsVisible="{Binding Bitmap, Converter={x:Static ObjectConverters.IsNull}}" />
+              <!-- 讀檔失敗：錯誤圖示，滑鼠停留看原因 -->
+              <PathIcon Data="{StaticResource Icon.Warning}" Width="20" Height="20" Foreground="{DynamicResource FB.ErrorBrush}"
+                        IsVisible="{Binding HasError}" ToolTip.Tip="{Binding Error}" />
+              <!-- 左下：色彩標籤 + 預設名稱縮寫 -->
+              <Border HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="4" Padding="5,1" CornerRadius="8" Background="#B0141414">
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                  <Border Classes="color-label" Width="6" Height="6" CornerRadius="3" Background="{Binding PresetBrush}" />
+                  <TextBlock FontSize="10" Text="{Binding PresetLabel}" Foreground="#EAEAEA" />
+                </StackPanel>
+              </Border>
+              <!-- 右下：星級評分（未評分不顯示） -->
+              <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="4" Padding="5,1" CornerRadius="8" Background="#B0141414"
+                      IsVisible="{Binding HasRating}">
+                <TextBlock FontSize="10" Text="{Binding RatingStars}" Foreground="#EAEAEA" />
+              </Border>
+              <!-- 右上：● 有單張覆寫、⟳ 預設已更新 -->
+              <StackPanel Orientation="Horizontal" Spacing="3" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="5">
+                <PathIcon Data="{StaticResource Icon.Sync}" Width="10" Height="10" Foreground="{DynamicResource FB.PresetUpdatedBrush}"
+                          IsVisible="{Binding PresetUpdated}" ToolTip.Tip="{l:Tr Tip.PresetUpdated}" />
+                <Ellipse Classes="override-dot" Width="8" Height="8" IsVisible="{Binding HasOverrides}" ToolTip.Tip="{l:Tr Tip.HasOverrides}" />
+              </StackPanel>
+            </Grid>
+          </Border>
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+    <!-- 尚未開啟資料夾時的提示（不攔截滑鼠，按兩下由 ListBox 處理） -->
+    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" VerticalAlignment="Center"
+                IsHitTestVisible="False" IsVisible="{Binding !HasFolder}">
+      <PathIcon Data="{StaticResource Icon.Open}" Width="16" Height="16" Foreground="{DynamicResource FB.PlaceholderBrush}" />
+      <TextBlock Classes="secondary" Text="{l:Tr Filmstrip.OpenHint}" VerticalAlignment="Center" />
+    </StackPanel>
+    </Panel>
+  </DockPanel>
+</UserControl>

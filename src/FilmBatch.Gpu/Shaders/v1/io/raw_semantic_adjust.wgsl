@@ -22,13 +22,14 @@ struct Params {
 @group(0) @binding(1) var mask: texture_2d<f32>;
 @group(0) @binding(2) var dst: texture_storage_2d<rgba32float, write>;
 @group(0) @binding(3) var<uniform> p: Params;
+@group(0) @binding(4) var<uniform> view: FrameView;
 
 @compute @workgroup_size(16, 16)
 fn main(@builtin(global_invocation_id) id: vec3u) {
     let size = textureDimensions(dst);
     if (id.x >= size.x || id.y >= size.y) { return; }
     // 輸出像素中心 → 來源像素 → 遮罩平面連續座標（與 CPU Bilinear 同式、邊緣延伸）
-    let o = vec2f(id.xy) + 0.5;
+    let o = frame_px(view, id.xy);
     let s = vec2f(p.m00 * o.x + p.m01 * o.y + p.m02, p.m10 * o.x + p.m11 * o.y + p.m12);
     let md = vec2f(textureDimensions(mask));
     let mp = s / vec2f(p.src_w, p.src_h) * md - 0.5;

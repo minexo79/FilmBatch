@@ -66,24 +66,61 @@ public sealed class ProjectService
     /// 一筆可復原的多欄位操作，例如套用一組色相修正預設、裁切工具一次寫入所有 <c>crop.*</c>。
     /// 每個值依 schema 夾限（與 <see cref="SetValue"/> 相同）；與基準相同的值移除覆寫。
     /// </summary>
-    public bool SetValues(IReadOnlyCollection<string> fileNames, Settings values, string description)
+    public bool SetValues(IReadOnlyCollection<string> fileNames, Settings values, string description, string? mergeKey = null)
     {
         var coerced = new Settings(values.Select(kv => KeyValuePair.Create(kv.Key,
             (ModuleCatalog.Param(kv.Key) ?? throw new ArgumentException($"未知的參數：{kv.Key}")).Coerce(kv.Value))));
         return Apply(description, fileNames, entry => entry with
         {
             Overrides = PhotoOperations.Clean(entry.Overrides.Overlay(coerced), BaseFor(entry.PresetId)),
-        });
+        }, mergeKey);
+    }
+
+    /// <summary>套用或移除焦點照片的去背遮罩；與其他編輯共用原子保存與復原。</summary>
+    public bool SetForegroundMask(string fileName, ForegroundMask? mask) =>
+        Apply(mask is null ? CoreText.T("還原背景", "Restore background") : CoreText.T("套用去背", "Apply background removal"),
+            [fileName], entry => entry with { ForegroundMask = mask });
+
+    /// <summary>一次套用多張的去背遮罩；一筆命令、一次復原紀錄。保存失敗不套用也不佔用復原。</summary>
+    public bool SetForegroundMasks(IReadOnlyDictionary<string, ForegroundMask> masks)
+    {
+        ArgumentNullException.ThrowIfNull(masks);
+        if (masks.Count == 0) return false;
+        return Apply(CoreText.T("套用批次去背", "Apply batch background removal"),
+            masks.Keys, entry => masks.TryGetValue(entry.FileName, out var mask) ? entry with { ForegroundMask = mask } : entry);
+    }
+
+    /// <summary>設定星級評分（多選時一併套用）；一筆復原紀錄，不影響參數覆寫。</summary>
+    public bool SetRating(IReadOnlyCollection<string> fileNames, int rating)
+    {
+        rating = Math.Clamp(rating, 0, PhotoEntry.MaxRating);
+        return Apply(rating == 0 ? CoreText.T("清除評分", "Clear rating") : CoreText.T($"評分 {rating} 星", $"Rate {rating} stars"),
+            fileNames, entry => entry with { Rating = rating });
     }
 
     public bool ResetParam(IReadOnlyCollection<string> fileNames, string key) =>
         Apply($"重設 {ModuleCatalog.Param(key)?.Label ?? key}", fileNames, e => PhotoOperations.ResetParam(e, key));
+
+    /// <summary>一筆可復原的多欄位重設（例如 RAW 白平衡的模式＋色溫＋色調一起回到拍攝值）。</summary>
+    public bool ResetParams(IReadOnlyCollection<string> fileNames, IReadOnlyCollection<string> keys, string description) =>
+        Apply(description, fileNames, e => e with { Overrides = e.Overrides.WithoutRange(keys) });
 
     public bool ResetModule(IReadOnlyCollection<string> fileNames, string moduleKey) =>
         Apply($"重設 {ModuleCatalog.Module(moduleKey).Label}", fileNames, e => PhotoOperations.ResetModule(e, moduleKey));
 
     public bool ResetAll(IReadOnlyCollection<string> fileNames) =>
         Apply("重設此張", fileNames, PhotoOperations.ResetAll);
+
+    /// <summary>
+    /// 回到原圖：清除覆寫與遮罩，並把預設改回「Neutral (No Effect)」（預設庫中已刪除時改為未指定）。
+    /// 評分保留；一筆復原紀錄。
+    /// </summary>
+    public bool ResetToOriginal(IReadOnlyCollection<string> fileNames)
+    {
+        Guid? neutral = library.Get(SamplePresets.Neutral) is null ? null : SamplePresets.Neutral;
+        if (neutral is { } id) SnapshotPreset(id);
+        return Apply("重設此張", fileNames, e => PhotoOperations.ResetAll(e) with { PresetId = neutral });
+    }
 
     public bool AssignPreset(IReadOnlyCollection<string> fileNames, Guid presetId, bool keepOverrides)
     {

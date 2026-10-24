@@ -1,5 +1,5 @@
 #:project ../src/FilmBatch.Gpu/FilmBatch.Gpu.csproj
-// 驗證編譯後嵌入的 WGSL 編譯單元；common/ 片段透過產品的 ShaderLibrary 展開後一起驗證。
+// 驗證產品 ShaderLibrary 展開後含 entry point 的 WGSL，包含 common/ 下可獨立執行的 kernel。
 // dotnet run build/CheckShaders.cs -- --naga <執行檔>
 // --shaders <Shaders 根目錄> 可驗證開發中的 shader；省略時驗證嵌入資源。
 
@@ -16,8 +16,6 @@ var files = (devFolder is null
         .Select(name => name[prefix.Length..])
     : Directory.EnumerateFiles(devFolder, "*.wgsl", SearchOption.AllDirectories)
         .Select(file => Path.GetRelativePath(devFolder, file).Replace('\\', '/')))
-    // common/ 是 include 片段，可能引用呼叫端的資源宣告，不是獨立編譯單元。
-    .Where(file => !file.Contains("/common/", StringComparison.Ordinal))
     .Order(StringComparer.Ordinal).ToArray();
 if (files.Length == 0)
 {
@@ -28,6 +26,7 @@ if (files.Length == 0)
 var temp = Path.Combine(Path.GetTempPath(), $"filmbatch-wgsl-{Guid.NewGuid():N}");
 Directory.CreateDirectory(temp);
 var ok = true;
+var validated = 0;
 try
 {
     foreach (var file in files)
@@ -36,6 +35,11 @@ try
         if (separator < 2 || file[0] != 'v' || !int.TryParse(file.AsSpan(1, separator - 1), out var version))
             throw new InvalidDataException($"Shader 缺少 vN 版本目錄：{file}");
         var expanded = new ShaderLibrary(version, devFolder).Load(file[(separator + 1)..]);
+        // 按內容判斷編譯單元；common/ 同時包含 include 片段和可執行的 Gaussian kernel。
+        if (!expanded.Contains("@compute", StringComparison.Ordinal)
+            && !expanded.Contains("@vertex", StringComparison.Ordinal)
+            && !expanded.Contains("@fragment", StringComparison.Ordinal)) continue;
+        validated++;
         var input = Path.Combine(temp, file.Replace('/', Path.DirectorySeparatorChar));
         Directory.CreateDirectory(Path.GetDirectoryName(input)!);
         await File.WriteAllTextAsync(input, expanded);
@@ -70,7 +74,12 @@ finally
 {
     Directory.Delete(temp, recursive: true);
 }
-Console.WriteLine(ok ? $"WGSL 驗證通過（{files.Length} 個檔案）" : "WGSL 驗證失敗");
+if (validated == 0)
+{
+    Console.Error.WriteLine("找不到可驗證的 WGSL entry point。");
+    return 1;
+}
+Console.WriteLine(ok ? $"WGSL 驗證通過（{validated} 個檔案）" : "WGSL 驗證失敗");
 return ok ? 0 : 1;
 
 string? Arg(string name)

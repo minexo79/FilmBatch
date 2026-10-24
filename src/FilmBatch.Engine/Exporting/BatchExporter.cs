@@ -3,8 +3,8 @@ using FilmBatch.Core;
 using FilmBatch.Core.Projects;
 using FilmBatch.Engine.Imaging;
 using FilmBatch.Engine.Imaging.Raw;
+using FilmBatch.Engine.Denoising;
 using FilmBatch.Engine.Rendering;
-using ImageMagick;
 using FilmBatch.Raw;
 using FilmBatch.Raw.Color;
 using FilmBatch.Raw.Meta;
@@ -41,6 +41,8 @@ public static class BatchExporter
                     .With("raw.embedded_lens", options.EmbeddedLensCorrections ?? current.EmbeddedLensCorrections)
                     .With("raw.camera_local_tone", options.CameraLocalTone ?? current.CameraLocalTone);
             }
+            if (options?.DenoiseAmount is { } amount)
+                settings = settings.With("denoise.enabled", amount > 0).With("denoise.amount", amount);
             jobs.Add(new ExportJob
             {
                 FileName = file,
@@ -50,6 +52,7 @@ public static class BatchExporter
                 PresetName = preset?.Name ?? CoreText.T("未命名", "Untitled"),
                 Index = index,
                 PipelineVersion = project.PipelineVersion,
+                ForegroundMask = entry.ForegroundMask,
             });
         }
         return jobs;
@@ -59,6 +62,17 @@ public static class BatchExporter
     {
         if (string.IsNullOrWhiteSpace(options.Destination))
             throw new InvalidDataException(CoreText.T("請選擇匯出目的地。", "Choose an export destination."));
+        try { RgbEncodingInfo.Validate(options.ColorSpace); }
+        catch (ArgumentOutOfRangeException)
+        {
+            throw new InvalidDataException(CoreText.T(
+                $"不支援的色彩空間：{(int)options.ColorSpace}。",
+                $"Unsupported color space: {(int)options.ColorSpace}."));
+        }
+        if (options.ColorSpace == RgbEncoding.ProPhoto && options.Format is not (ExportFormat.Tiff16 or ExportFormat.Png16))
+            throw new InvalidDataException(CoreText.T(
+                $"ProPhoto RGB 僅支援 16-bit TIFF／PNG，不支援 {options.Format}。",
+                $"ProPhoto RGB is only supported for 16-bit TIFF/PNG, not {options.Format}."));
         if (options.Format == ExportFormat.Jpeg && (options.Quality is < 1 or > 100))
             throw new InvalidDataException(CoreText.T(
                 $"JPEG 品質必須為 1–100（目前 {options.Quality}）。",
@@ -67,9 +81,19 @@ public static class BatchExporter
             throw new InvalidDataException(CoreText.T(
                 $"長邊必須為 100–20000 px（目前 {options.LongEdgePx}）。",
                 $"Long edge must be 100–20000 px (currently {options.LongEdgePx})."));
+        if (options.DenoiseAmount is { } amount && (!double.IsFinite(amount) || amount is < 0 or > 100))
+            throw new InvalidDataException(CoreText.T("AI 降噪強度必須為 0–100。", "AI denoising strength must be 0–100."));
         // 範本語法預檢（以佔位值展開一次；{ext} 與未知 token 在此報錯）
         ExportFileNames.RenderTemplate(options.FileNameTemplate, "name", "preset", 1);
     }
+
+    /// <summary>export_log.json 用的色彩空間顯示名稱（英文穩定字串，供重現匯出位元組）。</summary>
+    public static string ColorSpaceName(RgbEncoding encoding) => encoding switch
+    {
+        RgbEncoding.Srgb => "sRGB",
+        RgbEncoding.ProPhoto => "ProPhoto RGB",
+        _ => throw new ArgumentOutOfRangeException(nameof(encoding)),
+    };
 
     /// <summary>
     /// 執行整批匯出（呼叫執行緒即工作執行緒；算圖器只建立一次並全程同一執行緒使用，符合執行緒親和性）。
@@ -145,7 +169,7 @@ public static class BatchExporter
             try
             {
                 // 同一執行緒直接處理（算圖器親和性；GUI 端已在背景 Task 內）
-                var (w, h, metadataWarning, rawDevice) = ProcessOne(job, outputs[i], options, renderer, ct);
+                var (w, h, metadataWarning, rawDevice, denoise, lensWarning) = ProcessOne(job, outputs[i], options, renderer, ct);
                 deviceName = renderer.DeviceName;
                 isSoftware |= renderer.IsSoftware;
                 // RAW 與效果共用同一條完整管線，記錄這張實際採用的 GPU／CPU 路徑。
@@ -153,6 +177,8 @@ public static class BatchExporter
                 outputFiles.Add(outputs[i]);
                 entries[i] = LogEntry(job, outputs[i], options, entryDevice, w, h, "ok", null);
                 entries[i].MetadataWarning = metadataWarning;
+                entries[i].Denoise = denoise;
+                entries[i].LensDatabaseWarning = lensWarning;
             }
             catch (OperationCanceledException)
             {
@@ -204,13 +230,14 @@ public static class BatchExporter
         Width = w,
         Height = h,
         Format = options.Format.ToString(),
+        ColorSpace = ColorSpaceName(options.ColorSpace),
         Quality = options.Format == ExportFormat.Jpeg ? options.Quality : 0,
         Renderer = device,
         Status = status,
         Error = error,
     };
 
-    private static (int Width, int Height, string? MetadataWarning, string? RawDevice) ProcessOne(
+    private static (int Width, int Height, string? MetadataWarning, string? RawDevice, DenoiseReport? Denoise, string? LensDatabaseWarning) ProcessOne(
         ExportJob job, string outputPath, ExportOptions options, IPreviewRenderer renderer, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
@@ -218,23 +245,24 @@ public static class BatchExporter
             throw new FileNotFoundException(CoreText.T($"找不到來源照片：{job.FileName}", $"Source photo not found: {job.FileName}"), job.SourcePath);
 
         // 1. 全解析度解碼；RAW 保留場景線性資料，顯示收尾由完整算圖管線執行一次。
-        var source = ImageLoader.LoadFull(job.SourcePath, RawLoadOptions.FromSettings(job.Settings));
+        var source = ImageLoader.LoadFull(job.SourcePath, RawLoadOptions.FromSettings(job.Settings))
+            .WithForegroundMask(job.ForegroundMask);
         ct.ThrowIfCancellationRequested();
 
         // 2. 完整 16-bit 算圖（GPU 或 CPU 等效；超限時算圖器內部以等效路徑處理，不靜默截斷）
-        var rendered = renderer.Render16(source, job.Settings, ct);
+        var rendered = renderer.Render16(source, job.Settings, ct, options.ColorSpace);
         ct.ThrowIfCancellationRequested();
         string? rawDevice = source.Scene is null ? null
             : renderer is GpuSpikeRenderer gpu && !gpu.UsingCpu ? "RAW GPU" : "RAW CPU";
 
-        // 3. 長邊縮放（只縮小；16-bit sRGB 端可分離 Lanczos-3，精度保留）
+        // 3. 長邊縮放（只縮小；16-bit 輸出編碼端可分離 Lanczos-3，精度保留）
         var sized = options.Size == ExportSize.LongEdge && options.LongEdgePx > 0
             ? DownscaleLongEdge(rendered, options.LongEdgePx, ct)
             : rendered;
 
         // 4. 編碼寫檔（原子寫入；絕不覆寫既有檔；取消時刪除未完成暫存）
         var metadataWarning = Encode(sized, job, outputPath, options, ct);
-        return (sized.Width, sized.Height, metadataWarning, rawDevice);
+        return (sized.Width, sized.Height, metadataWarning, rawDevice, rendered.Denoise, source.LensDatabaseWarning);
     }
 
     internal static SourceImage DownscaleLongEdge(SourceImage image, int longEdge, CancellationToken ct)
@@ -245,9 +273,9 @@ public static class BatchExporter
         var h = Math.Max(1, (int)Math.Round(image.Height * scale));
         var src = image.Rgba16;
         var dst = new ushort[w * h * 4];
-        // Lanczos-3 可分離縮放（sRGB 端；16-bit 精度保留）
-        var xContrib = Weights(image.Width, w);
-        var yContrib = Weights(image.Height, h);
+        // Lanczos-3 filters premultiplied output-encoded samples; unpremultiply only after both passes.
+        var xContrib = LanczosKernel.Weights(image.Width, w);
+        var yContrib = LanczosKernel.Weights(image.Height, h);
         var tmp = new float[h * image.Width * 4];
         // 注意：取消只在 pass 邊界檢查；Parallel lambda 內不檢查（OCE 會被包成 AggregateException）。
         Parallel.For(0, h, y =>
@@ -259,7 +287,10 @@ public static class BatchExporter
                 foreach (var (sx, wt) in yc.Source)
                 {
                     var s = (sx * image.Width + x) * 4;
-                    r += src[s] * wt; g += src[s + 1] * wt; b += src[s + 2] * wt; a += src[s + 3] * wt;
+                    var coverage = src[s + 3] / 65535.0;
+                    var colorWeight = wt * coverage;
+                    r += src[s] * colorWeight; g += src[s + 1] * colorWeight; b += src[s + 2] * colorWeight;
+                    a += src[s + 3] * wt;
                 }
                 var d = (y * image.Width + x) * 4;
                 tmp[d] = (float)r; tmp[d + 1] = (float)g; tmp[d + 2] = (float)b; tmp[d + 3] = (float)a;
@@ -278,52 +309,24 @@ public static class BatchExporter
                     r += tmp[s] * wt; g += tmp[s + 1] * wt; b += tmp[s + 2] * wt; a += tmp[s + 3] * wt;
                 }
                 var d = (y * w + x) * 4;
-                dst[d] = Clamp16(r); dst[d + 1] = Clamp16(g); dst[d + 2] = Clamp16(b); dst[d + 3] = Clamp16(a);
+                var alpha = Clamp16(a);
+                if (alpha != 0)
+                {
+                    var unpremultiply = 65535.0 / a;
+                    dst[d] = Clamp16(r * unpremultiply);
+                    dst[d + 1] = Clamp16(g * unpremultiply);
+                    dst[d + 2] = Clamp16(b * unpremultiply);
+                    dst[d + 3] = alpha;
+                }
             }
         });
         ct.ThrowIfCancellationRequested();
-        return new SourceImage(w, h, dst)
+        return new SourceImage(w, h, dst, image.Encoding)
         {
             FilePath = image.FilePath, RawOptions = image.RawOptions,
             RawInfo = image.RawInfo, SemanticMasks = image.SemanticMasks,
+            Denoise = image.Denoise, LensDatabaseWarning = image.LensDatabaseWarning,
         };
-    }
-
-    private sealed record Contrib((int Index, double Weight)[] Source);
-
-    private static Contrib[] Weights(int srcLen, int dstLen)
-    {
-        const double a = 3;
-        var scale = (double)dstLen / srcLen;
-        var filter = scale < 1 ? a / scale : a; // 縮小時加寬濾波器
-        var result = new Contrib[dstLen];
-        for (var d = 0; d < dstLen; d++)
-        {
-            var center = (d + 0.5) / scale - 0.5;
-            var lo = Math.Max(0, (int)Math.Floor(center - filter));
-            var hi = Math.Min(srcLen - 1, (int)Math.Ceiling(center + filter));
-            var list = new List<(int, double)>();
-            double sum = 0;
-            for (var s = lo; s <= hi; s++)
-            {
-                var wgt = Lanczos((center - s) * (scale < 1 ? scale : 1), a);
-                if (wgt == 0) continue;
-                list.Add((s, wgt));
-                sum += wgt;
-            }
-            if (list.Count == 0) list.Add((Math.Clamp((int)Math.Round(center), 0, srcLen - 1), 1));
-            else if (sum != 0) { for (var k = 0; k < list.Count; k++) list[k] = (list[k].Item1, list[k].Item2 / sum); }
-            result[d] = new Contrib(list.ToArray());
-        }
-        return result;
-    }
-
-    private static double Lanczos(double x, double a)
-    {
-        if (x == 0) return 1;
-        if (Math.Abs(x) >= a) return 0;
-        var pix = Math.PI * x;
-        return a * Math.Sin(pix) * Math.Sin(pix / a) / (pix * pix);
     }
 
     private static ushort Clamp16(double v) => (ushort)Math.Clamp(Math.Round(v), 0, 65535);
@@ -331,41 +334,27 @@ public static class BatchExporter
     internal static string? Encode(SourceImage image, ExportJob job, string outputPath, ExportOptions options, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
+        // 直接編碼入口同樣先驗證（寫檔副作用之前）：選項必須合法，且像素編碼必須與選項一致，絕不重新標籤。
+        ValidateOptions(options);
+        if (image.Encoding != options.ColorSpace)
+            throw new InvalidDataException(CoreText.T(
+                $"像素色彩空間（{ColorSpaceName(image.Encoding)}）與匯出選項（{ColorSpaceName(options.ColorSpace)}）不一致，拒絕編碼。",
+                $"Pixel color space ({ColorSpaceName(image.Encoding)}) does not match export options ({ColorSpaceName(options.ColorSpace)}); refusing to encode."));
         if (File.Exists(outputPath))
             throw new IOException(CoreText.T($"輸出檔已存在，拒絕覆寫：{outputPath}", $"Output file already exists; refusing to overwrite: {outputPath}"));
-
-        var exif = CopyExifProfile(job.SourcePath, (uint)image.Width, (uint)image.Height, options.Format, image.RawInfo?.Metadata, out var metadataWarning);
-        byte[]? dng = null;
-        using var picture = options.Format == ExportFormat.Dng ? null : new MagickImage();
-        if (picture is not null)
+        // JPEG／DNG 不支援透明度：套過遮罩的透明輸出必須明確失敗，不靜默寫成不透明檔。
+        if (job.ForegroundMask is not null && options.Format is ExportFormat.Jpeg or ExportFormat.Dng)
         {
-            var settings = new PixelReadSettings((uint)image.Width, (uint)image.Height, StorageType.Short, PixelMapping.RGBA);
-            picture.ReadPixels(System.Runtime.InteropServices.MemoryMarshal.AsBytes(image.Rgba16.AsSpan()), settings);
-            picture.Depth = 16;
-            picture.SetProfile(exif);
-            picture.SetProfile(ColorProfiles.SRGB);
-            picture.Orientation = OrientationType.TopLeft;
-            switch (options.Format)
-            {
-                case ExportFormat.Jpeg:
-                    picture.Quality = (uint)options.Quality;
-                    picture.Format = MagickFormat.Jpeg;
-                    picture.Alpha(AlphaOption.Remove);
-                    picture.Depth = 8;
-                    break;
-                case ExportFormat.Tiff16:
-                    picture.Format = MagickFormat.Tiff;
-                    picture.Endian = Endian.LSB;
-                    picture.Settings.Compression = CompressionMethod.Zip;
-                    break;
-                case ExportFormat.Png16:
-                    picture.Format = MagickFormat.Png;
-                    picture.Settings.SetDefines(new ImageMagick.Formats.PngWriteDefines { PreserveiCCP = true });
-                    break;
-                default: throw new ArgumentOutOfRangeException(nameof(options.Format));
-            }
+            var px = image.Rgba16;
+            for (var i = 3; i < px.Length; i += 4)
+                if (px[i] != ushort.MaxValue)
+                    throw new InvalidDataException(CoreText.T(
+                        $"{options.Format} 不支援透明背景：請改用 PNG16 或 TIFF16 匯出去背結果。",
+                        $"{options.Format} cannot store transparency: export the masked result as PNG16 or TIFF16 instead."));
         }
-        else
+        var exif = CopyExifProfile(job.SourcePath, (uint)image.Width, (uint)image.Height, options.Format, options.ColorSpace, image.RawInfo?.Metadata, out var metadataWarning);
+        byte[]? dng = null;
+        if (options.Format == ExportFormat.Dng)
         {
             var linear = new float[checked(image.Width * image.Height * 3)];
             var input = image.Rgba16;
@@ -375,8 +364,7 @@ public static class BatchExporter
                 linear[d + 1] = Transfer.SrgbToLinear(input[s + 1] / 65535f);
                 linear[d + 2] = Transfer.SrgbToLinear(input[s + 2] / 65535f);
             }
-            var metadataBytes = exif.ToByteArray()!;
-            var metadata = MetadataReader.FromTiff(TiffFile.Parse(metadataBytes.AsMemory(6)));
+            var metadata = MetadataReader.FromTiff(TiffFile.Parse(exif.AsMemory(6)));
             dng = DngWriter.WriteRenderedDng(image.Width, image.Height, linear, ColorSpaces.Srgb, metadata);
         }
 
@@ -385,13 +373,23 @@ public static class BatchExporter
         try
         {
             ct.ThrowIfCancellationRequested();
-            using (var stream = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            if (dng is not null)
             {
-                if (dng is not null) stream.Write(dng);
-                else picture!.Write(stream);
+                using (var stream = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                    stream.Write(dng);
+            }
+            else
+            {
+                ImageBackend.Encode(image, tmp, options.Format, options.Quality, exif);
             }
             if (options.Format is ExportFormat.Tiff16 or ExportFormat.Dng)
-                TiffMetadata.Append(tmp, exif, replaceExif: options.Format == ExportFormat.Dng);
+#if FILMBATCH_APPLE_IMAGING
+                // ImageIO 的 TIFF 自帶 EXIF/GPS 須以 canonical 副本取代；DNG 同。
+                TiffMetadata.Append(tmp, exif, replaceExif: true, encoding: options.ColorSpace);
+#else
+                // Magick 編碼器已就地寫入 canonical EXIF；只有 DNG 寫入器的自帶 EXIF 缺來源標準欄位須取代。
+                TiffMetadata.Append(tmp, exif, replaceExif: options.Format == ExportFormat.Dng, encoding: options.ColorSpace);
+#endif
             ct.ThrowIfCancellationRequested();
             File.Move(tmp, outputPath, overwrite: false);
             return metadataWarning;
@@ -405,52 +403,40 @@ public static class BatchExporter
         }
     }
 
-    private static ExifProfile CopyExifProfile(string sourcePath, uint width, uint height, ExportFormat format,
-        Metadata? decoded, out string? metadataWarning)
+    /// <summary>canonical EXIF 位元組（<c>Exif\0\0</c>＋TIFF 目錄）：RAW 讀原檔目錄，一般影像由後端擷取再正規化。</summary>
+    private static byte[] CopyExifProfile(string sourcePath, uint width, uint height, ExportFormat format,
+        RgbEncoding encoding, Metadata? decoded, out string? metadataWarning)
     {
-        IExifProfile? source = null;
         metadataWarning = null;
         try
         {
-            ExifProfile normalized;
+            byte[] normalized;
             if (FilmBatch.Engine.Imaging.Raw.RawSourceLoader.IsRawExtension(sourcePath))
             {
                 // RAW 的 EXIF 失敗與其他來源一樣，外層統一記錄 "Source EXIF omitted: …" 並輸出全新 EXIF。
-                normalized = TiffMetadata.ReadRaw(sourcePath, width, height, decoded);
+                normalized = TiffMetadata.ReadRaw(sourcePath, width, height, decoded, encoding);
             }
             else
             {
-                using var probe = new MagickImage();
-                probe.Ping(sourcePath);
-                source = probe.GetExifProfile();
-                // Normalize raw directories rather than flattening through ExifProfile.Values:
-                // that model omits the interoperability directory.
-                if (source is not null)
-                    normalized = TiffMetadata.Normalize(source, width, height);
-                else if (probe.Format is MagickFormat.Tiff or MagickFormat.Tiff64)
-                    normalized = TiffMetadata.Read(sourcePath, width, height);
-                else
-                    normalized = TiffMetadata.Normalize((IExifProfile?)null, width, height);
+                var source = ImageBackend.ExtractExifBytes(sourcePath, width, height);
+                normalized = TiffMetadata.Normalize(source, width, height, encoding: encoding);
             }
             // Prefer losing a private MakerNote to silently losing the entire EXIF profile.
-            if (format == ExportFormat.Jpeg && normalized.ToByteArray()!.Length > 65533)
+            if (format == ExportFormat.Jpeg && normalized.Length > 65533)
             {
-                normalized = TiffMetadata.Normalize(normalized, width, height, omitMakerNote: true);
-                if (normalized.ToByteArray()!.Length > 65533)
+                normalized = TiffMetadata.Normalize(normalized, width, height, omitMakerNote: true, encoding: encoding);
+                if (normalized.Length > 65533)
                     throw new InvalidDataException("JPEG EXIF exceeds the 65533-byte APP1 limit even without MakerNote.");
                 metadataWarning = "JPEG EXIF exceeded the 65533-byte APP1 limit; MakerNote omitted.";
             }
             return normalized;
         }
-        catch (Exception ex) when (ex is MagickException or InvalidDataException or IOException or OverflowException)
+        catch (Exception ex) when (ex is InvalidDataException or IOException or OverflowException
+            || ex.GetType().Name == "MagickException")
         {
             // EXIF 損毀或不支援：輸出仍帶 ICC + 方向 1，不因中繼資料失敗整張
             metadataWarning = $"Source EXIF omitted: {ex.GetType().Name}: {ex.Message}";
-            return TiffMetadata.Normalize((IExifProfile?)null, width, height);
-        }
-        finally
-        {
-            (source as IDisposable)?.Dispose();
+            return TiffMetadata.Normalize((byte[]?)null, width, height, encoding: encoding);
         }
     }
 

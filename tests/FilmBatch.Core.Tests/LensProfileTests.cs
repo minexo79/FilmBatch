@@ -145,12 +145,43 @@ public sealed class LensProfileTests
 
     [Theory]
     [InlineData("<!DOCTYPE lensdatabase [<!ENTITY x SYSTEM 'file:///this-file-must-never-be-opened'>]><lensdatabase>&x;</lensdatabase>")]
-    [InlineData("<!DOCTYPE lensdatabase SYSTEM 'https://invalid.example/never'><lensdatabase/>")]
-    public void DtdAndEntitiesAreRejected(string xml)
+    [InlineData("<!DOCTYPE lensdatabase [<!ENTITY x 'internal'>]><lensdatabase>&x;</lensdatabase>")]
+    public void EntitiesAreRejected(string xml)
     {
         using var f = new Fixture(""); File.WriteAllText(Path.Combine(f.DirectoryPath, "fixture.xml"), xml);
         var raw = Raw(); Assert.Throws<System.Xml.XmlException>(() => LensProfiles.ApplyFallback(raw, f.DirectoryPath));
         Assert.Empty(raw.Opcodes.List3);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void UnreadableDatabaseFallsBackToUncorrectedSourceWithWarning(bool missing)
+    {
+        using var f = new Fixture("");
+        var directory = missing ? Path.Combine(f.DirectoryPath, "missing") : f.DirectoryPath;
+        if (!missing) File.WriteAllText(Path.Combine(f.DirectoryPath, "fixture.xml"), "<lensdatabase><camera>");
+        var path = Path.Combine(f.DirectoryPath, "photo.dng");
+        File.WriteAllBytes(path, DngWriter.WriteRenderedDng(16, 12, Enumerable.Repeat(.18f, 16 * 12 * 3).ToArray(),
+            FilmBatch.Raw.Color.ColorSpaces.Srgb, new Metadata()));
+        var plain = FilmBatch.Engine.Imaging.ImageLoader.Load(path, 200, new(true, false, false, null));
+        var fallback = FilmBatch.Engine.Imaging.ImageLoader.Load(path, 200, new(true, false, false, directory));
+        Assert.Null(plain.LensDatabaseWarning);
+        Assert.False(string.IsNullOrEmpty(fallback.LensDatabaseWarning));
+        Assert.Equal(plain.Rgba16, fallback.Rgba16);
+        // 縮小後的來源保留警告。
+        Assert.Equal(fallback.LensDatabaseWarning, fallback.Downscale(8).LensDatabaseWarning);
+    }
+
+    [Fact]
+    public void OfficialDoctypeHeaderIsIgnoredWithoutFetching()
+    {
+        // 官方資料庫每個檔案都以外部 DTD 宣告開頭；必須可讀，且不得嘗試取得該 DTD。
+        using var f = new Fixture("<distortion model=\"poly3\" focal=\"30\" k1=\"-0.02\"/>");
+        var path = Path.Combine(f.DirectoryPath, "fixture.xml");
+        File.WriteAllText(path, "<!DOCTYPE lensdatabase SYSTEM 'https://invalid.example/never'>\n" + File.ReadAllText(path));
+        var raw = Raw(); LensProfiles.ApplyFallback(raw, f.DirectoryPath);
+        Assert.IsType<WarpRectilinear>(Assert.Single(raw.Opcodes.List3));
     }
 
     [Fact]
@@ -249,6 +280,38 @@ public sealed class LensProfileTests
         using (var stream = File.OpenWrite(Path.Combine(f.DirectoryPath, "fixture.xml"))) stream.SetLength((16 << 20) + 1);
         var raw = Raw(); Assert.Throws<InvalidDataException>(() => LensProfiles.ApplyFallback(raw, f.DirectoryPath));
         Assert.Empty(raw.Opcodes.List3);
+    }
+
+    [Fact]
+    public void ParsedDatabaseIsCachedUntilAFileChanges()
+    {
+        using var f = new Fixture("""<distortion model="poly3" focal="30" k1="0.02"/>""");
+        var path = Path.Combine(f.DirectoryPath, "fixture.xml");
+        var first = Raw(); LensProfiles.ApplyFallback(first, f.DirectoryPath);
+        var k1 = Ratio(Assert.IsType<WarpRectilinear>(Assert.Single(first.Opcodes.List3)), .5);
+
+        // Same name, size and timestamp: the cached parse is reused (content is not re-read).
+        var stamp = File.GetLastWriteTimeUtc(path);
+        File.WriteAllText(path, File.ReadAllText(path).Replace("k1=\"0.02\"", "k1=\"0.04\""));
+        File.SetLastWriteTimeUtc(path, stamp);
+        var cached = Raw(); LensProfiles.ApplyFallback(cached, f.DirectoryPath);
+        Near(k1, Ratio(Assert.IsType<WarpRectilinear>(Assert.Single(cached.Opcodes.List3)), .5));
+
+        // A real edit changes the timestamp and is picked up.
+        File.SetLastWriteTimeUtc(path, stamp.AddSeconds(5));
+        var edited = Raw(); LensProfiles.ApplyFallback(edited, f.DirectoryPath);
+        Assert.NotEqual(k1, Ratio(Assert.IsType<WarpRectilinear>(Assert.Single(edited.Opcodes.List3)), .5));
+    }
+
+    [Fact]
+    public void BrokenDatabaseIsReportedEveryTimeAfterACachedParse()
+    {
+        using var f = new Fixture("""<distortion model="poly3" focal="30" k1="0.02"/>""");
+        var raw = Raw(); LensProfiles.ApplyFallback(raw, f.DirectoryPath);
+        Assert.Single(raw.Opcodes.List3);
+        File.WriteAllText(Path.Combine(f.DirectoryPath, "broken.xml"), "<lensdatabase>");
+        Assert.ThrowsAny<System.Xml.XmlException>(() => LensProfiles.ApplyFallback(Raw(), f.DirectoryPath));
+        Assert.ThrowsAny<System.Xml.XmlException>(() => LensProfiles.ApplyFallback(Raw(), f.DirectoryPath));
     }
 
 }

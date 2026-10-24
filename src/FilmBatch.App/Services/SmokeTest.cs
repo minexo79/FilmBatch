@@ -80,7 +80,8 @@ public static class SmokeTest
             vm.Preview.ShowOriginal = true;
             var originalHistogram = vm.Preview.Histogram;
             Check("直方圖與原圖對比", processedHistogram is not null && originalHistogram is not null
-                && processedHistogram.PixelCount == vm.Preview.Source!.Width * vm.Preview.Source.Height
+                // 直方圖取自顯示縮放之前的 Main 渲染結果：像素數不少於畫面上的 bitmap
+                && vm.Preview.Image is { } shown && processedHistogram.PixelCount >= (long)shown.PixelSize.Width * shown.PixelSize.Height
                 && !processedHistogram.Luminance.SequenceEqual(originalHistogram.Luminance));
             vm.Preview.ShowOriginal = false;
 
@@ -124,9 +125,11 @@ public static class SmokeTest
 
             var preferences = new PreferencesViewModel(vm) { ProxySize = 1200 };
             Check("套用即時預覽偏好", preferences.Apply(), preferences.ApplyError ?? "");
-            await WaitUntil(() => vm.Preview.Source is { Width: 1200 } && vm.Preview.Image?.PixelSize.Width == 1200,
-                TimeSpan.FromSeconds(30));
-            Check("代理圖立即重建", vm.Preview.Source?.Width == 1200 && vm.Preview.Image?.PixelSize.Width == 1200);
+            // Main 渲染跟著畫布尺寸（並以顯示縮放 1:1 交付），上限為新的代理圖尺寸
+            static bool Rebuilt(MainWindowViewModel vm) => vm.Preview.Source is { Width: 1200 } && !vm.Preview.IsBusy
+                && vm.Preview.Image is { } image && Math.Max(image.PixelSize.Width, image.PixelSize.Height) <= 1200;
+            await WaitUntil(() => Rebuilt(vm), TimeSpan.FromSeconds(30));
+            Check("代理圖立即重建", Rebuilt(vm));
 
             vm.Filmstrip.SelectOnly(file);
             vm.ExportCommand.Execute(null);

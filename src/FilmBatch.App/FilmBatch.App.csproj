@@ -16,6 +16,7 @@
     <PublishReadyToRun>true</PublishReadyToRun>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="..\FilmBatch.App.Shared\FilmBatch.App.Shared.csproj" />
     <ProjectReference Include="..\FilmBatch.Core\FilmBatch.Core.csproj" />
     <ProjectReference Include="..\FilmBatch.Engine\FilmBatch.Engine.csproj" />
   </ItemGroup>
@@ -31,15 +32,6 @@
   </ItemGroup>
   <ItemGroup>
     <AvaloniaResource Include="Assets\**" />
-  </ItemGroup>
-  <!-- 介面字串：強型別資源類別 FilmBatch.App.Localization.Strings -->
-  <ItemGroup>
-    <EmbeddedResource Update="Localization\Strings.resx">
-      <StronglyTypedLanguage>CSharp</StronglyTypedLanguage>
-      <StronglyTypedNamespace>FilmBatch.App.Localization</StronglyTypedNamespace>
-      <StronglyTypedClassName>Strings</StronglyTypedClassName>
-      <StronglyTypedFileName>$(IntermediateOutputPath)Strings.Designer.cs</StronglyTypedFileName>
-    </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="FilmBatch.App.Tests" />

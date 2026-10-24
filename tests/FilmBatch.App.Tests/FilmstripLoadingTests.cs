@@ -97,7 +97,8 @@ public sealed class FilmstripLoadingTests
         TestEnv.PumpUntil(() => !vm.Filmstrip.IsLoadingThumbnails);
         var photo = Assert.Single(vm.Filmstrip.Items);
         var original = photo.Source;
-        vm.Inspector.SetValue("raw.enabled", true, null);
+        // RAW 原廠處理預設啟用；關閉它同樣是 RAW 選項變更，必須重新載入已完成的縮圖。
+        vm.Inspector.SetValue("raw.enabled", false, null);
         var expected = RawLoadOptions.FromSettings(vm.FocusedResolved);
         TestEnv.PumpUntil(() => photo.Source is { } source && source.RawOptions == expected
             && photo.Bitmap is not null && !vm.Renderer.IsBusy);
@@ -203,12 +204,13 @@ public sealed class FilmstripLoadingTests
         private readonly CpuFakeRenderer _inner = new();
         public string DeviceName => _inner.DeviceName;
         public bool IsSoftware => _inner.IsSoftware;
-        public RenderResult Render(SourceImage source, Settings settings) =>
+        public RenderResult Render(SourceImage source, Settings settings, CancellationToken cancellationToken = default) =>
             Math.Max(source.Width, source.Height) > 200
                 ? throw new InvalidOperationException("Preview exceeds device size")
-                : _inner.Render(source, settings);
-        public SourceImage Render16(SourceImage source, Settings settings, CancellationToken token = default) =>
-            _inner.Render16(source, settings, token);
+                : _inner.Render(source, settings, cancellationToken);
+        public SourceImage Render16(SourceImage source, Settings settings, CancellationToken token = default,
+            RgbEncoding encoding = RgbEncoding.Srgb) =>
+            _inner.Render16(source, settings, token, encoding);
         public void Dispose() => _inner.Dispose();
     }
 }

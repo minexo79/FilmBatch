@@ -38,14 +38,40 @@ internal static class RawSourceLoader
         var directory = rawOptions.LensDatabasePath;
         if (!string.IsNullOrWhiteSpace(directory) && !Path.IsPathRooted(directory))
             directory = Path.GetFullPath(directory, Path.GetDirectoryName(Path.GetFullPath(path))!);
-        var scene = DevelopScene(raw, bytes, edge, rawOptions with { LensDatabasePath = directory });
+        var scene = DevelopScene(raw, bytes, edge, rawOptions with { LensDatabasePath = directory }, out var lensWarning);
         var (referenceWidth, referenceHeight) = info.DevelopedSize();
         if (info.Orientation.SwapsAxes()) (referenceWidth, referenceHeight) = (referenceHeight, referenceWidth);
         return new SourceImage(scene)
         {
             FilePath = Path.GetFullPath(path), RawOptions = rawOptions, RawInfo = info, SemanticMasks = masks,
-            ReferenceWidth = referenceWidth, ReferenceHeight = referenceHeight,
+            ReferenceWidth = referenceWidth, ReferenceHeight = referenceHeight, LensDatabaseWarning = lensWarning,
         };
+    }
+
+    /// <summary>縮圖快路徑：稀疏讀取檔頭與內嵌預覽，回傳預覽位元組（相機渲染的 JPEG／JXL）與檔頭資訊。
+    /// 非 RAW 副檔名、檔頭不可判讀或檔內無內嵌預覽時回傳 false，由呼叫端改走完整解碼
+    /// （維持「可辨識但不支援或損毀的 RAW 一律回報錯誤」的政策，不以嵌入 JPEG 掩蓋）。</summary>
+    internal static bool TryExtractThumbnail(string path, int edge, out byte[] preview, out RawInfo? info)
+    {
+        preview = [];
+        info = null;
+        if (!IsRawExtension(path)) return false;
+        try
+        {
+            var bytes = RawSparse.ReadFile(path, includePreview: true);
+            var memory = new ReadOnlyMemory<byte>(bytes);
+            info = RawDecoder.ProbeInfo(memory);
+            if (RawPreview.EmbeddedPreviewCovering(memory, (uint)Math.Max(1, edge)) is not { Length: >= 4 } found)
+                return false;
+            preview = found;
+            return true;
+        }
+        catch (Exception ex) when (ex is RawException or IOException or UnauthorizedAccessException)
+        {
+            preview = [];
+            info = null;
+            return false;
+        }
     }
 
     internal static RawInfo? TryReadInfo(string path)
@@ -100,14 +126,13 @@ internal static class RawSourceLoader
         if (container is null) return null;
         try
         {
-            var profile = FilmBatch.Engine.Exporting.TiffMetadata.NormalizeCr3(container.Cmt, 0, 0);
-            var bytes = profile.ToByteArray();
-            if (bytes is null || bytes.Length <= 6) return null;
+            var bytes = FilmBatch.Engine.Exporting.TiffMetadata.NormalizeCr3(container.Cmt, 0, 0);
+            if (bytes.Length <= 6) return null;
             var tiff = new byte[bytes.Length - 6];
             Buffer.BlockCopy(bytes, 6, tiff, 0, tiff.Length);
             return new MemoryStream(tiff, writable: false);
         }
-        catch (Exception ex) when (ex is InvalidDataException or IOException or OverflowException or ImageMagick.MagickException)
+        catch (Exception ex) when (ex is InvalidDataException or IOException or OverflowException)
         {
             return null;
         }
@@ -119,8 +144,9 @@ internal static class RawSourceLoader
         byte[] file;
         try { file = RawSparse.ReadFile(path, includePreview: true); }
         catch { return null; }
-        var jpeg = Raf.PreviewJpeg(new ReadOnlyMemory<byte>(file));
-        if (jpeg is null || jpeg.Length < 4 || jpeg[0] != 0xFF || jpeg[1] != 0xD8)
+        if (Raf.PreviewJpeg(file) is not { } preview) return null;
+        var jpeg = preview.Span;
+        if (jpeg.Length < 4 || jpeg[0] != 0xFF || jpeg[1] != 0xD8)
             return null;
         var i = 2;
         while (i + 4 <= jpeg.Length)
@@ -143,7 +169,9 @@ internal static class RawSourceLoader
                 && jpeg[i + 4] == (byte)'i' && jpeg[i + 5] == (byte)'f'
                 && jpeg[i + 6] == 0 && jpeg[i + 7] == 0)
             {
-                return new MemoryStream(jpeg, i + 8, len - 8, writable: false);
+                // PreviewJpeg borrows this byte[]; retain its slice offset without copying either payload.
+                System.Runtime.InteropServices.MemoryMarshal.TryGetArray(preview, out var segment);
+                return new MemoryStream(segment.Array!, segment.Offset + i + 8, len - 8, writable: false);
             }
             i += len;
         }
@@ -152,32 +180,58 @@ internal static class RawSourceLoader
     /// <summary>保留線性 Rec.2020,直到相機曲線與 sRGB 編碼;嵌入 JPEG 只用來估計相機外觀。</summary>
     internal static (RgbImage Image, CameraTone? Tone) DevelopLinear(RawImage raw, ReadOnlyMemory<byte> bytes, int edge, RawLoadOptions rawOptions = default)
     {
-        var scene = DevelopScene(raw, bytes, edge, rawOptions);
+        var scene = DevelopScene(raw, bytes, edge, rawOptions, out _);
         return (scene.Image, scene.Tone);
     }
 
-    private static RawSceneData DevelopScene(RawImage raw, ReadOnlyMemory<byte> bytes, int edge, RawLoadOptions rawOptions)
+    /// <summary>
+    /// 套用外部 Lensfun 備援。資料庫不存在、不可讀或格式錯誤時退回不校正並回傳警告：
+    /// 鏡頭資料庫是全域偏好設定，壞掉不能讓每張 RAW 都打不開。<see cref="LensProfiles.ApplyFallback"/>
+    /// 只在最後一次加入 opcode，失敗時 List3 保持原狀。
+    /// </summary>
+    private static string? TryApplyLensFallback(RawImage raw, string? directory)
+    {
+        try
+        {
+            LensProfiles.ApplyFallback(raw, directory);
+            return null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Xml.XmlException
+            or InvalidDataException or ArgumentException or NotSupportedException)
+        {
+            return ex.Message;
+        }
+    }
+
+    private static RawSceneData DevelopScene(RawImage raw, ReadOnlyMemory<byte> bytes, int edge, RawLoadOptions rawOptions,
+        out string? lensWarning)
     {
         var list3 = raw.Opcodes.List3;
         // Match against the original embedded corrections first: disabling them must not
         // cause an external profile to replace an embedded match or remove an external fallback.
         var disabled = !rawOptions.EmbeddedLensCorrections
             ? list3.Where(op => op.IsLensCorrection()).ToArray() : [];
-        LensProfiles.ApplyFallback(raw, rawOptions.LensDatabasePath);
+        lensWarning = TryApplyLensFallback(raw, rawOptions.LensDatabasePath);
         if (disabled.Length > 0) list3.RemoveAll(op => disabled.Any(original => ReferenceEquals(original, op)));
         var lens = CameraPreviewLens.LensGeometryOf(list3);
         var vignette = EmbeddedVignette.FromList3(list3, raw.ActiveArea, raw.Crop, raw.Orientation);
         var (xy, transform, look) = CameraPreview.StartingColour(raw, bytes, lens, vignette);
         var whiteBalance = RawWhiteBalance.Create(raw, xy, transform, look);
         var factor = BinFactor(raw, edge);
-        var binned = factor is { } k ? raw.DevelopBinnedMasked(k, HighlightClip) : null;
+        var binned = factor is { } k ? DevelopBinned(raw, k) : null;
         var image = binned?.Image ?? RawSourceGeometry.Develop(raw, edge <= 600 ? DemosaicMethod.Bilinear : DemosaicMethod.Ahd);
         var geometry = RawSourceGeometry.Create(raw, binned is not null ? factor ?? 1 : 1);
         raw.Data = new RawData.U16([]);
         var matrix = look is null ? transform.Matrix : look.Matrix.Mul(transform.Matrix);
         var white = ClippedWhite(matrix);
         if (binned is { } block)
+        {
             Highlight.ReconstructMasked(image, transform.Wb, HighlightClip, white, block.Mask);
+            // 鏡頭鏈在高光重建之後才套用：裁切遮罩不必跨邊界重取樣（否則亮部邊緣出現色邊）。
+            if (block.LensDeferred)
+                image = RawSourceGeometry.ApplyLensChainBinned(list3, image, block.Region, factor!.Value,
+                    raw.ActiveArea.Width, raw.ActiveArea.Height);
+        }
         else
             Highlight.ReconstructWith(image, transform.Wb, HighlightClip, white);
         var tables = ProfileTables.Create(raw.Color.Profile, CameraColor.IlluminantWeight(raw.Color, xy));
@@ -190,6 +244,20 @@ internal static class RawSourceLoader
         CameraLocalTone.Apply(image, raw, rawOptions.CameraLocalTone, geometry);
         var tone = look?.Tone ?? DngTone(raw.Color.Profile.ToneCurve);
         return new RawSceneData(image, tone, whiteBalance, geometry);
+    }
+
+    /// <summary>
+    /// 預覽分箱。List3 只含鏡頭鏈（原廠或 Lensfun 校正）時照樣分箱，不必為了代理圖先對整張感光資料去馬賽克；
+    /// 此時 <c>LensDeferred</c> 為 true，呼叫端於高光重建後以 <see cref="RawSourceGeometry.ApplyLensChainBinned"/> 套用鏡頭鏈。
+    /// 其他 List3 運算碼仍需完整解析度，回傳 null 走完整顯影。
+    /// </summary>
+    internal static (RgbImage Image, byte[] Mask, PixelRect Region, bool LensDeferred)? DevelopBinned(RawImage raw, int k)
+    {
+        var list3 = raw.Opcodes.List3;
+        var deferred = list3.Count != 0;
+        if (deferred && !RawSourceGeometry.IsLensChainOnly(list3)) return null;
+        if (raw.DevelopBinnedMasked(k, HighlightClip, deferList3: deferred) is not { } binned) return null;
+        return (binned.Image, binned.Mask, raw.BinnedRegion(k), deferred);
     }
 
     private static void ApplyColour(RgbImage image, float[] wb, Mat3 matrix, float gain, ProfileTables? tables, HueSat? hueSat)

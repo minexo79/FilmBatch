@@ -11,6 +11,7 @@ using FilmBatch.Core.Presets;
 using FilmBatch.Core.Projects;
 using FilmBatch.Core.Params;
 using FilmBatch.Engine.Imaging;
+using FilmBatch.Engine.Rendering;
 using FilmBatch.Raw;
 
 namespace FilmBatch.App.Tests;
@@ -154,6 +155,16 @@ public sealed class PhotoToolsTests
         Assert.Equal(0.5, overlay.Number("basic.exposure"), 3);   // 已接受的曝光保留
         tools.CancelCommand.Execute(null);
         Assert.Null(tools.PreviewOverlay);                 // 取消後回到一般預覽
+    }
+
+    [Fact]
+    public void SamplingView_ToneCurvesDoNotChangeTheSampledPixels()
+    {
+        var source = new SourceImage(1, 1, [13107, 26214, 39321, 12345]);
+        var settings = ModuleCatalog.Defaults.With("curves.red", "0,1;1,0").With("curves.shadows", 80.0);
+        using var renderer = new CpuFakeRenderer();
+        var rendered = renderer.Render16(source, PhotoSamplingSettings.ForSampling(settings), TestContext.Current.CancellationToken);
+        Assert.Equal(new ushort[] { 13107, 26214, 39321, 12345 }, rendered.Rgba16);
     }
 
     [AvaloniaFact]

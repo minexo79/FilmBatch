@@ -1,3 +1,4 @@
+using FilmBatch.Engine.Denoising;
 using FilmBatch.Core;
 using System.Diagnostics;
 using FilmBatch.Core.Params;
@@ -17,10 +18,12 @@ public sealed class CpuFakeRenderer : IPreviewRenderer
 
     public CpuFakeRenderer(EffectRendererOptions? options = null) => _assets = new(options ?? new());
 
-    public RenderResult Render(SourceImage source, Settings settings)
+    public RenderResult Render(SourceImage source, Settings settings, CancellationToken cancellationToken = default)
     {
         var sw = Stopwatch.StartNew();
-        var rendered = Render16(source, settings);
+        if (DenoiseSettings.From(settings).IsActive)
+            source = DenoiseProcessor.Shared.Prepare(source, settings, cancellationToken);
+        var rendered = RenderPrepared16(source, settings, cancellationToken);
         var pixels = rendered.Rgba16;
         var bgra = new byte[pixels.Length];
         for (var i = 0; i < pixels.Length; i += 4)
@@ -30,12 +33,48 @@ public sealed class CpuFakeRenderer : IPreviewRenderer
             bgra[i + 2] = (byte)((pixels[i] + 128) / 257);
             bgra[i + 3] = (byte)((pixels[i + 3] + 128) / 257);
         }
-        return new RenderResult(rendered.Width, rendered.Height, bgra, sw.Elapsed);
+        return new RenderResult(rendered.Width, rendered.Height, bgra, sw.Elapsed)
+        {
+            Denoise = source.Denoise, PreparedSource = source,
+            Stats = new FrameStats(rendered.Width, rendered.Height),
+        };
     }
 
-    public SourceImage Render16(SourceImage source, Settings settings, CancellationToken cancellationToken = default)
+    /// <inheritdoc />
+    /// <remarks>
+    /// 只渲染 <see cref="WindowRegion.Expand"/> 算出的區域（窗口＋各 pass 需要的外圍），再裁回窗口；
+    /// 降噪與素材準備和 <see cref="Render(SourceImage, Settings, CancellationToken)"/> 相同，作用在整張 <paramref name="frameSource"/>。
+    /// </remarks>
+    public RenderResult RenderWindow(SourceImage frameSource, Settings settings, RenderView view, FrameStats stats,
+        CancellationToken cancellationToken = default)
     {
-        var parameters = ModuleParams.From(source, settings);
+        var sw = Stopwatch.StartNew();
+        if (DenoiseSettings.From(settings).IsActive)
+            frameSource = DenoiseProcessor.Shared.Prepare(frameSource, settings, cancellationToken);
+        var parameters = ModuleParams.From(frameSource, settings);
+        _assets.Prepare(frameSource, parameters);
+        var region = WindowRegion.Expand(parameters, view);
+        parameters.View = region;
+        parameters.FrameStats = stats;
+        var rendered = CpuPipeline.Process(frameSource, parameters, null, cancellationToken);
+        return new RenderResult(view.W, view.H, WindowRegion.CropToBgra8(rendered.Rgba16, region, view), sw.Elapsed)
+        {
+            Denoise = frameSource.Denoise, PreparedSource = frameSource, Stats = stats,
+        };
+    }
+
+    public SourceImage Render16(SourceImage source, Settings settings, CancellationToken cancellationToken = default,
+        RgbEncoding encoding = RgbEncoding.Srgb)
+    {
+        if (DenoiseSettings.From(settings).IsActive)
+            source = DenoiseProcessor.Shared.Prepare(source, settings, cancellationToken);
+        return RenderPrepared16(source, settings, cancellationToken, encoding);
+    }
+
+    private SourceImage RenderPrepared16(SourceImage source, Settings settings, CancellationToken cancellationToken,
+        RgbEncoding encoding = RgbEncoding.Srgb)
+    {
+        var parameters = ModuleParams.From(source, settings, encoding);
         _assets.Prepare(source, parameters);
         return CpuPipeline.Process(source, parameters, null, cancellationToken);
     }

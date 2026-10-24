@@ -1,5 +1,5 @@
 // Late RAW finish for unclipped linear sRGB working textures.
-struct Band { width: u32, rows: u32, rounding_mask: u32, pad1: u32 };
+struct Band { width: u32, rows: u32, rounding_mask: u32, extended_srgb: u32 };
 
 struct FinishParams {
     row0: vec4f, // Rec2020→sRGB 第 0 列

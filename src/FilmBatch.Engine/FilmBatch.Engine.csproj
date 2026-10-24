@@ -4,15 +4,46 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <!-- 將 App／CLI 的 RID 傳到帶原生 JXL 內容的 Raw 參考。 -->
     <IsRidAgnostic>false</IsRidAgnostic>
+    <!-- Select by target RID first so cross-publishing Windows on a Mac retains DirectML. -->
+    <FilmBatchUseDirectML Condition="$([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('win-')) Or ('$(RuntimeIdentifier)' == '' And $([MSBuild]::IsOSPlatform('Windows')))">true</FilmBatchUseDirectML>
+    <MSBuildDisableGetCopyToOutputDirectoryItemsOptimization>true</MSBuildDisableGetCopyToOutputDirectoryItemsOptimization>
+    <MSBuildDisableGetCopyToPublishDirectoryItemsOptimization>true</MSBuildDisableGetCopyToPublishDirectoryItemsOptimization>
+    <!-- iOS RID：ImageMagick 原生資產不在 iOS 應用套件閉包內，編譯期改選 Apple ImageIO 後端。 -->
+    <DefineConstants Condition="$(RuntimeIdentifier.StartsWith('ios'))">$(DefineConstants);FILMBATCH_APPLE_IMAGING</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\FilmBatch.Core\FilmBatch.Core.csproj" />
     <ProjectReference Include="..\FilmBatch.Gpu\FilmBatch.Gpu.csproj" />
     <ProjectReference Include="..\FilmBatch.Raw\FilmBatch.Raw.csproj" />
   </ItemGroup>
-  <ItemGroup>
+  <ItemGroup Condition="!$(RuntimeIdentifier.StartsWith('ios'))">
     <PackageReference Include="Magick.NET-Q16-HDRI-AnyCPU" />
+  </ItemGroup>
+  <!-- ONNX stays unconditional: DenoiseProcessor references the managed API on every
+       platform; the iOS app links the package's own xcframework via an app-level reference. -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" GeneratePathProperty="true" Condition="'$(FilmBatchUseDirectML)' != 'true'" />
+    <PackageReference Include="Microsoft.ML.OnnxRuntime.DirectML" GeneratePathProperty="true" Condition="'$(FilmBatchUseDirectML)' == 'true'" />
+    <!-- Already the DirectML runtime's dependency; expose its exact redistributable license path. -->
+    <PackageReference Include="Microsoft.AI.DirectML" GeneratePathProperty="true" Condition="'$(FilmBatchUseDirectML)' == 'true'" />
+  </ItemGroup>
+  <ItemGroup Condition="$(RuntimeIdentifier.StartsWith('ios'))">
+    <!-- ORT's netstandard props add Windows DLLs for AnyCPU; iOS uses the app's static xcframework. -->
+    <None Remove="$(PkgMicrosoft_ML_OnnxRuntime)/runtimes/win-*/native/*.dll" />
+  </ItemGroup>
+  <ItemGroup>
     <InternalsVisibleTo Include="FilmBatch.Core.Tests" />
+    <InternalsVisibleTo Include="FilmBatch.Raw.Tests" />
+  </ItemGroup>
+  <PropertyGroup>
+    <FilmBatchOnnxPackagePath Condition="'$(FilmBatchUseDirectML)' != 'true'">$(PkgMicrosoft_ML_OnnxRuntime)</FilmBatchOnnxPackagePath>
+    <FilmBatchOnnxPackagePath Condition="'$(FilmBatchUseDirectML)' == 'true'">$(PkgMicrosoft_ML_OnnxRuntime_DirectML)</FilmBatchOnnxPackagePath>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="$(FilmBatchOnnxPackagePath)/LICENSE;$(FilmBatchOnnxPackagePath)/ThirdPartyNotices.txt;$(FilmBatchOnnxPackagePath)/Privacy.md"
+          Link="native-onnxruntime/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" PublishFolderType="Resource" />
+    <None Include="$(PkgMicrosoft_AI_DirectML)/LICENSE.txt" Condition="'$(FilmBatchUseDirectML)' == 'true'"
+          Link="native-onnxruntime/directml/LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="Imaging\Raw\Profiles\*.json" />
