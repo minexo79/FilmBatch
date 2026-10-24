@@ -458,4 +458,7 @@ public void Window_matches_full_frame_crop_cpu(string name, Settings settings)
 | Task 3 | verified | `e74cb72` + `bd2405b`（同級 refit、工具分析維持代理圖解析度）；App 291、Core 705/42 skipped |
 | 驗證輪 1 | observed | 50 張 Sony A7M4（7008×4672，25 ARW + 25 JPG）、RTX 3060 DX12、headless Avalonia+Skia、Auto。開圖到最終預覽中位數／p90：ARW 519／625 ms，JPG 1333／1860 ms（JPG 解碼約為 ARW 的 3 倍）；符合視窗 1:1 共 55/55；50 張縮圖 12.6 s 完成。**回歸**：放大時 Main 被畫布尺寸封頂（1600），100% 以上比 Task 3 之前更糊（針織紋出現摩爾紋） |
 | 回歸修正 | verified | `LoupePlan.Plan`：沒有 Window 層時依繪製尺寸渲染（上限 2560），拖曳草稿仍為畫布尺寸；App 293/293 |
-| Task 4 – 8 | pending | — |
+| Task 4 | verified | `35da12a`：替身（ViewCache → 內嵌 JPEG → 縮圖）、ViewRenderCache、前後張預取；App 301、Core 709/42 skipped |
+| Task 5 | verified | `5de1311`（branch loupe/task5）：DragScale＋草稿旗標（草稿不進 ViewCache、不觸發預取）；App 338 |
+| Task 6 | verified | `1dec342` + `9e89d6e`（branch loupe/task6），合併 `9ed9577`：RenderView/FrameStats/RenderWindow；CPU 與 GPU 共 56 個窗口等價測試在 RTX 3060 DX12 實跑通過（max ≤ 1、mean < 0.05 LSB）；Core 799/46 skipped，合併後 App 338。本機未安裝 naga，未跑 CheckShaders |
+| Task 7 – 8 | pending | 接續：在 `.claude/worktrees/loupe`（research/performance-improve）實作 Task 7；完成後以 `C:\Users\minex\Downloads\demo` 的複本測試 |
