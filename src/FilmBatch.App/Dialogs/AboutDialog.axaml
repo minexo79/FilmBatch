@@ -33,15 +33,19 @@
         <StackPanel Spacing="8">
           <TextBlock Classes="group-title" Text="{l:Tr About.VersionInfo}" />
           <Border Classes="settings-card" Padding="16,12">
-            <Grid ColumnDefinitions="120,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="8">
+            <Grid ColumnDefinitions="120,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="8">
               <TextBlock Classes="secondary" Text="{l:Tr Menu.Version}" />
               <SelectableTextBlock Grid.Column="1" Classes="numeric" Text="{Binding Version}" />
               <TextBlock Grid.Row="1" Classes="secondary" Text="{l:Tr About.Runtime}" />
               <SelectableTextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Runtime}" TextWrapping="Wrap" />
               <TextBlock Grid.Row="2" Classes="secondary" Text="{l:Tr About.OS}" />
               <SelectableTextBlock Grid.Row="2" Grid.Column="1" Text="{Binding OperatingSystem}" TextWrapping="Wrap" />
-              <TextBlock Grid.Row="3" Classes="secondary" Text="GPU" />
-              <SelectableTextBlock Grid.Row="3" Grid.Column="1" Text="{Binding Gpu}" TextWrapping="Wrap" />
+              <TextBlock Grid.Row="3" Classes="secondary" Text="{l:Tr About.Cpu}" />
+              <SelectableTextBlock Grid.Row="3" Grid.Column="1" Text="{Binding Cpu}" TextWrapping="Wrap" />
+              <TextBlock Grid.Row="4" Classes="secondary" Text="{l:Tr About.Memory}" />
+              <SelectableTextBlock Grid.Row="4" Grid.Column="1" Classes="numeric" Text="{Binding Memory}" />
+              <TextBlock Grid.Row="5" Classes="secondary" Text="GPU" />
+              <SelectableTextBlock Grid.Row="5" Grid.Column="1" Text="{Binding Gpu}" TextWrapping="Wrap" />
             </Grid>
           </Border>
         </StackPanel>

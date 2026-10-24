@@ -167,7 +167,15 @@
         <StackPanel Spacing="12" IsVisible="{Binding HasPhoto}">
           <StackPanel Spacing="2">
             <TextBlock Classes="panel-title" Text="{Binding FileName}" TextTrimming="CharacterEllipsis" />
-            <TextBlock Classes="secondary small numeric" Text="{Binding Dimensions}" />
+            <!-- 尺寸列右側顯示覆寫數：放在固定存在的這一列，出現／消失時下方控制項不會被擠動 -->
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Classes="secondary small numeric" Text="{Binding Dimensions}" VerticalAlignment="Center" />
+              <StackPanel Name="OverrideBadge" Grid.Column="1" Orientation="Horizontal" Spacing="5" VerticalAlignment="Center"
+                          IsVisible="{Binding HasOverrides}" ToolTip.Tip="{Binding OverrideText}">
+                <Ellipse Classes="override-dot" />
+                <TextBlock Classes="small" Text="{Binding OverrideText}" Foreground="{DynamicResource FB.OverrideBrush}" VerticalAlignment="Center" />
+              </StackPanel>
+            </Grid>
           </StackPanel>
           <!-- 預設：標籤＋扁平下拉 -->
           <Grid ColumnDefinitions="Auto,*">
@@ -219,10 +227,6 @@
             <Button Name="CreateButton" Classes="outline" Content="{l:Tr Inspector.CreatePreset}" />
             <Button Name="UpdateButton" Classes="outline" Content="{l:Tr Inspector.UpdatePreset}" IsEnabled="{Binding HasOverrides}" />
           </WrapPanel>
-          <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding HasOverrides}">
-            <Ellipse Classes="override-dot" />
-            <TextBlock Classes="small" Text="{Binding OverrideText}" Foreground="{DynamicResource FB.OverrideBrush}" VerticalAlignment="Center" />
-          </StackPanel>
         </StackPanel>
       </Panel>
     </Border>

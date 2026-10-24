@@ -7,6 +7,7 @@ using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using FilmBatch.App.Services;
 using FilmBatch.Core.Projects;
 using FilmBatch.Engine.Imaging;
@@ -163,6 +164,33 @@ public sealed partial class FilmstripViewModel : ObservableObject
         get => RatingOptions.First(o => o.Value == RatingFilter);
         set { if (value is not null) RatingFilter = value.Value; }
     }
+
+    /// <summary>工具列的星級篩選：點第 N 顆星 =「★N 以上」（第 5 顆 = 只看 ★5），再點同一顆星取消篩選。</summary>
+    public IReadOnlyList<RatingStarViewModel> RatingFilterStars { get; } = [.. Enumerable.Range(1, 5).Select(n => new RatingStarViewModel(n))];
+
+    /// <summary>「只看未評分」切換鈕的狀態。</summary>
+    public bool IsUnratedFilter => RatingFilter == FilmstripRatingFilter.Unrated;
+
+    /// <summary>目前星級篩選的說明（工具列滑過提示）。</summary>
+    public string RatingFilterText => SelectedRatingOption.Label;
+
+    [RelayCommand]
+    private void ClickFilterStar(int stars)
+    {
+        var target = stars >= 5 ? FilmstripRatingFilter.Exactly5 : FilmstripRatingFilter.AtLeast1 + (stars - 1);
+        RatingFilter = RatingFilter == target ? FilmstripRatingFilter.All : target;
+    }
+
+    [RelayCommand]
+    private void ToggleUnratedFilter() =>
+        RatingFilter = RatingFilter == FilmstripRatingFilter.Unrated ? FilmstripRatingFilter.All : FilmstripRatingFilter.Unrated;
+
+    private static int FilterStarCount(FilmstripRatingFilter filter) => filter switch
+    {
+        >= FilmstripRatingFilter.AtLeast1 and <= FilmstripRatingFilter.AtLeast4 => filter - FilmstripRatingFilter.AtLeast1 + 1,
+        FilmstripRatingFilter.Exactly5 => 5,
+        _ => 0,
+    };
 
     public IEnumerable<PresetItemViewModel> PresetOptions => _main.Library.Presets.Select(p => new PresetItemViewModel(p));
 
@@ -887,6 +915,10 @@ public sealed partial class FilmstripViewModel : ObservableObject
     partial void OnRatingFilterChanged(FilmstripRatingFilter value)
     {
         OnPropertyChanged(nameof(SelectedRatingOption));
+        OnPropertyChanged(nameof(IsUnratedFilter));
+        OnPropertyChanged(nameof(RatingFilterText));
+        var lit = FilterStarCount(value);
+        foreach (var star in RatingFilterStars) star.IsFilled = star.Value <= lit;
         ApplyFilter();
     }
     partial void OnFilterPresetChanged(PresetItemViewModel? value)

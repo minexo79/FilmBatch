@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -18,6 +19,8 @@ public sealed class AboutViewModel
     public string Runtime { get; } = RuntimeInformation.FrameworkDescription;
     public string OperatingSystem { get; } = $"{RuntimeInformation.OSDescription}（{RuntimeInformation.OSArchitecture}）";
     public string Gpu { get; }
+    public string Cpu { get; } = Loc.Format("About.CpuFormat", CpuName(), Environment.ProcessorCount);
+    public string Memory { get; } = FormatMemory(GC.GetGCMemoryInfo().TotalAvailableMemoryBytes);
     public string Repository => RepositoryUrl;
 
     public IReadOnlyList<PackageInfo> Packages { get; }
@@ -70,12 +73,45 @@ public sealed class AboutViewModel
             sb.AppendLine($"FilmBatch {Version}");
             sb.AppendLine($"{Loc.Get("About.Runtime")}: {Runtime}");
             sb.AppendLine($"{Loc.Get("About.OS")}: {OperatingSystem}");
+            sb.AppendLine($"{Loc.Get("About.Cpu")}: {Cpu}");
+            sb.AppendLine($"{Loc.Get("About.Memory")}: {Memory}");
             sb.AppendLine($"GPU: {Gpu}");
             sb.AppendLine();
             foreach (var p in Packages) sb.AppendLine($"{p.Name} {p.Version} ({p.License})");
             return sb.ToString();
         }
     }
+
+    /// <summary>處理器型號：Windows 讀登錄、macOS 讀 sysctl、Linux 讀 /proc/cpuinfo；取不到時退回架構名稱。</summary>
+    private static string CpuName()
+    {
+        try
+        {
+            string? name = null;
+            if (System.OperatingSystem.IsWindows())
+                name = Microsoft.Win32.Registry.GetValue(
+                    @"HKEY_LOCAL_MACHINE\HARDWARE\DESCRIPTION\System\CentralProcessor\0", "ProcessorNameString", null) as string;
+            else if (System.OperatingSystem.IsMacOS())
+            {
+                using var sysctl = Process.Start(new ProcessStartInfo("sysctl", "-n machdep.cpu.brand_string")
+                {
+                    RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true,
+                });
+                name = sysctl?.StandardOutput.ReadToEnd();
+                sysctl?.WaitForExit(2000);
+            }
+            else if (System.OperatingSystem.IsLinux() && File.Exists("/proc/cpuinfo"))
+                name = File.ReadLines("/proc/cpuinfo").FirstOrDefault(l => l.StartsWith("model name", StringComparison.Ordinal))
+                    ?.Split(':', 2).ElementAtOrDefault(1);
+            if (!string.IsNullOrWhiteSpace(name)) return string.Join(' ', name.Split(' ', StringSplitOptions.RemoveEmptyEntries));
+        }
+        catch (Exception) { }
+        return RuntimeInformation.ProcessArchitecture.ToString();
+    }
+
+    /// <summary>實體記憶體（GC 回報的可用總量；容器內為其上限）以 GB 顯示。</summary>
+    internal static string FormatMemory(long bytes) =>
+        bytes <= 0 ? "—" : $"{bytes / (1024.0 * 1024 * 1024):0.#} GB";
 
     private static PackageInfo Package(string name, string assembly, string license, string url)
     {

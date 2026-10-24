@@ -148,6 +148,9 @@ R {1:P2}  G {2:P2}  B {3:P2}  Luma {4:P2}</value></data>
   <data name="About.VersionInfo" xml:space="preserve"><value>Version Information</value></data>
   <data name="About.Runtime" xml:space="preserve"><value>Runtime</value></data>
   <data name="About.OS" xml:space="preserve"><value>Operating System</value></data>
+  <data name="About.Cpu" xml:space="preserve"><value>CPU</value></data>
+  <data name="About.CpuFormat" xml:space="preserve"><value>{0} ({1} threads)</value></data>
+  <data name="About.Memory" xml:space="preserve"><value>Memory</value></data>
   <data name="About.Packages" xml:space="preserve"><value>Third-Party Packages</value></data>
   <data name="About.Package" xml:space="preserve"><value>Package</value></data>
   <data name="About.License" xml:space="preserve"><value>License</value></data>

@@ -148,6 +148,9 @@ R {1:P2}　G {2:P2}　B {3:P2}　亮度 {4:P2}</value></data>
   <data name="About.VersionInfo" xml:space="preserve"><value>版本資訊</value></data>
   <data name="About.Runtime" xml:space="preserve"><value>執行環境</value></data>
   <data name="About.OS" xml:space="preserve"><value>作業系統</value></data>
+  <data name="About.Cpu" xml:space="preserve"><value>處理器</value></data>
+  <data name="About.CpuFormat" xml:space="preserve"><value>{0}（{1} 個執行緒）</value></data>
+  <data name="About.Memory" xml:space="preserve"><value>記憶體</value></data>
   <data name="About.Packages" xml:space="preserve"><value>第三方套件</value></data>
   <data name="About.Package" xml:space="preserve"><value>套件</value></data>
   <data name="About.License" xml:space="preserve"><value>授權</value></data>
