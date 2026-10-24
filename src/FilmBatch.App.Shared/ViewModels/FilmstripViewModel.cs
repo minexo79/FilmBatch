@@ -142,6 +142,14 @@ public sealed partial class FilmstripViewModel : ObservableObject
         Dialogs.Option<FilmstripFileKind>.Localized(FilmstripFileKind.NonRaw, "Filmstrip.NonRaw"),
     ];
 
+    /// <summary>檔案類型分段按鈕的選中狀態。</summary>
+    public bool IsAllFiles => FileKind == FilmstripFileKind.All;
+    public bool IsRawOnly => FileKind == FilmstripFileKind.RawOnly;
+    public bool IsNonRawOnly => FileKind == FilmstripFileKind.NonRaw;
+
+    [RelayCommand]
+    private void SelectFileKind(FilmstripFileKind kind) => FileKind = kind;
+
     public Dialogs.Option<FilmstripFileKind> SelectedFileKindOption
     {
         get => FileKindOptions.First(o => o.Value == FileKind);
@@ -910,6 +918,9 @@ public sealed partial class FilmstripViewModel : ObservableObject
     partial void OnFileKindChanged(FilmstripFileKind value)
     {
         OnPropertyChanged(nameof(SelectedFileKindOption));
+        OnPropertyChanged(nameof(IsAllFiles));
+        OnPropertyChanged(nameof(IsRawOnly));
+        OnPropertyChanged(nameof(IsNonRawOnly));
         ApplyFilter();
     }
     partial void OnRatingFilterChanged(FilmstripRatingFilter value)

@@ -7,6 +7,11 @@
              x:DataType="vm:FilmstripViewModel">
   <!-- 縮圖列（計畫書 2.4.4）：水平虛擬化；Ctrl/⌘、Shift 多選；可拖放預設到縮圖上；在空白處按兩下選擇照片資料夾 -->
   <UserControl.Styles>
+    <Style Selector="Border.file-kind ToggleButton.segment">
+      <Setter Property="MinHeight" Value="22" />
+      <Setter Property="Padding" Value="10,1" />
+      <Setter Property="FontSize" Value="11" />
+    </Style>
     <Style Selector="Border.rating-filter">
       <Setter Property="Background" Value="{DynamicResource FB.BaseBrush}" />
       <Setter Property="CornerRadius" Value="6" />
@@ -66,7 +71,17 @@
             </DataTemplate>
           </ComboBox.ItemTemplate>
         </ComboBox>
-        <ComboBox Classes="flat" ItemsSource="{Binding FileKindOptions}" SelectedItem="{Binding SelectedFileKindOption}" DisplayMemberBinding="{Binding Label, x:DataType=d:OptionBase}" MinWidth="110" />
+        <!-- 檔案類型：分段按鈕一鍵切換（全部／RAW／非 RAW） -->
+        <Border Name="FileKindBar" Classes="segmented file-kind" VerticalAlignment="Center">
+          <StackPanel Orientation="Horizontal" Spacing="2">
+            <ToggleButton Name="AllFilesToggle" Classes="segment" Content="{l:Tr Filmstrip.KindAll}" ToolTip.Tip="{l:Tr Filmstrip.AllFiles}"
+                          IsChecked="{Binding IsAllFiles, Mode=OneWay}" Command="{Binding SelectFileKindCommand}" CommandParameter="{x:Static vm:FilmstripFileKind.All}" />
+            <ToggleButton Name="RawOnlyToggle" Classes="segment" Content="RAW" ToolTip.Tip="{l:Tr Filmstrip.RawOnly}"
+                          IsChecked="{Binding IsRawOnly, Mode=OneWay}" Command="{Binding SelectFileKindCommand}" CommandParameter="{x:Static vm:FilmstripFileKind.RawOnly}" />
+            <ToggleButton Name="NonRawToggle" Classes="segment" Content="{l:Tr Filmstrip.KindNonRaw}" ToolTip.Tip="{l:Tr Filmstrip.NonRaw}"
+                          IsChecked="{Binding IsNonRawOnly, Mode=OneWay}" Command="{Binding SelectFileKindCommand}" CommandParameter="{x:Static vm:FilmstripFileKind.NonRaw}" />
+          </StackPanel>
+        </Border>
         <!-- 星級篩選：點第 N 顆星只看 ★N 以上（再點一次取消）；右側切換鈕只看未評分 -->
         <Border Name="RatingFilterBar" Classes="rating-filter" ToolTip.Tip="{Binding RatingFilterText}">
           <StackPanel Orientation="Horizontal" Spacing="2">

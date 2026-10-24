@@ -94,6 +94,8 @@ R {1:P2}　G {2:P2}　B {3:P2}　亮度 {4:P2}</value></data>
   <data name="Filmstrip.AllFiles" xml:space="preserve"><value>所有檔案</value></data>
   <data name="Filmstrip.RawOnly" xml:space="preserve"><value>只顯示 RAW</value></data>
   <data name="Filmstrip.NonRaw" xml:space="preserve"><value>只顯示非 RAW</value></data>
+  <data name="Filmstrip.KindAll" xml:space="preserve"><value>全部</value></data>
+  <data name="Filmstrip.KindNonRaw" xml:space="preserve"><value>非 RAW</value></data>
   <data name="Filmstrip.AllRatings" xml:space="preserve"><value>全部星級</value></data>
   <data name="Filmstrip.RatingAtLeast" xml:space="preserve"><value>★{0} 以上</value></data>
   <data name="Filmstrip.Rating5" xml:space="preserve"><value>★5</value></data>

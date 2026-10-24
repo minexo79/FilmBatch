@@ -273,6 +273,45 @@
     <Setter Property="Foreground" Value="{DynamicResource FB.TextBrush}" />
   </Style>
 
+  <!-- 分段控制（曲線通道、縮圖列檔案類型）：底座為一條圓角槽，選中的一段以浮起的膠囊標示 -->
+  <Style Selector="Border.segmented">
+    <Setter Property="Background" Value="{DynamicResource FB.BaseBrush}" />
+    <Setter Property="CornerRadius" Value="7" />
+    <Setter Property="Padding" Value="2" />
+  </Style>
+  <Style Selector="ToggleButton.segment">
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="MinHeight" Value="26" />
+    <Setter Property="Padding" Value="4,2" />
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="CornerRadius" Value="5" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource FB.SecondaryTextBrush}" />
+  </Style>
+  <Style Selector="ToggleButton.segment /template/ ContentPresenter">
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="Background" Duration="0:0:0.12" />
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="ToggleButton.segment:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource FB.HoverOverlayBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource FB.TextBrush}" />
+  </Style>
+  <Style Selector="ToggleButton.segment:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource FB.ButtonPressedBrush}" />
+  </Style>
+  <Style Selector="ToggleButton.segment:checked /template/ ContentPresenter, ToggleButton.segment:checked:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource FB.ButtonHoverBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource FB.TextBrush}" />
+    <Setter Property="BoxShadow" Value="0 1 2 0 #50000000" />
+  </Style>
+
   <!-- 工具按鈕：只有圖示、透明背景、圓角滑過底色 -->
   <Style Selector="Button.tool, ToggleButton.tool">
     <Setter Property="Background" Value="Transparent" />
