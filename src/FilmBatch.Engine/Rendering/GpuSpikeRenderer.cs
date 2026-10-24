@@ -86,6 +86,7 @@ public sealed class GpuSpikeRenderer : IPreviewRenderer
         return new(parameters.OutWidth, parameters.OutHeight, output, timer.Elapsed)
         {
             Denoise = source.Denoise, PreparedSource = source,
+            Stats = new FrameStats(parameters.FrameWidth, parameters.FrameHeight),
         };
     }
 

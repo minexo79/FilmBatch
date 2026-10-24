@@ -33,12 +33,14 @@ internal static class PhotoAdjustments
         var map = p.CropT.OutToSource;
         var invW = 1.0 / sw;
         var invH = 1.0 / sh;
+        // 窗口模式：本地像素 + 窗口原點 = 畫框像素，再經整個畫框的裁切仿射映回來源
+        int ox = p.View.X, oy = p.View.Y;
         Parallel.For(0, height, new ParallelOptions { CancellationToken = token }, y =>
         {
             for (var x = 0; x < width; x++)
             {
-                var sx = map.M00 * (x + 0.5) + map.M01 * (y + 0.5) + map.M02;
-                var sy = map.M10 * (x + 0.5) + map.M11 * (y + 0.5) + map.M12;
+                var sx = map.M00 * (x + ox + 0.5) + map.M01 * (y + oy + 0.5) + map.M02;
+                var sy = map.M10 * (x + ox + 0.5) + map.M11 * (y + oy + 0.5) + map.M12;
                 var i = (y * width + x) * 4;
                 if (pixels[i + 3] == 0f) continue;
                 var (r, g, b) = Adjust(pixels[i], pixels[i + 1], pixels[i + 2],
