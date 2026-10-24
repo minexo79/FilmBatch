@@ -97,6 +97,14 @@ LightCraft v0.13.0 差異只採用經重現的 Canon coded-width 與 Fujifilm pl
 
 後續依明確授權拆成 `0786aa0`（色彩／算圖）、`0c496e4`（codec／metadata）、`566de17`（匯出介面與文件），再以 `5f93b59` 合併遠端 `31f23a7`，保留重設照片回到 Neutral 與 seed 數值／隨機按鈕。兩份語系資源由 Git 自動合併；獨立 XML 核對確認為雙方完整聯集，無重複鍵或殘留衝突。合併後重新執行 **1,703 passed／320 skipped／0 failed**、38 個 WGSL、原生匯出及八種 CLI 情境；4672×7008 CPU／Metal 最大差仍為 1/65535，GUI／CLI Metal 與同一 renderer 的 TIFF／PNG 完全相同。[合併後證據](superpowers/plans/2026-10-23-prophoto-output.md#post-merge-verification--2026-10-23)與[長期跨平台實驗手冊](cross-platform-imaging-experiments.md)分別保留本輪收據、各層比較方式及不得跨平台推論的限制；後續只有文件變更，沒有重新封裝。
 
+## 基本調整的黑塊與藍色斷階（2026-10-24）
+
+使用者新增 macOS 的原圖、對比 59／100、陰影 -100、細節 -100 匯出紀錄後，CPU 與 Metal 都能在 JPEG 編碼前重現。根因不是已證實的 Windows 專屬差異，而是細節增益把全域調整後、可能正負相消的亮度，與調整前的 Gaussian 基底比較；代理圖中原為 0.081 的 B 通道曾被放大至 120.989。
+
+最小修正是讓 CPU／WGSL 的細節區塊先於全域顯示調整，不增加 pass、配置或夾取補丁。8 個均勻色塊案例先失敗後通過；16 組 Neutral／單獨全域／單獨細節、sRGB／ProPhoto 相容性雜湊不變。兩組設定的 6000×4000 CPU／Metal 最大差均為 1/65535；原生 App 重播 220 個設定後的 JPEG，解碼像素與直接 Engine 匯出完全一致。完整回歸為 1,711 passed／320 skipped／0 failed，38 個 WGSL 通過。既有細節與全域調整同時非零的設定會採用修正後外觀；來源照片未改動。
+
+方法、收據與限制見[本輪實驗](cross-platform-imaging-experiments.md#71-極端基本調整異常2026-10-24)。Windows／DX12 尚未實跑，原 Windows 匯出的精確設定／版本仍不明，另一筆 RAW 偏暗案也未因此結案；未重新封裝、commit 或 push。
+
 ## 如何新增歷史列
 
 只記對未來修改有用的決定：真實 commit／日期、可核對的理由或重現、被拒絕方案、目前契約／檢查、後續取代。沒有當時證據時明寫「只確認提交意圖」；數值必須保留平台、輸入與來源版本，不把舊測試 totals 複製成新版本的驗收結果。

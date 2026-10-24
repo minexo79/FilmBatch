@@ -1041,6 +1041,15 @@ public static class CpuPipeline
         {
             var s = i * 4;
             var v = Vector128.LoadUnsafe(ref buf[s]);
+            // 細節必須與同一階段的模糊基底比較；先於全域階調，避免對比後近零亮度放大色差。
+            if (structBlur != null && p.Structure != 0)
+            {
+                var l = Luminance(v);
+                var bl = Luminance(Vector128.LoadUnsafe(ref structBlur[s]));
+                var diff = (l - bl) * p.Structure / 100f * 0.6f;
+                var scale = l > 1e-4f ? (l + diff) / l : 1f;
+                v = Vector128.Max(v * Vector128.Create(scale), Vector128<float>.Zero);
+            }
             // 亮度：中間調 gamma（0 恆等）
             if (brightness != 0)
             {
@@ -1067,15 +1076,6 @@ public static class CpuPipeline
             {
                 var l = Vector128.Create(Luminance(v));
                 v = Vector128.Max(l + (v - l) * Vector128.Create(satK), Vector128<float>.Zero);
-            }
-            // 細節提取：以中頻差異增強局部對比
-            if (structBlur != null && p.Structure != 0)
-            {
-                var l = Luminance(v);
-                var bl = Luminance(Vector128.LoadUnsafe(ref structBlur[s]));
-                var diff = (l - bl) * p.Structure / 100f * 0.6f;
-                var scale = l > 1e-4f ? (l + diff) / l : 1f;
-                v = Vector128.Max(v * Vector128.Create(scale), Vector128<float>.Zero);
             }
             buf[s] = v[0]; buf[s + 1] = v[1]; buf[s + 2] = v[2];
         });

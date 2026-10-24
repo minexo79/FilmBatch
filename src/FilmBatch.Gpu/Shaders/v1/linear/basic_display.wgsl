@@ -23,6 +23,17 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
     if (id.x >= size.x || id.y >= size.y) { return; }
     var c = textureLoad(src, id.xy, 0);
     var r = c.r; var g = c.g; var b = c.b;
+    // 與 CPU 相同：細節先比較未做全域階調的像素／模糊基底，不能混用對比前後的亮度。
+    if (p.structure != 0.0) {
+        let bl = textureLoad(structBlur, id.xy, 0);
+        let l = luminance(vec3f(r, g, b));
+        let blum = luminance(bl.rgb);
+        let diff = (l - blum) * p.structure * 0.6;
+        let scale = select(1.0, (l + diff) / l, l > 1e-4);
+        r = max(r * scale, 0.0);
+        g = max(g * scale, 0.0);
+        b = max(b * scale, 0.0);
+    }
 
     // 亮度：中間調 gamma（0 恆等）
     if (p.brightness != 0.0) {
@@ -55,17 +66,6 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
         r = max(l + (r - l) * kk, 0.0);
         g = max(l + (g - l) * kk, 0.0);
         b = max(l + (b - l) * kk, 0.0);
-    }
-    // 細節提取：中頻局部對比（以模糊版的亮度差增強）
-    if (p.structure != 0.0) {
-        let bl = textureLoad(structBlur, id.xy, 0);
-        let l = luminance(vec3f(r, g, b));
-        let blum = luminance(bl.rgb);
-        let diff = (l - blum) * p.structure * 0.6;
-        let scale = select(1.0, (l + diff) / l, l > 1e-4);
-        r = max(r * scale, 0.0);
-        g = max(g * scale, 0.0);
-        b = max(b * scale, 0.0);
     }
     textureStore(dst, id.xy, vec4f(r, g, b, c.a));
 }

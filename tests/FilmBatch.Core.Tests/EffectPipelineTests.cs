@@ -149,6 +149,44 @@ public sealed class EffectPipelineTests
     }
 
     [Theory]
+    [InlineData(59.0, -100.0, false)]
+    [InlineData(100.0, -100.0, false)]
+    [InlineData(59.0, 100.0, false)]
+    [InlineData(100.0, 100.0, false)]
+    [InlineData(59.0, -100.0, true)]
+    [InlineData(100.0, -100.0, true)]
+    [InlineData(59.0, 100.0, true)]
+    [InlineData(100.0, 100.0, true)]
+    public void BasicStructure_UniformColourRemainsUniformUnderExtremeGlobalAdjustments(
+        double contrast, double structure, bool gpu)
+    {
+        // No spatial detail exists in a flat field. Comparing its adjusted luminance
+        // with an unadjusted blur invents detail and amplifies near-black colour.
+        const int width = 9, height = 7;
+        ushort[] colour = contrast == 59 ? [12000, 12200, 16000] : [16000, 16500, 21000];
+        var pixels = new ushort[width * height * 4];
+        for (var i = 0; i < pixels.Length; i += 4)
+        {
+            colour.CopyTo(pixels, i);
+            pixels[i + 3] = (ushort)((i / 4 % 4) switch { 0 => 0, 1 => 1, 2 => 32768, _ => 65535 });
+        }
+        using IPreviewRenderer? renderer = gpu ? TryCreateGpu() : new CpuFakeRenderer();
+        Assert.SkipWhen(renderer is null, "No GPU");
+        var source = new SourceImage(width, height, pixels);
+        var settings = ModuleCatalog.Defaults.With("basic.contrast", contrast).With("basic.shadows", -100);
+        var expected = renderer!.Render16(source, settings, TestContext.Current.CancellationToken).Rgba16;
+        var actual = renderer.Render16(source, settings.With("basic.structure", structure),
+            TestContext.Current.CancellationToken).Rgba16;
+        if (renderer is GpuSpikeRenderer device) Assert.False(device.UsingCpu);
+        for (var i = 0; i < pixels.Length; i += 4)
+        {
+            for (var c = 0; c < 3; c++)
+                Assert.InRange(Math.Abs(actual[i + c] - expected[i + c]), 0, 2);
+            Assert.Equal(pixels[i + 3], actual[i + 3]);
+        }
+    }
+
+    [Theory]
     [InlineData(70.0, 0.0)]
     [InlineData(0.0, 70.0)]
     [InlineData(70.0, 70.0)]

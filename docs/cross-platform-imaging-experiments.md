@@ -1,6 +1,6 @@
 # 跨平台影像編解碼與色彩實驗手冊
 
-整理日期：2026-10-23。涵蓋 2026-10-15 macOS 移植至 ProPhoto 匯出的實驗方法；這是既有證據的整理與重播指南，不是所有平台、相機或版本都已通過的宣告。現行產品契約見[影像讀取與匯出](architecture.md#48-engine影像讀取與批次匯出imaging--exporting)，各輪結果依下方有日期的來源判讀。
+整理日期：2026-10-24。涵蓋 2026-10-15 macOS 移植、ProPhoto 匯出至極端基本調整異常的實驗方法；這是既有證據的整理與重播指南，不是所有平台、相機或版本都已通過的宣告。現行產品契約見[影像讀取與匯出](architecture.md#48-engine影像讀取與批次匯出imaging--exporting)，各輪結果依下方有日期的來源判讀。
 
 ## 1. 先分清是哪一層不同
 
@@ -166,6 +166,28 @@ printf 'Evidence directory: %s\n' "$work"
 | 2026-10-22：Windows Gaussian 逾時 | 保留原大型／透明邊界案例、半徑及 10 秒單次期限，改為有界提交並在 uniform 重用前等待；再由真實 Windows CI 驗證。 | [`4a86715`／CI #110](superpowers/plans/2026-10-22-performance-correctness.md#remote-windows-ci-evidence-after-push)。12 項 Gaussian 與 WARP 發佈 smoke 通過，不延伸為 RTX 或後續版本通過。 |
 | 2026-10-23：pipeline／LightCraft 再驗證 | 固定未修改基線、53 項影像／尺寸不變條件，保留縮圖卡在 4/18 與暗部階梯反例；只採用能重現的上游 decoder 差異。曲線再走保存／重開與原生匯出。 | [再驗證紀錄](superpowers/plans/2026-10-22-performance-correctness.md#pipeline-revalidation-2026-10-23)。v0.13.0 調查不自動更新舊 oracle；非零 Basic Shadows 外觀已變，重播必須固定版本。 |
 | 2026-10-23：ProPhoto 與合併版 | Rec.2020 原色檢查先抓到 sRGB 色域損失；獨立 CMS、精確 gamma ICC、實拍最差像素與六面漸層抓出零附近相消。修正後完整 4672×7008 CPU／Metal 最大差 1/65535，同 renderer TIFF／PNG 及 GUI／CLI Metal 相同。 | [失敗與修正](superpowers/plans/2026-10-23-prophoto-output.md#precision-failures-caught-before-acceptance)、[合併後重跑](superpowers/plans/2026-10-23-prophoto-output.md#post-merge-verification--2026-10-23)。保留 2/65535 判準；Windows／iOS ProPhoto 未實跑，兩筆 Windows 原案仍未解。 |
+| 2026-10-24：極端基本調整黑塊／藍色斷階 | 使用新增的 macOS 完整設定，在 CPU 與 Metal 的量化前浮點階段重現；均勻色塊回歸排除真正空間細節，定位細節與模糊基底使用不同階段的亮度。 | [本輪根因與驗證](#71-極端基本調整異常2026-10-24)。這是共用管線錯誤，不是已證明的 DX12 或 JPEG codec 差異；原 Windows 匯出的精確設定／版本仍未知。 |
+
+### 7.1 極端基本調整異常（2026-10-24）
+
+新增輸入位於本機 `dist/bug202610232110`：`original.jpg`（6000×4000，SHA-256 `eebe2fc77d58d9490129c942fc80fcdab0d4bdadd4dc998e9cfeb24dddcfa0b1`），以及兩份 `export_log_mac_contract_{59,100}_shadow_-100_structure_-100.json` 與對應 JPEG。兩份紀錄均為 Apple M3／Metal、JPEG 品質 95、非 CPU fallback；220 個設定只有對比 59／100 不同，陰影與細節均為 -100。紀錄沒有 build revision，不能假定和目前執行檔完全相同。
+
+**根因**：`BasicDisplay` 的 Gaussian 基底來自全域調整前，但細節增益原本使用亮度／對比／亮部陰影／飽和調整後的 `l`。正負 RGB 通道在亮度計算相消後接近零，`(l + diff) / l` 放大不相干的基底差異。1200×800 代理圖、對比 100 的 `(323,158)` 像素，細節前 RGB 為 `(-0.06444183, 0.011118163, 0.0810551)`，細節後變成 `(0, 16.595797, 120.98886)`；CPU、Metal、無損 PNG 都能重現，不需要經過 JPEG 編碼。這也說明「CPU／GPU 相符」不能排除兩端共有的演算法錯誤。
+
+**修正**：CPU 與 `linear/basic_display.wgsl` 同步把既有細節區塊移到全域顯示調整前，讓像素與基底處於同一階段；不改公式、半徑、量化、ICC、誤差門檻，也不新增 pass 或暫存。契約見[算圖處理順序](architecture.md#46-engine算圖管線rendering)。極端對比／陰影仍可能正常裁黑或過曝，不把「沒有任何純藍像素」當判準。
+
+| 檢查 | 實際結果 |
+|---|---|
+| 均勻色塊回歸 | 對比 59／100 × 細節 ±100 × CPU／GPU 共 8 案：修正前全失敗，修正後全通過；RGB 誤差維持 ≤2/65535，alpha 精確保留。 |
+| 1200×800 重播 | 兩組設定的量化前最大 B，由 36.229774／120.98886 降為 1.521954／1.7854769；JPEG 與 PNG16 的重現斷階已消除。 |
+| 6000×4000 原圖 | 兩組設定均實際匯出 CPU／Metal JPEG 與 PNG16；完整 RGBA16 最大差都是 1/65535，沒有 fallback。 |
+| 相容性 | Neutral、僅全域調整、僅細節正／負值 × CPU／Metal × sRGB／ProPhoto 共 16 組輸出 SHA-256 前後一致；含透明與半透明 alpha。 |
+| 原生 macOS | 隔離設定與原圖副本，原生視窗重播全部 220 個設定，經正式匯出命令產生兩張 6000×4000、品質 95 JPEG；匯出紀錄皆為 Metal。獨立 ImageMagick 比對 GUI 與 Engine JPEG，兩組解碼像素差異數皆為 0；已檢視預覽與完成匯出畫面。 |
+| 回歸與 shader | 125 項聚焦回歸通過；完整 Release 為 1,711 passed／320 skipped／0 failed；38 個展開的 WGSL entry points 通過 Naga。略過項為 Windows 專用或外部 RAW／oracle 資料未安裝，不含新增 8 案。 |
+
+重播方法：按 `ModuleCatalog.Defaults` 的型別解析每份紀錄的 `Entries[0].Settings`，以同一份 `SourceImage` 分別建立 `CpuFakeRenderer` 與明確選用 Metal 的 `GpuSpikeRenderer`，拒絕 fallback；保存 `BasicDisplay` 前後浮點、`Render16` 完整輸出、PNG16 與品質 95 JPEG。原生 App 另用隔離 `AppPaths.OverrideRoot` 與原圖副本，經 Inspector／正式匯出命令重播，核對實際 `Renderer`，最後比較解碼像素與原始 SHA-256。全圖探針必須明確要求長邊 6000 並核對實際尺寸；本輪最初誤傳 0 得到 1×1，已排除並更正重跑，不能充當全尺寸證據。
+
+本機證據保留於 `artifacts/verification/2026-10-24-basic-structure.tar.gz`：驅動原始碼、設定、red／green／完整 TRX、浮點與相容性收據、來源／產品雜湊、原生截圖；不包含私人原圖、全尺寸匯出或編譯產物，也不進版本庫。這次沒有重新發佈安裝包、commit 或 push。Windows／DX12 與 iOS 未實跑；修正已證實的共用錯誤，不宣稱原 Windows JPEG 已在相同版本／設定下重驗，也不解決另一筆 RAW 偏暗報告。
 
 ## 8. 證據保存與未解問題
 
@@ -175,6 +197,6 @@ printf 'Evidence directory: %s\n' "$work"
 
 `dist/`、`artifacts/` 與暫存工作區不進版本庫；本機證據封存不是 fresh clone 的必備檔案。版本化文件必須保留方法、判準、來源與限制，不能只留暫存路徑或對話連結。封存只收必要的驅動原始碼、設定、摘要與診斷；私人原始照片、完整匯出圖、模型權重與憑證不隨提交／推送公開。拋棄式 driver 在收據封存後移除，不讓產品依賴它。
 
-截至 2026-10-23，Windows RAW 偏暗與 JPEG 黑塊／藍色斷階兩案都已確認差異在匯出像素中，但仍缺當次 resolved settings／export log、Windows build 與 matched-input Windows CPU／GPU 執行。相同 ICC／DQT 及 Mac CPU／Metal 通過只能縮小假設，不能判定 encoder 或 renderer 根因。ProPhoto 精度修正不算這兩案的修復；細節見[獨立 Windows 調查](superpowers/plans/2026-10-23-prophoto-output.md#separate-windows-investigations)。
+截至 2026-10-23，Windows RAW 偏暗與 JPEG 黑塊／藍色斷階兩案都已確認差異在匯出像素中，但仍缺當次 resolved settings／export log、Windows build 與 matched-input Windows CPU／GPU 執行。當時相同 ICC／DQT 及 Mac CPU／Metal 通過只能縮小假設，不能判定 encoder 或 renderer 根因。ProPhoto 精度修正不算這兩案的修復；細節見[獨立 Windows 調查](superpowers/plans/2026-10-23-prophoto-output.md#separate-windows-investigations)。2026-10-24 新增的 macOS JPEG 設定已讓共用基本調整錯誤得到重現與修正，見[後續證據](#71-極端基本調整異常2026-10-24)；原 Windows 精確重播與 RAW 案的邊界不變。
 
 目前文件中最後有完整正式 Windows CI 收據的是 `4a86715` 的 [#110](superpowers/plans/2026-10-22-performance-correctness.md#remote-windows-ci-evidence-after-push)，不能延伸到後續 Shadows／曲線、ProPhoto 或合併版 `5f93b59`。macOS ImageIO 的 ProPhoto 測試也不代替 iOS 裝置／Simulator；本輪兩者皆未執行。早期文件若只剩 dated 紀錄與公開 CI 連結、原本暫存檔已不在，應標為歷史證據，不能宣稱今天已重新解碼／重播。
