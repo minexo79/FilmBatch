@@ -282,6 +282,7 @@ flowchart LR
 | `ShadowRecovery` | `ShadowRecovery.cs` | 場景線性局部暗部增益與增益前亮度／色度降噪；覆蓋率加權 guided 基底、共享 `ShadowLayout` 與 CPU／GPU uniforms；GPU 對應 `linear/shadow_stats.wgsl`、`shadow_box.wgsl`、`shadow_apply.wgsl` 與共用 `shadow_common.wgsl` |
 | `Oklab` | `Oklab.cs` | 線性 sRGB ↔ OKLab 轉換（與 `look.wgsl` 的 `to_oklab`／`from_oklab` 同係數） |
 | `EffectAssets` | `EffectAssets.cs` | 解析外部素材：雙重曝光的第二張照片、漏光與灰塵的材質檔。材質庫為空時改用程序化效果 |
+| `RenderView` / `FrameStats` | `RenderView.cs` | 窗口渲染的視圖（畫框內的子矩形）與 Main 整張渲染記錄的全畫框統計。`IPreviewRenderer.RenderWindow` 只算窗口，結果等於「整張渲染後裁切」（逐通道誤差 ≤ 1 LSB、平均 < 0.05 LSB） |
 
 **處理順序**（`CpuPipeline.Process` 與 `GpuEffectPipeline.Process` 相同）
 
@@ -325,6 +326,7 @@ RAW 來源保持未夾取的浮點線性 Rec.2020，`Rgba16` 只在原圖比較�
 | 預覽優先於縮圖 | 迴圈每輪先看預覽，沒有才取一張縮圖 |
 | 被前景預覽中斷的縮圖 | 若 Epoch／來源仍有效且沒有較新同 key 要求，取消回收後重新排入；即使取代它的預覽也已取消，縮圖仍須交付。明確取消縮圖、換資料夾與 dispose 不恢復舊要求 |
 | 同一張縮圖只算最新設定 | `RequestThumbnail` 會先移除同 key 的舊請求 |
+| Loupe 窗口 slot | `RequestWindow` 只留最新一筆；優先序為預覽 > 窗口 > 預取 > 縮圖。被預取或縮圖讓出時重新排隊；`CancelWindow`、重建與清空縮圖時作廢（以窗口世代 `_windowGeneration` 判斷） |
 | 偏好設定切換 GPU 後端 | `ResetRenderer` 推進 `Epoch`、清空佇列，在 GPU 執行緒上重建算圖器 |
 | 算圖失敗 | 先重建裝置重試一次，仍失敗以 `RenderFailure` 回報原始例外與要求來源；無法建立算圖器也須回報逐筆要求的失敗終態 |
 | GPU 建立失敗 | 改用 fallback（CPU 算圖器）並發 `Notice` |
@@ -447,6 +449,18 @@ fn main(@builtin(global_invocation_id) id: vec3u) { /* 每個像素一次 */ }
 
 
 **職責**：Avalonia 12 桌面介面，採 MVVM（CommunityToolkit.Mvvm）。View 只負責呈現與輸入；ViewModel 不引用任何 Avalonia 控制項，所以能直接寫單元測試。
+
+#### Loupe 預覽
+
+- **Main 層**：繪製長邊（畫布物理像素）以 `LoupePlan.EdgeStep`（64）為一級向上取整，上限為預覽等級 2560（`AppSettings.PreviewLongEdge`，0 = 自動）。顯示縮放以 Lanczos 縮到繪製尺寸，畫布以 1:1 繪製。
+- **Window 層**：繪製尺寸 ≥ Main × 1.25 時出現。窗口對齊 256 網格、四周留 margin、單軸跨度上限 `MaxSpan`（6144），從 Full 來源算到 100%；結果與整張渲染後裁切一致（見 `WindowRenderEquivalenceTests`）。
+- **可見範圍**：畫布只回報可見範圍（畫框的 0..1 比例）。平移與縮放只改變繪製位置；窗口位置跨過網格時才送出新的請求。
+- **來源**：Thumb / Preview / Full 三級。Full 每張照片只持有一份（`ImageCache`），沒有窗口持續 3 秒後釋放。
+- **替身順序**：ViewRenderCache → 內嵌 JPEG → 縮圖。替身不進直方圖、照片工具與匯出，替身顯示期間不畫窗口。
+- **不畫窗口**：裁切工具、去背編輯、AI 降噪、替身，以及畫布旋轉（裁切拉直）時。
+- **拖曳**：草稿期間不送新窗口，沿用舊窗口；放手後的完整 Main 送達時補送。
+- **世代與圍欄**：窗口沿用 Main 的預覽世代、不遞增。`PreviewService` 丟棄換照片前與重建前的結果；畫面上只接受 `RegionView.IsCurrent` 為真的窗口（照片與畫框相同，設定相同或正在拖曳）。
+- **已知限制**：原圖對比（分割的原圖側與按住空白鍵看原圖）沒有窗口，只顯示 Main 層。
 
 #### ViewModel 結構
 
@@ -608,6 +622,8 @@ flowchart TB
 | 底片風格算圖、色相帶、CPU / GPU 一致性 | `EffectPipelineTests.cs`（`FilmLook_*`、`HueBandWeights_*`、`Gpu_MatchesCpu_OnFilmLook`） |
 | 底片縮圖格與色相帶編輯器 | `tests/FilmBatch.App.Tests/FilmLookViewModelTests.cs` |
 | 排程與裝置重建 | `RenderSchedulerTests.cs`、`RenderSchedulerReconfigureTests.cs` |
+| Loupe 窗口的幾何與交付 | `LoupePlanTests.cs`、`RegionViewTests.cs`、`PreviewWindowServiceTests.cs`、`PreviewCanvasWindowTests.cs`、`ZoomWindowTests.cs`、`WindowRenderEquivalenceTests.cs`、`RenderSchedulerTests.cs`（`Window_*`、`Newer_window_*`、`Preview_runs_*`） |
+| 拖曳草稿與 DragScale | `DragScaleTests.cs`、`DragDraftTests.cs` |
 | 匯出與中繼資料 | `BatchExporterTests.cs`、`TiffMetadataTests.cs` |
 | ViewModel 與介面互動 | `tests/FilmBatch.App.Tests/`（Avalonia.Headless，不需顯示器） |
 | 多國語系資源完整 | `LocalizationTests.cs` |
