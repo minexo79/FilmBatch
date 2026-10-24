@@ -2,6 +2,7 @@ using System.Buffers;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using FilmBatch.Core;
+using FilmBatch.Engine.Downloads;
 
 namespace FilmBatch.Engine.Denoising;
 
@@ -11,13 +12,10 @@ namespace FilmBatch.Engine.Denoising;
 /// 且大小符合固定值——不在每次刷新時對 100 MB 檔案做 SHA-256；真正的 hash 驗證留給
 /// <see cref="DenoiseProcessor"/> 的 session 啟用（會偵測安裝後被替換的檔案）。
 /// 下載只發生在明確的 <see cref="InstallAsync"/>；<see cref="ImportAsync"/> 完全不連線。
-/// 寫入一律原子：先寫同目錄暫存檔，驗證通過後才 <see cref="File.Move(string, string, bool)"/>。
+/// 傳輸、雜湊與原子寫入共用 <see cref="Downloader"/>（與 Lensfun 資料庫下載相同）。
 /// </summary>
 public sealed class DenoiseModelStore
 {
-    private static readonly HttpClient Http = new(new HttpClientHandler { AutomaticDecompression = System.Net.DecompressionMethods.None })
-    { Timeout = TimeSpan.FromHours(2) };
-
     public DenoiseModelStore(string? directory = null)
     {
         DirectoryPath = directory is { Length: > 0 }
@@ -54,36 +52,14 @@ public sealed class DenoiseModelStore
         var archiveTemp = Path.Combine(DirectoryPath, ".download-" + Guid.NewGuid().ToString("N") + ".tmp");
         try
         {
-            using (var response = await Http.GetAsync(model.DownloadUri,
-                HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false))
-            {
-                response.EnsureSuccessStatusCode();
-                await using var network = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-                var total = response.Content.Headers.ContentLength ?? model.ArchiveBytes;
-                await using (var disk = new FileStream(archiveTemp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
-                {
-                    var buffer = ArrayPool<byte>.Shared.Rent(1 << 17);
-                    try
-                    {
-                        long read = 0;
-                        int n;
-                        while ((n = await network.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken).ConfigureAwait(false)) > 0)
-                        {
-                            await disk.WriteAsync(buffer.AsMemory(0, n), cancellationToken).ConfigureAwait(false);
-                            read += n;
-                            if (total > 0) progress?.Report(Math.Min(1.0, (double)read / total));
-                        }
-                    }
-                    finally { ArrayPool<byte>.Shared.Return(buffer); }
-                    await disk.FlushAsync(cancellationToken).ConfigureAwait(false);
-                }
-            }
+            await Downloader.DownloadToFileAsync(model.DownloadUri, archiveTemp, model.ArchiveBytes,
+                model.ArchiveBytes, progress, cancellationToken).ConfigureAwait(false);
             var info = new FileInfo(archiveTemp);
             if (info.Length != model.ArchiveBytes)
                 throw new InvalidDataException(CoreText.T(
                     $"模型封存大小不符：{info.Length} != {model.ArchiveBytes}（{model.Name}）。",
                     $"Model archive size mismatch: {info.Length} != {model.ArchiveBytes} ({model.Name})."));
-            var archiveHash = await HashFileAsync(archiveTemp, cancellationToken).ConfigureAwait(false);
+            var archiveHash = await Downloader.Sha256FileAsync(archiveTemp, cancellationToken).ConfigureAwait(false);
             if (!archiveHash.Equals(model.ArchiveSha256, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidDataException(CoreText.T(
                     $"模型封存 SHA-256 不符：{archiveHash} != {model.ArchiveSha256}（{model.Name}）。",
@@ -99,13 +75,7 @@ public sealed class DenoiseModelStore
             }
             File.Delete(archiveTemp);
         }
-        finally
-        {
-            if (File.Exists(archiveTemp))
-            {
-                try { File.Delete(archiveTemp); } catch { /* best-effort cleanup */ }
-            }
-        }
+        finally { Downloader.TryDelete(archiveTemp); }
     }
 
     /// <summary>
@@ -123,7 +93,7 @@ public sealed class DenoiseModelStore
         var info = new FileInfo(packagePath);
         if (info.Length == model.ArchiveBytes)
         {
-            var hash = await HashFileAsync(packagePath, cancellationToken).ConfigureAwait(false);
+            var hash = await Downloader.Sha256FileAsync(packagePath, cancellationToken).ConfigureAwait(false);
             if (!hash.Equals(model.ArchiveSha256, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidDataException(CoreText.T(
                     $"模型封存 SHA-256 不符：{hash} != {model.ArchiveSha256}（{model.Name}）。",
@@ -138,7 +108,7 @@ public sealed class DenoiseModelStore
         }
         if (info.Length == model.OnnxBytes)
         {
-            await WriteAtomicAsync(ModelPath(model), async target =>
+            await Downloader.WriteAtomicAsync(ModelPath(model), async target =>
             {
                 await using var source = File.OpenRead(packagePath);
                 await CopyVerifiedAsync(model, source, target, cancellationToken).ConfigureAwait(false);
@@ -150,20 +120,12 @@ public sealed class DenoiseModelStore
             $"Package size {info.Length} matches neither the archive ({model.ArchiveBytes}) nor the ONNX ({model.OnnxBytes}) size for {model.Name}."));
     }
 
-    /// <summary>串流計算檔案 SHA-256。</summary>
-    private static async Task<string> HashFileAsync(string path, CancellationToken cancellationToken)
-    {
-        await using var stream = File.OpenRead(path);
-        var hash = await SHA256.HashDataAsync(stream, cancellationToken).ConfigureAwait(false);
-        return Convert.ToHexStringLower(hash);
-    }
-
     /// <summary>
     /// 從 ZIP entry 串流解出到暫存、驗證 ONNX SHA-256／位元組數，再原子搬到最終路徑。
     /// </summary>
     private Task ExtractEntryAsync(DenoiseModelSpec model, ZipArchiveEntry entry,
         CancellationToken cancellationToken) =>
-        WriteAtomicAsync(ModelPath(model), async target =>
+        Downloader.WriteAtomicAsync(ModelPath(model), async target =>
         {
             await using var source = entry.Open();
             await CopyVerifiedAsync(model, source, target, cancellationToken).ConfigureAwait(false);
@@ -197,28 +159,5 @@ public sealed class DenoiseModelStore
             throw new InvalidDataException(CoreText.T(
                 $"解出的 ONNX SHA-256 不符：{hash} != {model.OnnxSha256}。",
                 $"Extracted ONNX SHA-256 mismatch: {hash} != {model.OnnxSha256}."));
-    }
-
-    /// <summary>寫入同目錄暫存檔，驗證完成後原子搬到 <paramref name="finalPath"/>；失敗或取消時清除暫存。</summary>
-    private static async Task WriteAtomicAsync(string finalPath, Func<FileStream, Task> write, CancellationToken cancellationToken)
-    {
-        var temp = finalPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
-        try
-        {
-            await using (var stream = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
-            {
-                await write(stream).ConfigureAwait(false);
-                await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
-            }
-            cancellationToken.ThrowIfCancellationRequested();
-            File.Move(temp, finalPath, overwrite: true);
-        }
-        finally
-        {
-            if (File.Exists(temp))
-            {
-                try { File.Delete(temp); } catch { /* best-effort cleanup */ }
-            }
-        }
     }
 }
