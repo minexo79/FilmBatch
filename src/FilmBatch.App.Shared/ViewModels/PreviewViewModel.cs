@@ -318,11 +318,60 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
         main.OnPreviewViewSizesChanged();
     }
 
+    // ───────────── Loupe：窗口（Window 層） ─────────────
+
+    /// <summary>Loupe 窗口的影像（從 Full 來源算出的可見範圍）；與 <see cref="WindowRegion"/> 成對，由 <see cref="SetWindow"/> 設定。</summary>
+    [ObservableProperty]
+    private Bitmap? _windowImage;
+
+    /// <summary>窗口的畫框與位置；窗口影像在畫布上依它定位。</summary>
+    [ObservableProperty]
+    private RegionView? _windowRegion;
+
+    /// <summary>窗口是否可以畫在目前畫面上（照片、畫框、設定都仍有效；拖曳中沿用舊窗口）。</summary>
+    [ObservableProperty]
+    private bool _windowVisible;
+
+    /// <summary>
+    /// 畫布可見的影像範圍（0..1，相對於 Main 畫框）。由 <see cref="ReportVisibleFrameRect"/> 更新，
+    /// 平移與縮放都會變；換算成窗口畫框的像素座標時用它。
+    /// </summary>
+    public (double U0, double V0, double U1, double V1)? VisibleFrame { get; private set; }
+
+    /// <summary>畫布回報可見範圍：存起來後通知主視窗判斷要不要送出新的窗口。</summary>
+    public void ReportVisibleFrameRect(double u0, double v0, double u1, double v1)
+    {
+        if (!double.IsFinite(u0) || !double.IsFinite(v0) || !double.IsFinite(u1) || !double.IsFinite(v1)) return;
+        VisibleFrame = (u0, v0, u1, v1);
+        main.OnVisibleFrameRectChanged();
+    }
+
+    /// <summary>窗口算圖送達：設定畫面上的窗口影像與位置，舊的影像釋放。</summary>
+    public void SetWindow(Bitmap bitmap, RegionView region)
+    {
+        var old = WindowImage;
+        WindowRegion = region;
+        WindowImage = bitmap;
+        if (!ReferenceEquals(old, bitmap)) old?.Dispose();
+    }
+
+    /// <summary>撤下窗口（回到符合視窗、換照片、替身、裁切等）：畫面與影像一併清掉。</summary>
+    public void ClearWindow()
+    {
+        if (WindowImage is null && WindowRegion is null && !WindowVisible) return;
+        var old = WindowImage;
+        WindowImage = null;
+        WindowRegion = null;
+        WindowVisible = false;
+        old?.Dispose();
+    }
+
     /// <summary>
     /// 以最近回報的畫布尺寸與目前照片的原圖畫框長邊重算 <see cref="ViewSizes"/> 與 <see cref="CurrentPlan"/>。
-    /// <paramref name="draftScale"/> 為拖曳草稿倍率（<see cref="DragScale"/>；靜止時為 null）。窗口（Task 7）尚未接上：WindowsAllowed = false。
+    /// <paramref name="draftScale"/> 為拖曳草稿倍率（<see cref="DragScale"/>；靜止時為 null）；
+    /// <paramref name="windowsAllowed"/> 為 false 時不使用窗口（裁切、去背、降噪與替身期間）。
     /// </summary>
-    internal LoupePlanResult? UpdatePlan(int nativeLongPx, int textureSide, int previewLimit, double? draftScale = null)
+    internal LoupePlanResult? UpdatePlan(int nativeLongPx, int textureSide, int previewLimit, double? draftScale = null, bool windowsAllowed = false)
     {
         if (_viewReport is not { } report)
         {
@@ -330,7 +379,7 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
             CurrentPlan = null;
             return null;
         }
-        var sizes = new ViewSizes(report.Drawn, report.Canvas, nativeLongPx, textureSide, draftScale, WindowsAllowed: false);
+        var sizes = new ViewSizes(report.Drawn, report.Canvas, nativeLongPx, textureSide, draftScale, windowsAllowed);
         ViewSizes = sizes;
         CurrentPlan = LoupePlan.Plan(previewLimit, sizes);
         return CurrentPlan;
@@ -396,6 +445,7 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
         Source = null;
         Image = null;
         ReleaseStandIn();
+        ClearWindow();
         Original = null;
         _originalShown = null;
         _compareSource = null;
