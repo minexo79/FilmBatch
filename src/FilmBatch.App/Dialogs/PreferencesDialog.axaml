@@ -166,6 +166,26 @@
               </Grid>
             </StackPanel>
           </Border>
+          <Border Classes="settings-card">
+            <StackPanel Classes="settings-row-block">
+              <StackPanel Classes="settings-label">
+                <TextBlock Text="{l:Tr Pref.LensDownload}" />
+                <TextBlock Classes="settings-desc" Text="{l:Tr Pref.LensDownload.Desc}" TextWrapping="Wrap" />
+                <TextBlock Classes="settings-desc" Text="{Binding LensDownloadAttribution}" TextWrapping="Wrap" />
+              </StackPanel>
+              <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                <TextBlock AutomationProperties.AutomationId="Pref.LensDownload.Status" Classes="secondary" VerticalAlignment="Center"
+                           Text="{Binding LensDownloadStatus}" TextWrapping="Wrap" />
+                <Button Grid.Column="1" Classes="outline" AutomationProperties.AutomationId="Pref.LensDownload.Button"
+                        Content="{l:Tr Pref.LensDownload.Button}" Command="{Binding DownloadLensDatabaseCommand}" />
+                <Button Grid.Column="2" Classes="outline" Content="{l:Tr Dialog.Cancel}" Command="{Binding CancelLensDownloadCommand}"
+                        IsVisible="{Binding IsDownloadingLensDatabase}" />
+              </Grid>
+              <ProgressBar Minimum="0" Maximum="100" Value="{Binding LensDownloadProgress}" IsVisible="{Binding IsDownloadingLensDatabase}" />
+              <TextBlock Classes="warning small" Text="{Binding LensDownloadError}" TextWrapping="Wrap"
+                         IsVisible="{Binding LensDownloadError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            </StackPanel>
+          </Border>
         </StackPanel>
       </Panel>
     </ScrollViewer>

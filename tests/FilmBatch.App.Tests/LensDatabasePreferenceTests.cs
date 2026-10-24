@@ -3,7 +3,9 @@ using FilmBatch.App.Services;
 using FilmBatch.App.ViewModels.Dialogs;
 using FilmBatch.Core;
 using FilmBatch.Core.Params;
+using FilmBatch.App.Localization;
 using FilmBatch.Engine.Imaging;
+using FilmBatch.Engine.Imaging.Raw;
 using FilmBatch.Raw;
 using FilmBatch.Raw.Color;
 
@@ -77,6 +79,36 @@ public sealed class LensDatabasePreferenceTests
             && source.RawOptions.LensDatabasePath == expected
             && source.RawOptions == RawLoadOptions.FromSettings(main.FocusedResolved)
             && main.Preview.Image is not null && !main.Preview.IsBusy && !main.Renderer.IsBusy);
+    }
+
+    [AvaloniaFact]
+    public void DownloadedDatabase_IsFallbackAfterPreferenceAndShownInPreferences()
+    {
+        using var main = TestEnv.CreateViewModel();
+        Assert.Equal(Loc.Get("Pref.LensDownload.Status.Missing"), new PreferencesViewModel(main).LensDownloadStatus);
+        var store = new LensDatabaseStore();
+        var version = Path.Combine(store.RootPath, "db-0123456789ab");
+        Directory.CreateDirectory(version);
+        File.WriteAllText(Path.Combine(store.RootPath, "installed.json"), """
+            { "folder": "db-0123456789ab", "commit": "0123456789abcdef0123456789abcdef01234567",
+              "commit_date": "2026-10-23T17:36:00Z", "files": 59, "downloaded_at": "2026-10-24T00:00:00Z" }
+            """);
+        var env = Environment.GetEnvironmentVariable("FILMBATCH_LENSFUN_DIR");
+        try
+        {
+            Environment.SetEnvironmentVariable("FILMBATCH_LENSFUN_DIR", null);
+            var raw = ModuleCatalog.Defaults.With("raw.enabled", true);
+            Assert.Equal(version, RawLoadOptions.FromSettings(raw).LensDatabasePath);
+            RawLoadOptions.LensDatabaseDirectory = "vendor/lensfun";
+            Assert.Equal("vendor/lensfun", RawLoadOptions.FromSettings(raw).LensDatabasePath);
+            Assert.Contains("0123456", new PreferencesViewModel(main).LensDownloadStatus);
+        }
+        finally
+        {
+            RawLoadOptions.LensDatabaseDirectory = null;
+            Environment.SetEnvironmentVariable("FILMBATCH_LENSFUN_DIR", env);
+            Directory.Delete(store.RootPath, true);
+        }
     }
 
     [AvaloniaFact]

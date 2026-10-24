@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FilmBatch.App.Localization;
 using FilmBatch.App.Services;
+using FilmBatch.Engine.Imaging.Raw;
 using FilmBatch.Gpu.Device;
 
 namespace FilmBatch.App.ViewModels.Dialogs;
@@ -112,12 +113,40 @@ public sealed partial class PreferencesViewModel : ObservableObject
     [ObservableProperty]
     private string _texturesFolder;
 
-    /// <summary>外部 Lensfun 資料夾；空字串表示跟隨 FILMBATCH_LENSFUN_DIR（未設定則不使用）。</summary>
+    /// <summary>外部 Lensfun 資料夾；空字串表示跟隨 FILMBATCH_LENSFUN_DIR，再其次為下載的資料庫（皆無則不使用）。</summary>
     [ObservableProperty]
     private string _lensDatabaseFolder;
 
     [ObservableProperty]
     private Option<string> _language;
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(DownloadLensDatabaseCommand), nameof(CancelLensDownloadCommand))]
+    private bool _isDownloadingLensDatabase;
+
+    /// <summary>Lensfun 下載進度（0–100）。</summary>
+    [ObservableProperty]
+    private double _lensDownloadProgress;
+
+    /// <summary>最近一次 Lensfun 下載的錯誤；null = 無。</summary>
+    [ObservableProperty]
+    private string? _lensDownloadError;
+
+    private Func<string> _lensStatus = static () => "";
+    /// <summary>已下載的 Lensfun 版本或下載狀態；以產生函式保存，切換語言時重算。</summary>
+    public string LensDownloadStatus => _lensStatus();
+    private void SetLensStatus(Func<string> status)
+    {
+        _lensStatus = status;
+        OnPropertyChanged(nameof(LensDownloadStatus));
+    }
+
+    /// <summary>下載前就顯示的來源與授權標示。</summary>
+    public string LensDownloadAttribution => Loc.Format("Pref.LensDownload.Attribution",
+        LensDatabaseStore.Attribution, LensDatabaseStore.License);
+
+    private readonly LensDatabaseStore _lensStore = new();
+    private CancellationTokenSource? _lensCts;
 
     /// <summary>重建失敗時的錯誤訊息；成功時為 null。</summary>
     [ObservableProperty]
@@ -140,6 +169,12 @@ public sealed partial class PreferencesViewModel : ObservableObject
         _texturesFolder = s.TexturesFolder ?? Core.AppPaths.Textures;
         _lensDatabaseFolder = s.LensDatabaseFolder ?? "";
         _language = Languages.First(l => l.Value == s.EffectiveLanguage);
+        ShowInstalledLensDatabase();
+        Loc.OnCultureChanged(this, static vm =>
+        {
+            vm.OnPropertyChanged(nameof(LensDownloadStatus));
+            vm.OnPropertyChanged(nameof(LensDownloadAttribution));
+        });
         _ = LoadAdaptersAsync();
     }
 
@@ -177,6 +212,73 @@ public sealed partial class PreferencesViewModel : ObservableObject
 
     [RelayCommand]
     private void ClearLensDatabase() => LensDatabaseFolder = "";
+
+    private void ShowInstalledLensDatabase()
+    {
+        var info = _lensStore.Installed;
+        SetLensStatus(info is null
+            ? static () => Loc.Get("Pref.LensDownload.Status.Missing")
+            : () => Loc.Format("Pref.LensDownload.Status.Installed", info.ShortCommit, info.CommitDate.ToLocalTime(), info.FileCount));
+    }
+
+    private bool CanDownloadLensDatabase => !IsDownloadingLensDatabase;
+
+    /// <summary>
+    /// 明確下載最新的 Lensfun data/db（逐檔驗證後才切換版本）。外部資料夾未設定時下載的版本立即生效：
+    /// 版本資料夾路徑改變，RAW 來源以新選項重新解碼。關閉對話框不中斷下載，結果以 toast 告知。
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanDownloadLensDatabase))]
+    private async Task DownloadLensDatabase()
+    {
+        if (IsDownloadingLensDatabase) return;
+        using var cancellation = new CancellationTokenSource();
+        _lensCts = cancellation;
+        IsDownloadingLensDatabase = true;
+        LensDownloadProgress = 0;
+        LensDownloadError = null;
+        var before = _lensStore.Installed?.Commit;
+        SetLensStatus(static () => Loc.Format("Pref.LensDownload.Status.Downloading", 0.0));
+        var progress = new Progress<double>(p =>
+        {
+            if (!IsDownloadingLensDatabase) return;
+            LensDownloadProgress = p * 100;
+            SetLensStatus(() => Loc.Format("Pref.LensDownload.Status.Downloading", p));
+        });
+        try
+        {
+            var info = await _lensStore.InstallAsync(progress, cancellation.Token);
+            LensDownloadProgress = 100;
+            if (info.Commit == before)
+            {
+                SetLensStatus(() => Loc.Format("Pref.LensDownload.Status.Latest", info.ShortCommit, info.CommitDate.ToLocalTime(), info.FileCount));
+                return;
+            }
+            SetLensStatus(() => Loc.Format("Pref.LensDownload.Status.Installed", info.ShortCommit, info.CommitDate.ToLocalTime(), info.FileCount));
+            _main.Toast.Show(Loc.Format("Pref.LensDownload.Toast", info.ShortCommit));
+            if (string.IsNullOrWhiteSpace(_main.Settings.LensDatabaseFolder)) _main.ApplyLensDatabase();
+        }
+        catch (OperationCanceledException)
+        {
+            SetLensStatus(static () => Loc.Get("Pref.LensDownload.Status.Cancelled"));
+        }
+        catch (Exception ex)
+        {
+            LensDownloadError = ex.Message;
+            SetLensStatus(static () => Loc.Get("Pref.LensDownload.Status.Failed"));
+            _main.Toast.Show(Loc.Format("Pref.LensDownload.FailedToast", ex.Message));
+        }
+        finally
+        {
+            _lensCts = null;
+            IsDownloadingLensDatabase = false;
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(IsDownloadingLensDatabase))]
+    private void CancelLensDownload()
+    {
+        try { _lensCts?.Cancel(); } catch (ObjectDisposedException) { }
+    }
 
     partial void OnBackgroundChanged(Option<PreviewBackground> value) => _main.ApplyPreviewBackground(value.Value);
 

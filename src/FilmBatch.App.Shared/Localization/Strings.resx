@@ -182,8 +182,20 @@ R {1:P2}　G {2:P2}　B {3:P2}　亮度 {4:P2}</value></data>
   <data name="Pref.Textures" xml:space="preserve"><value>材質庫資料夾</value></data>
   <data name="Pref.Textures.Desc" xml:space="preserve"><value>漏光、灰塵與刮痕、古典版材使用的材質；沒有材質時改用程序化效果</value></data>
   <data name="Pref.LensDatabase" xml:space="preserve"><value>外部 Lensfun 鏡頭資料庫</value></data>
-  <data name="Pref.LensDatabase.Desc" xml:space="preserve"><value>RAW 檔沒有內嵌鏡頭校正時，從此資料夾的 Lensfun XML 比對相機與鏡頭；留空時使用 FILMBATCH_LENSFUN_DIR（若有設定），不會自動下載資料庫</value></data>
+  <data name="Pref.LensDatabase.Desc" xml:space="preserve"><value>RAW 檔沒有內嵌鏡頭校正時，從此資料夾的 Lensfun XML 比對相機與鏡頭；留空時依序使用 FILMBATCH_LENSFUN_DIR（若有設定）與下方下載的資料庫</value></data>
   <data name="Pref.LensDatabase.None" xml:space="preserve"><value>未設定</value></data>
+  <data name="Pref.LensDownload" xml:space="preserve"><value>下載 Lensfun 資料庫</value></data>
+  <data name="Pref.LensDownload.Desc" xml:space="preserve"><value>只從 Lensfun 官方儲存庫下載最新的 data/db XML（約 5 MB）到使用者資料夾，逐檔驗證後才取代舊版；不會自動下載或更新</value></data>
+  <data name="Pref.LensDownload.Attribution" xml:space="preserve"><value>{0}・{1}・不隨 FilmBatch 散布</value></data>
+  <data name="Pref.LensDownload.Button" xml:space="preserve"><value>下載最新版</value></data>
+  <data name="Pref.LensDownload.Status.Missing" xml:space="preserve"><value>尚未下載</value></data>
+  <data name="Pref.LensDownload.Status.Installed" xml:space="preserve"><value>已安裝 {0}（{1:yyyy-MM-dd}），{2} 個檔案</value></data>
+  <data name="Pref.LensDownload.Status.Latest" xml:space="preserve"><value>已是最新版本 {0}（{1:yyyy-MM-dd}），{2} 個檔案</value></data>
+  <data name="Pref.LensDownload.Status.Downloading" xml:space="preserve"><value>下載資料庫…{0:P0}</value></data>
+  <data name="Pref.LensDownload.Status.Cancelled" xml:space="preserve"><value>已取消下載，保留原本的版本</value></data>
+  <data name="Pref.LensDownload.Status.Failed" xml:space="preserve"><value>下載失敗，保留原本的版本</value></data>
+  <data name="Pref.LensDownload.Toast" xml:space="preserve"><value>Lensfun 資料庫已更新為 {0}</value></data>
+  <data name="Pref.LensDownload.FailedToast" xml:space="preserve"><value>Lensfun 資料庫下載失敗：{0}</value></data>
   <data name="Pref.Clear" xml:space="preserve"><value>清除</value></data>
   <data name="Pref.Browse" xml:space="preserve"><value>瀏覽…</value></data>
   <data name="Pref.ApplyNote" xml:space="preserve"><value>背景載入 CPU 目標即時生效；其餘運算設定於關閉時套用，變更 GPU 設定會在背景重建算圖器。</value></data>
