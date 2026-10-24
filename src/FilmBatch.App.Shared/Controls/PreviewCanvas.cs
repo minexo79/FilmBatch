@@ -7,6 +7,7 @@ using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using FilmBatch.App.Controls.Tools;
+using FilmBatch.App.Services.Loupe;
 using FilmBatch.Engine.Rendering;
 
 namespace FilmBatch.App.Controls;
@@ -70,6 +71,15 @@ public class PreviewCanvas : Control
     /// </summary>
     public static readonly StyledProperty<double> LayoutLongEdgeProperty =
         AvaloniaProperty.Register<PreviewCanvas, double>(nameof(LayoutLongEdge));
+    /// <summary>Loupe 窗口的影像（放大時螢幕上可見的那一塊，從 Full 來源算）；與 <see cref="WindowRegion"/> 成對。</summary>
+    public static readonly StyledProperty<Bitmap?> WindowImageProperty =
+        AvaloniaProperty.Register<PreviewCanvas, Bitmap?>(nameof(WindowImage));
+    /// <summary>窗口的畫框與位置；窗口影像只在畫框長寬比與主影像相符時才畫。</summary>
+    public static readonly StyledProperty<RegionView?> WindowRegionProperty =
+        AvaloniaProperty.Register<PreviewCanvas, RegionView?>(nameof(WindowRegion));
+    /// <summary>窗口是否可以畫在目前畫面上（由 ViewModel 依 <see cref="RegionView.IsCurrent"/> 判斷）。</summary>
+    public static readonly StyledProperty<bool> WindowVisibleProperty =
+        AvaloniaProperty.Register<PreviewCanvas, bool>(nameof(WindowVisible));
 
     private const double PointRadius = 6;
     private const double HitRadius = 12;
@@ -129,6 +139,7 @@ public class PreviewCanvas : Control
     private readonly DispatcherTimer _spinTimer;
     private double _spinAngle;
     private double _lastFit;
+    private (double U0, double V0, double U1, double V1) _lastVisibleFrame = (-1, -1, -1, -1);
     /// <summary>
     /// 最近一次回報（所有畫布共用，只在 UI 執行緒存取）：面板顯示 / 隱藏換畫布時，新出現的畫布即使尺寸與自己上次回報相同，
     /// VM 目前持有的也可能是另一個畫布的值，所以以「哪個畫布 + 尺寸」去重。隱藏的畫布不繪製，也就不回報。
@@ -180,6 +191,21 @@ public class PreviewCanvas : Control
     public event Action<double, double>? ViewSizesChanged;
 
     /// <summary>
+    /// 畫布可見的影像範圍（0..1，相對於影像畫框的左上與右下）。平移與縮放都會觸發，以 0.001 去重；
+    /// 在 UI 執行緒回報，ViewModel 用比例換算到窗口畫框的像素座標。
+    /// </summary>
+    public event Action<double, double, double, double>? VisibleFrameRectChanged;
+
+    /// <summary>Loupe 窗口的影像（見 <see cref="WindowImageProperty"/>）。</summary>
+    public Bitmap? WindowImage { get => GetValue(WindowImageProperty); set => SetValue(WindowImageProperty, value); }
+
+    /// <summary>Loupe 窗口的畫框與位置（見 <see cref="WindowRegionProperty"/>）。</summary>
+    public RegionView? WindowRegion { get => GetValue(WindowRegionProperty); set => SetValue(WindowRegionProperty, value); }
+
+    /// <summary>窗口是否可見（見 <see cref="WindowVisibleProperty"/>）。</summary>
+    public bool WindowVisible { get => GetValue(WindowVisibleProperty); set => SetValue(WindowVisibleProperty, value); }
+
+    /// <summary>
     /// 新的 <see cref="Image"/> 畫上畫面的那一幀所花的時間（毫秒）：以 <see cref="TopLevel.RequestAnimationFrame"/> 量測
     /// 「畫出它的那一幀開始」到「下一幀開始」。影像在量完之前又被換掉時不回報。供拖曳草稿計時（DragScale）。
     /// </summary>
@@ -189,7 +215,7 @@ public class PreviewCanvas : Control
     {
         AffectsRender<PreviewCanvas>(ImageProperty, OriginalProperty, ShowOriginalProperty, IsSplitProperty,
             SplitPositionProperty, ZoomProperty, PanProperty, OverlayTextProperty, ControlPointProperty, CanvasBackgroundProperty, IsBusyProperty, ShowsSpinnerProperty, FootprintProperty, ShowTransparencyProperty,
-            LayoutLongEdgeProperty);
+            LayoutLongEdgeProperty, WindowImageProperty, WindowRegionProperty, WindowVisibleProperty);
         ZoomProperty.Changed.AddClassHandler<PreviewCanvas>((c, e) =>
         {
             if (e.NewValue is <= 0.0) c.Pan = default;
@@ -316,6 +342,11 @@ public class PreviewCanvas : Control
                 DrawLabel(ctx, Localization.Loc.Get("Preview.Effect"), new Point(x + 8, top + 8), alignRight: false);
             }
 
+            // Loupe 窗口：只在未旋轉、非原圖、畫框長寬比與主影像相符（±2%）時畫；分割對比時只畫在效果側（分割線右邊）
+            if (WindowImage is { } windowImage && WindowRegion is { } region && WindowVisible && !ShowOriginal
+                && map.RotationDeg == 0 && IsAspectMatch(img.Size, new Size(region.FrameW, region.FrameH)))
+                DrawWindow(ctx, windowImage, region, dest, bounds, IsSplitShown ? SplitX(dest) : null);
+
             // 畫布工具畫在影像（含對比分割）之上；按住空白鍵看原圖時也保留，方便對照裁切範圍
             rotated?.Dispose();
             ActiveTool?.Render(ctx, map);
@@ -328,6 +359,8 @@ public class PreviewCanvas : Control
                 var fill = _drag == DragMode.ControlPoint ? Application.Current?.FindResource("FB.AccentBrush") as IBrush ?? PointFill : PointFill;
                 ctx.DrawEllipse(fill, PointPen, c, PointRadius, PointRadius);
             }
+
+            ReportVisibleFrame(dest);
 
             var fit = Math.Round(FitScale(size) * scaling, 3);
             if (Zoom <= 0 && fit != _lastFit)
@@ -369,6 +402,47 @@ public class PreviewCanvas : Control
             return;
         }
         ctx.DrawImage(bmp, new Rect(bmp.Size), dest);
+    }
+
+    /// <summary>主影像與畫框長寬比相差不超過 2% 才畫窗口（替身或尺寸不同時不畫，避免錯位）。</summary>
+    private static bool IsAspectMatch(Size image, Size frame)
+    {
+        if (image.Height <= 0 || frame.Height <= 0) return false;
+        var ratio = (image.Width / image.Height) / (frame.Width / frame.Height);
+        return Math.Abs(ratio - 1) <= 0.02;
+    }
+
+    /// <summary>
+    /// 把窗口影像畫到它在畫框中對應的位置（以畫框比例換算到目前的繪製矩形）；分割對比時 clip 到分割線右邊。
+    /// 平移與縮放只改變這裡的繪製位置，不觸發新的算圖請求。
+    /// </summary>
+    private static void DrawWindow(DrawingContext ctx, Bitmap window, RegionView region, Rect dest, Rect bounds, double? splitX)
+    {
+        var w = region.Window;
+        var target = new Rect(
+            dest.X + w.X / (double)region.FrameW * dest.Width,
+            dest.Y + w.Y / (double)region.FrameH * dest.Height,
+            w.W / (double)region.FrameW * dest.Width,
+            w.H / (double)region.FrameH * dest.Height);
+        var clip = splitX is { } x ? new Rect(x, 0, Math.Max(0, bounds.Width - x), bounds.Height) : bounds;
+        using (ctx.PushClip(clip))
+            ctx.DrawImage(window, new Rect(window.Size), target);
+    }
+
+    /// <summary>把畫布可見的影像範圍換算成畫框的 0..1 比例，在 UI 執行緒回報（不在 Render 中改屬性）。</summary>
+    private void ReportVisibleFrame(Rect dest)
+    {
+        if (dest.Width <= 0 || dest.Height <= 0) return;
+        var visible = dest.Intersect(new Rect(Bounds.Size));
+        if (visible.Width <= 0 || visible.Height <= 0) return;
+        var u0 = Math.Round(Math.Clamp((visible.X - dest.X) / dest.Width, 0, 1), 3);
+        var v0 = Math.Round(Math.Clamp((visible.Y - dest.Y) / dest.Height, 0, 1), 3);
+        var u1 = Math.Round(Math.Clamp((visible.Right - dest.X) / dest.Width, 0, 1), 3);
+        var v1 = Math.Round(Math.Clamp((visible.Bottom - dest.Y) / dest.Height, 0, 1), 3);
+        var current = (u0, v0, u1, v1);
+        if (current == _lastVisibleFrame) return;
+        _lastVisibleFrame = current;
+        Dispatcher.UIThread.Post(() => VisibleFrameRectChanged?.Invoke(u0, v0, u1, v1));
     }
 
     /// <summary>先畫一層深色陰影再畫白線，任何底圖上都看得清楚；帶狀範圍的直線超出影像，裁在影像內。</summary>
