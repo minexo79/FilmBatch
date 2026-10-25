@@ -111,6 +111,8 @@ R {1:P2}  G {2:P2}  B {3:P2}  Luma {4:P2}</value></data>
   <data name="Status.NoProject" xml:space="preserve"><value>No folder open</value></data>
   <data name="Status.Selected" xml:space="preserve"><value>{0} selected</value></data>
   <data name="Status.Background" xml:space="preserve"><value>Background: {0}</value></data>
+  <data name="Status.RenderDecoding" xml:space="preserve"><value>Decoding</value></data>
+  <data name="Status.RenderRendering" xml:space="preserve"><value>Rendering</value></data>
   <data name="Status.Idle" xml:space="preserve"><value>Ready</value></data>
   <data name="Status.SoftwareGpu" xml:space="preserve"><value>(software adapter, slower)</value></data>
   <data name="Status.ScanningPhotos" xml:space="preserve"><value>Scanning photo folder… · {0}</value></data>

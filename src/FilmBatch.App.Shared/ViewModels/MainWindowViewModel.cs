@@ -289,6 +289,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             }
             Toast.Show(Loc.Format("Toast.RenderFailed", message));
         };
+        InitStatusIndicators();
         Renderer.Start();
     }
 
@@ -1694,6 +1695,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         Preview.Clear();
         ++_openGeneration;
         _loadingTimer.Stop();
+        DisposeStatusIndicators();
         _windowCts.Cancel();
         _windowCts.Dispose();
         _windowFrameSource = null; _windowScaleEdge = 0;

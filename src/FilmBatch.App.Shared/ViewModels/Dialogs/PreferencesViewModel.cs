@@ -244,6 +244,7 @@ public sealed partial class PreferencesViewModel : ObservableObject
     {
         _main.Settings.DebugLogging = value;
         AppLog.DebugEnabled = value;
+        _main.IsDebugMode = value;
         AppLog.Info(value ? "除錯模式：開啟" : "除錯模式：關閉");
     }
 

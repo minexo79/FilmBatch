@@ -17,6 +17,7 @@
     <PackageReference Include="Avalonia" />
     <PackageReference Include="Avalonia.Themes.Fluent" />
     <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="System.Diagnostics.PerformanceCounter" />
   </ItemGroup>
   <!-- 介面字串：強型別資源類別 FilmBatch.App.Localization.Strings -->
   <ItemGroup>
