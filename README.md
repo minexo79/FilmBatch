@@ -26,7 +26,7 @@ FilmBatch applies film colors and analog effects to every photo, then exports th
 
 ## Screenshots
 
-| Browse & batch | Film look | Export |
+| AI denoise | Film look | Grain |
 | :---: | :---: | :---: |
 | *(screenshot coming soon)* | *(screenshot coming soon)* | *(screenshot coming soon)* |
 
