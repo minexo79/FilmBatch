@@ -2,7 +2,7 @@
 
 查證與實跑：2026-10-22。本文前半記錄隔離原型與選型研究；該階段未改產品。後續授權已實作獨立、預設關閉的 `shadow_recovery`，見[功能落地](#場景線性暗部功能落地2026-10-22)；舊 `basic.shadows`、既有預設外觀及專案格式仍保留。研究原型、批次去背與產品暗部功能的證據不可互相替代。
 
-2026-10-23 補註：使用者另提供 `basic.shadows` 暗部洗白案例，已修正其顯示域曲線；下文「保留舊外觀」描述的是 10 月 22 日獨立模組落地時的範圍，不代表保留後來確認的曲線缺陷。現行區分見[算圖契約](architecture.md#48-engine影像讀取與批次匯出imaging--exporting)。
+2026-10-23 補註：使用者另提供 `basic.shadows` 暗部洗白案例，已修正其顯示域曲線；下文「保留舊外觀」描述的是 10 月 22 日獨立模組落地時的範圍，不代表保留後來確認的曲線缺陷。現行區分見[算圖契約](../architecture/engine.md#48-engine影像讀取與批次匯出imaging--exporting)。
 
 ## 結論與證據界線
 
@@ -19,7 +19,7 @@
 - `CpuPipeline.BasicDisplay`／`linear/basic_display.wgsl` 的暗部為 `RGB += shadows × lo(Y) × 0.35`，位置在 RAW 顯示轉換之後。以真正的 CPU 運算子輸入灰階 0、0.01、0.02、暗部 +100，得到 0.35、0.36、0.37。後兩階的 Michelson 對比由 0.3333 降為 0.01370；這是該運算子的診斷，不是整張 RAW 的感光量測。
 - 現有 Zone 是場景域的一維階調曲線；DNG `CameraLocalTone` 是相機提供的 `ProfileGainTableMap`。兩者都不能直接等同任意照片的空間邊緣保留局部 tone mapping。
 
-對應程式：[RAW 正規化](../src/FilmBatch.Raw/RawImage.Develop.cs)、[色彩轉換](../src/FilmBatch.Engine/Imaging/Raw/RawSourceLoader.cs)、[CPU 管線](../src/FilmBatch.Engine/Rendering/CpuPipeline.cs)、[RAW 顯示](../src/FilmBatch.Engine/Imaging/Raw/RawDisplay.cs)、[GPU 顯示運算子](../src/FilmBatch.Gpu/Shaders/v1/linear/basic_display.wgsl)。
+對應程式：[RAW 正規化](../../src/FilmBatch.Raw/RawImage.Develop.cs)、[色彩轉換](../../src/FilmBatch.Engine/Imaging/Raw/RawSourceLoader.cs)、[CPU 管線](../../src/FilmBatch.Engine/Rendering/CpuPipeline.cs)、[RAW 顯示](../../src/FilmBatch.Engine/Imaging/Raw/RawDisplay.cs)、[GPU 顯示運算子](../../src/FilmBatch.Gpu/Shaders/v1/linear/basic_display.wgsl)。
 
 ## 演算法選擇與降噪順序
 
@@ -41,7 +41,7 @@
 
 ### 輸入與版本
 
-- 公開 CC0 語料：Sony ILCE-7S [`DSC04125.ARW`](https://raw.pixls.us/data/Sony/ILCE-7S/DSC04125.ARW)，沿用 [sony.tsv](../tests/FilmBatch.Raw.Tests/Corpus/sony.tsv) 的 `arw-sony-a7s-shade.arw`。
+- 公開 CC0 語料：Sony ILCE-7S [`DSC04125.ARW`](https://raw.pixls.us/data/Sony/ILCE-7S/DSC04125.ARW)，沿用 [sony.tsv](../../tests/FilmBatch.Raw.Tests/Corpus/sony.tsv) 的 `arw-sony-a7s-shade.arw`。
 - 檔案 SHA-256：`7cc338a0abc8fdad32d61006f1f8f412297b93e040c7efba572eb2bd8f8e8be2`。登錄表感光陣列 4288×2848、FilmBatch 有效參考尺寸 4240×2832、實跑代理圖 1200×802，三者不要混寫。
 - FilmBatch 原型由既有 Release 二進位檔匯出工作線性浮點緩衝區，保留組件 SHA-256；候選再進相同的 `RawDisplay.FinishLinear`，不是用外部任意 gamma 取代收尾。
 - darktable 5.6.2 官方 arm64 DMG，SHA-256 `6ff88e58a2a59cb07b0a1502fea7205e68cd783380a33a3ce7bda68ec29def0c`；[release tag](https://github.com/darktable-org/darktable/releases/tag/release-5.6.2) 對應 commit `20891f6c6fa7be995e5bf9dff9d1ee5062051773`。隔離 config/cache、停用 OpenCL、輸出 1200×803 RGB16 sRGB TIFF。
@@ -153,7 +153,7 @@ Canon 感光資料完全相同，但兩邊黑白位估計不同：FilmBatch 量�
 
 ## 場景線性暗部功能落地（2026-10-22）
 
-使用者另行授權後，新增 `shadow_recovery` 模組與獨立 C#／WGSL 實作，**不是把上述 Python 原型或 GPL 上游程式碼移植進產品**。操作與可重跑回歸見[建置說明](building.md#局部暗部還原)，數學／暫存／取消契約見[算圖架構](architecture.md#46-engine算圖管線rendering)。
+使用者另行授權後，新增 `shadow_recovery` 模組與獨立 C#／WGSL 實作，**不是把上述 Python 原型或 GPL 上游程式碼移植進產品**。操作與可重跑回歸見[建置說明](../building.md#局部暗部還原)，數學／暫存／取消契約見[算圖架構](../architecture/engine.md#46-engine算圖管線rendering)。
 
 - 預設關閉，暗部提亮 3 EV、局部範圍 2%、亮度降噪 35%、色度降噪 80%；開啟後在工作線性域處理，不改 `basic.shadows`。無有效調整時 CPU／GPU 直接略過。
 - 共同增益保留黑點，降噪先於增益；覆蓋率加權的局部統計排除全透明隱藏色，alpha 不變。HDR 保留到原有顯示映射，不把最終 16-bit SDR 誤稱 HDR。
@@ -162,3 +162,11 @@ Canon 感光資料完全相同，但兩邊黑白位估計不同：FilmBatch 量�
 - 本文早期已知合成噪聲的 RMSE 降幅與紋理響應是**隔離原型**的量測，不可換標成產品演算法的畫質／SNR 數值。新產品案例驗證行為與精度，不推廣到其他相機、所有 ISO、保證無暈光或 Lightroom 優劣。
 
 局部範圍按裁切後短邊縮放；降噪按來源像素足跡縮放，代理預覽可能比全圖弱。更多夜景／相機／ISO、人工盲評、跨平台 GPU 與實機效能仍須各自取得證據。三相機解碼比較的決定仍是上節的「保留現有 decoder」，不因暗部功能落地而改判。
+
+## 整合記錄
+
+自 [history.md](../history.md) 搬入，逐字保留，僅調整相對連結。
+
+同日完成[暗部還原研究](shadow-recovery-survey.md)：以一張公開 Sony RAW 實跑現行管線、隔離浮點 guided／雙邊與亮度／色度降噪原型，並用真正 darktable 5.6.2 的可重播 XMP 比較。現行顯示域加法造成抬灰可重現，但沒有 Lightroom 對照或「解碼器多恢復一倍」的證據；合成雜訊降低與紋理犧牲分開量測，未把原型接進產品或改舊預設。
+
+同日依後續授權把獨立 `shadow_recovery` 模組接入浮點線性 CPU／GPU 管線，預設關閉；保留舊 `basic.shadows` 與既有照片外觀，專案格式不變。採覆蓋率加權 guided 基底、增益前亮度／色度降噪與保持黑點的共同增益，沿用參數／復原／預設／匯出流程。真實 Sony A7S RAW、Metal、共用 Headless 控制項與 PNG 像素核對已實跑，完整結果與未驗證邊界見[操作說明](../building.md#局部暗部還原)。外部 LibRaw 的三感光樣本與共同現像比較不足以授權更換解碼器：Sony 只有一個高光超出值的既有相容裁切差，Canon／Olympus 解包一致；黑白位估計未有校準裁定。保留 decoder 與產品相依，不把研究中的降噪百分比或受控 Bilinear 一致推廣成 Lightroom 優劣。這是工作目錄實作記錄，未新增 commit、push 或發行包。

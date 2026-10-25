@@ -94,17 +94,17 @@ No unattended agent runner, retry loop, policy broker, capability-token system, 
 
 | 來源 basename | 處置 | 現行位置／理由 |
 |---|---|---|
-| `rawcontrols-ledger.md` | 抽取 | [參數／復原](../../architecture.md#41-core參數-schemaparams)：Text 不做路徑處理，名稱＋實例一次 undo |
-| `raw-parity-shared-contracts.md` | 抽取／補導引 | [場景域契約](../../architecture.md#46-engine算圖管線rendering)已存在；`Rgba16` 是顯示快取，不作 RAW 編輯輸入 |
+| `rawcontrols-ledger.md` | 抽取 | [參數／復原](../../architecture/core.md#41-core參數-schemaparams)：Text 不做路徑處理，名稱＋實例一次 undo |
+| `raw-parity-shared-contracts.md` | 抽取／補導引 | [場景域契約](../../architecture/engine.md#46-engine算圖管線rendering)已存在；`Rgba16` 是顯示快取，不作 RAW 編輯輸入 |
 | `filmbatch-lightcraft-latest-review.md` | 已有 | [RAW 參考與限制](../../../tools/raw-oracle/README.md)、RAW parity 計畫 |
 | `filmbatch-lightcraft-source-findings.md` | 被取代 | 初步假說由後續實驗／parity 記錄裁決，不獨立宣稱已驗證 |
 | `filmbatch-commit-delivery.md` | 被取代 | 當時的兩項 RAW UI 問題由 `cc23364`／`7504087` 與現行測試涵蓋 |
-| `filmbatch-raw-ui-repair-plan.md` | 已有 | [RAW UI 回歸](../../building.md#raw-介面回歸)：面板可見性、matching source、慢重載縮圖 |
-| `filmbatch-pull-reconciliation.md` | 已有 | [畫布生命週期](../../architecture.md#410-app介面層)：旋轉分割線逆映射；封裝根結構見 building |
+| `filmbatch-raw-ui-repair-plan.md` | 已有 | [RAW UI 回歸](../../testing.md#raw-介面回歸)：面板可見性、matching source、慢重載縮圖 |
+| `filmbatch-pull-reconciliation.md` | 已有 | [畫布生命週期](../../architecture/app.md#410-app介面層)：旋轉分割線逆映射；封裝根結構見 building |
 | `filmbatch-pull-preservation.md` | 排除 | 當次 stash／pull 保存步驟；不是可沿用的操作授權或穩定介面 |
 | `filmbatch-lifecycle-verification.md` | 已有 | architecture／building 的生命週期與 Cocoa 動畫邊界；舊 totals 留在歷史 |
 | `filmbatch-lifecycle-implementation.md` | 被取代 | 預先分工由正式實作與驗證記錄取代 |
-| `filmbatch-canvas-integration.md` | 抽取 | [獨立畫布 Fit 契約](../../architecture.md#410-app介面層)：Pan reset 不能只放 ViewModel |
+| `filmbatch-canvas-integration.md` | 抽取 | [獨立畫布 Fit 契約](../../architecture/app.md#410-app介面層)：Pan reset 不能只放 ViewModel |
 | `filmbatch-cancel-review.md` | 抽取 | 保留 close-to-apply、裁切套用後停用工具、舊 Service ownership 的理由；不是全部對話框都有 rollback Cancel |
 | `filmbatch-mac-build.md` | 排除 | 暫存封裝／雜湊 receipt；本次封裝身分另有實際觀察 |
 | `filmbatch-windows-raw-precision.md` | 已有 | [ADR 0003](../../adr/0003-gpu-stack-decision.md)：D3D12 `fma`、補償算術與精度限制 |
@@ -113,7 +113,7 @@ No unattended agent runner, retry loop, policy broker, capability-token system, 
 | `filmbatch-fix-commit.md` | 已有 | ADR 0003：傳遞曲線 sweep、LUT log2 差異與不放寬門檻 |
 | `filmbatch-simd-delivery.md` | 已有 | ADR 0003：SIMD 量測與拒用近似運算；不把舊時序當目前效能 |
 | `raw-completion-progress.md` | 排除 | 暫存分派與中途狀態，不保留為完成證據 |
-| `raw-completion-plan.md` | 抽取 | [讀檔上限](../../architecture.md#48-engine影像讀取與批次匯出imaging--exporting)、[原生閉包](../../building.md#macos)；原分工／API 草案不作現行權威 |
+| `raw-completion-plan.md` | 抽取 | [讀檔上限](../../architecture/engine.md#48-engine影像讀取與批次匯出imaging--exporting)、[原生閉包](../../release.md#macos)；原分工／API 草案不作現行權威 |
 | `raw-fix-delivery.md` | 抽取 | 大型一般 TIFF 與 managed RAW 全檔限制分開、寬高索引、RW2／ORF 標頭；舊 exclusions 不沿用 |
 | `raw-review-fixes.md` | 抽取 | 單次線性化、ICC 宣告／轉換分離、CR3 CMT 各自的 byte order |
 | `raw-tiff-api.md` | 已有 | `src/FilmBatch.Raw/Tiff/` 的現行型別與 RAW 來源契約，不另複製 API 草稿 |
@@ -121,9 +121,9 @@ No unattended agent runner, retry loop, policy broker, capability-token system, 
 | `raw-port-interfaces.md` | 被取代 | 草稿介面由實際程式碼取代 |
 | `raw-port-plan.md` | 被取代 | 初始鏡頭／gain table／遮罩／JXL／DNG 排除項不是永久功能限制 |
 | `review-dev-i18n-en.md` | 已有 | 語系資源與原生選單契約、`LocalizationTests`、history 的實際提交 |
-| `histogram-smoothing.md` | 抽取 | [直方圖快取](../../architecture.md#410-app介面層)：只濾波顯示高度，資料更新重建 geometry |
+| `histogram-smoothing.md` | 抽取 | [直方圖快取](../../architecture/app.md#410-app介面層)：只濾波顯示高度，資料更新重建 geometry |
 | `filmbatch-ui-bugs.md` | 已有 | 漏光旋轉／filmstrip 操作的現行測試；Sony 配方特定校正已由 LUT 模型取代 |
-| `filmbatch-metadata-review.md` | 抽取 | [EXIF 降級與輸出規則](../../architecture.md#48-engine影像讀取與批次匯出imaging--exporting)：APP1、R98、圖層過濾及逐張 warning |
+| `filmbatch-metadata-review.md` | 抽取 | [EXIF 降級與輸出規則](../../architecture/engine.md#48-engine影像讀取與批次匯出imaging--exporting)：APP1、R98、圖層過濾及逐張 warning |
 | `filmbatch-repair-progress.md` | 被取代 | M0 中間狀態、Intel Mac 封裝不作現行平台承諾 |
 | `filmbatch-repair-contract.md` | 被取代 | 舊 M0 任務範圍，由目前建置／驗證入口取代 |
 | `filmbatch-macos-ledger.md` | 被取代 | 初始 Mac port receipt，由目前 Dawn 建置、相依下限與 arm64 流程取代 |

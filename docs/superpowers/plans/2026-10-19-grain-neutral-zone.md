@@ -1,6 +1,6 @@
 # Grain, neutral-point and Zone implementation plan
 
-**Goal:** Continue the merged `dev-filmlike-fix` implementation and deliver the feasible interactive workflows from [the survey](../../grain-white-balance-survey.md), with real CPU/GPU rendering, reversible edits and honest data-domain limits.
+**Goal:** Continue the merged `dev-filmlike-fix` implementation and deliver the feasible interactive workflows from [the survey](../../research/grain-white-balance-survey.md), with real CPU/GPU rendering, reversible edits and honest data-domain limits.
 
 **Authority:** User requested committing the current repairs, merging the feature branch, reviewing its implementation, then implementing all feasible survey plans. Later delivery order: complete and commit the survey before repairing `paste-10` and `paste-11`; verify and commit those deferred fixes, then push all task-related commits only when the fixes are ready. This plan records implementation scope, not a new license or camera-calibration claim.
 

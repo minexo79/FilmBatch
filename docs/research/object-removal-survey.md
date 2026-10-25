@@ -3,11 +3,11 @@
 - 查核日期：2026-10-21；各節保留原實驗日期與資料邊界。用途：**研究／比較與實作選型提案，不是已支援功能**。
 - 結論：把「選取」與「重建」分開；**目前不採用任何候選作為通用物件移除的產品預設，T1 維持 NO-GO**。MI-GAN 保留快速工程對照，EfficientSAM 僅作待人工修正的選取提案，Moebius 暫緩；沒有量測出「最佳畫質」模型。既有[續驗決策](#10-續驗與採用決策)、[來源續查](#11-權重來源與後續研究)、[場景微調／VAE 內容實驗](#12-場景微調vae-身分與原生續驗)、[替代方案](#13-多角色替代方案與實驗)與[小型模型／Depth](#14-小型模型與-depth-分層實驗)仍成立；[提示詞／LLM 引導實驗](#15-提示詞與-llm-引導實驗)不把語意控制當成移除品質或產品資格。
 - 已做：模型／權重來源、完整鏈、VAE、替代方案、OpenCV／.NET donor、小型 artifact 精度、Depth Small 可見圖層研究、真正文字條件模型與本機 Qwen 提示詞對照、Mac 公開 API、四個既有 CLI，以及訓練空間條件分支的留存輸出比較。未做：40 場景人類盲評、Windows／iOS 移除推論、直接付費影像 API、私人照片上傳或產品功能實作。**第 13 節記錄研究期間整個 `dist/` 消失及 v2 重新凍結資料的邊界；後續實驗沿用 v2，不補出已消失的舊收據。**
-- 配套：[ADR 0005](adr/0005-ai-object-removal.md) 記錄取捨；[操作與資料契約](object-removal-design.md) 固定 UX／色彩與保存邊界；[實作計畫](superpowers/plans/2026-10-20-ai-object-removal.md) 提供 T1–T5 與 OR-01–OR-14 對照。
+- 配套：[ADR 0005](0005-ai-object-removal.md) 記錄取捨；[操作與資料契約](object-removal-design.md) 固定 UX／色彩與保存邊界；[實作計畫](../superpowers/plans/2026-10-20-ai-object-removal.md) 提供 T1–T5 與 OR-01–OR-14 對照。
 
 最新延伸：[原生平台與最低可行成本](#16-原生平台與最低可行成本)、[既有 CLI 實測](#17-既有-cli-作為外部模型入口)與[訓練空間條件續驗](#18-訓練空間條件續驗與最小可行路線) 將公開系統 API、外掛權重與外部來源放在相同產品／裝置條件下比較；不是要求使用者換硬體，也不把作業系統 app 的功能當成可嵌入 SDK。
 
-決策整理：[第 19 節情境解法／成本效益](#19-情境解法成本效益與決策紀錄) 記錄 41 項候選想法、11 個情境及各自 No-Go／重開條件；[兩案資格驗證計畫](superpowers/plans/2026-10-21-object-removal-scenario-qualification.md) 保留原門檻及後續技術續跑紀錄，不宣稱已證明最高效益或通過產品 gate。
+決策整理：[第 19 節情境解法／成本效益](#19-情境解法成本效益與決策紀錄) 記錄 41 項候選想法、11 個情境及各自 No-Go／重開條件；[兩案資格驗證計畫](../superpowers/plans/2026-10-21-object-removal-scenario-qualification.md) 保留原門檻及後續技術續跑紀錄，不宣稱已證明最高效益或通過產品 gate。
 
 [第 20 節清理盤點與下一輪前檢查](#20-清理盤點與下一輪前檢查) 記錄中斷前空間與第一階段未發影像請求的事實；[第 21 節中斷後實際續跑](#21-中斷後實際續跑與同案低成本對照) 記錄兩次真實影像、四個本機 donor 對照及新的資料／精度邊界。原清理清單不可直接執行，產品 T1 仍 NO-GO。
 
@@ -50,7 +50,7 @@ S02 的官方 `migan_pipeline_v2.onnx` 是 **UINT8 RGB＋UINT8 mask 進出**，�
 
 逐項列 **程式碼、權重、base／adapter、VAE／文字元件、exporter、runtime、訓練／蒸餾資料來源**。MI-GAN 的 MIT 權重文字與 Places／FFHQ／teacher 來源是不同事實；訓練資料限制是否以及如何約束衍生權重，由適當 owner／法律審查判定，這份 Survey 不作肯定或否定的法律裁定。
 
-Moebius repo 的 Apache-2.0 與模型卡 MIT 必須並列，採用時重新檢查選定 bytes 與 VAE 條款；兩者均屬寬鬆標籤也不能無聲合併成一個來源。未知權重授權、adapter 掛 MIT 而 base 另有限制，均不能靠「另外下載」或「使用者匯入」解除。Windows／Apple 現有 ORT 版本與 notices 做法沿用 [ADR 0002](adr/0002-ai-denoise.md)，本輪沒有安裝新相依套件。
+Moebius repo 的 Apache-2.0 與模型卡 MIT 必須並列，採用時重新檢查選定 bytes 與 VAE 條款；兩者均屬寬鬆標籤也不能無聲合併成一個來源。未知權重授權、adapter 掛 MIT 而 base 另有限制，均不能靠「另外下載」或「使用者匯入」解除。Windows／Apple 現有 ORT 版本與 notices 做法沿用 [ADR 0002](../adr/0002-ai-denoise.md)，本輪沒有安裝新相依套件。
 
 ## 3. 選取輔助短名單
 
@@ -1047,7 +1047,7 @@ tar -xzf "$ROOT/verification-harnesses.tar.gz" -C "$ROOT/restoration-proof/src"
 **目前沒有證據能選出通用移除的最高效益產品方案。** 最小新增工程面的選擇是保留既有共用引擎；若使用者允許外送，優先驗證既有 Codex 取得候選、host 合成並保存的路線。這是**目前環境的優先驗證候選**，不是品質冠軍、免費服務或可直接出貨的 backend。離線通用 AI 移除仍無合格方案；不強迫換硬體，不把 Clone／Depth／保存像素冒充重建成功。
 
 - **GO-KEEP**：繼續使用已實作的 RAW／色彩／顆粒／影像 I/O／專案與匯出；不是要求重寫。
-- **GO-PLAN**：只對已實際取得像素、前置負擔較小的外部候選路線，建立[兩案資格驗證計畫](superpowers/plans/2026-10-21-object-removal-scenario-qualification.md)。新請求尚未執行，須綁定新的公開輸入、額度／隔離與人類評審條件。
+- **GO-PLAN**：只對已實際取得像素、前置負擔較小的外部候選路線，建立[兩案資格驗證計畫](../superpowers/plans/2026-10-21-object-removal-scenario-qualification.md)。新請求尚未執行，須綁定新的公開輸入、額度／隔離與人類評審條件。
 - **NO-GO／DEFER**：前者指指定用途／artifact 的現有門檻未過；後者指關鍵資料／裝置／權利不足，不能排名。兩者均保留原因與重開條件，**不是全家族永久否決**。
 - **產品仍 NO-GO**：原 OR-02 要求真實本機模型，不能拿外部 CLI 成功勾選；T1 未通過，T2–T5 未開始。若日後要新增外部或人工模式，須明確另定 scope／驗收，不能在本輪默改[設計版本 1](object-removal-design.md)。
 
@@ -1207,7 +1207,7 @@ ROI／Depth／圖層補充依 `dist/object-removal-roi-layer-20261021/decision.j
 
 ### 下一輪：可行候選與真實停止點
 
-延續[兩案計畫](superpowers/plans/2026-10-21-object-removal-scenario-qualification.md)，只選已取得過真實像素的 Codex 來源，不再展開其他模型。使用者在明示 quota／內部影像呼叫數未知後選擇「做有限公開影像試驗」：既有 ChatGPT 登入，兩個固定公開 context／mask，每案最多一次、240 秒、不重試、不新增 Key 或付費方案；只是技術試驗，不作人類品質／成本效益驗收。
+延續[兩案計畫](../superpowers/plans/2026-10-21-object-removal-scenario-qualification.md)，只選已取得過真實像素的 Codex 來源，不再展開其他模型。使用者在明示 quota／內部影像呼叫數未知後選擇「做有限公開影像試驗」：既有 ChatGPT 登入，兩個固定公開 context／mask，每案最多一次、240 秒、不重試、不新增 Key 或付費方案；只是技術試驗，不作人類品質／成本效益驗收。
 
 已實跑的零推論前檢查：
 

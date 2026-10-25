@@ -56,7 +56,7 @@
 | 起始外觀 | Sony 缺檔內矩陣時可擬合自家 JPEG；有矩陣的 DNG 走另一組 tone eligibility 條件 | 量測 `StartingColour`，核對色彩矩陣、tone、look／gain table；不能先認定 DNG 一定比較慢 |
 | 全尺寸色彩／opcode | DNG 的 profile table 與非鏡頭 List3 opcode 可能增加逐像素工作 | 只在實檔確實帶有對應資料時量測，不刪除必要校正來換速度 |
 
-來源入口：[RawSourceLoader](../src/FilmBatch.Engine/Imaging/Raw/RawSourceLoader.cs)、[CameraPreview](../src/FilmBatch.Engine/Imaging/Raw/CameraPreview.cs)、[TiffRaw](../src/FilmBatch.Raw/TiffRaw.cs)、[分箱](../src/FilmBatch.Raw/RawImage.Binned.cs)、[飽和點處理](../src/FilmBatch.Raw/RawImage.Saturation.cs)、[Opcode 定義](../src/FilmBatch.Raw/Opcodes/Opcodes.cs)。
+來源入口：[RawSourceLoader](../../src/FilmBatch.Engine/Imaging/Raw/RawSourceLoader.cs)、[CameraPreview](../../src/FilmBatch.Engine/Imaging/Raw/CameraPreview.cs)、[TiffRaw](../../src/FilmBatch.Raw/TiffRaw.cs)、[分箱](../../src/FilmBatch.Raw/RawImage.Binned.cs)、[飽和點處理](../../src/FilmBatch.Raw/RawImage.Saturation.cs)、[Opcode 定義](../../src/FilmBatch.Raw/Opcodes/Opcodes.cs)。
 
 ## 接續驗證的約束
 

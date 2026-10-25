@@ -1,6 +1,6 @@
 # 跨平台影像編解碼與色彩實驗手冊
 
-整理日期：2026-10-24。涵蓋 2026-10-15 macOS 移植、ProPhoto 匯出至極端基本調整異常的實驗方法；這是既有證據的整理與重播指南，不是所有平台、相機或版本都已通過的宣告。現行產品契約見[影像讀取與匯出](architecture.md#48-engine影像讀取與批次匯出imaging--exporting)，各輪結果依下方有日期的來源判讀。
+整理日期：2026-10-24。涵蓋 2026-10-15 macOS 移植、ProPhoto 匯出至極端基本調整異常的實驗方法；這是既有證據的整理與重播指南，不是所有平台、相機或版本都已通過的宣告。現行產品契約見[影像讀取與匯出](architecture/engine.md#48-engine影像讀取與批次匯出imaging--exporting)，各輪結果依下方有日期的來源判讀。
 
 ## 1. 先分清是哪一層不同
 
@@ -77,7 +77,7 @@ codec 的輸入是**已經完成色彩轉換的像素**。嵌入 ICC 時不能�
 
 ### 4.3 JPEG decoder 與 CMS 分開
 
-iOS JPEG 偏紅調查先以 Pillow 參考對照 ImageIO，大圖 P3 極端色階出現約 `12.85/255` 差異。後來用另一個 iOS ImageIO 程式只取得 JPEG 解碼 RGB，再交主機 LittleCMS 轉換，隔離了 JPEG decoder 與 ICC 轉換；原容差保留，沒有替產品加入色偏補償。詳見 [iOS JPEG 色彩核對](building.md#ios-jpeg-色彩核對2026-10-22)。這些合成樣本未重現回報，不等於使用者未提供的原檔已修復。
+iOS JPEG 偏紅調查先以 Pillow 參考對照 ImageIO，大圖 P3 極端色階出現約 `12.85/255` 差異。後來用另一個 iOS ImageIO 程式只取得 JPEG 解碼 RGB，再交主機 LittleCMS 轉換，隔離了 JPEG decoder 與 ICC 轉換；原容差保留，沒有替產品加入色偏補償。詳見 [iOS JPEG 色彩核對](evidence/ios-2026-10-20.md#ios-jpeg-色彩核對2026-10-22)。這些合成樣本未重現回報，不等於使用者未提供的原檔已修復。
 
 ## 5. 效能、原生執行與封裝如何避免誤判
 
@@ -88,7 +88,7 @@ iOS JPEG 偏紅調查先以 Pillow 參考對照 ImageIO，大圖 P3 極端色階
 - 真正啟動 `.app`／CLI／iOS app，觀察預覽、縮圖、編輯、復原、匯出與來源不變。Headless、編譯成功、啟動 Simulator 或 Mac 上跑共用 View，都不是目標平台完整通過。
 - 封裝檢查 App 與 CLI 各自的 native 閉包、RID、Mach-O／PE 架構、最低 OS 與來源／授權；在不靠開發機 Homebrew／PATH 的情況啟動。cross-publish 不等於目標執行；Rosetta 不等於實體 Intel Mac。不能修改 Mach-O 最低版本宣告來假裝向下相容。
 
-參考：[CPU SIMD 配對基準](adr/0003-gpu-stack-decision.md#本機-cpu-基準合併前-03761e1)、[舊獨立 RAW 收尾基準](adr/0003-gpu-stack-decision.md#本機-raw-收尾基準合併前-03761e1)、[效能修正的輸入與方法](superpowers/plans/2026-10-22-performance-correctness.md#method-and-inputs)、[發佈](building.md#發佈)、[Apple 技術實驗邊界](../tools/apple-mobile/README.md#實驗實際檢查什麼)。獨立 finisher 已由 `cfe4cf9` 移除，舊基準不能當現行 `Render16` 的端到端效能。
+參考：[CPU SIMD 配對基準](adr/0003-gpu-stack-decision.md#本機-cpu-基準合併前-03761e1)、[舊獨立 RAW 收尾基準](adr/0003-gpu-stack-decision.md#本機-raw-收尾基準合併前-03761e1)、[效能修正的輸入與方法](superpowers/plans/2026-10-22-performance-correctness.md#method-and-inputs)、[發佈](release.md#發佈)、[Apple 技術實驗邊界](../tools/apple-mobile/README.md#實驗實際檢查什麼)。獨立 finisher 已由 `cfe4cf9` 移除，舊基準不能當現行 `Render16` 的端到端效能。
 
 ## 6. 可重跑入口
 
@@ -110,7 +110,7 @@ cargo install --locked --version 30.0.1 naga-cli
 dotnet run build/CheckShaders.cs
 ```
 
-Windows 完整回歸使用[既有序列化命令](building.md#windows-ci-測試排程)，保留 detailed console 與 TRX。實際 compute／readback 失敗不能改判沒有 GPU；外部 RAW／oracle、`rawinfo` 與平台限定略過各自統計。上列 filter 的 Windows-only 案例在 Mac 不會執行；`ToneCurvePipelineTests` 另會略過 `IsSoftware` 的 GPU 案例，不能把 WARP 上的整套 exit 0 當成曲線 GPU parity 已驗證。
+Windows 完整回歸使用[既有序列化命令](testing.md#windows-ci-測試排程)，保留 detailed console 與 TRX。實際 compute／readback 失敗不能改判沒有 GPU；外部 RAW／oracle、`rawinfo` 與平台限定略過各自統計。上列 filter 的 Windows-only 案例在 Mac 不會執行；`ToneCurvePipelineTests` 另會略過 `IsSoftware` 的 GPU 案例，不能把 WARP 上的整套 exit 0 當成曲線 GPU parity 已驗證。
 
 感光／現像 oracle 的固定 commit、CC0 樣本 SHA-256、`FILMBATCH_RAW_SAMPLES`／`FILMBATCH_RAW_ORACLE` 與產生命令集中於 [raw-oracle](../tools/raw-oracle/README.md)。更新外部程式不自動更新舊 oracle；位元級與 renderer 級門檻分開。
 
@@ -153,16 +153,16 @@ printf 'Evidence directory: %s\n' "$work"
 | 日期／範圍 | 比較方法與得到的教訓 | 可核對的來源與限制 |
 |---|---|---|
 | 2026-10-15：macOS 移植 | 真正發佈包執行上傳、調整、模糊與讀回；Apple M3／Metal 的 BGRA8 與 CPU 最大差 1/255。另啟動原生 GUI 檢查解碼、預覽及縮圖。 | [ADR 0001](adr/0001-webgpu-binding.md#spike-量測filmbatch-cli-spike上傳-16-bit--曝光亮度飽和--可分離高斯模糊--bgra8--讀回)。Rosetta 只證明翻譯執行；Intel 發佈後來停止，原生相依下限也另經重建更新。 |
-| 2026-10-15：EXIF 與匯出復原 | 從真正 `BatchExporter` 驗證 Adobe RGB Interop、Photoshop 圖層、損毀 EXIF 與 JPEG APP1 大小；先保持已算出的像素，metadata 減量逐張留下警告。 | [歷史中的 `6b9ca2a`／`90e92da`／`5203033`](history.md#精選演進)、[現行安全規則](architecture.md#48-engine影像讀取與批次匯出imaging--exporting)；不是完整保留所有 MakerNote。 |
-| 2026-10-17：RAW 移植與來源色彩 | 固定 CC0 SHA／上游 commit，分開感光與現像階段的位元比較、最終 NRMS／顯示誤差。曾以灰階 128 發現二次線性化，使約 0.216 變成 0.038。 | [RAW oracle 範圍](../tools/raw-oracle/README.md#比較範圍與已知偏差)、[色彩陷阱](architecture.md#48-engine影像讀取與批次匯出imaging--exporting)。現在的 managed JPEG／CMS 路徑不能沿用初版 Magick 解碼的限制描述。 |
+| 2026-10-15：EXIF 與匯出復原 | 從真正 `BatchExporter` 驗證 Adobe RGB Interop、Photoshop 圖層、損毀 EXIF 與 JPEG APP1 大小；先保持已算出的像素，metadata 減量逐張留下警告。 | [歷史中的 `6b9ca2a`／`90e92da`／`5203033`](history.md#精選演進)、[現行安全規則](architecture/engine.md#48-engine影像讀取與批次匯出imaging--exporting)；不是完整保留所有 MakerNote。 |
+| 2026-10-17：RAW 移植與來源色彩 | 固定 CC0 SHA／上游 commit，分開感光與現像階段的位元比較、最終 NRMS／顯示誤差。曾以灰階 128 發現二次線性化，使約 0.216 變成 0.038。 | [RAW oracle 範圍](../tools/raw-oracle/README.md#比較範圍與已知偏差)、[色彩陷阱](architecture/engine.md#48-engine影像讀取與批次匯出imaging--exporting)。現在的 managed JPEG／CMS 路徑不能沿用初版 Magick 解碼的限制描述。 |
 | 2026-10-18：RAW 整合與 DNG／JXL | EXP-01–09 分開比較實際編輯、場景資料、Kelvin、遮罩、鏡頭、同模型 DNG 與 native JXL 閉包；相機 JPEG 擬合與標準 DNG profile 的外觀差異另外保留。 | [實驗設計](superpowers/plans/2026-10-18-raw-pipeline-parity.md#實驗設計exp)、[結果 ledger](superpowers/plans/2026-10-18-raw-pipeline-parity.md#state-ledgerspec-v1)。不改上游或容差來讓不同模型通過；回歸後來移到正式 `Render16`，刪除獨立 finisher。 |
 | 2026-10-18：SIMD 與 GPU 浮點 | 同程序交錯配對純量／SIMD；以高光反例、十組 HDR 影像及捨入擾動定位 LUT／乘加精度。`Exp(Log(x)*k)` 因實測退步移除。 | [ADR 0003 精度](adr/0003-gpu-stack-decision.md#浮點精度)、[CPU 基準](adr/0003-gpu-stack-decision.md#本機-cpu-基準合併前-03761e1)。未融合 `fma` 是 Metal 模擬的可攜性反例，不是已確診的 Windows 根因。 |
-| 2026-10-18–19：Windows 精度與裝置遺失 | 保存原始 assertion／原生錯誤，依序隔離上傳、讀回、sRGB 解碼與 callback。Windows CPU `MathF.Log2` 的第一個錯誤捨入由高精度計算核對；D3D12/WARP 的 scalar sRGB 路徑改為等價向量 `select` 後再跑正式管線。 | [完整診斷與 job 34／35／40／43](building.md#gpu-讀回與-raw-數值回歸)。job 40 是診斷成功，`c7f6072` 的 job 43 才是正式修正／封裝通過；不是硬體 RTX 驗證。 |
+| 2026-10-18–19：Windows 精度與裝置遺失 | 保存原始 assertion／原生錯誤，依序隔離上傳、讀回、sRGB 解碼與 callback。Windows CPU `MathF.Log2` 的第一個錯誤捨入由高精度計算核對；D3D12/WARP 的 scalar sRGB 路徑改為等價向量 `select` 後再跑正式管線。 | [完整診斷與 job 34／35／40／43](testing.md#gpu-讀回與-raw-數值回歸)。job 40 是診斷成功，`c7f6072` 的 job 43 才是正式修正／封裝通過；不是硬體 RTX 驗證。 |
 | 2026-10-19：Apple 原生技術入口 | 用奇數尺寸、非整齊低位元、方向與 ICC 檢查 ImageIO PNG16／TIFF16；真正產生／讀回大圖，分開配置量與 peak footprint。先 Mac 實跑，再另做 iOS build／Simulator。 | [技術入口紀錄](superpowers/plans/2026-10-19-apple-mobile-technical-entry.md#結果-ledger)、[Simulator 工具鏈邊界](../tools/apple-mobile/README.md#工具鏈與-xcode-271-實驗)。`NETSDK1147`、reference compile、Simulator 與實機各是不同證據。 |
-| 2026-10-20：iOS 輸出與 metadata | 真正主要 App 匯出後，由 Pillow／imagecodecs／tifffile 獨立核對位深、低位元、ICC、EXIF、方向與來源雜湊；發現 PNG 讀取器會正規化 profile，故保留 iCCP 再查。 | [30 項獨立輸出檢查與原生操作](building.md#本輪實測2026-10-20)。保留 Apple stock sRGB 的 libpng 警告，不用警告消失冒充色彩正確；只屬當時 Simulator 版本。 |
-| 2026-10-22：獨立 RAW／暗部參考 | 固定 LibRaw 版本比較尚未現像的感光樣本；darktable 使用隔離設定與保存的 XMP 重播，先核對基線，再比較暗部。合成場景的已知雜訊另計，實景紋理不充當 SNR。 | [感光解碼比較](shadow-recovery-survey.md#獨立感光解碼比較2026-10-22)、[高反差 RAW 方法](shadow-recovery-survey.md#實際比較方法)。一般檢視 PNG 只作呈現，不能當相同 renderer 的數值 oracle。 |
-| 2026-10-22：iOS JPEG 偏紅 | 不對稱 ICC 色塊、P3／sRGB 大圖及灰卡；先分離 JPEG decoder，再以 LittleCMS 作色彩參考，保留最初約 12.85/255 的跨 decoder 差異與原容差。 | [iOS JPEG 色彩核對](building.md#ios-jpeg-色彩核對2026-10-22)。合成樣本未重現偏紅，未修改產品，也未宣稱使用者原檔已修復。 |
-| 2026-10-22：透明縮放、解碼提示與效能 | 透明藍鄰接可見紅檢查 coverage；少色 PNG 核對真實 RGBA16；JPEG 預覽提示與全尺寸匯出分開。Sigma GainMap 逐列平行化保留相同插值及輸出雜湊。 | [效能／正確性結果](superpowers/plans/2026-10-22-performance-correctness.md#observed-results--2026-10-22)、[Sigma BF](sigma-bf-raw-performance.md)。配置量改善不當作全部解碼加速，預覽提示也不宣稱逐位元相同。 |
+| 2026-10-20：iOS 輸出與 metadata | 真正主要 App 匯出後，由 Pillow／imagecodecs／tifffile 獨立核對位深、低位元、ICC、EXIF、方向與來源雜湊；發現 PNG 讀取器會正規化 profile，故保留 iCCP 再查。 | [30 項獨立輸出檢查與原生操作](evidence/ios-2026-10-20.md#本輪實測2026-10-20)。保留 Apple stock sRGB 的 libpng 警告，不用警告消失冒充色彩正確；只屬當時 Simulator 版本。 |
+| 2026-10-22：獨立 RAW／暗部參考 | 固定 LibRaw 版本比較尚未現像的感光樣本；darktable 使用隔離設定與保存的 XMP 重播，先核對基線，再比較暗部。合成場景的已知雜訊另計，實景紋理不充當 SNR。 | [感光解碼比較](research/shadow-recovery-survey.md#獨立感光解碼比較2026-10-22)、[高反差 RAW 方法](research/shadow-recovery-survey.md#實際比較方法)。一般檢視 PNG 只作呈現，不能當相同 renderer 的數值 oracle。 |
+| 2026-10-22：iOS JPEG 偏紅 | 不對稱 ICC 色塊、P3／sRGB 大圖及灰卡；先分離 JPEG decoder，再以 LittleCMS 作色彩參考，保留最初約 12.85/255 的跨 decoder 差異與原容差。 | [iOS JPEG 色彩核對](evidence/ios-2026-10-20.md#ios-jpeg-色彩核對2026-10-22)。合成樣本未重現偏紅，未修改產品，也未宣稱使用者原檔已修復。 |
+| 2026-10-22：透明縮放、解碼提示與效能 | 透明藍鄰接可見紅檢查 coverage；少色 PNG 核對真實 RGBA16；JPEG 預覽提示與全尺寸匯出分開。Sigma GainMap 逐列平行化保留相同插值及輸出雜湊。 | [效能／正確性結果](superpowers/plans/2026-10-22-performance-correctness.md#observed-results--2026-10-22)、[Sigma BF](research/sigma-bf-raw-performance.md)。配置量改善不當作全部解碼加速，預覽提示也不宣稱逐位元相同。 |
 | 2026-10-22：Windows Gaussian 逾時 | 保留原大型／透明邊界案例、半徑及 10 秒單次期限，改為有界提交並在 uniform 重用前等待；再由真實 Windows CI 驗證。 | [`4a86715`／CI #110](superpowers/plans/2026-10-22-performance-correctness.md#remote-windows-ci-evidence-after-push)。12 項 Gaussian 與 WARP 發佈 smoke 通過，不延伸為 RTX 或後續版本通過。 |
 | 2026-10-23：pipeline／LightCraft 再驗證 | 固定未修改基線、53 項影像／尺寸不變條件，保留縮圖卡在 4/18 與暗部階梯反例；只採用能重現的上游 decoder 差異。曲線再走保存／重開與原生匯出。 | [再驗證紀錄](superpowers/plans/2026-10-22-performance-correctness.md#pipeline-revalidation-2026-10-23)。v0.13.0 調查不自動更新舊 oracle；非零 Basic Shadows 外觀已變，重播必須固定版本。 |
 | 2026-10-23：ProPhoto 與合併版 | Rec.2020 原色檢查先抓到 sRGB 色域損失；獨立 CMS、精確 gamma ICC、實拍最差像素與六面漸層抓出零附近相消。修正後完整 4672×7008 CPU／Metal 最大差 1/65535，同 renderer TIFF／PNG 及 GUI／CLI Metal 相同。 | [失敗與修正](superpowers/plans/2026-10-23-prophoto-output.md#precision-failures-caught-before-acceptance)、[合併後重跑](superpowers/plans/2026-10-23-prophoto-output.md#post-merge-verification--2026-10-23)。保留 2/65535 判準；Windows／iOS ProPhoto 未實跑，兩筆 Windows 原案仍未解。 |
@@ -174,7 +174,7 @@ printf 'Evidence directory: %s\n' "$work"
 
 **根因**：`BasicDisplay` 的 Gaussian 基底來自全域調整前，但細節增益原本使用亮度／對比／亮部陰影／飽和調整後的 `l`。正負 RGB 通道在亮度計算相消後接近零，`(l + diff) / l` 放大不相干的基底差異。1200×800 代理圖、對比 100 的 `(323,158)` 像素，細節前 RGB 為 `(-0.06444183, 0.011118163, 0.0810551)`，細節後變成 `(0, 16.595797, 120.98886)`；CPU、Metal、無損 PNG 都能重現，不需要經過 JPEG 編碼。這也說明「CPU／GPU 相符」不能排除兩端共有的演算法錯誤。
 
-**修正**：CPU 與 `linear/basic_display.wgsl` 同步把既有細節區塊移到全域顯示調整前，讓像素與基底處於同一階段；不改公式、半徑、量化、ICC、誤差門檻，也不新增 pass 或暫存。契約見[算圖處理順序](architecture.md#46-engine算圖管線rendering)。極端對比／陰影仍可能正常裁黑或過曝，不把「沒有任何純藍像素」當判準。
+**修正**：CPU 與 `linear/basic_display.wgsl` 同步把既有細節區塊移到全域顯示調整前，讓像素與基底處於同一階段；不改公式、半徑、量化、ICC、誤差門檻，也不新增 pass 或暫存。契約見[算圖處理順序](architecture/engine.md#46-engine算圖管線rendering)。極端對比／陰影仍可能正常裁黑或過曝，不把「沒有任何純藍像素」當判準。
 
 | 檢查 | 實際結果 |
 |---|---|

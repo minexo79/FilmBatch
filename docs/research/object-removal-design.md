@@ -7,9 +7,9 @@
 - 原生／外部來源續查：[第 16 節](object-removal-survey.md#16-原生平台與最低可行成本) 以既有裝置的最低實用成本比較三階層；保留共用渲染器與選取／重建分離。平台 app 功能不等於 SDK，8-bit 候選不迫使遮罩外降精度；該節 REST endpoint 仍是來源調查，未新增產品上傳或雲端 fallback。若未來另行採用，接受後可保存本機資產，不必每次匯出重呼叫；本輪不新增產品 provider、LLM 或平台渲染分支。
 - 既有 CLI 實測：[第 17 節](object-removal-survey.md#17-既有-cli-作為外部模型入口) 依後續授權實跑 codex／agy／Cursor／opencode；Codex 另產生一個真實影像候選並驗證 host 保存。這與第 16 節尚未 live 呼叫的 REST endpoint 分開，不把文字能力、單張 RGB8 結果或現有訂閱推定為完整產品品質／散布契約；本輪仍不新增產品 backend。
 - 訓練空間條件續驗：[第 18 節](object-removal-survey.md#18-訓練空間條件續驗與最小可行路線) 在相同 4ch 模型內比較訓練分支 ON/OFF，保留局部重建增益、自然移除失敗與 FP32 offload 成本。48 份完整留存結果不等於全部嘗試數；OOM 後未授權 resume／清 cache 偏差不追認為預註冊通過。未取得 PowerPaint v1 權重，不放寬既有需求或 T1 gate。
-- 情境決策：[第 19 節](object-removal-survey.md#19-情境解法成本效益與決策紀錄) 與[兩案資格驗證計畫](superpowers/plans/2026-10-21-object-removal-scenario-qualification.md) 分開離線、人工、原生與外部候選用途。只有研究 GO-PLAN，未證明最高效益；外部或人工模式不能默改 OR-02 的本機模型要求，新增產品 scope 仍需明確同意。本設計版本與 T1–T5 不變，`RetouchStack` 仍未實作。
-- 決策：[ADR 0005](adr/0005-ai-object-removal.md)；證據與候選：[Survey](object-removal-survey.md)；執行切片與驗收：[實作計畫](superpowers/plans/2026-10-20-ai-object-removal.md)。
-- **另行實作的去背功能（2026-10-21）**：[本機 AI 去背](building.md#本機-ai-去背) 以 Apple Vision 前景遮罩、手動修正與透明 PNG／TIFF 匯出保留主體；`PhotoEntry.ForegroundMask` 已實作。它不生成／修補被移除區域的 RGB，不等於本提案的 `RetouchStack` 或通用物件移除，不改 OR-01–OR-14 與 T1–T5 的門檻。
+- 情境決策：[第 19 節](object-removal-survey.md#19-情境解法成本效益與決策紀錄) 與[兩案資格驗證計畫](../superpowers/plans/2026-10-21-object-removal-scenario-qualification.md) 分開離線、人工、原生與外部候選用途。只有研究 GO-PLAN，未證明最高效益；外部或人工模式不能默改 OR-02 的本機模型要求，新增產品 scope 仍需明確同意。本設計版本與 T1–T5 不變，`RetouchStack` 仍未實作。
+- 決策：[ADR 0005](0005-ai-object-removal.md)；證據與候選：[Survey](object-removal-survey.md)；執行切片與驗收：[實作計畫](../superpowers/plans/2026-10-20-ai-object-removal.md)。
+- **另行實作的去背功能（2026-10-21）**：[本機 AI 去背](../cli.md#本機-ai-去背) 以 Apple Vision 前景遮罩、手動修正與透明 PNG／TIFF 匯出保留主體；`PhotoEntry.ForegroundMask` 已實作。它不生成／修補被移除區域的 RGB，不等於本提案的 `RetouchStack` 或通用物件移除，不改 OR-01–OR-14 與 T1–T5 的門檻。
 
 ## 1. 目的與邊界
 
@@ -26,7 +26,7 @@
 |---|---|---|
 | `FilmBatch.App.Shared/Controls/PreviewCanvas.cs`、`Controls/Tools/ICanvasTool.cs`、`CanvasMapping.cs` | 工具互斥、畫布座標、平移縮放、取消互動 | 完整筆刷 hover／鍵盤／Pencil 壓力、可編輯物件遮罩、修補前後比較 |
 | `FilmBatch.Core/Projects/PhotoEntry.cs`、`Commands/PhotoEditCommand.cs`、`Projects/ProjectService.cs` | 不可變照片快照、命令、undo／redo、存檔成功後發布 | 修補像素資產、修補狀態相等判斷、跨資產與 JSON 的提交契約 |
-| `FilmBatch.Engine/Denoising/`、[ADR 0002](adr/0002-ai-denoise.md) | 已驗證模型安裝、固定雜湊、有界推論、取消後檢查、真實 provider 報告的做法 | 降噪張量／分塊／快取鍵可直接用於 inpainting，或任何候選已在 CoreML／DirectML／iOS 執行 |
+| `FilmBatch.Engine/Denoising/`、[ADR 0002](../adr/0002-ai-denoise.md) | 已驗證模型安裝、固定雜湊、有界推論、取消後檢查、真實 provider 報告的做法 | 降噪張量／分塊／快取鍵可直接用於 inpainting，或任何候選已在 CoreML／DirectML／iOS 執行 |
 | `SourceImage.Scene`、`SemanticMasks` | 原始 RAW、色彩／幾何資訊保持權威 | DNG 語意遮罩可當成使用者修補遮罩；sRGB 像素可逆轉回 RAW |
 | CPU／GPU 效果與 `BatchExporter` | 現有現像、效果、輸出格式及來源保護 | 僅靠 `Settings` 能傳遞逐張照片的生成資產 |
 

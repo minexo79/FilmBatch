@@ -93,7 +93,7 @@ Metal 的乘加重結合與 LUT 座標捨入、原生 `log2` 容許誤差會在�
 
 Windows CI（`windows-latest`；Dawn 在 Windows 預設 D3D12，提供的日誌未記錄實際介面卡）之後仍在同一組青色高光輸入得到 5／65535。WGSL 規格的 `fma` 精度「繼承自 `x * y + z`」，明文允許實作成乘法捨入後再加法；先前用 `fma` 取得的除法餘差與 log2 high／low 補償在未融合實作上會失效。在 Metal 以同一捨入屏障模擬未融合 `fma`，修正前的 shader 重現同一輸入的 CPU 1319／GPU 1324。現在完全不使用 `fma`：精確乘積餘差改用 Veltkamp 分割與 Dekker 乘積，只依賴規格保證正確捨入的 f32 加、減、乘；執行期除法（規格允許 2.5 ULP）再以餘差修正。LUT／色度座標、sRGB 曲線與 16-bit 量化的乘加也各自加上捨入屏障，不交由後端決定是否合併成 mad／fma。原生 Metal、模擬未融合 `fma`，以及每個執行期除法刻意偏移 +2／−2 ULP 四種條件下，四組邊界、色域、黑白／暗部、非平坦場景與十組 1600×1067 HDR 影像的最大 RGB 差均為 1／65535，alpha 完全一致。
 
-後續 Windows trace 將同一紅通道差異的第一個錯誤捨入定位到 CPU `MathF.Log2`，並以高精度計算核對，見[診斷與正式 CI 結果](../building.md#gpu-讀回與-raw-數值回歸)。上段未融合 `fma` 是 Metal 模擬成立的可攜性風險，不是 Windows 當次根因的確診。
+後續 Windows trace 將同一紅通道差異的第一個錯誤捨入定位到 CPU `MathF.Log2`，並以高精度計算核對，見[診斷與正式 CI 結果](../testing.md#gpu-讀回與-raw-數值回歸)。上段未融合 `fma` 是 Metal 模擬成立的可攜性風險，不是 Windows 當次根因的確診。
 
 ## Halide AOT（未來選項）
 
@@ -139,4 +139,4 @@ Apple M3／Metal、Release、`DOTNET_TieredCompilation=0`；1600×1067 線性 RG
 - 實際桌面 DNG 操作曾重現「切換 RAW 選項丟失未套用裁切」。`RawOptionChange_PreservesPendingCropUntilApplyAndUndo` 在修正前失敗、修正後通過；真實 Metal 視窗亦確認 RAW 重載保留編輯框、原圖比較維持旋轉後全幅，離開裁切分頁後才得到 96×256 預覽。
 - RAW＋裁切／旋轉、加 LUT，以及裁切後回到全幅的獨立 CPU／Metal smoke，最大差分別為 0／1／0 個 16-bit 色碼，alpha 完全一致；以 `DOTNET_EnableHWIntrinsic=0` 重跑仍得到相同結果。
 - 完整測試包含 RAW 分帶預算不足時的 CPU 降級；故意損毀 WGSL 並確認編譯錯誤傳播的證據來自合併前 `03761e1`。
-- 當時 Windows CI 重現邊界失敗，該輪只有 Metal 及規格允許的未融合 `fma`／±2 ULP 除法模擬證據。後續另修正 Windows CPU log2 與 D3D12 sRGB shader；`c7f6072` 的 Windows job 43 已完成正式管線及發佈 smoke，見[後續診斷與 CI 記錄](../building.md#gpu-讀回與-raw-數值回歸)。這不延伸為目前所有新功能或硬體 GPU 通過；Windows／Linux 效能未由本表量測，也未把 RAW 解碼、demosaic、外觀擬合說成已 GPU 化。
+- 當時 Windows CI 重現邊界失敗，該輪只有 Metal 及規格允許的未融合 `fma`／±2 ULP 除法模擬證據。後續另修正 Windows CPU log2 與 D3D12 sRGB shader；`c7f6072` 的 Windows job 43 已完成正式管線及發佈 smoke，見[後續診斷與 CI 記錄](../testing.md#gpu-讀回與-raw-數值回歸)。這不延伸為目前所有新功能或硬體 GPU 通過；Windows／Linux 效能未由本表量測，也未把 RAW 解碼、demosaic、外觀擬合說成已 GPU 化。

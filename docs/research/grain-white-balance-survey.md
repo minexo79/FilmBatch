@@ -7,7 +7,7 @@
 - 相關調查：[AI 降噪 Survey](ai-denoise-survey.md) 處理降噪模型選型；本文件處理顆粒、白平衡與曝光錨點，兩者是不同主題。
 ## 目前實作與操作
 
-2026-10-19 實作沿用既有參數、復原與存檔流程；以下調查各節的「現況／提案」保留調查當時的觀察，現行範圍以本節及[實作計畫](superpowers/plans/2026-10-19-grain-neutral-zone.md)為準。
+2026-10-19 實作沿用既有參數、復原與存檔流程；以下調查各節的「現況／提案」保留調查當時的觀察，現行範圍以本節及[實作計畫](../superpowers/plans/2026-10-19-grain-neutral-zone.md)為準。
 
 - **顆粒**：在底片效果面板開啟顆粒，選團塊（`clumps`）、相關場（`correlated`）或光學統計（`optical`）。既有強度、大小、粗糙度、彩色比例與柔焦保留；另可調 seed／重新隨機化、三段明暗響應、光圈柔化、粒徑分布與取樣數。相關場使用徑向平滑的多尺度 Poisson shot noise；光學模型使用有界 Poisson 圓盤覆蓋與光圈取樣，未複製 GPL 參考程式碼。這是 2D 統計外觀，不是完整乳劑化學或實測片種。
 - **座標與預覽**：顆粒綁定原始、已定向的開發影像尺寸；裁切、旋轉、翻轉和讀回分帶不改 seed 或底層位置。代理圖保留參考尺寸，依像素足跡衰減次像素結構；小預覽可能看不到細顆粒，請以 100% 檢查。
@@ -39,8 +39,8 @@
 
 ### 已確認的現況
 
-- 現有實作是晚期輸出顆粒：[CpuPipeline.cs](../src/FilmBatch.Engine/Rendering/CpuPipeline.cs) `Grain` 與 [grain.wgsl](../src/FilmBatch.Gpu/Shaders/v1/surface/grain.wgsl) 做兩層 cell hash、以中間調為中心的亮度權重，再加到 RGB 並截斷到 0–1。不是感光元件噪聲模型，也不是完整底片乳劑模型。
-- 現有 UI 已有強度、大小、粗糙度、彩色顆粒；[ModuleCatalog.cs](../src/FilmBatch.Core/Params/ModuleCatalog.cs) 的 `grain` 模組沒有顯示 seed 控制。照片種子已有確定性來源，見 [SeedHash.cs](../src/FilmBatch.Core/Random/SeedHash.cs) 與 `ModuleParams` 的照片種子合併。
+- 現有實作是晚期輸出顆粒：[CpuPipeline.cs](../../src/FilmBatch.Engine/Rendering/CpuPipeline.cs) `Grain` 與 [grain.wgsl](../../src/FilmBatch.Gpu/Shaders/v1/surface/grain.wgsl) 做兩層 cell hash、以中間調為中心的亮度權重，再加到 RGB 並截斷到 0–1。不是感光元件噪聲模型，也不是完整底片乳劑模型。
+- 現有 UI 已有強度、大小、粗糙度、彩色顆粒；[ModuleCatalog.cs](../../src/FilmBatch.Core/Params/ModuleCatalog.cs) 的 `grain` 模組沒有顯示 seed 控制。照片種子已有確定性來源，見 [SeedHash.cs](../../src/FilmBatch.Core/Random/SeedHash.cs) 與 `ModuleParams` 的照片種子合併。
 - 已實際執行現有 CPU 顆粒：固定參數及 seed 重跑完全相同；以該參數組合輸出均勻亮度區塊時，實際畫面可見格狀結構。此觀察只針對該參數組合，不代表所有照片或候選方案。
 - 純黑／純白附近有截斷造成的均值偏移，不能假設目前噪聲在所有亮度上都嚴格零均值。調查當時另有暫存工作目錄的觀察紀錄，未納入版本庫；本文件只保留上述可重述結論，不依賴那些暫存檔。
 
@@ -66,7 +66,7 @@ IPOL 原文的強度為 `lambda(y) = -ln(1-u(y)) / E[pi*r²]`，輸入 `u` 正�
 
 1. 顆粒是創作輸出，不是 RAW 解碼時加入的感光噪聲。最小路線沿用晚期顆粒階段，不改 CFA／去馬賽克。
 2. grain 座標與尺度應綁定一致的影像／片幅參考，不綁定 UI 視窗、crop 後短邊或 tile 起點；縮小代理圖需考慮像素覆蓋濾波，不能只改 cell 大小。
-3. 固定照片、設定、seed 應重現同一底層紋理；CPU／GPU、分帶匯出及預覽／匯出要分別檢查。現有 `Gpu_MatchesCpu_OnFilmAndGrain` 的 64/65535 容差仍是既有契約，不與 RAW 收尾的 2/65535 混用，見 [EffectPipelineTests.cs](../tests/FilmBatch.Core.Tests/EffectPipelineTests.cs) 與 [RawGpuDisplayTests.cs](../tests/FilmBatch.Core.Tests/RawGpuDisplayTests.cs)。
+3. 固定照片、設定、seed 應重現同一底層紋理；CPU／GPU、分帶匯出及預覽／匯出要分別檢查。現有 `Gpu_MatchesCpu_OnFilmAndGrain` 的 64/65535 容差仍是既有契約，不與 RAW 收尾的 2/65535 混用，見 [EffectPipelineTests.cs](../../tests/FilmBatch.Core.Tests/EffectPipelineTests.cs) 與 [RawGpuDisplayTests.cs](../../tests/FilmBatch.Core.Tests/RawGpuDisplayTests.cs)。
 4. UI 應區分感光元件 ISO 和模擬片種顆粒；兩者沒有可直接通用的換算。
 
 ### 商業參考與授權
@@ -80,9 +80,9 @@ IPOL 原文的強度為 `lambda(y) = -ln(1-u(y)) / E[pi*r²]`，輸入 `u` 正�
 
 ### 最重要的接入限制
 
-[RawSourceLoader.cs](../src/FilmBatch.Engine/Imaging/Raw/RawSourceLoader.cs) 在回傳 `Scene.Image` 前，已套用拍攝白平衡、相機／look 矩陣、可能的 ProfileTables／HueSat、高光重建、縮放、方向修正及可選相機局部階調；原始 `raw.Data` 已釋放。`ApplyColour` 還會處理負值及非有限值。因此不能把此影像當成未處理的感光資料，也不能宣稱一個反矩陣能無損恢復原始光源。
+[RawSourceLoader.cs](../../src/FilmBatch.Engine/Imaging/Raw/RawSourceLoader.cs) 在回傳 `Scene.Image` 前，已套用拍攝白平衡、相機／look 矩陣、可能的 ProfileTables／HueSat、高光重建、縮放、方向修正及可選相機局部階調；原始 `raw.Data` 已釋放。`ApplyColour` 還會處理負值及非有限值。因此不能把此影像當成未處理的感光資料，也不能宣稱一個反矩陣能無損恢復原始光源。
 
-[CameraColor.cs](../src/FilmBatch.Raw/Color/CameraColor.cs) 的 `NeutralWhite` 可作為符合其前提時的候選初值；實際參數應透過現有 [RawWhiteBalance.cs](../src/FilmBatch.Engine/Imaging/Raw/RawWhiteBalance.cs) 的 `MatrixFor(T,tint)` 正向試算、衡量區域的中性殘差。這能追求與目前渲染一致的結果，不保證感測器域或光譜上的真值。若要求感測器域精確 WB，必須另有前處理取樣資料或受控重新開發，不是目前已具備的免費能力。
+[CameraColor.cs](../../src/FilmBatch.Raw/Color/CameraColor.cs) 的 `NeutralWhite` 可作為符合其前提時的候選初值；實際參數應透過現有 [RawWhiteBalance.cs](../../src/FilmBatch.Engine/Imaging/Raw/RawWhiteBalance.cs) 的 `MatrixFor(T,tint)` 正向試算、衡量區域的中性殘差。這能追求與目前渲染一致的結果，不保證感測器域或光譜上的真值。若要求感測器域精確 WB，必須另有前處理取樣資料或受控重新開發，不是目前已具備的免費能力。
 
 | 優先方案 | 操作與優點 | 限制／失敗條件 |
 |---|---|---|
@@ -95,13 +95,13 @@ IPOL 原文的強度為 `lambda(y) = -ln(1-u(y)) / E[pi*r²]`，輸入 `u` 正�
 
 以下保留調查當時的 UI 提案；已交付範圍與操作以[目前實作](#目前實作與操作)為準：
 
-1. 在「RAW 原廠處理」增加中性取樣工具。單擊取小 patch，拖曳擴大取樣範圍；縮放、平移、旋轉、crop／鏡頭校正後仍須映射回同一來源區域。現有 [PreviewCanvas.cs](../src/FilmBatch.App.Shared/Controls/PreviewCanvas.cs) 的 `ActiveTool`／`ICanvasTool` 是可重用入口，但顯示 bitmap 本身不是正確取樣資料。
+1. 在「RAW 原廠處理」增加中性取樣工具。單擊取小 patch，拖曳擴大取樣範圍；縮放、平移、旋轉、crop／鏡頭校正後仍須映射回同一來源區域。現有 [PreviewCanvas.cs](../../src/FilmBatch.App.Shared/Controls/PreviewCanvas.cs) 的 `ActiveTool`／`ICanvasTool` 是可重用入口，但顯示 bitmap 本身不是正確取樣資料。
 2. 顯示有效樣本、區域差異與剪裁／重建警告；沒有原始感光遮罩時，只能報處理後影像的可用性代理，不能稱為精確感測器飽和偵測。
 3. 預覽前後差異，接受時一次切換 `raw.wb_mode=custom` 並套用 Kelvin／Tint，作為一筆可復原操作；取消不留參數變更。
 4. 「自動」顯示候選位置及不確定性，由使用者接受或改選，不把最亮像素直接指定為白。
 5. 膚色工具獨立於全域 WB。可以引用同一人物／同光源參考，或手動局部修正；不以固定 vectorscope 角度、`R>G>B`、人種或固定 Zone 當所有皮膚的標準。
 
-參數邊界已確認為 2500–9900 K、Tint ±150；solver 達邊界或仍有明顯殘差應顯示警告，而非截斷後宣稱已中性。schema 的 50 K 是滑桿步距，不是必須量化到 50 K 的儲存格式，見 [ModuleCatalog.cs](../src/FilmBatch.Core/Params/ModuleCatalog.cs) 與 [ParamDef.cs](../src/FilmBatch.Core/Params/ParamDef.cs) 的 `Step` 定義。相對／擬合的 as-shot 刻度也不能自動當成實測絕對色溫。
+參數邊界已確認為 2500–9900 K、Tint ±150；solver 達邊界或仍有明顯殘差應顯示警告，而非截斷後宣稱已中性。schema 的 50 K 是滑桿步距，不是必須量化到 50 K 的儲存格式，見 [ModuleCatalog.cs](../../src/FilmBatch.Core/Params/ModuleCatalog.cs) 與 [ParamDef.cs](../../src/FilmBatch.Core/Params/ParamDef.cs) 的 `Step` 定義。相對／擬合的 as-shot 刻度也不能自動當成實測絕對色溫。
 
 參考：[Capture One 官方中性區域取樣說明](https://support.captureone.com/hc/en-us/articles/360002596138-Selecting-a-neutral-area-with-the-picker) 要求有細節的白／亮灰，排除 specular 與 clipped 區域。其頁面下方對拖曳平均的內容是使用者留言，不是官方宣告的既有功能；上面的框選操作是 FilmBatch 提案。
 
@@ -129,7 +129,7 @@ IPOL 原文的強度為 `lambda(y) = -ln(1-u(y)) / E[pi*r²]`，輸入 `u` 正�
 
 ## 證據邊界：已觀察、推論與未知
 
-以下是調查階段的證據界線；後續 CPU／Metal、原生控制項、復原與來源安全的實際驗收另記在[實作計畫](superpowers/plans/2026-10-19-grain-neutral-zone.md#state-ledger)，不把模型說明當成跨平台或實體校準證明。
+以下是調查階段的證據界線；後續 CPU／Metal、原生控制項、復原與來源安全的實際驗收另記在[實作計畫](../superpowers/plans/2026-10-19-grain-neutral-zone.md#state-ledger)，不把模型說明當成跨平台或實體校準證明。
 
 - 已觀察：現有顆粒 CPU 實際輸出與確定性；現有 C#／WGSL 與 RAW 生命週期；官方論文模型、參考碼授權與產品公開描述；Zone 與密度算術。
 - 工程推論：候選實作優先順序、面板／框選操作、座標與資料接入方式；不是已完成的 UI。

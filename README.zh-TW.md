@@ -41,7 +41,7 @@ FilmBatch 可為每張照片套上底片色彩與類比效果，再一次批次�
 | **批次處理** | 開啟整個資料夾、一次選多張照片套用同一組設定，也可為每張照片指定不同預設。 |
 | **批次導出** | 匯出 JPEG、16-bit TIFF 或 16-bit PNG，保留 EXIF 並嵌入 sRGB ICC；原始檔永不修改。 |
 
-更多細節（包含支援的 RAW 相機與命令列用法）請見 [docs/building.md](docs/building.md) 與 [docs/film-looks.md](docs/film-looks.md)。
+更多細節（包含支援的 RAW 相機與命令列用法）請見 [docs/cli.md](docs/cli.md)、[docs/building.md](docs/building.md) 與 [docs/film-looks.md](docs/film-looks.md)。
 
 ## 如何建置
 
@@ -95,7 +95,7 @@ macOS（Apple Silicon）請改用 `osx-arm64`。
 
 - [docs/README.md](docs/README.md)：文件地圖（現行文件、歷史決策與尚未落地的提案）
 - [docs/architecture.md](docs/architecture.md)：專案架構與算圖流程
-- [docs/building.md](docs/building.md)：建置、測試、CI、發佈與 CLI 用法
+- [docs/building.md](docs/building.md)：建置與執行；另見 [測試](docs/testing.md)、[發佈](docs/release.md)、[CLI](docs/cli.md)
 - [docs/film-looks.md](docs/film-looks.md)：底片 LUT 來源與授權、新增底片流程
 - [docs/history.md](docs/history.md)：決策與提交歷史
 - [VERIFY.md](VERIFY.md)：驗證入口

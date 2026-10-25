@@ -42,7 +42,7 @@ FilmBatch applies film colors and analog effects to every photo, then exports th
 | **Batch processing** | Open a whole folder, select many photos, and apply the same settings to all of them, with per-photo presets. |
 | **Batch export** | Export JPEG, 16-bit TIFF or 16-bit PNG with EXIF preserved and an embedded sRGB ICC profile. Originals are never modified. |
 
-More details, including the RAW camera list and the command-line interface, are in [docs/building.md](docs/building.md) and [docs/film-looks.md](docs/film-looks.md).
+More details, including the RAW camera list and the command-line interface, are in [docs/cli.md](docs/cli.md), [docs/building.md](docs/building.md) and [docs/film-looks.md](docs/film-looks.md).
 
 ## How to Build
 
@@ -96,7 +96,7 @@ Found a bug or have an idea? Please open an issue.
 
 - [docs/README.md](docs/README.md): documentation map (current docs, history and proposals)
 - [docs/architecture.md](docs/architecture.md): architecture and render pipeline
-- [docs/building.md](docs/building.md): build, test, CI, packaging and CLI usage
+- [docs/building.md](docs/building.md): build and run; see also [testing](docs/testing.md), [release](docs/release.md) and [CLI](docs/cli.md)
 - [docs/film-looks.md](docs/film-looks.md): LUT sources, licenses and how to add a film look
 - [docs/history.md](docs/history.md): decision and commit history
 - [VERIFY.md](VERIFY.md): verification entry point

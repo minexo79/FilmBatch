@@ -1,6 +1,7 @@
 # ADR 0001：C# WebGPU 綁定選型
 
 - 狀態：**已採用**（M0 GPU spike，2026-10-14）
+- 後續：[ADR 0003](0003-gpu-stack-decision.md) 維持本決策（WebGPUSharp＋Dawn），並補上 GPU 堆疊評估、CPU 向量化與後續精度修正；本文只保留 M0 當時的選型與限制，後續狀況以 ADR 0003 為準。
 - 範圍：`src/FilmBatch.Gpu`（引擎只透過此薄封裝存取 WebGPU，日後可替換）
 
 ## 決策
@@ -38,11 +39,11 @@ Apple M3 數值為 2026-10-15 在 macOS 26.6.2 執行發佈版 `dist/osx-arm64/c
 - Dawn 的錯誤回呼是非同步的：`GpuCommandList` 以 error scope 包住每批指令、`ComputeKernel` 以 error scope 包住 shader 編譯，錯誤才能同步回報。
 - `Buffer.MapSync` 在 GPU 工作尚未完成時偶發逾時；讀回前先 `Queue.OnSubmittedWorkSync` 即穩定（M3 改為雙緩衝的非同步讀回時需重新驗證）。
 - 讀取 `rgba32float` 必須使用明確的 bind group layout（`UnfilterableFloat`），不能用 auto layout。
-- Metal／Vulkan 沿用綁定的 GC 釋放；紋理與緩衝區另以 `Destroy()` 銷毀。D3D12 另在明確處置時釋放 wrapper 原有的 safe handle，涵蓋 buffer、texture／view、bind group、shader／pipeline 及裝置；不可在保留 finalizer 時直接 `Release`，以免 double-free。`NativeLifetime` 的私有欄位 bridge 限定 WebGPUSharp `0.5.7`，升級時須重驗；回歸與原生驗證邊界見[建置文件](../building.md#gpu-讀回與-raw-數值回歸)。
+- Metal／Vulkan 沿用綁定的 GC 釋放；紋理與緩衝區另以 `Destroy()` 銷毀。D3D12 另在明確處置時釋放 wrapper 原有的 safe handle，涵蓋 buffer、texture／view、bind group、shader／pipeline 及裝置；不可在保留 finalizer 時直接 `Release`，以免 double-free。`NativeLifetime` 的私有欄位 bridge 限定 WebGPUSharp `0.5.7`，升級時須重驗；回歸與原生驗證邊界見[建置文件](../testing.md#gpu-讀回與-raw-數值回歸)。
 
 ## 未解決：軟體介面卡
 
-> 本節保留 M0 當時的限制與候選，不是目前所有 Dawn 建置的能力宣告。後來的 Windows 診斷與正式 CI 已實際使用 Microsoft Basic Render Driver／D3D12（WARP）；`c7f6072` 的 job 43 完成正式管線及發佈 smoke，見[後續實驗與結果](../building.md#gpu-讀回與-raw-數值回歸)。不能把早期「無法取得 fallback adapter」延伸為後來仍未執行 GPU 測試。
+> 本節保留 M0 當時的限制與候選，不是目前所有 Dawn 建置的能力宣告。後來的 Windows 診斷與正式 CI 已實際使用 Microsoft Basic Render Driver／D3D12（WARP）；`c7f6072` 的 job 43 完成正式管線及發佈 smoke，見[後續實驗與結果](../testing.md#gpu-讀回與-raw-數值回歸)。不能把早期「無法取得 fallback adapter」延伸為後來仍未執行 GPU 測試。
 
 WebGPUSharp 內附的 Dawn 建置**不提供軟體介面卡**（`forceFallbackAdapter` 在 D3D12 / D3D11 / Vulkan 皆回傳 "No supported adapters"；未包含 SwiftShader，也不暴露 WARP）。因此驗收標準「軟體介面卡可正確算出相同結果」目前無法在 Windows 以 GPU 達成。
 

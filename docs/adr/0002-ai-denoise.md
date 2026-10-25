@@ -69,6 +69,6 @@ Auto 在 macOS 嘗試 CoreML MLProgram，在 Windows 嘗試 DirectML；CPU 是�
 
 ## 操作與驗證邊界
 
-一般操作與 CLI 指令見[建置文件](../building.md#本機-ai-降噪)。已實際驗證固定 CPU／CoreML 模型、HDR／alpha、實拍裁切品質、預覽／匯出同源、原生介面、取消／換照片、undo／保存及 Apple Silicon self-contained 執行。完整回歸、原生介面及可執行檔 smoke 結果與證據索引見[驗收紀錄](../superpowers/plans/2026-10-19-ai-denoising.md#observed-acceptance-evidence--2026-10-19)；Windows 只完成交叉封裝，不代表 DirectML 實機通過。
+一般操作與 CLI 指令見[建置文件](../cli.md#本機-ai-降噪)。已實際驗證固定 CPU／CoreML 模型、HDR／alpha、實拍裁切品質、預覽／匯出同源、原生介面、取消／換照片、undo／保存及 Apple Silicon self-contained 執行。完整回歸、原生介面及可執行檔 smoke 結果與證據索引見[驗收紀錄](../superpowers/plans/2026-10-19-ai-denoising.md#observed-acceptance-evidence--2026-10-19)；Windows 只完成交叉封裝，不代表 DirectML 實機通過。
 
 固定小型 ONNX 圖可用於離線、可重現的邊界回歸，不代表真實攝影品質。實際權重與實拍 smoke 的證據留於忽略的 `dist/ai-denoise-evidence/`，不是程式執行的依賴。NIND 配對若經 inverse-sRGB 轉為線性域，必須明說那不是原始感光樣本，也不是獨立留出的 RAW benchmark。Windows 的交叉建置不等於 DirectML 實機驗證；OS 鎖定時的原生畫面與控制項操作不等於已驗證真實 OS 焦點切換。

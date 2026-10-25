@@ -8,21 +8,21 @@
 
 **Tech Stack:** 既有 .NET 10、Avalonia 12、`FilmBatch.App.Shared`、Core／Engine、ONNX Runtime：Apple `1.25.0`、Windows DirectML `1.24.4`。產品不新增 Python、LibTorch、自訂 FFT native runtime 或雲端相依服務。
 
-**Spec:** [操作與資料契約](../../object-removal-design.md) 設計版本 1；[ADR 0005](../../adr/0005-ai-object-removal.md)；[候選與證據](../../object-removal-survey.md)。本計畫採原生可執行的本機路線；高成本生成式方案是另列的比較／採用決策，不是未經批准的雲端 fallback。
+**Spec:** [操作與資料契約](../../research/object-removal-design.md) 設計版本 1；[ADR 0005](../../research/0005-ai-object-removal.md)；[候選與證據](../../research/object-removal-survey.md)。本計畫採原生可執行的本機路線；高成本生成式方案是另列的比較／採用決策，不是未經批准的雲端 fallback。
 
 ## 目前狀態與授權
 
-**通用移除／T1 維持 NO-GO，T2–T5 未開始。** 最近研究文件提交為 `9a4b4d9`；本輪接續使用者的小型模型與 Depth／拆解圖層研究，只更新五份研究文件及忽略目錄 probe，**不 commit／push、不新增產品程式或永久測試、不外送私人照片或呼叫付費 API**。[第 10 節](../../object-removal-survey.md#10-續驗與採用決策)、[第 11 節](../../object-removal-survey.md#11-權重來源與後續研究)、[第 12 節](../../object-removal-survey.md#12-場景微調vae-身分與原生續驗) 保留既有結果；[第 13 節](../../object-removal-survey.md#13-多角色替代方案與實驗) 記錄候選、古典／donor 對照、舊 `dist/` 消失與新 v2 身分；[第 14 節](../../object-removal-survey.md#14-小型模型與-depth-分層實驗) 補齊 16 案例 MI-GAN 對照、拒絕 FP16 儲存衍生檔，並實跑 Depth Small 原生與可見圖層／unknown 覆蓋。Depth band 不當成物件 mask 或 amodal 背景；Qwen 多 RGBA 只作來源／材料界線調查，未執行。研究對照不取代 T1 開發／T5 留出集，不新增產品圖層編輯器，也不列成 T2–T5 完成；不宣稱已消失的舊收據仍可原地重現。
+**通用移除／T1 維持 NO-GO，T2–T5 未開始。** 最近研究文件提交為 `9a4b4d9`；本輪接續使用者的小型模型與 Depth／拆解圖層研究，只更新五份研究文件及忽略目錄 probe，**不 commit／push、不新增產品程式或永久測試、不外送私人照片或呼叫付費 API**。[第 10 節](../../research/object-removal-survey.md#10-續驗與採用決策)、[第 11 節](../../research/object-removal-survey.md#11-權重來源與後續研究)、[第 12 節](../../research/object-removal-survey.md#12-場景微調vae-身分與原生續驗) 保留既有結果；[第 13 節](../../research/object-removal-survey.md#13-多角色替代方案與實驗) 記錄候選、古典／donor 對照、舊 `dist/` 消失與新 v2 身分；[第 14 節](../../research/object-removal-survey.md#14-小型模型與-depth-分層實驗) 補齊 16 案例 MI-GAN 對照、拒絕 FP16 儲存衍生檔，並實跑 Depth Small 原生與可見圖層／unknown 覆蓋。Depth band 不當成物件 mask 或 amodal 背景；Qwen 多 RGBA 只作來源／材料界線調查，未執行。研究對照不取代 T1 開發／T5 留出集，不新增產品圖層編輯器，也不列成 T2–T5 完成；不宣稱已消失的舊收據仍可原地重現。
 
-本次接續的是使用者的**提示詞／LLM 引導 Survey、實際來回對照及平行 Socratic 研究**，結果集中於 [Survey 第 15 節](../../object-removal-survey.md#15-提示詞與-llm-引導實驗)。實際本機文字 LLM 不等於 VLM；同模型空提示基準、no-op critic 與規則組分開。只更新既有五份研究文件及忽略目錄實驗，不新增產品 prompt、改驗收門檻或勾選下列實作任務；不 commit／push、不外送私人照片。
+本次接續的是使用者的**提示詞／LLM 引導 Survey、實際來回對照及平行 Socratic 研究**，結果集中於 [Survey 第 15 節](../../research/object-removal-survey.md#15-提示詞與-llm-引導實驗)。實際本機文字 LLM 不等於 VLM；同模型空提示基準、no-op critic 與規則組分開。只更新既有五份研究文件及忽略目錄實驗，不新增產品 prompt、改驗收門檻或勾選下列實作任務；不 commit／push、不外送私人照片。
 
-最新原生平台／最低成本延伸見 [Survey 第 16 節](../../object-removal-survey.md#16-原生平台與最低可行成本)：以使用者現有系統可負擔的整合、算力與操作為優先，不要求換硬體，也不將公開 API 規格當 runtime 或品質證據。Mac 公開 API 實驗與影像 REST endpoint 的只讀調查已分界；接受候選後本機保存的契約不因來源而改變。這不是新增 cloud provider、第二套平台渲染器或放寬 T1；新影像 endpoint 支出、私人照片上傳與產品功能仍須另行授權；後續已授權 CLI 探針另列於下方。
+最新原生平台／最低成本延伸見 [Survey 第 16 節](../../research/object-removal-survey.md#16-原生平台與最低可行成本)：以使用者現有系統可負擔的整合、算力與操作為優先，不要求換硬體，也不將公開 API 規格當 runtime 或品質證據。Mac 公開 API 實驗與影像 REST endpoint 的只讀調查已分界；接受候選後本機保存的契約不因來源而改變。這不是新增 cloud provider、第二套平台渲染器或放寬 T1；新影像 endpoint 支出、私人照片上傳與產品功能仍須另行授權；後續已授權 CLI 探針另列於下方。
 
-使用者後續指定 `codex agy agent(cursor) opencode` 作外部入口；[第 17 節](../../object-removal-survey.md#17-既有-cli-作為外部模型入口) 記錄現有登入的真實文字呼叫與 Codex 單張公開遮罩圖的真實影像輸出，不使用新的 API Key／直接付費影像 endpoint 或私人照片。OpenCode 超出一次呼叫上限的偏差不隱藏，不補跑共同題；影像／文字／內部 tool trace 與訂閱帳單各自區分。這不勾選後續產品實作任務，不授權全權限 CLI、雲端 fallback 或改動 T1–T5。
+使用者後續指定 `codex agy agent(cursor) opencode` 作外部入口；[第 17 節](../../research/object-removal-survey.md#17-既有-cli-作為外部模型入口) 記錄現有登入的真實文字呼叫與 Codex 單張公開遮罩圖的真實影像輸出，不使用新的 API Key／直接付費影像 endpoint 或私人照片。OpenCode 超出一次呼叫上限的偏差不隱藏，不補跑共同題；影像／文字／內部 tool trace 與訂閱帳單各自區分。這不勾選後續產品實作任務，不授權全權限 CLI、雲端 fallback 或改動 T1–T5。
 
-訓練空間條件續驗見 [第 18 節](../../object-removal-survey.md#18-訓練空間條件續驗與最小可行路線)：48 份完整結果與全部額外失敗工作分開保存；同模型數值增益未解決自然移除，也未證明既有裝置上的低負擔產品路徑。PowerPaint v1 grant blocker、full-resident／offload OOM、harness 失敗及未授權 resume 均不隱藏；只補研究／成本與來源證據，不新增產品任務、模型 runtime 或重跑來美化紀錄。
+訓練空間條件續驗見 [第 18 節](../../research/object-removal-survey.md#18-訓練空間條件續驗與最小可行路線)：48 份完整結果與全部額外失敗工作分開保存；同模型數值增益未解決自然移除，也未證明既有裝置上的低負擔產品路徑。PowerPaint v1 grant blocker、full-resident／offload OOM、harness 失敗及未授權 resume 均不隱藏；只補研究／成本與來源證據，不新增產品任務、模型 runtime 或重跑來美化紀錄。
 
-[Survey 第 19 節](../../object-removal-survey.md#19-情境解法成本效益與決策紀錄) 集中全部既有方向的成本／效益與情境決策；新[兩案資格驗證計畫](2026-10-21-object-removal-scenario-qualification.md) 是獨立研究 GO-PLAN，不是本產品計畫的 T1 通過或 T2 前置 scaffold。新外部 dispatch 需自己的公開輸入／帳戶額度／隔離核准；原本本機 OR-02、40 場景／3 位人類／各平台與保存 gate 不變，未開始下列實作。
+[Survey 第 19 節](../../research/object-removal-survey.md#19-情境解法成本效益與決策紀錄) 集中全部既有方向的成本／效益與情境決策；新[兩案資格驗證計畫](2026-10-21-object-removal-scenario-qualification.md) 是獨立研究 GO-PLAN，不是本產品計畫的 T1 通過或 T2 前置 scaffold。新外部 dispatch 需自己的公開輸入／帳戶額度／隔離核准；原本本機 OR-02、40 場景／3 位人類／各平台與保存 gate 不變，未開始下列實作。
 
 ### Global Constraints
 
@@ -74,7 +74,7 @@ public RemovalProposal Generate(RetouchFrame frame, RemovalMask mask,
 
 **輸入／輸出：** Survey 的候選 pin → 實際取得的 `model-manifest.json`、來源／權重 SHA-256、張量與前後處理契約、平台矩陣及比較結果。這是可重現的實驗交付，不是產品 UI scaffold。
 
-**2026-10-20 前置實驗紀錄：** [Survey 第 9 節](../../object-removal-survey.md#9-本機可行性實驗) 保存原始 6 張圖、20 組主 native（18 pass／2 fail）、12 組記憶體 smoke、8 組選取與 4 組 RGB16 合成；其失敗不追改。本輪[續驗](../../object-removal-survey.md#10-續驗與採用決策) 新增 34 組照片／選取 native strict pass、48 組合成與 3 組完整 Moebius 模型鏈。Moebius 顯式噪聲可重現，但固定噪聲後仍 strict fail；真實照片 pre-paste 有 33 個元素超界，近似貼回也未合格。沒有再嘗試巨型單圖匯出。
+**2026-10-20 前置實驗紀錄：** [Survey 第 9 節](../../research/object-removal-survey.md#9-本機可行性實驗) 保存原始 6 張圖、20 組主 native（18 pass／2 fail）、12 組記憶體 smoke、8 組選取與 4 組 RGB16 合成；其失敗不追改。本輪[續驗](../../research/object-removal-survey.md#10-續驗與採用決策) 新增 34 組照片／選取 native strict pass、48 組合成與 3 組完整 Moebius 模型鏈。Moebius 顯式噪聲可重現，但固定噪聲後仍 strict fail；真實照片 pre-paste 有 33 個元素超界，近似貼回也未合格。沒有再嘗試巨型單圖匯出。
 
 **採用裁決：** MI-GAN 只留快速工程對照，不作通用移除預設；真實照片與大洞出現不相關／新形狀，數值通過不能代替品質。EfficientSAM 只留人工可修正的提案研究；Moebius 已測 `pretrained` 因數值／後處理、整鏈資源與 VAE 來源暫緩；LaMa 權重資格維持 blocked。沒有選出產品模型，不開始 T2–T5。
 

@@ -188,7 +188,7 @@ All four implementation commits were pushed successfully to `origin/dev-ai-denoi
 
 ## Subsequent Sigma and preview branch integration
 
-The supplied Sigma BF DNG removed the earlier missing-input blocker. The [completed BF investigation](../../sigma-bf-raw-performance.md) records the general GainMap row-parallel repair, unchanged sensor/scene/display hashes, measured costs and native PNG16 export. Research commits `e61090f` and `91827cb` were pushed, then the research branch was formally merged into `dev-ai-denoising`.
+The supplied Sigma BF DNG removed the earlier missing-input blocker. The [completed BF investigation](../../research/sigma-bf-raw-performance.md) records the general GainMap row-parallel repair, unchanged sensor/scene/display hashes, measured costs and native PNG16 export. Research commits `e61090f` and `91827cb` were pushed, then the research branch was formally merged into `dev-ai-denoising`.
 
 The user additionally requested merging `origin/dev-preview-enhanced`; the fetched tip is `4996977` (nine incoming commits). Preserve the shared desktop/mobile editor, deferred gesture persistence, AI/mask/denoise behavior, source ownership and the Sigma repair while integrating RAW white balance in Basic, color tracks, skin-region handles, film-effect grouping, plasma light leaks and application-level Lensfun preferences.
 

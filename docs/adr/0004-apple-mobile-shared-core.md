@@ -13,7 +13,7 @@
 
 初始 `dev-ios-app` 起點為 `858648d`；當時 AI 降噪仍在獨立的 `dev-ai-denoising`，診斷階段不自行合併，也不另造產品降噪服務。2026-10-20 使用者明確要求將 `dev-ios-app` 合入 `dev-ai-denoising`、修正並留在本機；共用編輯器因而沿用既有來源階段降噪。macOS／iOS 的 ONNX 套件統一至 `1.25.0`，Windows DirectML 保留 `1.24.4`，選型與原生閉包見 [ADR 0002](0002-ai-denoise.md)。診斷張量成功與分支合併均不代表 iOS 完整降噪品質／效能已驗證。
 
-後續主要功能移植依使用者授權採用 `FilmBatch.Mobile.iOS`＋`FilmBatch.Mobile` 的獨立 Avalonia 編輯器。`FilmBatch.App.Shared` 是桌面與行動版唯一的 ViewModel、控制項、非視窗 View、語系及主題來源；不複製 Core／RAW／Engine 攝影邏輯，不把 Dock／桌面視窗搬到 iOS。Files／PHPicker 選取內容複製至 app 自有專案，匯出先存於自有目錄再提供 Files 副本；影像 I/O 依 iOS RID 選擇 ImageIO，攝影算圖明確使用 CPU。診斷 app 與已通過的六案例仍只證明診斷面向，不能替代[主要編輯器驗收](../building.md#ios-行動版)。
+後續主要功能移植依使用者授權採用 `FilmBatch.Mobile.iOS`＋`FilmBatch.Mobile` 的獨立 Avalonia 編輯器。`FilmBatch.App.Shared` 是桌面與行動版唯一的 ViewModel、控制項、非視窗 View、語系及主題來源；不複製 Core／RAW／Engine 攝影邏輯，不把 Dock／桌面視窗搬到 iOS。Files／PHPicker 選取內容複製至 app 自有專案，匯出先存於自有目錄再提供 Files 副本；影像 I/O 依 iOS RID 選擇 ImageIO，攝影算圖明確使用 CPU。診斷 app 與已通過的六案例仍只證明診斷面向，不能替代[主要編輯器驗收](../release.md#ios-行動版)。
 
 ## 為什麼不直接換 UI
 
@@ -37,7 +37,7 @@
 
 隔離 Avalonia prototype 延伸本決定，但不是正式 UI 定案：重用同一 `ProbeRunner`，不引用桌面產品 App／Dock。兩個 iOS Release app 已在 Xcode 27.1 實驗工具鏈建置成功，UIKit 與 Avalonia 均已於官方 iOS 27.1 Simulator 執行，產生 Core／RAW、RGB16 ImageIO、ONNX 的真實成功報告；GPU 保留缺少 iOS Dawn 的阻擋。後續開啟 Xcode 27 的 Device Hub，排除只有 CoreSimulator 而沒有可見視窗的問題；將背景驅動改成直接啟用 SpringBoard 後，完整六個 UI 案例 6 pass／0 fail／0 skip／0 expected failures，包含兩個 app 的真正背景取消與前景重跑、手動取消／重跑及 Avalonia 真實預覽。Simulator 測試依授權獨立提交 `d3a21b9`；使用者隨後授權推送並接續主要功能移植。[本輪結果](../superpowers/plans/2026-10-19-ios-simulator-prototype.md#已實測結果2026-10-19)保留先前失敗與修正後證據；Simulator UI 成功不推定正式 SDK 相容性、GPU 或實機支援。
 
-主要編輯器隨後完成獨立於診斷 app 的原生驗收：以相同最終 Release 執行檔分別操作 Files／Photos 匯入、共用編輯／復原／預設／裁切與重開、四格式匯出、Files 輸出副本及實際大圖取消，並獨立解碼輸出、核對來源與副本雜湊。Mac 共用行動 View 及桌面回歸另行執行，不用來替代 iOS 證據。修復 iOS 不支援的 CPU clock／檔案監看、背景入場、可存取的模組標題、低高度面板及 ImageIO 的 ICC／EXIF 出口；該次尚未合併 AI 分支，也未宣稱 iOS Dawn 支援。[實測結果與已知限制](../building.md#本輪實測2026-10-20)仍保留實機、效能、工具鏈與色彩相容性的未驗證邊界。
+主要編輯器隨後完成獨立於診斷 app 的原生驗收：以相同最終 Release 執行檔分別操作 Files／Photos 匯入、共用編輯／復原／預設／裁切與重開、四格式匯出、Files 輸出副本及實際大圖取消，並獨立解碼輸出、核對來源與副本雜湊。Mac 共用行動 View 及桌面回歸另行執行，不用來替代 iOS 證據。修復 iOS 不支援的 CPU clock／檔案監看、背景入場、可存取的模組標題、低高度面板及 ImageIO 的 ICC／EXIF 出口；該次尚未合併 AI 分支，也未宣稱 iOS Dawn 支援。[實測結果與已知限制](../evidence/ios-2026-10-20.md#本輪實測2026-10-20)仍保留實機、效能、工具鏈與色彩相容性的未驗證邊界。
 
 後續在降噪分支整合此共用編輯器時，保留唯一的 `FilmBatch.App.Shared` 降噪 ViewModel 與既有來源階段推論／匯出管線。macOS／iOS 使用 ONNX Runtime `1.25.0`，Windows 保留既有 DirectML 版本；iOS app 直接參考原生套件，並排除錯誤帶入的 Windows DLL。桌面實際模型與匯出驗證不能擴張為 iOS 完整 AI 工作流程或實機驗收。
 
@@ -64,3 +64,9 @@
 - [ONNX Runtime CoreML EP](https://onnxruntime.ai/docs/execution-providers/CoreML-ExecutionProvider.html)、[Apple Objective-C／Swift 介面](https://onnxruntime.ai/docs/get-started/with-obj-c.html)：模型格式、provider placement 與平台建置都須個別驗證。
 - [Apple ImageIO](https://developer.apple.com/documentation/imageio)、[CIRAWFilter](https://developer.apple.com/documentation/coreimage/cirawfilter)：ImageIO 是輸出／輸入候選；Apple RAW developer 不保證與現有 RAW 輸出相同。
 - [Files 目錄存取](https://developer.apple.com/documentation/uikit/providing-access-to-directories)、[持續背景工作](https://developer.apple.com/documentation/backgroundtasks/performing-long-running-tasks-on-ios-and-ipados)：路徑不是持久授權，背景工作也不是永不終止的桌面程序。
+
+## 整合記錄
+
+自 [history.md](../history.md) 搬入，逐字保留，僅調整相對連結。
+
+2026-10-20 的另一項整合，以 `cea2d58` 的 AI 降噪與 `754ca96` 的 iOS／CI 為兩端：採用 iOS 分支的唯一 `FilmBatch.App.Shared` 編輯器，保留降噪分支的實際模型、非破壞式參數與來源階段匯出；ONNX 套件依目標平台分開選取，避免舊路徑重複實作或把 Windows 原生 DLL 帶入 iOS。既有 webhook admission／continuation 與 `pre-merge` 所需 gate 保持不變；平台證據仍依[建置與驗證邊界](../release.md#ios-行動版)分開記錄。

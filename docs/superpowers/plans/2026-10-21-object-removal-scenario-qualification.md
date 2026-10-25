@@ -8,11 +8,11 @@
 
 **Tech Stack:** 現有已登入的 Codex CLI、已存在的公開 v2 素材、現有隔離 Python／NumPy／Pillow 與手動 PNG16 decoder；不安裝新模型／SDK／runtime。實際 CLI 版本在執行前重新記錄，不把歷史 0.163.0 當永久相容保證。
 
-**Spec:** [Survey 第 19 節](../../object-removal-survey.md#19-情境解法成本效益與決策紀錄)，決策版本 1（2026-10-21）；[操作與資料契約](../../object-removal-design.md) 版本 1及[原產品實作計畫](2026-10-20-ai-object-removal.md)。本計畫不修改 OR-01–OR-14，也不以外部服務滿足 OR-02 的本機模型要求。
+**Spec:** [Survey 第 19 節](../../research/object-removal-survey.md#19-情境解法成本效益與決策紀錄)，決策版本 1（2026-10-21）；[操作與資料契約](../../research/object-removal-design.md) 版本 1及[原產品實作計畫](2026-10-20-ai-object-removal.md)。本計畫不修改 OR-01–OR-14，也不以外部服務滿足 OR-02 的本機模型要求。
 
 ## 狀態與 Definition of Ready
 
-**原 R1 前檢查 BLOCKED／資料中斷紀錄保留；R2 已依使用者續跑授權完成兩次真實 CLI 影像及四個同案本機對照，兩案自動使用篩選仍 NO-GO。通用產品 T1 仍 NO-GO，T2–T5 未開始。** 詳見 [Survey 第 21 節](../../object-removal-survey.md#21-中斷後實際續跑與同案低成本對照)。R2 另凍結新 opaque canonical，不冒稱恢復舊 RGBA16 alpha、三位人類驗收或最高效益；原 Q／OR 門檻不變。
+**原 R1 前檢查 BLOCKED／資料中斷紀錄保留；R2 已依使用者續跑授權完成兩次真實 CLI 影像及四個同案本機對照，兩案自動使用篩選仍 NO-GO。通用產品 T1 仍 NO-GO，T2–T5 未開始。** 詳見 [Survey 第 21 節](../../research/object-removal-survey.md#21-中斷後實際續跑與同案低成本對照)。R2 另凍結新 opaque canonical，不冒稱恢復舊 RGBA16 alpha、三位人類驗收或最高效益；原 Q／OR 門檻不變。
 
 可立即做來源／資料的離線查核；新外部請求前必須同時具備：
 
@@ -108,13 +108,13 @@ Review focus：mask 內殘留陰影／新物件、provider resize 導致保護�
 
 ## 其他情境與重開方式
 
-離線／普通硬體沒有合格通用模型、Windows runtime 未跑、原生精度反例、未閉合權重 grant、Depth 硬 gate、完整 amodal／高頻量產等，均依 [Survey 第 19 節](../../object-removal-survey.md#19-情境解法成本效益與決策紀錄) 各自記錄 No-Go／缺證據，不建立空殼 implementation task。出現具名新 artifact、可存取的 eligible 裝置、允許的 endpoint／費用上限或獨立人力效益證據，才開對應小輪；不擴充此兩請求計畫。
+離線／普通硬體沒有合格通用模型、Windows runtime 未跑、原生精度反例、未閉合權重 grant、Depth 硬 gate、完整 amodal／高頻量產等，均依 [Survey 第 19 節](../../research/object-removal-survey.md#19-情境解法成本效益與決策紀錄) 各自記錄 No-Go／缺證據，不建立空殼 implementation task。出現具名新 artifact、可存取的 eligible 裝置、允許的 endpoint／費用上限或獨立人力效益證據，才開對應小輪；不擴充此兩請求計畫。
 
 **Next action:** 兩次真實 dispatch 已完成且預算用完，不重抽。先由人類確認 mask 覆蓋、細線／輪框接合及真實操作總成本；任何新影像請求都須另訂明確假說與範圍。中央玩具圖只保留為人工覆核候選；自行車案硬失敗，不能用像素保存通過替代品質。原 T1 及 Q-04／Q-05、OR gate 不因本輪技術結果解除。
 
 ## 2026-10-21 執行紀錄與後續選擇
 
-使用者要求 commit、盤點可清除資料，再只做相當可行的實驗。先以 `7b3c200` 提交既有六份研究文件；未 push。完整空間／依賴／清理裁定見 [Survey 第 20 節](../../object-removal-survey.md#20-清理盤點與下一輪前檢查)。本輪沒有刪除既有 `/tmp`／`dist` 研究資料，也沒有為預計不再使用的模型再下載材料。
+使用者要求 commit、盤點可清除資料，再只做相當可行的實驗。先以 `7b3c200` 提交既有六份研究文件；未 push。完整空間／依賴／清理裁定見 [Survey 第 20 節](../../research/object-removal-survey.md#20-清理盤點與下一輪前檢查)。本輪沒有刪除既有 `/tmp`／`dist` 研究資料，也沒有為預計不再使用的模型再下載材料。
 
 | 本輪檢查 | 已觀察結果 | 不能宣稱的事 |
 |---|---|---|
