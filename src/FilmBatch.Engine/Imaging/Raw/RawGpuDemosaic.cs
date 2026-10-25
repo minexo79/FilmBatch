@@ -1,8 +1,11 @@
+using System.Numerics;
 using System.Runtime.InteropServices;
 using FilmBatch.Gpu.Device;
 using FilmBatch.Gpu.Resources;
 using FilmBatch.Gpu.ShaderSystem;
 using FilmBatch.Raw;
+using FilmBatch.Raw.Color;
+using FilmBatch.Raw.Raster;
 using FilmBatch.Raw.Develop;
 
 namespace FilmBatch.Engine.Imaging.Raw;
@@ -20,6 +23,7 @@ internal static class RawGpuDemosaic
     private static readonly object Gate = new();
     private static Runner? s_runner;
     private static bool s_disabled = Environment.GetEnvironmentVariable("FILMBATCH_NO_GPU_DEMOSAIC") == "1";
+    private static bool s_colourDisabled = s_disabled;
 
     internal static void Install() => Demosaic.AhdGpu ??= TryRun;
 
@@ -46,13 +50,47 @@ internal static class RawGpuDemosaic
         }
     }
 
+    /// <summary>RAW 場景顯影的色彩收尾放到 GPU（就地改寫 <paramref name="image"/>）；條件不符或失敗時回傳 false，由 CPU 實作接手。</summary>
+    internal static bool TryApplyColour(RgbImage image, float[] wb, float[] matrix, float gain, ProfileTables? tables, HueSat? hueSat)
+    {
+        if (s_colourDisabled || (long)image.Width * image.Height < MinPixels) return false;
+        lock (Gate)
+        {
+            if (s_colourDisabled) return false;
+            try
+            {
+                s_runner ??= Runner.Create();
+                if (s_runner is null) { s_colourDisabled = true; return false; }
+                s_runner.ApplyColour(image, wb, matrix, gain, tables, hueSat);
+                return true;
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                s_colourDisabled = true;
+                GpuDevice.Log?.Invoke($"GPU 色彩收尾停用，改用 CPU：{ex.Message}");
+                return false;
+            }
+        }
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     private readonly record struct Params(int Bw, int Bh, int W, int Rows);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private readonly record struct Int4(int X, int Y, int Z, int W);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private readonly record struct TableInfo(Int4 Div, Int4 Info);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private readonly record struct ColourParams(Vector4 Wb, Vector4 M0, Vector4 M1, Vector4 M2,
+        Vector4 To0, Vector4 To1, Vector4 To2, Vector4 From0, Vector4 From1, Vector4 From2,
+        Int4 Info, TableInfo T0, TableInfo T1, TableInfo T2);
 
     private sealed class Runner : IDisposable
     {
         private readonly GpuDevice _gpu;
-        private readonly ComputeKernel _green, _complete, _homogeneity, _select;
+        private readonly ComputeKernel _green, _complete, _homogeneity, _select, _colour;
 
         private Runner(GpuDevice gpu)
         {
@@ -63,6 +101,7 @@ internal static class RawGpuDemosaic
             _complete = gpu.CreateKernel(shaders.Load("raw/ahd_complete.wgsl"), "main", [ro, ro, ro, rw, rw, u], "ahd complete");
             _homogeneity = gpu.CreateKernel(shaders.Load("raw/ahd_homogeneity.wgsl"), "main", [ro, ro, rw, rw, u], "ahd homogeneity");
             _select = gpu.CreateKernel(shaders.Load("raw/ahd_select.wgsl"), "main", [ro, ro, ro, ro, rw, u], "ahd select");
+            _colour = gpu.CreateKernel(shaders.Load("raw/apply_colour.wgsl"), "main", [rw, ro, u], "raw apply colour");
         }
 
         internal static Runner? Create()
@@ -71,6 +110,53 @@ internal static class RawGpuDemosaic
             if (gpu.AdapterInfo.IsSoftware) { gpu.Dispose(); return null; }
             try { return new Runner(gpu); }
             catch { gpu.Dispose(); throw; }
+        }
+
+
+        private static Vector4 Row(float[] m, int r) => new(m[r * 3], m[r * 3 + 1], m[r * 3 + 2], 0);
+
+        internal void ApplyColour(RgbImage image, float[] wb, float[] matrix, float gain, ProfileTables? tables, HueSat? hueSat)
+        {
+            var packed = new List<float>();
+            TableInfo Pack(HsvTable? t)
+            {
+                if (t is null) return default;
+                var offset = packed.Count;
+                packed.AddRange(t.Data);
+                return new TableInfo(new Int4(t.HueDivisions, t.SatDivisions, t.ValDivisions, t.SrgbValue ? 1 : 0), new Int4(offset, 0, 0, 0));
+            }
+            var t0 = Pack(tables?.HueSatTable);
+            var t1 = Pack(tables?.LookTable);
+            var t2 = Pack(hueSat?.Table);
+            if (packed.Count == 0) packed.Add(0f);
+            var flags = (tables is not null ? 1 : 0) | (tables?.HueSatTable is not null ? 2 : 0)
+                | (tables?.LookTable is not null ? 4 : 0) | (hueSat is not null ? 8 : 0);
+            var to = tables?.ToProPhoto ?? hueSat?.To ?? new float[9];
+            var from = tables?.FromProPhoto ?? hueSat?.From ?? new float[9];
+            var w = image.Width; var h = image.Height;
+            const int rowsPerBand = 512;
+            var maxFloats = (long)w * Math.Min(rowsPerBand, h) * 3;
+            using var pixels = _gpu.CreateBuffer((ulong)maxFloats * 4, GpuBufferUsage.Storage | GpuBufferUsage.CopyDst | GpuBufferUsage.CopySrc, "colour pixels");
+            using var readback = _gpu.CreateBuffer((ulong)maxFloats * 4, GpuBufferUsage.MapRead | GpuBufferUsage.CopyDst, "colour readback");
+            using var table = _gpu.CreateBuffer((ulong)packed.Count * 4, GpuBufferUsage.Storage | GpuBufferUsage.CopyDst, "colour tables");
+            using var uniform = _gpu.CreateBuffer((ulong)Marshal.SizeOf<ColourParams>(), GpuBufferUsage.Uniform | GpuBufferUsage.CopyDst, "colour params");
+            _gpu.WriteBuffer<float>(table, System.Runtime.InteropServices.CollectionsMarshal.AsSpan(packed));
+            for (var y0 = 0; y0 < h; y0 += rowsPerBand)
+            {
+                var rows = Math.Min(rowsPerBand, h - y0);
+                var count = w * rows * 3;
+                _gpu.WriteBuffer<float>(pixels, image.Data.AsSpan(y0 * w * 3, count));
+                _gpu.WriteBuffer(uniform, new ColourParams(new Vector4(wb[0], wb[1], wb[2], gain),
+                    Row(matrix, 0), Row(matrix, 1), Row(matrix, 2), Row(to, 0), Row(to, 1), Row(to, 2),
+                    Row(from, 0), Row(from, 1), Row(from, 2), new Int4(w, rows, flags, 0), t0, t1, t2));
+                using (var commands = _gpu.BeginCommands())
+                {
+                    commands.Dispatch2D(_colour, [pixels, table, uniform], (uint)w, (uint)rows);
+                    commands.CopyBuffer(pixels, readback, (ulong)count * 4);
+                    commands.Submit();
+                }
+                _gpu.ReadBuffer(readback, image.Data, y0 * w * 3, count);
+            }
         }
 
         internal float[] Run(float[] data, int w, int h, Cfa cfa)
@@ -123,7 +209,7 @@ internal static class RawGpuDemosaic
 
         public void Dispose()
         {
-            _green.Dispose(); _complete.Dispose(); _homogeneity.Dispose(); _select.Dispose();
+            _green.Dispose(); _complete.Dispose(); _homogeneity.Dispose(); _select.Dispose(); _colour.Dispose();
             _gpu.Dispose();
         }
     }
