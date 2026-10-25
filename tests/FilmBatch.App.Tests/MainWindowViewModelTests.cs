@@ -15,7 +15,6 @@ public class MainWindowViewModelTests
 
         Assert.Equal(4, vm.Filmstrip.Items.Count);
         Assert.Equal(vm.Filmstrip.Items[0].FileName, vm.FocusFile);
-        Assert.NotNull(vm.Preview.Original);
         Assert.True(vm.Inspector.HasPhoto);
         Assert.Contains("CPU", vm.GpuName);
     }

@@ -292,6 +292,7 @@ public sealed class CropToolTests
         // 再進入裁切工具：預覽暫停裁切，顯示全幅
         main.CropTool.BeginCommand.Execute(null);
         TestEnv.PumpUntil(() => !main.Preview.IsBusy && main.Preview.Image!.PixelSize.Width == source.Width);
+        main.Preview.ShowOriginal = true;
         Assert.Equal(source.Width, main.Preview.Original!.PixelSize.Width);
     }
 
@@ -305,6 +306,7 @@ public sealed class CropToolTests
             .With("crop.rect_h", 0.6).With("crop.angle", 4.0).With("crop.quarter", 1.0), "crop");
         TestEnv.PumpUntil(() => !main.Preview.IsBusy && main.Preview.Image!.PixelSize.Width != source.Width);
 
+        main.Preview.IsSplit = true;
         var image = main.Preview.Image!.PixelSize;
         var original = main.Preview.Original!.PixelSize;
         Assert.Equal(image, original);
@@ -346,6 +348,7 @@ public sealed class CropToolTests
         Assert.Equal(working, main.CropTool.Working);
         Assert.False(main.FocusedResolved.Bool("crop.enabled")); // 未套用的拖曳不可因 RAW 重載而寫入照片。
         Assert.Equal(new PixelSize(48, 64), main.Preview.Image!.PixelSize);
+        main.Preview.ShowOriginal = true;
         Assert.Equal(new PixelSize(48, 64), main.Preview.Original!.PixelSize);
         main.Sidebar.Active = SidePanel.Inspector;
         TestEnv.PumpUntil(() => !main.Preview.IsBusy && main.Preview.Image?.PixelSize == new PixelSize(36, 64));

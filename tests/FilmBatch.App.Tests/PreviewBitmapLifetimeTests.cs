@@ -55,6 +55,29 @@ public sealed class PreviewBitmapLifetimeTests
         AssertReleased(original);
     }
 
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Comparison_ReleasesHiddenBitmap_AndReopensWithCurrentSource(bool split)
+    {
+        using var main = TestEnv.CreateViewModel();
+        if (split) main.Preview.IsSplit = true;
+        else main.Preview.ShowOriginal = true;
+        main.Preview.SetOriginal(Source(32, 24));
+        var retired = Assert.IsType<WriteableBitmap>(main.Preview.Original);
+
+        main.Preview.IsSplit = false;
+        main.Preview.ShowOriginal = false;
+        Assert.Null(main.Preview.Original);
+        AssertReleased(retired);
+        main.Preview.SetOriginal(Source(24, 16));
+        Assert.Null(main.Preview.Original);
+
+        if (split) main.Preview.IsSplit = true;
+        else main.Preview.ShowOriginal = true;
+        Assert.Equal(new Avalonia.PixelSize(24, 16), main.Preview.Original!.PixelSize);
+    }
+
     private static void AssertReleased(WriteableBitmap bitmap) =>
         Assert.Throws<ObjectDisposedException>(() => { using var pixels = bitmap.Lock(); });
 

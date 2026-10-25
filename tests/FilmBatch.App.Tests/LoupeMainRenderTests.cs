@@ -76,6 +76,7 @@ public sealed class LoupeMainRenderTests
             image = main.Preview.Image!.PixelSize;
             Assert.InRange(Math.Max(image.Width, image.Height), 1099, 1101);
             // 原圖對比以同一份縮放來源建立，與效果圖長寬比一致
+            main.Preview.IsSplit = true;
             var original = main.Preview.Original!.PixelSize;
             Assert.InRange(Math.Max(original.Width, original.Height), 1150, 1154);
         }

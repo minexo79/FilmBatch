@@ -73,7 +73,13 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
         OnPropertyChanged(nameof(HistogramClipping));
     }
 
-    partial void OnShowOriginalChanged(bool value) => NotifyHistogram();
+    partial void OnShowOriginalChanged(bool value)
+    {
+        UpdateOriginal();
+        NotifyHistogram();
+    }
+
+    partial void OnIsSplitChanged(bool value) => UpdateOriginal();
 
     /// <summary>預覽區浮動工具列（復原、重做、複製、貼上）直接繫結主視窗的命令。</summary>
     public MainWindowViewModel Main => main;
@@ -287,6 +293,13 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
         if (Source is not { } proxy) return;
         var frame = CropGeometry.Compute(proxy.Width, proxy.Height, _compareCrop);
         FrameLongEdge = Math.Max(frame.OutWidth, frame.OutHeight);
+        // 未顯示對比時不建立 bitmap，也不觸發 RAW 的延遲顯示編碼。
+        if (!ShowOriginal && !IsSplit)
+        {
+            Original = null;
+            _originalShown = null;
+            return;
+        }
         var source = _compareSource ?? proxy;
         if (_originalShown is { } shown && ReferenceEquals(shown.Source, source) && shown.Crop == _compareCrop) return;
         _originalShown = (source, _compareCrop);
