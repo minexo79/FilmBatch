@@ -45,6 +45,7 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
 
     private readonly SemaphoreSlim _decodeGate = new(Math.Max(2, Environment.ProcessorCount / 2));
     private readonly SemaphoreSlim _backgroundGate = new(1, 1);
+    private readonly DecodeBudget _budget = new();
     private readonly ConcurrentDictionary<string, (RawLoadOptions Options, Task<SourceImage> Task, CancellationTokenSource Cts)> _thumbs = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<(string Path, int Edge, RawLoadOptions Options), (Task<SourceImage> Task, CancellationTokenSource Cts, PrefetchState? Prefetch)> _previews = new();
     private readonly LinkedList<(string Path, int Edge, RawLoadOptions Options)> _previewOrder = new();
@@ -455,7 +456,7 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
     private Task<SourceImage> DecodePreviewAsync(
         string path, int longEdge, RawLoadOptions rawOptions, long generation,
         CancellationToken folderToken, CancellationTokenSource entryCts) =>
-        DecodeForegroundAsync(() => ImageLoader.Load(path, longEdge, rawOptions), generation, folderToken, entryCts);
+        DecodeForegroundAsync(() => ImageLoader.Load(path, longEdge, rawOptions), DecodeBudget.PreviewBytes, generation, folderToken, entryCts);
 
     private async Task<SourceImage> DecodePreviewBackgroundAsync(
         string path, int longEdge, RawLoadOptions rawOptions, long generation,
@@ -477,6 +478,7 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
                 if (_folderGeneration != generation) throw new OperationCanceledException(ct);
                 state.Started = true;
             }
+            using var lease = await _budget.AcquireBackgroundAsync(DecodeBudget.PreviewBytes, ct).ConfigureAwait(false);
             var result = await Task.Run(() => ImageLoader.Load(path, longEdge, rawOptions), CancellationToken.None).ConfigureAwait(false);
             if (!IsCurrent(generation)) throw new OperationCanceledException(ct);
             return result;
@@ -493,7 +495,7 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
     {
         try
         {
-            return await DecodeForegroundAsync(() => ImageLoader.LoadFull(path, rawOptions), generation, folderToken, entryCts).ConfigureAwait(false);
+            return await DecodeForegroundAsync(() => ImageLoader.LoadFull(path, rawOptions), DecodeBudget.FullBytes, generation, folderToken, entryCts).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -508,7 +510,7 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
     }
 
     private async Task<SourceImage> DecodeForegroundAsync(
-        Func<SourceImage> load, long generation,
+        Func<SourceImage> load, long estimatedBytes, long generation,
         CancellationToken folderToken, CancellationTokenSource entryCts)
     {
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(folderToken, entryCts.Token);
@@ -519,6 +521,7 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
         {
             ct.ThrowIfCancellationRequested();
             if (!IsCurrent(generation)) throw new OperationCanceledException(ct);
+            using var lease = _budget.Acquire(estimatedBytes); // 前景不等，只登記用量讓背景讓路
             var result = await Task.Run(load, ct).ConfigureAwait(false);
             ct.ThrowIfCancellationRequested();
             if (!IsCurrent(generation)) throw new OperationCanceledException(ct);
@@ -547,6 +550,7 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
                 await PaceBackgroundAsync(ct).ConfigureAwait(false);
                 ct.ThrowIfCancellationRequested();
                 if (!IsCurrent(generation)) throw new OperationCanceledException(ct);
+                using var lease = await _budget.AcquireBackgroundAsync(DecodeBudget.ThumbnailBytes, ct).ConfigureAwait(false);
                 var result = await Task.Run(() => ImageLoader.Load(path, ThumbnailLongEdge, rawOptions), ct).ConfigureAwait(false);
                 ct.ThrowIfCancellationRequested();
                 if (!IsCurrent(generation)) throw new OperationCanceledException(ct);
