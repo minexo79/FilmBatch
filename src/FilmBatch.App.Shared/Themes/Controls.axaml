@@ -95,6 +95,9 @@
   <Style Selector="Grid.bottombar Border.metric TextBlock.numeric">
     <Setter Property="Foreground" Value="{DynamicResource FB.TextBrush}" />
   </Style>
+  <Style Selector="Grid.bottombar Border.metric TextBlock.numeric.hot">
+    <Setter Property="Foreground" Value="{DynamicResource FB.ErrorBrush}" />
+  </Style>
   <Style Selector="ProgressBar.pill-bar">
     <Setter Property="Height" Value="4" />
     <Setter Property="MinHeight" Value="4" />

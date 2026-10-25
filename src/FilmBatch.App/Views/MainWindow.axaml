@@ -89,23 +89,23 @@
           <TextBlock Text="{Binding GpuName}" Classes.warning="{Binding IsSoftwareGpu}" TextTrimming="CharacterEllipsis" MaxWidth="260" />
         </StackPanel>
         <!-- 除錯模式：CPU／GPU／RAM／磁碟使用量，每秒更新 -->
-        <Border Name="DebugMetrics" Classes="status-pill metric" IsVisible="{Binding IsDebugMode}">
+        <Border Name="ResourceMetrics" Classes="status-pill metric" IsVisible="{Binding ShowResourceUsage}">
           <StackPanel Orientation="Horizontal" Spacing="12">
             <StackPanel Orientation="Horizontal" Spacing="5">
               <TextBlock Classes="pill-label" Text="CPU" />
-              <TextBlock Classes="numeric" Text="{Binding CpuText}" />
+              <TextBlock Classes="numeric" Classes.hot="{Binding CpuHot}" Text="{Binding CpuText}" />
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="5">
               <TextBlock Classes="pill-label" Text="GPU" />
-              <TextBlock Classes="numeric" Text="{Binding GpuText}" />
+              <TextBlock Classes="numeric" Classes.hot="{Binding GpuHot}" Text="{Binding GpuText}" />
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="5">
               <TextBlock Classes="pill-label" Text="RAM" />
-              <TextBlock Classes="numeric" Text="{Binding RamText}" />
+              <TextBlock Classes="numeric" Classes.hot="{Binding RamHot}" Text="{Binding RamText}" />
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="5">
               <TextBlock Classes="pill-label" Text="DISK" />
-              <TextBlock Classes="numeric" Text="{Binding DiskText}" />
+              <TextBlock Classes="numeric" Classes.hot="{Binding DiskHot}" Text="{Binding DiskText}" />
             </StackPanel>
           </StackPanel>
         </Border>

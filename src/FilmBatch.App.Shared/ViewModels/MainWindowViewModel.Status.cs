@@ -28,9 +28,9 @@ public sealed partial class MainWindowViewModel
     [ObservableProperty]
     private string _renderProgressText = "";
 
-    /// <summary>除錯模式（偏好設定）：底列顯示 CPU／GPU／RAM／磁碟使用量。</summary>
+    /// <summary>顯示使用率（偏好設定，與除錯模式分開）：底列顯示 CPU／GPU／RAM／磁碟使用量。</summary>
     [ObservableProperty]
-    private bool _isDebugMode;
+    private bool _showResourceUsage;
 
     [ObservableProperty]
     private string _cpuText = "—";
@@ -46,6 +46,18 @@ public sealed partial class MainWindowViewModel
     private double _ramPercent;
     [ObservableProperty]
     private string _diskText = "—";
+
+    /// <summary>使用率接近滿載（≥ 85%）：數字改紅色。</summary>
+    internal const double HotPercent = 85;
+    public bool CpuHot => CpuPercent >= HotPercent;
+    public bool GpuHot => GpuPercent >= HotPercent;
+    public bool RamHot => RamPercent >= HotPercent;
+    public bool DiskHot => DiskPercent >= HotPercent;
+
+    partial void OnCpuPercentChanged(double value) => OnPropertyChanged(nameof(CpuHot));
+    partial void OnGpuPercentChanged(double value) => OnPropertyChanged(nameof(GpuHot));
+    partial void OnRamPercentChanged(double value) => OnPropertyChanged(nameof(RamHot));
+    partial void OnDiskPercentChanged(double value) => OnPropertyChanged(nameof(DiskHot));
     [ObservableProperty]
     private double _diskPercent;
 
@@ -84,7 +96,7 @@ public sealed partial class MainWindowViewModel
     private void InitStatusIndicators()
     {
         Preview.PropertyChanged += OnPreviewBusyForProgress;
-        IsDebugMode = Settings.DebugLogging;
+        ShowResourceUsage = Settings.ShowResourceUsage;
     }
 
     private void DisposeStatusIndicators()
@@ -120,7 +132,7 @@ public sealed partial class MainWindowViewModel
         IsRenderProgressVisible = visible;
     }
 
-    partial void OnIsDebugModeChanged(bool value)
+    partial void OnShowResourceUsageChanged(bool value)
     {
         if (value) StartMonitor();
         else StopMonitor();
@@ -157,7 +169,7 @@ public sealed partial class MainWindowViewModel
 
     private void ApplySnapshot(SystemMonitor.Snapshot s)
     {
-        if (_disposed || !IsDebugMode) return;
+        if (_disposed || !ShowResourceUsage) return;
         CpuPercent = s.CpuPercent ?? 0;
         CpuText = s.CpuPercent is { } cpu ? $"{cpu:F1}%" : "—";
         GpuPercent = s.GpuPercent ?? 0;
