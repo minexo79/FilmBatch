@@ -133,14 +133,7 @@ internal sealed class GpuEffectPipeline : IDisposable
         if (!FitsDevice(source, p)) return false;
         // Four work textures (output size) + linear source + banded output/readback; include external assets.
         var (w, h) = OutputSize(source, p);
-        var bytes = WorkspaceBytes(w, h) + CachedSource.BytesFor(source.Width, source.Height);
-        if (p?.RawMaskOn == true) bytes += (ulong)source.Width * (ulong)source.Height * 4;
-        if (source.ForegroundMask is { } mask)
-            bytes += (ulong)source.Width * (ulong)source.Height * 16 + (ulong)mask.Width * (ulong)mask.Height * 4;
-        if (p?.DoubleAsset is { } doubleAsset) bytes += AssetBytes(doubleAsset);
-        if (p?.LeakAsset is { } leakAsset) bytes += AssetBytes(leakAsset);
-        if (p?.DirtAsset is { } dirtAsset) bytes += AssetBytes(dirtAsset);
-        return bytes <= _budget;
+        return WorkspaceBytes(w, h) + ResidentBytes(source, p) <= _budget;
     }
 
     /// <summary>只檢查裝置硬性上限（紋理尺寸）；匯出用，記憶體是否足夠改由實際配置結果判定。</summary>
@@ -164,6 +157,74 @@ internal sealed class GpuEffectPipeline : IDisposable
 
     private ulong WorkspaceBytes(uint width, uint height) =>
         (ulong)width * height * 64 + 2 * (ulong)BandRows(width, height) * width * 8;
+
+    /// <summary>
+    /// 來源常駐位元組（整張線性來源＋RAW 語意遮罩＋去背暫存＋外部素材）：分塊只縮小工作區，
+    ///    來源一律整張保留，不因分塊而裁切或重算。
+    /// </summary>
+    private static ulong ResidentBytes(SourceImage source, ModuleParams? p)
+    {
+        var bytes = CachedSource.BytesFor(source.Width, source.Height);
+        if (p?.RawMaskOn == true) bytes += (ulong)source.Width * (ulong)source.Height * 4;
+        if (source.ForegroundMask is { } mask)
+            bytes += (ulong)source.Width * (ulong)source.Height * 16 + (ulong)mask.Width * (ulong)mask.Height * 4;
+        if (p?.DoubleAsset is { } doubleAsset) bytes += AssetBytes(doubleAsset);
+        if (p?.LeakAsset is { } leakAsset) bytes += AssetBytes(leakAsset);
+        if (p?.DirtAsset is { } dirtAsset) bytes += AssetBytes(dirtAsset);
+        return bytes;
+    }
+
+    /// <summary>
+    /// 單一區域超過預算時沿長邊對半切分；呼叫端提供最多四塊的暫存。
+    /// 每塊各自 Expand，工作區加整張來源與素材皆須符合預算及裝置上限。
+    /// 回傳可用塊數；無法容納（包含 nonlocal 效果的完整取樣範圍）時回傳 0。
+    /// </summary>
+    internal int PlanTiles(SourceImage source, ModuleParams frame, RenderView view,
+        Span<(RenderView Tile, RenderView Region)> plan)
+    {
+        var limit = _gpu.AdapterInfo.MaxTextureDimension2D;
+        bool Fits(SourceImage image) => (uint)image.Width <= limit && (uint)image.Height <= limit;
+        if (!Fits(source)) return 0;
+        if (source.ForegroundMask is { } mask && ((uint)mask.Width > limit || (uint)mask.Height > limit)) return 0;
+        if (frame.DoubleAsset is not null && !Fits(frame.DoubleAsset.Image)) return 0;
+        if (frame.LeakAsset is not null && !Fits(frame.LeakAsset.Image)) return 0;
+        if (frame.DirtAsset is not null && !Fits(frame.DirtAsset.Image)) return 0;
+        var resident = ResidentBytes(source, frame);
+        if (resident >= _budget) return 0;
+        plan[0] = (view, default);
+        for (var count = 1; count * 2 <= plan.Length; count *= 2)
+        {
+            for (var i = count - 1; i >= 0; i--)
+            {
+                var tile = plan[i].Tile;
+                if (tile.W >= tile.H)
+                {
+                    if (tile.W <= 1) return 0;
+                    var w0 = tile.W / 2;
+                    plan[i * 2] = (tile with { W = w0 }, default);
+                    plan[i * 2 + 1] = (tile with { X = tile.X + w0, W = tile.W - w0 }, default);
+                }
+                else
+                {
+                    if (tile.H <= 1) return 0;
+                    var h0 = tile.H / 2;
+                    plan[i * 2] = (tile with { H = h0 }, default);
+                    plan[i * 2 + 1] = (tile with { Y = tile.Y + h0, H = tile.H - h0 }, default);
+                }
+            }
+            var fits = true;
+            for (var i = 0; i < count * 2; i++)
+            {
+                var region = WindowRegion.Expand(frame, plan[i].Tile);
+                plan[i].Region = region;
+                if ((uint)region.W > limit || (uint)region.H > limit ||
+                    resident + WorkspaceBytes((uint)region.W, (uint)region.H) > _budget)
+                    fits = false;
+            }
+            if (fits) return count * 2;
+        }
+        return 0;
+    }
 
     /// <summary>
     /// 匯出在同一個 OutOfMemory scope 中配置並算圖，包含效果 LUT、Gaussian 與 uniform。
@@ -218,6 +279,35 @@ internal sealed class GpuEffectPipeline : IDisposable
         var current = Process(commands, input, second, leak, dirt, mask, source, p, token);
         Finish(commands, current, destination, token);
         TrimSources();
+    }
+
+    /// <summary>
+    /// 分塊窗口渲染：<paramref name="plan"/> 來自 <see cref="PlanTiles"/>，每塊各自 Expand 求區域後以全域畫框座標算圖，
+    /// 再把 tile 精確拼回 <paramref name="view"/>（無接縫：每塊的輸出只取自己的 tile 範圍，halo 只用於輸入鄰域）。
+    /// 工作區逐塊重用，來源紋理整張保留；任一塊取消即丟出。
+    /// </summary>
+    public void RenderTiled(SourceImage source, ModuleParams frame, RenderView view,
+        ReadOnlySpan<(RenderView Tile, RenderView Region)> plan, byte[] destination, CancellationToken token)
+    {
+        if (destination.Length != checked(view.W * view.H * 4))
+            throw new ArgumentException("Destination must be view.W × view.H × 4 bytes.", nameof(destination));
+        var originalView = frame.View;
+        byte[]? pixels = null;
+        try
+        {
+            foreach (var (tile, region) in plan)
+            {
+                token.ThrowIfCancellationRequested();
+                frame.View = region;
+                var length = checked(region.W * region.H * 4);
+                if (pixels?.Length != length) pixels = new byte[length];
+                Render(source, frame, pixels, token);
+                for (var y = 0; y < tile.H; y++)
+                    Array.Copy(pixels, ((tile.Y - region.Y + y) * region.W + tile.X - region.X) * 4,
+                        destination, ((tile.Y - view.Y + y) * view.W + tile.X - view.X) * 4, tile.W * 4);
+            }
+        }
+        finally { frame.View = originalView; }
     }
 
     public void RenderSpike(SourceImage source, SpikeParams p, byte[] destination)
@@ -719,8 +809,8 @@ internal sealed class GpuEffectPipeline : IDisposable
     public void Dispose()
     {
         _rawDisplay.Dispose();
-        _maskTexture?.Dispose();
-        foreach (var source in _sources) source.Dispose();
+        _maskTexture?.Dispose(); _maskAlpha = null;
+        ClearSources();
         foreach (var texture in _work) texture?.Dispose();
         foreach (var buffer in _uniforms) buffer.Dispose();
         foreach (var buffer in _gaussians.Values) buffer.Dispose();
