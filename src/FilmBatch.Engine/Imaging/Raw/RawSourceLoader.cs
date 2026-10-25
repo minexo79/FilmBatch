@@ -267,7 +267,7 @@ internal static partial class RawSourceLoader
     {
         var m = matrix.ToF32();
         var data = image.Data;
-        Parallel.For(0, image.Height, y =>
+        Parallel.For(0, image.Height, RawParallel.Options, y =>
         {
             var end = (y + 1) * image.Width * 3;
             for (var i = y * image.Width * 3; i < end; i += 3)
