@@ -213,6 +213,11 @@ public sealed class ProfileTables
     private readonly float[] _toProPhoto;
     private readonly float[] _fromProPhoto;
 
+    internal HsvTable? HueSatTable => _hueSat;
+    internal HsvTable? LookTable => _look;
+    internal float[] ToProPhoto => _toProPhoto;
+    internal float[] FromProPhoto => _fromProPhoto;
+
     private ProfileTables(HsvTable? hueSat, HsvTable? look, float[] toProPhoto, float[] fromProPhoto)
     {
         _hueSat = hueSat;

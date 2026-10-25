@@ -140,23 +140,29 @@ public sealed class RawEmbeddedThumbnailTests
     }
 
     [Fact]
-    public void PreviewSizeAndSemanticMasksBypassEmbeddedThumbnail()
+    public void PreviewSizeBypassesEmbeddedThumbnail()
     {
         var jpeg = SolidJpeg(240, 180, 220, 40, 90);
         var path = WriteTemp(PreviewDng(64, jpeg, 240, 180), ".dng");
         try
         {
-            foreach (var (edge, options) in new (int Edge, RawLoadOptions Options)[]
-            {
-                (ImageLoader.PreviewLongEdge, default),
-                (ImageLoader.ThumbnailLongEdge, new RawLoadOptions(IncludeSemanticMasks: true)),
-            })
-            {
-                SourceImage? source = null;
-                var ex = Record.Exception(() => source = ImageLoader.Load(path, edge, options));
-                if (ex is not null) { Assert.IsType<RawException>(ex); continue; }
-                Assert.True(source!.IsSceneLinear);
-            }
+            SourceImage? source = null;
+            var ex = Record.Exception(() => source = ImageLoader.Load(path, ImageLoader.PreviewLongEdge));
+            if (ex is not null) { Assert.IsType<RawException>(ex); return; }
+            Assert.True(source!.IsSceneLinear);
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
+    public void ThumbnailUsesEmbeddedPreviewRegardlessOfSemanticMasks()
+    {
+        var jpeg = SolidJpeg(240, 180, 220, 40, 90);
+        var path = WriteTemp(PreviewDng(64, jpeg, 240, 180), ".dng");
+        try
+        {
+            var source = ImageLoader.Load(path, ImageLoader.ThumbnailLongEdge, new RawLoadOptions(IncludeSemanticMasks: true));
+            Assert.False(source.IsSceneLinear);
         }
         finally { File.Delete(path); }
     }

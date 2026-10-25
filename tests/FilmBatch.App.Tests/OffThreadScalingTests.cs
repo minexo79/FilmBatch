@@ -185,8 +185,8 @@ public sealed class OffThreadScalingTests
             }
             TestEnv.PumpUntil(() => main.Preview.WindowVisible && !main.Renderer.IsBusy, 30000);
             var region = main.Preview.WindowRegion!;
-            Assert.Equal((1800, 1200), (region.FrameW, region.FrameH));
-            Assert.Same(full.ScaledTo(1800), renderer.Windows[^1].Source);
+            Assert.Equal((2048, 1365), (region.FrameW, region.FrameH)); // 畫框長邊吸附到 LoupePlan.FrameStep 的倍數
+            Assert.Same(full.ScaledTo(2048), renderer.Windows[^1].Source);
             // 窗口涵蓋目前（平移後）的可見範圍，不需要再平移一次
             var (u0, v0, u1, v1) = main.Preview.VisibleFrame!.Value;
             var w = region.Window;

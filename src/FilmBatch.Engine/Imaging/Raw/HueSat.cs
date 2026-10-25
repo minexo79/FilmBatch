@@ -17,6 +17,10 @@ internal sealed class HueSat
     private readonly float[] _to;
     private readonly float[] _from;
 
+    internal HsvTable Table => _table;
+    internal float[] To => _to;
+    internal float[] From => _from;
+
     private HueSat(HsvTable table, float[] to, float[] from)
     {
         _table = table;

@@ -162,6 +162,30 @@ dotnet test tests/FilmBatch.App.Tests/FilmBatch.App.Tests.csproj -c Release \
 涵蓋 RAW／一般影像切換、隱藏未啟用模組、保留已保存的 RAW 設定、預設展開基本調整、來源選項切換後縮圖自動更新，以及 Kelvin／遮罩設定的復原、儲存、重開、過期解碼失敗與修復後快取重新解碼。永久測試使用隔離的 DNG／一般影像與實際 CPU 管線，不依賴外部相機語料。自訂 Kelvin 範圍為 2500–9900 K；舊 JSON／YAML 值正規化，但拍攝白平衡中繼資料保持原樣。
 
 Mac 桌面另以含 gain-table 的 ProRAW 及含畸變／暗角資料的 RAF 驗證：在底片分頁復原／重做 RAW 選項，即使重解碼時間超過縮圖防抖間隔，底片與色相縮圖仍自動跟上新來源，結果須等於同來源重新要求算圖的結果；切到 PNG 不顯示 RAW 控制項，再切回 RAW 恢復顯示且設定不變。驗證前後核對原始 RAW 的 SHA-256。
+以上原生 RAW 選項量測記錄的是當時的來源契約；目前長邊 ≤240 的 RAW 縮圖先用內嵌預覽，不因 `IncludeSemanticMasks` 改走完整顯影。取不到內嵌預覽才退回場景線性 RAW；選取後的大圖與匯出不使用內嵌縮圖。
+
+### RAW GPU 與載入隔離回歸
+
+```bash
+dotnet test tests/FilmBatch.Raw.Tests/FilmBatch.Raw.Tests.csproj -c Release \
+  --filter "FullyQualifiedName~GpuAhdTests|FullyQualifiedName~GpuColourTests|FullyQualifiedName~RawGpuPolicyTests|FullyQualifiedName~RawEmbeddedThumbnailTests"
+dotnet test tests/FilmBatch.App.Tests/FilmBatch.App.Tests.csproj -c Release \
+  --filter "FullyQualifiedName~CacheAdmissionTests|FullyQualifiedName~DecodeBudgetTests|FullyQualifiedName~OffThreadScalingTests|FullyQualifiedName~PreviewCanvasWindowTests"
+```
+
+GPU 像素測試先檢查硬體；沒有硬體或裝置限制使案例無法執行，明確記為 skipped，不以 `return` 冒充通過。預檢成功後的 shader／讀回失敗必須使測試失敗。AHD、色彩與政策案例共用不平行的集合，執行內容內的 hook 在離開範圍時還原，不改全域測試狀態。
+
+數值門檻沿用既有值，沒有因合併放寬；它們是容差檢查，不是跨 GPU 廠牌逐位元一致的 oracle：
+
+| 案例 | 每個樣本的差異判定 | 可超標樣本 |
+|---|---|---|
+| AHD | `abs(cpu - gpu) > 1e-4 × max(1e-3, abs(cpu))` | 少於 0.1% |
+| 色彩收尾 | `abs(cpu - gpu) > 1e-3 × max(1e-2, abs(cpu))` | 少於 0.1% |
+
+`FILMBATCH_NO_GPU_DEMOSAIC=1` 須在啟動前設定，會同時停用兩個 RAW GPU 階段；它不會停用效果算圖器。App 的 RAW GPU 政策遵守 `ForceSoftwareGpu`、指定後端及 `GpuMemoryLimitMb`，且 iOS 不啟用。直接 `ImageLoader.LoadFull`、CLI 與 `BatchExporter` 的 RAW 解碼固定走 CPU；驗證 V4 時仍須分別確認效果算圖真的使用硬體／CPU，不能只看啟動成功。
+
+原生 smoke 另檢查載入途中切換照片、100%／177%／300% 縮放與平移、取消背景後換資料夾，以及軟體模式切換後恢復 Metal。每個縮放步驟須等新畫框級距的窗口送達，不能把上一級仍可見的窗口當成完成。CPU／GPU 匯出比較使用相同 CPU RAW 來源；另以啟用中的預覽範圍呼叫 `BatchExporter`，檢查送入效果算圖的浮點場景 hash 仍與未啟用 GPU 的直接載入一致。
+
 
 ### 顆粒、白平衡／膚色與 Zone
 

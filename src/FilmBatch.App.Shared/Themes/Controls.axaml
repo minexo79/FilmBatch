@@ -72,6 +72,40 @@
     <Setter Property="VerticalAlignment" Value="Center" />
     <Setter Property="Foreground" Value="{DynamicResource FB.SecondaryTextBrush}" />
   </Style>
+  <!-- 底列膠囊：算圖進度與除錯資源指標共用的圓角底板與細進度條 -->
+  <Style Selector="Border.status-pill">
+    <Setter Property="Background" Value="{DynamicResource FB.AlternateBaseBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource FB.BorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="11" />
+    <Setter Property="Padding" Value="9,2" />
+    <Setter Property="Height" Value="22" />
+  </Style>
+  <Style Selector="Border.status-pill.progress">
+    <Setter Property="BorderBrush" Value="{DynamicResource FB.AccentBrush}" />
+  </Style>
+  <Style Selector="Grid.bottombar TextBlock.pill-label">
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="FontSize" Value="10" />
+  </Style>
+  <Style Selector="Border.metric">
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="Padding" Value="10,2" />
+  </Style>
+  <Style Selector="Grid.bottombar Border.metric TextBlock.numeric">
+    <Setter Property="Foreground" Value="{DynamicResource FB.TextBrush}" />
+  </Style>
+  <Style Selector="Grid.bottombar Border.metric TextBlock.numeric.hot">
+    <Setter Property="Foreground" Value="{DynamicResource FB.ErrorBrush}" />
+  </Style>
+  <Style Selector="ProgressBar.pill-bar">
+    <Setter Property="Height" Value="4" />
+    <Setter Property="MinHeight" Value="4" />
+    <Setter Property="CornerRadius" Value="2" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="Background" Value="{DynamicResource FB.SliderTrackBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource FB.AccentBrush}" />
+  </Style>
   <Style Selector="Grid.bottombar TextBlock.warning">
     <Setter Property="Foreground" Value="{DynamicResource FB.WarningTextBrush}" />
   </Style>

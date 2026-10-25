@@ -35,6 +35,9 @@ public static class LoupePlan
     /// <summary>Window 層對齊的網格大小（像素）；在同一格子內平移不觸發重算。</summary>
     public const int Snap = 256;
 
+    /// <summary>Window 層縮放來源的長邊級距（像素）；滾輪連續放大只會落在少數幾級，不必每個倍率各產生一份縮放來源。</summary>
+    public const int FrameStep = 1024;
+
     /// <summary>Window 層 margin 的上限（像素）。</summary>
     public const int MaxMargin = 3072;
 
@@ -94,6 +97,10 @@ public static class LoupePlan
         if (frameEdge <= main * WindowRatio || (fit && previewLimit != 0)) return new(main, null);
         return new(main, frameEdge);
     }
+
+    /// <summary>把 Window 層畫框長邊向上吸附到 <see cref="FrameStep"/> 的倍數（只會更銳利、不會更糊）；呼叫端以原圖長邊判斷是否直接用 Full。</summary>
+    /// <param name="frameEdge">計畫給的畫框長邊。</param>
+    public static int QuantizeFrameEdge(int frameEdge) => (int)Math.Ceiling(Math.Max(frameEdge, 1) / (double)FrameStep) * FrameStep;
 
     /// <summary>
     /// Window 層四周的 margin：<c>ceil(min(frameLong × 0.045, MaxMargin) / Snap) × Snap</c>，最小為 <see cref="Snap"/>。

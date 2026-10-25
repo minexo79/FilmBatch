@@ -111,6 +111,8 @@ R {1:P2}　G {2:P2}　B {3:P2}　亮度 {4:P2}</value></data>
   <data name="Status.NoProject" xml:space="preserve"><value>尚未開啟資料夾</value></data>
   <data name="Status.Selected" xml:space="preserve"><value>已選取 {0} 張</value></data>
   <data name="Status.Background" xml:space="preserve"><value>背景工作：{0}</value></data>
+  <data name="Status.RenderDecoding" xml:space="preserve"><value>解碼中</value></data>
+  <data name="Status.RenderRendering" xml:space="preserve"><value>算圖中</value></data>
   <data name="Status.Idle" xml:space="preserve"><value>就緒</value></data>
   <data name="Status.SoftwareGpu" xml:space="preserve"><value>（軟體介面卡，效能受影響）</value></data>
   <data name="Status.ScanningPhotos" xml:space="preserve"><value>掃描照片資料夾…・{0}</value></data>
@@ -166,6 +168,8 @@ R {1:P2}　G {2:P2}　B {3:P2}　亮度 {4:P2}</value></data>
   <data name="Pref.Language.Desc" xml:space="preserve"><value>介面顯示的語言，切換後立即套用</value></data>
   <data name="Pref.DebugLogging" xml:space="preserve"><value>除錯模式</value></data>
   <data name="Pref.DebugLogging.Desc" xml:space="preserve"><value>記錄檔額外寫入詳細的除錯訊息（載入與算圖耗時等），回報問題時開啟；切換後立即套用</value></data>
+  <data name="Pref.ShowResourceUsage" xml:space="preserve"><value>顯示使用率</value></data>
+  <data name="Pref.ShowResourceUsage.Desc" xml:space="preserve"><value>在左下角顯示 CPU、GPU、記憶體與硬碟使用率，每秒更新</value></data>
   <data name="Pref.LogFolder" xml:space="preserve"><value>記錄檔資料夾</value></data>
   <data name="Pref.LogFolder.Open" xml:space="preserve"><value>開啟資料夾</value></data>
   <data name="Pref.Background" xml:space="preserve"><value>預覽背景</value></data>

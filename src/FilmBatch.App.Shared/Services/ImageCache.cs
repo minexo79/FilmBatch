@@ -4,6 +4,8 @@ using System.ComponentModel;
 using System.Runtime.InteropServices;
 using FilmBatch.App.Services.Loupe;
 using FilmBatch.Engine.Imaging;
+using FilmBatch.Engine.Imaging.Raw;
+using FilmBatch.Gpu.Device;
 using FilmBatch.Engine.Rendering;
 using FilmBatch.Raw;
 
@@ -20,8 +22,8 @@ namespace FilmBatch.App.Services;
 /// <remarks>
 /// <para>CPU 目標（<see cref="SetBackgroundCpuPercent"/>，10–100，預設 70）是合作式軟目標，以
 /// <c>process CPU time / (wall * ProcessorCount)</c> 衡量；Apple 平台使用 Darwin process clock，
-/// 其他平台使用 <see cref="Process.TotalProcessorTime"/>；100 停用額外等待與 RAW 平行度限制。
-/// 背景 RAW 迴圈依目標比例限制平行工作數（至少一個）；前景與匯出不套用此限制。
+/// 其他平台使用 <see cref="Process.TotalProcessorTime"/>；100 停用額外等待與背景 RAW 平行度限制。
+/// 背景 RAW 迴圈可進一步降低 RAW 預設的半核心並行上限；前景與匯出不套用此背景比例。
 /// filmstrip 在點陣圖送達後才取下一張，取樣包含解碼與算圖。等待以最多 2 秒為一段，未償還的 CPU 時間保留到下段重算；
 /// 原生解碼、GC 與前景仍可能短暫超出軟目標。不暫停 UI、不設全域 ThreadPool 上限、不改 RAW 演算法。</para>
 /// <para>資料夾切換（<see cref="BeginFolder"/>）取消兩側的排隊與節流等待，並在開檔前後檢查取消；
@@ -46,6 +48,7 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
 
     private readonly SemaphoreSlim _decodeGate = new(Math.Max(2, Environment.ProcessorCount / 2));
     private readonly SemaphoreSlim _backgroundGate = new(1, 1);
+    private readonly DecodeBudget _budget = new();
     private readonly ConcurrentDictionary<string, (RawLoadOptions Options, Task<SourceImage> Task, CancellationTokenSource Cts)> _thumbs = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<(string Path, int Edge, RawLoadOptions Options), (Task<SourceImage> Task, CancellationTokenSource Cts, PrefetchState? Prefetch)> _previews = new();
     private readonly LinkedList<(string Path, int Edge, RawLoadOptions Options)> _previewOrder = new();
@@ -57,6 +60,7 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
     private CancellationTokenSource _foregroundCts = new();
     private CancellationTokenSource _backgroundCts = new();
     private int _backgroundCpuPercent = DefaultBackgroundCpuPercent;
+    private (bool Enabled, GpuBackend Backend, long MemoryBudgetBytes) _gpuDecode;
     private TaskCompletionSource<object?> _pacingWake = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private long _lastPaceTimestamp = Stopwatch.GetTimestamp();
     private TimeSpan _lastPaceCpu = GetProcessCpuTime();
@@ -333,15 +337,18 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
     /// 釋放持有的全解析度來源（是否閒置由呼叫端判斷，例如沒有窗口且閒置 3 秒）。
     /// 仍在排隊或解碼中的那筆一併取消，其等待者會收到取消；呼叫端已取得的物件仍可繼續使用。
     /// </summary>
-    public void ReleaseFullIfIdle()
+    public bool ReleaseFullIfIdle()
     {
         CancellationTokenSource? cts;
+        bool released;
         lock (_stateLock)
         {
+            released = _full?.Task.IsCompletedSuccessfully == true;
             cts = _full?.Cts;
             _full = null;
         }
         cts?.Cancel();
+        return released;
     }
 
     /// <summary>變更預覽代理圖上限（0 = 自動，以 <see cref="LoupePlan.PreviewLevelEdge"/> 解碼）：丟棄實際尺寸不同的預覽（縮圖不受影響），下次請求以新尺寸解碼。</summary>
@@ -361,6 +368,15 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
                 _previewOrder.Remove(path);
             }
         }
+    }
+
+    /// <summary>擷取後續 App 來源解碼的 GPU 政策；只在同步解碼工作內套用，不影響 CLI 或匯出。</summary>
+    internal void SetGpuDecodeOptions(AppSettings settings)
+    {
+        var backend = Enum.TryParse<GpuBackend>(settings.GpuBackend, out var selected) ? selected : GpuBackend.Auto;
+        lock (_stateLock)
+            _gpuDecode = (!settings.ForceSoftwareGpu && !OperatingSystem.IsIOS(), backend,
+                Math.Max(0L, settings.GpuMemoryLimitMb) * 1024 * 1024);
     }
 
     /// <summary>即時變更背景 CPU 目標（10–100，鉗制；100 不主動節流），喚醒並重算進行中的節流等待；不動影像內容與 GPU。</summary>
@@ -456,7 +472,7 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
     private Task<SourceImage> DecodePreviewAsync(
         string path, int longEdge, RawLoadOptions rawOptions, long generation,
         CancellationToken folderToken, CancellationTokenSource entryCts) =>
-        DecodeForegroundAsync(() => ImageLoader.Load(path, longEdge, rawOptions), generation, folderToken, entryCts);
+        DecodeForegroundAsync(() => LoadSource(path, longEdge, rawOptions), DecodeBudget.PreviewBytes, generation, folderToken, entryCts);
 
     private async Task<SourceImage> DecodePreviewBackgroundAsync(
         string path, int longEdge, RawLoadOptions rawOptions, long generation,
@@ -471,6 +487,7 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
             ct.ThrowIfCancellationRequested();
             if (!IsCurrent(generation)) throw new OperationCanceledException(ct);
             await PaceBackgroundAsync(ct).ConfigureAwait(false);
+            using var lease = await _budget.AcquireBackgroundAsync(DecodeBudget.PreviewBytes, ct).ConfigureAwait(false);
             // 與前景的「尚未開始就取代」判斷在同一把鎖內：標記開始後，前景請求改為共用這次解碼
             lock (_stateLock)
             {
@@ -478,7 +495,7 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
                 if (_folderGeneration != generation) throw new OperationCanceledException(ct);
                 state.Started = true;
             }
-            var result = await Task.Run(() => LoadBackground(path, longEdge, rawOptions), CancellationToken.None).ConfigureAwait(false);
+            var result = await Task.Run(() => LoadSource(path, longEdge, rawOptions, background: true), CancellationToken.None).ConfigureAwait(false);
             if (!IsCurrent(generation)) throw new OperationCanceledException(ct);
             return result;
         }
@@ -494,7 +511,7 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
     {
         try
         {
-            return await DecodeForegroundAsync(() => ImageLoader.LoadFull(path, rawOptions), generation, folderToken, entryCts).ConfigureAwait(false);
+            return await DecodeForegroundAsync(() => LoadSource(path, int.MaxValue, rawOptions), DecodeBudget.FullBytes, generation, folderToken, entryCts).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -509,7 +526,7 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
     }
 
     private async Task<SourceImage> DecodeForegroundAsync(
-        Func<SourceImage> load, long generation,
+        Func<SourceImage> load, long estimatedBytes, long generation,
         CancellationToken folderToken, CancellationTokenSource entryCts)
     {
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(folderToken, entryCts.Token);
@@ -520,6 +537,7 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
         {
             ct.ThrowIfCancellationRequested();
             if (!IsCurrent(generation)) throw new OperationCanceledException(ct);
+            using var lease = _budget.Acquire(estimatedBytes); // 前景不等，只登記用量讓背景讓路
             var result = await Task.Run(load, ct).ConfigureAwait(false);
             ct.ThrowIfCancellationRequested();
             if (!IsCurrent(generation)) throw new OperationCanceledException(ct);
@@ -548,7 +566,8 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
                 await PaceBackgroundAsync(ct).ConfigureAwait(false);
                 ct.ThrowIfCancellationRequested();
                 if (!IsCurrent(generation)) throw new OperationCanceledException(ct);
-                var result = await Task.Run(() => LoadBackground(path, ThumbnailLongEdge, rawOptions), ct).ConfigureAwait(false);
+                using var lease = await _budget.AcquireBackgroundAsync(DecodeBudget.ThumbnailBytes, ct).ConfigureAwait(false);
+                var result = await Task.Run(() => LoadSource(path, ThumbnailLongEdge, rawOptions, background: true), ct).ConfigureAwait(false);
                 ct.ThrowIfCancellationRequested();
                 if (!IsCurrent(generation)) throw new OperationCanceledException(ct);
                 // Concurrent callers can fill the cache while every entry is still in flight.
@@ -581,13 +600,22 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
         }
     }
 
-    private SourceImage LoadBackground(string path, int longEdge, RawLoadOptions rawOptions)
+    private SourceImage LoadSource(string path, int longEdge, RawLoadOptions rawOptions, bool background = false)
     {
         int percent;
-        lock (_stateLock) percent = _backgroundCpuPercent;
-        if (percent >= 100) return ImageLoader.Load(path, longEdge, rawOptions);
-        using var scope = new RawProcessingScope(Math.Max(1, Environment.ProcessorCount * percent / 100));
-        return ImageLoader.Load(path, longEdge, rawOptions);
+        (bool Enabled, GpuBackend Backend, long MemoryBudgetBytes) gpu;
+        lock (_stateLock)
+        {
+            percent = _backgroundCpuPercent;
+            gpu = _gpuDecode;
+        }
+        using var gpuScope = RawGpuDemosaic.BeginScope(gpu.Enabled, gpu.Backend, gpu.MemoryBudgetBytes);
+        using var cpuScope = background && percent < 100
+            ? new RawProcessingScope(Math.Max(1, Environment.ProcessorCount * percent / 100))
+            : default;
+        return longEdge == int.MaxValue
+            ? ImageLoader.LoadFull(path, rawOptions)
+            : ImageLoader.Load(path, longEdge, rawOptions);
     }
 
     private async Task PaceBackgroundAsync(CancellationToken ct)

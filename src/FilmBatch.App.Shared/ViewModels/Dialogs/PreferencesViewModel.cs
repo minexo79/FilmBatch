@@ -124,6 +124,10 @@ public sealed partial class PreferencesViewModel : ObservableObject
     [ObservableProperty]
     private bool _debugLogging;
 
+    /// <summary>在底列顯示 CPU／GPU／RAM／磁碟使用率；切換即時生效。</summary>
+    [ObservableProperty]
+    private bool _showResourceUsage;
+
     /// <summary>記錄檔所在資料夾（顯示用）。</summary>
     public string LogFolder => Core.AppPaths.Logs;
 
@@ -183,6 +187,7 @@ public sealed partial class PreferencesViewModel : ObservableObject
         _lensDatabaseFolder = s.LensDatabaseFolder ?? _lensStore.InstalledDirectory ?? "";
         _language = Languages.First(l => l.Value == s.EffectiveLanguage);
         _debugLogging = s.DebugLogging;
+        _showResourceUsage = s.ShowResourceUsage;
         ShowInstalledLensDatabase();
         Loc.OnCultureChanged(this, static vm =>
         {
@@ -238,6 +243,12 @@ public sealed partial class PreferencesViewModel : ObservableObject
             AppLog.Error($"無法開啟記錄資料夾：{LogFolder}", ex);
             _main.Toast.Show(Loc.Format("Toast.RevealFailed", ex.Message));
         }
+    }
+
+    partial void OnShowResourceUsageChanged(bool value)
+    {
+        _main.Settings.ShowResourceUsage = value;
+        _main.ShowResourceUsage = value;
     }
 
     partial void OnDebugLoggingChanged(bool value)

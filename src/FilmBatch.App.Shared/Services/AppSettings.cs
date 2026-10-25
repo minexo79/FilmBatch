@@ -54,6 +54,8 @@ public sealed class AppSettings
     public string? LensDatabaseFolder { get; set; }
     /// <summary>除錯模式：記錄檔額外寫入 DEBUG 等級的詳細訊息（見 <see cref="AppLog.DebugEnabled"/>）。</summary>
     public bool DebugLogging { get; set; }
+    /// <summary>在底列顯示 CPU／GPU／RAM／磁碟使用率（與除錯模式分開）。</summary>
+    public bool ShowResourceUsage { get; set; }
     public AssignOverridesChoice AssignOverrides { get; set; } = AssignOverridesChoice.Ask;
     public bool HideDisabledModules { get; set; }
     public bool HistogramExpanded { get; set; } = true;

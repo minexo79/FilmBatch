@@ -232,6 +232,133 @@ RAW 工作量另以相同實拍 ARW 的三組重疊 Thumb／Preview 請求量測
 最終原生互動另開 96 張專案並設 10% 背景目標：背景仍載入時切換照片，1.11 秒完成前景來源，UI 投遞最大延遲 8.10 ms；177% 放大與平移取得同一照片的 4531×3021 畫框窗口，使用 Metal。取消後進度保持不變；再開新資料夾完成 2/2，沒有舊結果污染。畫面已檢視，未冒充手動滑鼠驗收。完整回歸 `dotnet test FilmBatch.sln -c Release --no-restore -m:1`：App 384、Core 850、RAW 643 項通過，合計 **1,877 passed／321 skipped／0 failed**；略過項目仍是 Windows D3D12 與未設定的外部 RAW corpus／oracle 等前置條件。
 
 證據保存於本機忽略檔 `artifacts/verification/2026-10-25-cpu-trials.tar.gz`，保留成功與失敗試驗、堆疊取樣、原始／最終來源雜湊、驅動程式、回歸與畫面；不含原始 RAW、執行檔或輸入連結，私人內容不上傳。Windows／DX12、iOS 原生、CLI／匯出介面未另跑，不能宣稱已在使用者的 RTX 3060 上驗證。此次沒有 commit、push 或重新封裝應用程式。
+## 縮圖載入、放大 CPU／記憶體與 RAW GPU 卸載（2026-10-25）
+
+以 `e97a972` 為未修改基線，針對兩個回報：載入資料夾時縮圖吃 CPU 與硬碟，以及放大看 RAW 細節時 CPU、記憶體偏高。量測先確認兩者在基線就存在，不是 `e97a972` 引入。以下八筆為逐項提交，皆未推送：
+
+| 提交 | 主旨 | 內容與理由 |
+|---|---|---|
+| `d7a40bd` | `perf(thumbnail): use embedded RAW preview regardless of semantic masks` | RAW 啟用時 `IncludeSemanticMasks` 恆為真，使 `ImageLoader.Load` 的縮圖快路徑幾乎永不啟用，每張縮圖都整檔讀入並場景線性顯影。縮圖用不到語意遮罩，改為縮圖長邊一律先試內嵌預覽，取不到才回完整顯影。**契約改變**：RAW 模組（白平衡、鏡頭）調整不反映在濾鏡條縮圖，選取後的大圖不變；使用者已同意此取捨。 |
+| `229ed42`、`682b7b5` | `perf(raw): cap Parallel.For degree…`、`…apply the shared parallel cap to ApplyColour` | 新增 `RawParallel.Options`（邏輯核心數的一半），`FilmBatch.Raw` 的 62 處 `Parallel.For` 與 `ApplyColour` 改用它。上限是每個迴圈各自的，不是整個程序的總量，且 `Engine` 其他平行迴圈未套用。 |
+| `ce1064f` | `perf(preview): decommit GC memory after the idle Full release` | 一般 GC 與 `GCConserveMemory`、`RetainVM`、非並行 GC、`GCHeapHardLimit` 都無法讓私有記憶體下降；只有 `GCCollectionMode.Aggressive` 會把 GC 已空出的區段還給系統。接在 Full 閒置 3 秒釋放之後，於背景執行緒執行一次。 |
+| `2edc0c6` | `perf(loupe): snap window scale to 1024px steps…` | 原計畫 B（窗口直接取自 Full、GPU 端下採樣）評估後放棄：畫框尺寸綁定來源尺寸，涉及降噪、遮罩、鏡頭中心等，且與現有 `RenderWindow` 逐通道 ≤1 LSB 契約衝突。改為窗口畫框長邊向上吸附到 `LoupePlan.FrameStep`（1024）的倍數，跨級後等 250 ms 才縮放。`OffThreadScalingTests` 的預期畫框由 1800×1200 改為 2048×1365，這是刻意的契約變更，**尚待維護者確認**。 |
+| `f33d571` | `perf(cache): add in-flight decode memory budget` | 新增 `DecodeBudget`：預算 min(25% RAM, 1.5 GiB)，其中四分之一給進行中解碼；縮圖與預取等待，前景只登記用量不等。64／400／1700 MB 三個估計值來自單張量測，預算比例沿用 LightCraft，未由使用者確認。 |
+| `be21bb9` | `perf(raw): run Bayer AHD demosaic on a dedicated GPU device` | 四個 WGSL pass（綠色內插、R/B 補齊加 Lab、同質性、選擇），以 256 列為一帶並含 6 像素反射邊界，與 CPU 磚塊演算法對應。解碼端自建獨立 `GpuDevice`；沒有硬體 GPU、小於 400 萬像素、非 Bayer 或任何 GPU 錯誤時退回 CPU，失敗一次後不再嘗試。使用者核可的容差為「殘差極小」。 |
+| `6a8447f` | `perf(raw): run the scene colour finish on the GPU` | `ApplyColour`（白平衡、相機矩陣、描述檔 HueSatMap／LookTable、HueSat 修正）改為 512 列一帶的 compute pass，沿用同一個解碼用 GPU 裝置。 |
+
+**未做項目。** 高光重建的 GPU 化：階段計時顯示它約 1.0–1.2 CPU 秒、牆鐘 0.15–0.2 秒，卻要上傳下載整張影像，判斷不值得。計畫 C 項的「解碼後提早釋放檔案位元組、顯影階段原地處理」：檔案位元組僅 35 MB 且後續仍使用，未找出 1.7 GB 暫時配置的來源。refit 迴圈（見下）依使用者指示不處理。
+
+### 量測
+
+環境：Windows 11、16 邏輯核心、RTX 3060（DX12）、Release 建置。輸入為使用者提供的 `demo` 資料夾（Sony ILCE-7M4，4 張 ARW 加 4 張 JPG，7008×4672）；App 流程只用 `DSC01858.ARW`，以腳本送出滑鼠／鍵盤輸入，取樣程序 CPU 時間與私有記憶體。每個設定只跑一次，不擇優；未用原本 355 張的大資料夾重測。基線資料夾用 `e97a972` 建置的 App。
+
+函式層級（直接呼叫 `ImageLoader`／`RawImage`）：
+
+| 項目 | 修改前 | 修改後 |
+|---|---:|---:|
+| 4 張縮圖，牆鐘 | 1.36–1.63 s | 0.22–0.23 s |
+| 4 張縮圖，CPU 時間 | 8.1–11.3 s | 0.2 s |
+| 4 張縮圖，讀檔量 | 137 MB | 11 MB |
+| AHD 顯影，CPU 時間（單張 7008×4672） | 7.4 s | 1.2 s |
+| AHD 顯影，牆鐘 | 1.08 s | 0.54 s |
+| 完整 `LoadFull`，CPU 時間（AHD 與色彩收尾皆 GPU） | 10.0–10.8 s | 3.0–5.2 s |
+| 完整 `LoadFull`，牆鐘 | 1.5–1.7 s | 1.15–1.45 s |
+| Full 解碼後強制一般 GC，私有記憶體 | 約 1330 MB | 約 1230 MB |
+| Full 解碼後 Aggressive GC，私有記憶體 | 約 485 MB | 約 420 MB |
+
+單獨量 Full 解碼階段（GPU 之前）：`ApplyColour` 牆鐘 0.35 s、約 2.8–3.0 CPU 秒，為最大單項；高光重建約 1.0–1.2 CPU 秒；去馬賽克（CPU）約 7 CPU 秒。僅把並行度減半，Full 解碼 CPU 總量幾乎不變（約 17 s 對 15–18 s）、牆鐘由 1.45 s 增至 2.4–2.6 s，只是攤到較少核心。
+
+GPU 與 CPU 結果比對：AHD 在 7008×4672 上平均相對誤差約 2e-6，0.0037% 的樣本相對誤差超過 1e-4，最大絕對誤差 0.021。完整 `LoadFull` 的 16-bit 顯示輸出共 1.31 億個樣本，差異超過 256（滿值 65535）的有 1,595 個（約 0.0012%），最大差 9248，推測為 AHD 同質性平手時選到另一個方向；未逐點確認。
+
+App 流程（選取、按 1:1 按鈕、平移、滾輪放大 6 格、`Ctrl+0` 回到符合視窗並閒置）。表內為各階段的 CPU 時間（秒）與私有記憶體（MB）：
+
+| 階段 | 基線 | 前幾項（至 `f33d571`） | 加 AHD GPU | 加色彩收尾 GPU |
+|---|---:|---:|---:|---:|
+| 選取，CPU 時間 | 13.4 | 9.9 | 9.8 | 9.5 |
+| 1:1，CPU 時間 | 24.6 | 22.0 | 16.5 | 12.9 |
+| 1:1，平均 CPU（全核心） | 19% | 17% | 12.5% | 10% |
+| 滾輪放大，CPU 時間 | 6.6 | 1.6 | 1.7 | 1.8 |
+| 整個流程私有記憶體峰值 | 9,799 | 7,615 | 7,644 | 7,786 |
+| 1:1 階段私有記憶體峰值 | 4,470 | 4,840 | 5,061 | 5,377 |
+| 回到符合視窗閒置後 | 7,424 | 2,102 | 2,331 | 2,210 |
+
+1:1 階段的記憶體峰值反而上升，是 GPU 緩衝區與獨立裝置的代價；放大後的整體峰值仍低於基線。基線整個流程沒有記憶體歸還。
+
+### 測試結果
+
+- 新增或改寫：`RawEmbeddedThumbnailTests`（遮罩不再繞過內嵌預覽，並新增縮圖遮罩案例）、`LoupePlanTests` 的 `QuantizeFrameEdge`、`DecodeBudgetTests`（4 項）、`GpuAhdTests`、`GpuColourTests`（2 組參數）。`OffThreadScalingTests` 預期值修改如上。
+- 完整來源回歸：`dotnet test FilmBatch.sln -c Release`（未加 `-m:1`），**Raw 645 passed／295 skipped、Core 831 passed／47 skipped、App 386 passed／0 skipped，合計 1,862 passed／342 skipped／0 failed**（總數 2,204）。Raw 與 Core 的略過原因未逐項檢視，依 VERIFY.md 推定多為未設定的外部相機語料。
+- V2（WGSL 以 Naga 驗證）**未執行**：本機沒有 `cargo` 與 `naga`。五個新 shader（`raw/ahd_*.wgsl`、`raw/apply_colour.wgsl`）只通過 Dawn 的實際編譯，不能記為通過。第一版 `apply_colour.wgsl` 曾有 WGSL 語法錯誤（向量比較不能直接用 `&&`），導致共用的解碼 GPU 裝置建立失敗、AHD 也退回 CPU；已修正。
+- `GpuAhdTests`、`GpuColourTests` 在沒有硬體 GPU 時直接 `return`，會顯示成通過而不是略過；這台機器有 GPU，所以實際執行了比對。容差（相對 1e-4／1e-3、差異樣本比例 <0.1%）是看過實測差異後訂的，不是事先固定的契約。
+
+### 使用者的決定
+
+| 議題 | 選項 | 使用者選擇 |
+|---|---|---|
+| 縮圖來源 | 保持場景線性顯影／改用內嵌預覽 | 改用內嵌預覽，接受 RAW 模組（白平衡、鏡頭）調整不反映在濾鏡條縮圖 |
+| 問題 2 範圍與提交方式 | A、B、C、D 是否全做 | 四項全做，盡量交給 GPU；每項各自提交，不合併成一個大提交 |
+| A 項並行度上限 | 逐處傳入共用 `ParallelOptions`／`AsyncLocal` 環境式上限／只改最耗 CPU 的幾處 | 逐處傳入共用 `ParallelOptions` |
+| B 項做法（兩次決定） | 原案（GPU 端下採樣 Full）與級距量化＋停下才縮放 | 先選 GPU 端下採樣；我讀完程式說明範圍與風險後，改選級距量化＋停下才縮放，並接著做 D 項 |
+| GPU 卸載先後 | 先做／先不做 | 一度要求先不做、先用 demo 實機量測；量測後要求做 GPU 卸載 |
+| GPU 像素容差 | 殘差極小（相對誤差約 1e-4，平手像素 <0.1%）／必須逐像素一致 | 殘差極小 |
+| GPU 裝置 | 解碼專用獨立裝置／共用算圖器的裝置 | 解碼專用獨立裝置 |
+| 實機量測 | 由使用者手動操作／由我自動操作 | 由我自動操作取樣（選取、1:1、平移、滾輪） |
+| 高光重建 GPU 化 | — | 使用者要求「做高光重建的 GPU 化以及後續步驟」；我依階段計時（約 1.0–1.2 CPU 秒）判斷不值得，改做 `ApplyColour`。這是我的取捨，沒有再詢問使用者 |
+| refit 回授迴圈 | 修／不修 | 不修，由其他貢獻者處理 |
+
+### 遇到的問題與處理
+
+- **並行度沒有共用入口：** `FilmBatch.Raw` 有 63 處 `Parallel.For`，沒有共用的 `ParallelOptions`。先停下詢問，才決定逐處傳入；機械式替換實際改了 62 處，另一處是註解文字。
+- **GC 設定無效：** 原計畫以 `GCConserveMemory` 等設定歸還記憶體。實測 Full 解碼後託管堆只剩約 397 MB，私有記憶體仍約 1.6–1.7 GB。`GCConserveMemory` 只把堆峰值由約 1.75 GB 降到約 1.08 GB，其他設定無效。以 `VirtualQuery` 確認多出的記憶體在 GC 的保留範圍內，最後只有 `Aggressive` 模式會歸還。
+- **B 項原案行不通：** 窗口畫框尺寸與來源尺寸綁定（`ModuleParams`、`CropGeometry`、顆粒、鏡頭中心、前景／語意遮罩、降噪 `Prepare` 都由來源尺寸算起），GPU 來源紋理為 `Rgba32Float`（Full 約 524 MB），且 Box 縮小與雙線性取樣的像素會不同，並與 `RenderWindow` 的 ≤1 LSB 契約衝突。停下說明後由使用者改選級距量化。
+- **級距量化引起的測試失敗：** `OffThreadScalingTests.Window_scale_runs_off_ui_and_covers_the_latest_pan` 因畫框由 1800×1200 變 2048×1365 而失敗，屬預期，更新預期值（見上，待維護者確認）。
+- **看似回歸的 1×1 灰色預覽：** 自動化第一次啟動時預覽停在灰色 1×1 畫面。對照基線版本正常後，發現我啟動的是舊的 `win-x64` 輸出，另一個目錄才是剛建置的新版；改用新版後正常。這不是產品問題。
+- **自動化腳本問題：** PowerShell 的 `[math]::Max` 用 `Int32` 在私有記憶體超過 2 GB 時溢位，改用 `[long]`；`1` 鍵沒有觸發 1:1，改點按鈕；回到符合視窗誤點到分割對比按鈕（按鈕位置會隨縮放文字位移），改用 `Ctrl+0`。這些都是驗證腳本問題，沒有改產品。
+- **WGSL 語法錯誤：** 第一版色彩收尾 shader 使用向量比較搭配 `&&`，Dawn 拒絕編譯，連同 AHD 一起退回 CPU，這次實際驗證了退回機制，但也暴露兩個功能共用裝置、一個 kernel 失敗就全部停用的設計缺陷（見下）。
+- **xUnit 分析器錯誤：** 新增的 `DecodeBudgetTests` 因 `xUnit1051`（呼叫需傳入 `TestContext.Current.CancellationToken`）無法編譯，已修正。
+- **完整測試首次逾時：** 一次完整的 App 測試在 10 分鐘上限被移到背景後沒有輸出，相關背景任務在工作階段結束時被標為停止；之後改跑相關子集，最後以 Release 完整循序重跑通過。
+- **暫時性檢測碼：** 為量測階段耗時，曾暫時在 `Highlight.cs`、`RawSourceLoader.cs` 加入計時輸出，量完以備份還原，沒有提交。
+
+### 已知問題與未結案
+
+- **程式審查發現（未修）：** (1) `ImageCache.DecodePreviewBackgroundAsync` 先設 `Started = true` 才等記憶體預算，前景請求會共用這個可能被預算擋住的背景解碼，造成優先權反轉。(2) 解碼端 GPU 裝置不遵守 `ForceSoftwareGpu`（含 `--software`）、後端選擇與 `GpuMemoryLimitMb`；批次匯出也走同一條解碼，使結果在有無 GPU 的機器上有微小差異，並會污染 VERIFY V4 的 CPU／GPU 比對。(3) 並行度上限不是程序級總量。(4) 每次 Full 釋放都做封鎖式 Aggressive GC，且沒有 Full 時也會呼叫。(5) 兩個 GPU 測試靜默通過。(6) 新 shader 重寫了 `common/color.wgsl` 已有的部分函式，也沒採用 `raw_finish_math.wgsl` 保留 f32 捨入點的做法，目前靠容差過關，跨廠牌 GPU 未驗證。
+- **文件偏差：** `architecture.md` 仍寫「RAW 縮圖（長邊 ≤240，且不需語意遮罩）」，與 `d7a40bd` 不符；來源縮放一節也未提級距量化；GPU 去馬賽克與色彩收尾尚無文件。
+- **refit 回授迴圈（不屬本輪改動，未修）：** 符合視窗且畫布受高度限制時，`PreviewCanvas` 以已取整的 bitmap 長寬比算 `drawn`，`OnPreviewViewSizesChanged` 以精確相等比較，造成 1708 ↔ 1706 像素的兩點震盪，每次都觸發一次 Lanczos 縮放，CPU 持續偏高直到放大。程式碼位於 `e74cb72`／`bd2405b`（2026-10-23），本輪沒有修改這些檔案。使用者指示由其他貢獻者處理；我的測試視窗長寬比剛好吻合，沒有重現，是由程式碼推導。
+- **未驗證：** Windows 以外平台、沒有 GPU 的機器、其他相機的 RAW、355 張的大資料夾、多張照片同時解碼時的 GPU 記憶體；完整 App 測試首次嘗試（含 Debug 子集）曾逾時，後以 Release 完整重跑通過。沒有重新封裝或推送。
+
+## CPU 修正與上游 RAW GPU 合併驗證（2026-10-26）
+
+先將本機已驗證的 CPU／固定畫框修正提交為 `dbbb73e`，再以 merge 整合 `origin/dev-ai-denoising` 的 `ca718dd`（0.4.0），沒有 rebase、推送或重新封裝。保留上述兩份 2026-10-25 的量測與未結案紀錄，以下是合併後的取代裁決，不把舊版測試數字當成新版證據。
+
+### 整合裁決
+
+- **優先權反轉修正**：背景預取先完成 CPU 配速及記憶體入場，才在取消／世代檢查內標記已開始；等待中的同鍵預取可被前景取代。已取消且預算閒置的請求也不能取得租約。新增的入場／取消回歸與原有載入生命週期回歸通過。
+- **RAW GPU 政策**：移除 `ImageLoader` 全域安裝 hook，改在 App 快取工作內擷取並套用軟體模式、後端與記憶體偏好；iOS 不啟用。直接載入、CLI 與 `BatchExporter` 走 CPU RAW，匯出工作入口另明確停用繼承的預覽範圍。測試 hook 改為執行內容區域狀態，共用裝置案例不平行。
+- **失敗安全**：AHD 與色彩 kernel 分別延後建立、分別停用。色彩讀回先落在帶狀 scratch，整帶成功才提交，CPU 只完成未提交的後綴。AHD 執行前的預算包含完整輸出與帶狀暫存，不只看 GPU 帶狀工作區。保留錯誤原因，不把 shader 失敗改判為沒有 GPU。
+- **共用並行度**：移除 `RawParallel`，保留唯一 `RawProcessingScope.Options`，預設半數邏輯核心，背景比例只能再降低；既有範圍外的 Engine／原生迴圈沒有擴大改寫。這是每個迴圈的上限，不是程序 CPU 上限。
+- **畫框與釋放**：保留來源／裁切的固定 `LayoutFrameSize`，不再從已取整顯示 bitmap 推導；上述 `e74cb72`／`bd2405b` 為歷史引入點，不是本輪仍未修的缺陷。保留上游 1024 級距／250 ms 取捨，修正沒有窗口時被當成 1024 級距的判斷。Aggressive GC 只在確實釋放 Full／窗口來源後執行，但仍可能暫停託管執行緒。
+- **不採用的重構**：RAW 的負值保留、純量 transfer、HSV 捨入與 Rec.2020 亮度不等同 `common/color.wgsl`，不能直接替換；只保護未選取 `pow` 分支的輸入。AHD 的整張結果與色彩的逐帶提交契約不同，不增加泛用 `TryExecute`。沒有證據支持本輪重寫四個 AHD pass、改 CFA 格式或新增持久緩衝區／table 快取。保留原有 f32 容差，不加入無關的捨入屏障。
+- **文件**：更新 RAW 內嵌縮圖、量化窗口、GPU 政策、環境停用、記憶體估計與 CPU 上限；`VERIFY.md` 加入相應入口。[現行回歸與精度門檻](building.md#raw-gpu-與載入隔離回歸)取代先前文件偏差。
+
+### 合併後實測
+
+來源 Release 全套命令：`dotnet test FilmBatch.sln -c Release --no-restore -m:1 --logger trx`。
+
+| 專案 | 通過 | 略過 | 失敗 |
+|---|---:|---:|---:|
+| App | 392 | 0 | 0 |
+| Core | 850 | 28 | 0 |
+| Raw | 654 | 293 | 0 |
+| 合計 | 1,896 | 321 | 0 |
+
+- **略過逐項核對**：Core 為 5 項 Windows 專用與 23 項缺外部 RAW／oracle／probe；Raw 為 211 項缺 RAW corpus、74 項缺 oracle，另 8 項缺資料列、CR3／ProRAW 參考或 `rawinfo`。AHD 與兩組色彩 GPU 像素案例在 Apple M3／Metal 實際執行，沒有略過。TRX 的 `notExecuted` 計數在此 runner 為 0，不能據此認定沒有略過；以個別結果與原因核對。
+- **WGSL**：固定 `naga-cli 30.0.1` 驗證產品展開後的 43 個編譯單元，含全部五個 RAW shader；不是只編譯 Dawn，也不是未展開片段。
+- **原生介面**：來源建置的 Avalonia／Metal 程式載入 15 張 Sony ARW，驗證背景載入途中切換照片；100%／177%／300% 分別等到 3072×2048、5120×3413、7008×4672 的新窗口交付後平移。取消後進度不增加，換資料夾可完成，軟體模式的 Full 場景 hash 與純 CPU 相同，再切回 Metal 成功。閒置沒有新增 refit；所有輸入 SHA-256 不變。這是 ViewModel 驅動的原生畫面驗證，不是實體鍵鼠或封裝版驗證。
+- **匯出隔離**：同一張 4672×7008 ARW，未進入範圍、軟體政策、1 byte 預算與 GPU 範圍結束後的浮點場景 hash 完全相同；啟用 Metal 的正向對照具有不同 hash。即使呼叫端已啟用 GPU，批次匯出送入算圖器的來源仍等於 CPU。兩個獨立 CLI 程序實際使用 Metal／CPU 匯出 PNG16，171×256 的 175,104 個 RGBA 樣本最大差 1 LSB，沒有超過原有 2 LSB 比對界線。
+- **失敗注入**：儲存庫外編譯的限縮副本在第二個色彩帶的讀回途中故障，前 512 列逐位元等於 GPU，剩餘列逐位元等於 CPU，AHD 仍可用。分別注入非法 AHD／色彩 WGSL，只有對應功能停用；指定不可用 DX12 回退後改 Metal 可恢復；環境變數同時停用兩個階段。沒有把注入開關或測試副本留在產品。
+- **驗證程式修正**：拋棄式故障專案先前缺明確套件版本，讀取工具的範圍頁尾被誤接成 C#，且缺 CFA 命名空間；修正驗證程式後才取得上述結果。原生驅動原先可能把前一級窗口當成完成，改成等最新繪製尺寸與新級距交付後重跑。沒有用產品修改掩蓋這些驗證程式錯誤。
+
+**限制。** 未在本輪執行 Windows／DX12 硬體、iOS、355 張資料夾、其他 GPU 廠牌或實體裝置遺失。執行期間有並行驗證工作，原生計時不作為受控效能比較；啟動與縮放仍觀察到 UI 延遲，不能宣稱完全不卡頓。記憶體為入場估計與單一解碼裝置的界線，不是程序／多裝置總硬上限；1024 向上量化可能多處理像素，例如 3201→4096 約增加 63.74% 畫框像素，未擅自變更此取捨。私有證據保存在忽略的 `artifacts/verification/2026-10-26-merge-integration.tar.gz`，不包含原始 RAW 或執行檔，也不推送；本輪沒有執行完整封裝發佈 gate。
 
 ## 如何新增歷史列
 

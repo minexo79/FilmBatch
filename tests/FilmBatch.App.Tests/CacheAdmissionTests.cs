@@ -1,6 +1,7 @@
 using System.Reflection;
 using FilmBatch.App.Services;
 using FilmBatch.Engine.Imaging;
+using FilmBatch.App.Services.Loupe;
 
 namespace FilmBatch.App.Tests;
 
@@ -263,6 +264,39 @@ public sealed class CacheAdmissionTests
             var thumbnail = await queued.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
             Assert.Equal(Path.GetFullPath(paths[0]), thumbnail.FilePath);
             Assert.Equal((64, 42), (thumbnail.Width, thumbnail.Height));
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ForegroundPreview_ReplacesPrefetchWaitingForMemory()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "filmbatch-cache-memory-priority-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var path = SampleImages.Generate(folder, count: 1, longEdge: 64)[0];
+            using var cache = new ImageCache();
+            cache.SetBackgroundCpuPercent(100);
+            var budget = (DecodeBudget)typeof(ImageCache).GetField("_budget", PrivateInstance)!.GetValue(cache)!;
+            using var occupied = budget.Acquire(DecodeBudget.FullBytes);
+            var prefetch = cache.GetSourceAsync(path, SourceLevel.Preview, ct: TestContext.Current.CancellationToken,
+                admission: SourceAdmission.Background);
+            Assert.False(prefetch.IsCompleted);
+
+            // Memory admission is still blocked. Selecting this photo must not join that wait.
+            var foreground = await cache.GetPreviewAsync(path, cancellationToken: TestContext.Current.CancellationToken)
+                .WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            Assert.Equal(Path.GetFullPath(path), foreground.FilePath);
+            Assert.Equal((64, 42), (foreground.Width, foreground.Height));
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+                await prefetch.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+            Assert.Same(foreground, await cache.GetSourceAsync(path, SourceLevel.Preview,
+                ct: TestContext.Current.CancellationToken, admission: SourceAdmission.Background));
+            Assert.Equal(DecodeBudget.FullBytes, budget.InFlight);
         }
         finally
         {

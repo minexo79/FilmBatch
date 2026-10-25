@@ -21,6 +21,7 @@
     <PackageVersion Include="Microsoft.ML.OnnxRuntime" Version="1.25.0" />
     <PackageVersion Include="Microsoft.ML.OnnxRuntime.DirectML" Version="1.24.4" />
     <PackageVersion Include="Microsoft.AI.DirectML" Version="1.15.4" />
+    <PackageVersion Include="System.Diagnostics.PerformanceCounter" Version="$(MsExtVersion)" />
     <PackageVersion Include="System.IO.Hashing" Version="$(MsExtVersion)" />
     <PackageVersion Include="YamlDotNet" Version="18.1.0" />
     <PackageVersion Include="System.CommandLine" Version="2.0.13" />

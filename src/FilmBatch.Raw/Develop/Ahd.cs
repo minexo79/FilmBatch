@@ -11,7 +11,10 @@ public static partial class Demosaic
 
     private static RgbImage Ahd(Mosaic m)
     {
-        var (w, h) = (m.W, m.H); var outp = new RgbImage(w, h);
+        var (w, h) = (m.W, m.H);
+        if (w > 0 && h > 0 && AhdGpu is { } accelerator && accelerator(m.Data, w, h, m.Cfa) is { } accelerated)
+            return new RgbImage(w, h, accelerated);
+        var outp = new RgbImage(w, h);
         if (w == 0 || h == 0) return outp;
         // Flattened tile grid with per-worker scratch: rented once per worker, reused
         // across tiles, guaranteed returned. CheckSize bounds w*h so tile math fits int.

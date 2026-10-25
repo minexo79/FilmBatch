@@ -54,6 +54,14 @@
               <Border Classes="settings-divider" />
               <Grid Classes="settings-row" ColumnDefinitions="*,Auto">
                 <StackPanel Classes="settings-label">
+                  <TextBlock Text="{l:Tr Pref.ShowResourceUsage}" />
+                  <TextBlock Classes="settings-desc" Text="{l:Tr Pref.ShowResourceUsage.Desc}" TextWrapping="Wrap" />
+                </StackPanel>
+                <CheckBox Grid.Column="1" AutomationProperties.AutomationId="Pref.ShowResourceUsage" IsChecked="{Binding ShowResourceUsage}" VerticalAlignment="Center" />
+              </Grid>
+              <Border Classes="settings-divider" />
+              <Grid Classes="settings-row" ColumnDefinitions="*,Auto">
+                <StackPanel Classes="settings-label">
                   <TextBlock Text="{l:Tr Pref.LogFolder}" />
                   <TextBlock Classes="settings-desc" Text="{Binding LogFolder}" TextWrapping="Wrap" />
                 </StackPanel>
