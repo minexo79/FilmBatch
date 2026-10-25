@@ -1,10 +1,12 @@
 using FilmBatch.Engine.Imaging.Raw;
+using FilmBatch.Gpu.Device;
 using FilmBatch.Raw.Color;
 using FilmBatch.Raw.Raster;
 using Xunit;
 
 namespace FilmBatch.Raw.Tests.Develop;
 
+[Collection(RawGpuCollection.Name)]
 public class GpuColourTests
 {
     [Theory]
@@ -32,7 +34,14 @@ public class GpuColourTests
         for (var i = 0; i < gpuImage.Data.Length; i++) gpuImage.Data[i] = (float)rng.NextDouble() * 1.4f;
         var cpuData = (float[])gpuImage.Data.Clone();
 
-        if (!RawGpuDemosaic.TryApplyColour(gpuImage, wb, matrix, gain, null, hueSat)) return; // 沒有硬體 GPU
+        if (RawGpuDemosaic.ProbeUnavailableReason(GpuBackend.Auto) is { } reason)
+            Assert.Skip("No hardware GPU: " + reason);
+        using var scope = RawGpuDemosaic.BeginScope(true, GpuBackend.Auto, 0);
+        var committed = RawGpuDemosaic.TryApplyColour(gpuImage, wb, matrix, gain, null, hueSat);
+        var errors = RawGpuDemosaic.LastErrors;
+        Assert.SkipWhen(committed <= 0 && errors.Colour is null,
+            "GPU colour declined without an error (budget or device limits); rerun with a larger budget for parity.");
+        Assert.True(committed == h, $"GPU colour failed on available hardware after {committed} of {h} rows: " + errors.Colour);
 
         for (var i = 0; i < cpuData.Length; i += 3)
         {

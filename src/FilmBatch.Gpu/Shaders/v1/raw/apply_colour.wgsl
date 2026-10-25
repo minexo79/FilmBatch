@@ -1,6 +1,7 @@
 // RAW 場景顯影的色彩收尾（RawSourceLoader.ApplyColour 的 GPU 版）：
 // 白平衡 → 相機矩陣 → [描述檔 HueSatMap → 曝光增益 → LookTable] → [HueSat 修正] → 夾成有限非負值。
 // 就地處理 w × rows 的相機 RGB 浮點資料（三個 f32 一組）。
+// 本檔 helper 與 common 同名但語義不同（見各函式註解），故意不 include common/color.wgsl。
 struct Table {
     div: vec4i,   // 色相、飽和、明度分格數與 SrgbValue 旗標
     info: vec4i,  // x = 在 tables 緩衝區中的起點
@@ -23,18 +24,25 @@ fn mul3(a: vec4f, b: vec4f, c: vec4f, v: vec3f) -> vec3f {
     return vec3f(dot(a.xyz, v), dot(b.xyz, v), dot(c.xyz, v));
 }
 
+// 通用 wrap；common 沒有同簽名函式（look.wgsl 的 wrap360/180 是色相專用、公式不同），保留本地版。
 fn wrap(x: f32, period: f32) -> f32 {
     var r = x - period * floor(x / period);
     if (r >= period) { r = 0.0; }
     return r;
 }
 
+// 純量 sRGB 轉換，對應 Raw/Color/Transfer.cs；不是 common/color.wgsl 的向量版
+//（簽名不同；且向量 linear_to_srgb 把負值夾到 0，此處與 CPU 同樣保留 v * 12.92）。
+// 未選取的 pow 分支以 max 保持有效底數，避免 D3D12/WARP 裝置遺失（common/color.wgsl 同一做法）；
+// 已選取分支的結果不變，不改變精度。
 fn srgb_to_linear(v: f32) -> f32 {
-    return select(pow((v + 0.055) / 1.055, 2.4), v / 12.92, v <= 0.04045);
+    let high = pow((max(v, 0.04045) + 0.055) / 1.055, 2.4);
+    return select(high, v / 12.92, v <= 0.04045);
 }
 
 fn linear_to_srgb(v: f32) -> f32 {
-    return select(1.055 * pow(v, 1.0 / 2.4) - 0.055, v * 12.92, v <= 0.0031308);
+    let high = 1.055 * pow(max(v, 0.0031308), 1.0 / 2.4) - 0.055;
+    return select(high, v * 12.92, v <= 0.0031308);
 }
 
 fn limited(x: f32, k: f32) -> f32 {
@@ -85,6 +93,8 @@ fn plane(t: Table, vi: i32, h0: i32, h1: i32, s0: i32, s1: i32, ts: f32, th: f32
     return lo + (hi - lo) * th;
 }
 
+// HSV → RGB，對應 Raw/Color/Profile.cs 的 sector 算法（與 CPU 逐運算相同）；
+// common/color.wgsl 的同名函式對應 Engine CpuPipeline 的 c/x 算法，捨入順序不同，不可共用。
 fn hsv_to_rgb(h: f32, s: f32, v: f32) -> vec3f {
     let hp = wrap(h, 360.0) / 60.0;
     let sector = min(u32(max(hp, 0.0)), 5u);
@@ -131,6 +141,8 @@ fn apply_table(t: Table, c: vec3f) -> vec3f {
     return hsv_to_rgb(hue + look.x, s2, v2);
 }
 
+// Rec.2020 亮度，對應 Engine HueSat 與 Raw ColorSpaces.Luma2020；
+// common/color.wgsl 的 luminance 是 Rec.709，不可共用。
 fn luminance(c: vec3f) -> f32 {
     return c.x * 0.2627 + c.y * 0.6780 + c.z * 0.0593;
 }

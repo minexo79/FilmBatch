@@ -15,8 +15,10 @@ fn with_channel(v: vec3f, c: u32, value: f32) -> vec3f {
     return q;
 }
 
+// 與 CPU Ahd.cs 的 F 同分支；未選取的 pow 分支以 max 保持有效底數
+//（common/color.wgsl 同一做法，避免 D3D12/WARP 裝置遺失），已選取分支結果不變。
 fn lab_f(t: f32) -> f32 {
-    return select(7.787 * t + 16.0 / 116.0, pow(t, 1.0 / 3.0), t > 0.008856);
+    return select(7.787 * t + 16.0 / 116.0, pow(max(t, 0.008856), 1.0 / 3.0), t > 0.008856);
 }
 
 fn to_lab(c: vec3f) -> vec3f {

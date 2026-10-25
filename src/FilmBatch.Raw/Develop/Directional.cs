@@ -75,7 +75,7 @@ public static partial class Demosaic
     private static float[] DirectionalGreen(Mosaic m, Offsets off)
     {
         var (w, h) = (m.W, m.H); var g = new float[w * h];
-        Parallel.For(0, h, RawParallel.Options, y =>
+        Parallel.For(0, h, RawProcessingScope.Options, y =>
         {
             var interior = y >= 2 && y + 2 < h;
             Span<float> vals = stackalloc float[24]; var count = 0;
@@ -108,7 +108,7 @@ public static partial class Demosaic
     {
         var (w, h) = (m.W, m.H); var off = Offsets.Build(m); var g = DirectionalGreen(m, off); var outp = new RgbImage(w, h);
         float G(int x, int y) => g[Reflect(y, h) * w + Reflect(x, w)];
-        Parallel.For(0, h, RawParallel.Options, y =>
+        Parallel.For(0, h, RawProcessingScope.Options, y =>
         {
             var interior = y >= 2 && y + 2 < h;
             for (var x = 0; x < w; x++)

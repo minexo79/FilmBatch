@@ -31,7 +31,7 @@ public static partial class Demosaic
     private static RgbImage Bilinear(Mosaic m)
     {
         var (w, h) = (m.W, m.H); var table = NeighbourTable(m); var cfa = m.Cfa; var outp = new RgbImage(w, h);
-        Parallel.For(0, h, RawParallel.Options, y =>
+        Parallel.For(0, h, RawProcessingScope.Options, y =>
         {
             for (var x = 0; x < w; x++)
             {

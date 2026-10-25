@@ -88,7 +88,7 @@ internal sealed class RawSourceGeometry
         var chain = Chain(ops);
         var w = image.Width; var h = image.Height;
         var result = new RgbImage(w, h);
-        Parallel.For(0, h, y =>
+        Parallel.For(0, h, RawProcessingScope.Options, y =>
         {
             for (var x = 0; x < w; x++)
                 for (var ch = 0; ch < 3; ch++)
@@ -117,7 +117,7 @@ internal sealed class RawSourceGeometry
         var w = image.Width; var h = image.Height;
         var half = (k - 1) / 2d;
         var result = new RgbImage(w, h);
-        Parallel.For(0, h, by =>
+        Parallel.For(0, h, RawProcessingScope.Options, by =>
         {
             for (var bx = 0; bx < w; bx++)
             {

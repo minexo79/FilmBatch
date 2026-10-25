@@ -1,9 +1,11 @@
 using FilmBatch.Engine.Imaging.Raw;
+using FilmBatch.Gpu.Device;
 using FilmBatch.Raw.Develop;
 using Xunit;
 
 namespace FilmBatch.Raw.Tests.Develop;
 
+[Collection(RawGpuCollection.Name)]
 public class GpuAhdTests
 {
     [Fact]
@@ -17,16 +19,22 @@ public class GpuAhdTests
             for (var x = 0; x < w; x++)
                 data[y * w + x] = Math.Clamp(0.5f + 0.35f * MathF.Sin(x * 0.013f) * MathF.Cos(y * 0.017f) + (float)(rng.NextDouble() - 0.5) * 0.04f, 0f, 1f);
 
+        if (RawGpuDemosaic.ProbeUnavailableReason(GpuBackend.Auto) is { } reason)
+            Assert.Skip("No hardware GPU: " + reason);
+        using var scope = RawGpuDemosaic.BeginScope(true, GpuBackend.Auto, 0);
+
         var gpu = RawGpuDemosaic.TryRun(data, w, h, cfa);
-        if (gpu is null) return; // 沒有硬體 GPU：CPU 路徑就是唯一實作
+        // 預檢有硬體但回傳 null：預算／限制退回或執行失敗，應可從 LastErrors 區分。
+        var errors = RawGpuDemosaic.LastErrors;
+        Assert.SkipWhen(gpu is null && errors.Ahd is null,
+            "GPU AHD declined without an error (budget or device limits); rerun with a larger budget for parity.");
+        Assert.False(gpu is null, "GPU AHD failed on available hardware: " + errors.Ahd);
 
-        var previous = Demosaic.AhdGpu;
-        Demosaic.AhdGpu = null;
         float[] cpu;
-        try { cpu = Demosaic.Run(new Normalized { Width = w, Height = h, Cpp = 1, Data = data, Cfa = cfa }, DemosaicMethod.Ahd).Data; }
-        finally { Demosaic.AhdGpu = previous; }
+        using (RawGpuDemosaic.BeginScope(false, GpuBackend.Auto, 0))
+            cpu = Demosaic.Run(new Normalized { Width = w, Height = h, Cpp = 1, Data = data, Cfa = cfa }, DemosaicMethod.Ahd).Data;
 
-        Assert.Equal(cpu.Length, gpu.Length);
+        Assert.Equal(cpu.Length, gpu!.Length);
         long different = 0;
         for (var i = 0; i < cpu.Length; i++)
             if (Math.Abs(cpu[i] - gpu[i]) > 1e-4f * Math.Max(1e-3f, Math.Abs(cpu[i]))) different++;

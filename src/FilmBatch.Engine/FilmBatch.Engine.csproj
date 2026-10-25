@@ -34,6 +34,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="FilmBatch.Core.Tests" />
     <InternalsVisibleTo Include="FilmBatch.Raw.Tests" />
+    <InternalsVisibleTo Include="FilmBatch.App.Shared" />
   </ItemGroup>
   <PropertyGroup>
     <FilmBatchOnnxPackagePath Condition="'$(FilmBatchUseDirectML)' != 'true'">$(PkgMicrosoft_ML_OnnxRuntime)</FilmBatchOnnxPackagePath>

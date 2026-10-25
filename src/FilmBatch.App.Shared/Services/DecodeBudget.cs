@@ -7,7 +7,7 @@ namespace FilmBatch.App.Services;
 /// </summary>
 internal sealed class DecodeBudget
 {
-    /// <summary>估計單張縮圖解碼的暫時用量（內嵌預覽或小代理圖）。</summary>
+    /// <summary>縮圖解碼的入場估計（內嵌預覽或小代理圖）；完整 RAW 退路可能超出，不是配置硬上限。</summary>
     internal const long ThumbnailBytes = 64L << 20;
     /// <summary>估計預覽代理圖解碼的暫時用量。</summary>
     internal const long PreviewBytes = 400L << 20;
@@ -47,6 +47,7 @@ internal sealed class DecodeBudget
             Task wait;
             lock (_lock)
             {
+                ct.ThrowIfCancellationRequested();
                 if (_inFlight == 0 || _inFlight + bytes <= _limit)
                 {
                     _inFlight += bytes;

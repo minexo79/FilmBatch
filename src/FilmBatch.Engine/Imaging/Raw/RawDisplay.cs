@@ -1,6 +1,7 @@
 // 移植自 LightCraft crates/pipeline/src/finish.rs（finish_with 中性路徑：色調映射、高光去飽和、
 // 色域映射、sRGB 編碼）與 crates/pipeline/src/output.rs（OutputSpace::Srgb 的轉換矩陣與亮度權重）。
 // Copyright (c) 2026 ArtCraft Team and the LightCraft contributors，MIT OR Apache-2.0；為 FilmBatch 改寫為 C#。
+using FilmBatch.Raw;
 using FilmBatch.Raw.Color;
 using FilmBatch.Raw.Raster;
 
@@ -53,7 +54,7 @@ internal static class RawDisplay
         var luma = ColorSpaces.Luma2020;
         var data = image.Data;
         var out16 = new ushort[checked(image.Width * image.Height * 4)];
-        Parallel.For(0, image.Height, y =>
+        Parallel.For(0, image.Height, RawProcessingScope.Options, y =>
         {
             var src = y * image.Width * 3;
             var dst = y * image.Width * 4;
@@ -80,7 +81,7 @@ internal static class RawDisplay
         var (input, m) = RawFinishParams.Working;
         var luma = ColorSpaces.Luma2020;
         var n = rgba.Length / 4;
-        Parallel.For(0, n, i =>
+        Parallel.For(0, n, RawProcessingScope.Options, i =>
         {
             var o = i * 4;
             var c0 = input[0] * rgba[o] + input[1] * rgba[o + 1] + input[2] * rgba[o + 2];

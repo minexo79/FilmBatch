@@ -282,7 +282,7 @@ internal static class Orf
                 var d = new ushort[(int)n]; // n ≤ MaxSamples ＜ int.MaxValue，已在上方驗證
                 var srcMem = srcM;
                 var outMem = d.AsMemory();
-                Parallel.For(0, h, RawParallel.Options, y =>
+                Parallel.For(0, h, RawProcessingScope.Options, y =>
                     UnpackRowBlocks16(srcMem.Span.Slice(y * stride, stride), outMem.Span.Slice(y * w, w)));
                 data = new RawData.U16(d);
             }
@@ -303,7 +303,7 @@ internal static class Orf
                 var d = new ushort[(int)n]; // n ≤ MaxSamples ＜ int.MaxValue，已在上方驗證
                 var srcMem = srcM;
                 var outMem = d.AsMemory();
-                Parallel.For(0, h, RawParallel.Options, y =>
+                Parallel.For(0, h, RawProcessingScope.Options, y =>
                     UnpackRowLe32Msb(srcMem.Span.Slice(y * stride, stride), 12, outMem.Span.Slice(y * w, w)));
                 data = new RawData.U16(d);
             }
@@ -333,7 +333,7 @@ internal static class Orf
                 var fileMem = bytes;
                 var outMem = d.AsMemory();
                 var rowOffsets = rows;
-                Parallel.For(0, h, RawParallel.Options, y =>
+                Parallel.For(0, h, RawProcessingScope.Options, y =>
                 {
                     var stored = y % 2 == 0 ? y / 2 : h0 + y / 2;
                     // 每個偏移都已由 FieldRows 對檔案檢查過
@@ -359,7 +359,7 @@ internal static class Orf
             if ((long)lowBitsSet * 700 <= n)
             {
                 // 12-bit 值存在高位
-                Parallel.For(0, samples.Length, RawParallel.Options, i => samples[i] >>= 4);
+                Parallel.For(0, samples.Length, RawProcessingScope.Options, i => samples[i] >>= 4);
                 bits = 12;
             }
             else

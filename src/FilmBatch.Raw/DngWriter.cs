@@ -110,7 +110,7 @@ public static class DngWriter
         float inv = (float)(1.0 / LossyGamma);
         int n = checked(rgb.Width * rgb.Height * 3);
         var data = new ushort[n];
-        Parallel.For(0, rgb.Height, RawParallel.Options, y =>
+        Parallel.For(0, rgb.Height, RawProcessingScope.Options, y =>
         {
             for (var x = 0; x < rgb.Width; x++)
                 for (var s = 0; s < 3; s++)
@@ -290,7 +290,7 @@ public static class DngWriter
                 ifd.Set(Tags.Predictor, new TiffValue.Short([3]));
                 long ta = ((long)w + tile - 1) / tile, td = ((long)h + tile - 1) / tile;
                 var tiles = new byte[ta * td][];
-                Parallel.For(0, tiles.Length, RawParallel.Options, i =>
+                Parallel.For(0, tiles.Length, RawProcessingScope.Options, i =>
                 {
                     int tx = (int)((i % ta) * tile), ty = (int)((i / ta) * tile);
                     using var ms = new MemoryStream(tile * tile * cpp * bp);
@@ -359,7 +359,7 @@ public static class DngWriter
                 long ta = ((long)w + tile - 1) / tile, td = ((long)h + tile - 1) / tile;
                 var tiles = new byte[ta * td][];
                 var errors = new RawException[tiles.Length];
-                Parallel.For(0, tiles.Length, RawParallel.Options, i =>
+                Parallel.For(0, tiles.Length, RawProcessingScope.Options, i =>
                 {
                     try
                     {
@@ -406,7 +406,7 @@ public static class DngWriter
                         var src = u16.Samples;
                         int strips = (int)(((long)h + rows - 1) / rows);
                         var chunks = new byte[strips][];
-                        Parallel.For(0, strips, RawParallel.Options, i =>
+                        Parallel.For(0, strips, RawProcessingScope.Options, i =>
                         {
                             int y0 = i * rows;
                             int count = Math.Min(rows, h - y0) * w * cpp;
@@ -432,7 +432,7 @@ public static class DngWriter
                         long ta = ((long)w + tile - 1) / tile, td = ((long)h + tile - 1) / tile;
                         var tiles = new byte[ta * td][];
                         var src = u16.Samples;
-                        Parallel.For(0, tiles.Length, RawParallel.Options, i =>
+                        Parallel.For(0, tiles.Length, RawProcessingScope.Options, i =>
                         {
                             int tx = (int)((i % ta) * tile), ty = (int)((i / ta) * tile);
                             using var ms = new MemoryStream(tile * tile * cpp * 2);
@@ -475,7 +475,7 @@ public static class DngWriter
                         var tiles = new byte[ta * td][];
                         var src = u16.Samples;
                         var errors = new RawException[tiles.Length];
-                        Parallel.For(0, tiles.Length, RawParallel.Options, i =>
+                        Parallel.For(0, tiles.Length, RawProcessingScope.Options, i =>
                         {
                             try
                             {

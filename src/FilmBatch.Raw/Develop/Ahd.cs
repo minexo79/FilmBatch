@@ -21,7 +21,7 @@ public static partial class Demosaic
         // Tiles write disjoint output regions, so direct copy is thread-safe.
         var tilesX = (w + Tile - 1) / Tile;
         var tilesY = (h + Tile - 1) / Tile;
-        Parallel.For(0, tilesX * tilesY, RawParallel.Options,
+        Parallel.For(0, tilesX * tilesY, RawProcessingScope.Options,
             () => new AhdScratch(),
             (i, _, scratch) =>
             {

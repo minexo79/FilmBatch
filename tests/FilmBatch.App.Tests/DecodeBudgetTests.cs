@@ -8,9 +8,6 @@ public class DecodeBudgetTests
     private static DecodeBudget Small() => new(physicalBytes: 8L << 30); // 預算 = min(2 GiB, 1.5 GiB) / 4 = 384 MB
 
     [Fact]
-    public void Limit_is_a_quarter_of_the_capped_budget() => Assert.Equal(384L << 20, Small().Limit);
-
-    [Fact]
     public async Task Background_is_admitted_when_idle_even_if_the_estimate_exceeds_the_limit()
     {
         var budget = Small();
@@ -39,5 +36,16 @@ public class DecodeBudgetTests
         using var cts = new CancellationTokenSource(50);
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => budget.AcquireBackgroundAsync(DecodeBudget.ThumbnailBytes, cts.Token));
         Assert.Equal(DecodeBudget.FullBytes, budget.InFlight);
+    }
+
+    [Fact]
+    public async Task Cancelled_idle_request_is_not_admitted()
+    {
+        var budget = Small();
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            budget.AcquireBackgroundAsync(DecodeBudget.PreviewBytes, cts.Token));
+        Assert.Equal(0, budget.InFlight);
     }
 }

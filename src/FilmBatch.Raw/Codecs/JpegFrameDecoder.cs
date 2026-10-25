@@ -288,9 +288,7 @@ internal sealed class JpegFrameDecoder
                 for (int my = 0; my < _mcuH; my++)
                 {
                     int off = my * perRow;
-                    var row = new short[perRow];
-                    Array.Copy(_coeffs[i], off, row, 0, perRow);
-                    worker.AppendRow(i, row);
+                    worker.AppendRow(i, _coeffs[i].AsSpan(off, perRow));
                 }
                 _planes[i] = worker.Take(i);
             }
@@ -319,9 +317,9 @@ internal sealed class JpegFrameDecoder
         var lines = new byte[_comps.Length][];
         for (int i = 0; i < lines.Length; i++)
             lines[i] = new byte[bufSize];
+        var line = new byte[lineSize];
         for (int row = 0; row < _outH; row++)
         {
-            var line = new byte[lineSize];
             JpegUpSample.UpsampleRow(planes, _planes, row, _outW, lines, line, ct);
             Array.Copy(line, 0, image, row * lineSize, lineSize);
         }

@@ -79,7 +79,7 @@ public static class Resample
         if (img.Width == w && img.Height == h) return img.Clone();
         var wx = Weights(img.Width, w, filter);
         var tmp = new float[checked(w * img.Height * 3)];
-        Parallel.For(0, img.Height, RawParallel.Options, y =>
+        Parallel.For(0, img.Height, RawProcessingScope.Options, y =>
         {
             var src = y * img.Width * 3;
             for (var x = 0; x < w; x++)
@@ -94,7 +94,7 @@ public static class Resample
         });
         var wy = Weights(img.Height, h, filter);
         var outp = new RgbImage(w, h);
-        Parallel.For(0, h, RawParallel.Options, y =>
+        Parallel.For(0, h, RawProcessingScope.Options, y =>
         {
             var (lo, ws) = wy[y];
             for (var x = 0; x < w * 3; x++)
@@ -121,7 +121,7 @@ public static class Resample
     {
         var w = Math.Max((img.Width + 1) / 2, 1); var h = Math.Max((img.Height + 1) / 2, 1);
         var outp = new RgbImage(w, h);
-        Parallel.For(0, h, RawParallel.Options, y =>
+        Parallel.For(0, h, RawProcessingScope.Options, y =>
         {
             for (var x = 0; x < w; x++)
             {

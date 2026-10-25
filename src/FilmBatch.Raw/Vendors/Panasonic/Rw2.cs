@@ -285,7 +285,7 @@ internal static partial class Rw2
         var chunkSamples = Chunk / 16 * per;
         var chunks = (outData.Length + chunkSamples - 1) / chunkSamples;
         var outMem = outData.AsMemory();
-        Parallel.For(0, chunks, RawParallel.Options, c =>
+        Parallel.For(0, chunks, RawProcessingScope.Options, c =>
         {
             var raw = src.Span.Slice(c * Chunk, Math.Min(src.Length - c * Chunk, Chunk));
             Span<byte> rotatedChunk = stackalloc byte[Chunk];
@@ -506,7 +506,7 @@ internal static partial class Rw2
         var lefts = new int[strips.Length];
         var x = 0;
         for (var i = 0; i < strips.Length; i++) { lefts[i] = x; x += strips[i].Width; }
-        Parallel.For(0, strips.Length, RawParallel.Options, i => DecodeStrip(strips[i], codes, bytes, w, outData, lefts[i]));
+        Parallel.For(0, strips.Length, RawProcessingScope.Options, i => DecodeStrip(strips[i], codes, bytes, w, outData, lefts[i]));
     }
 
     /// <summary>有效區域內為 0 的樣本（被標記的缺陷像素）由同色兩像素外的非零樣本平均取代。</summary>
@@ -641,7 +641,7 @@ internal static partial class Rw2
         const int stride = 1 << 16;
         var chunks = (outData.Length + stride - 1) / stride;
         var outMem = outData.AsMemory();
-        Parallel.For(0, chunks, RawParallel.Options, k =>
+        Parallel.For(0, chunks, RawProcessingScope.Options, k =>
         {
             var start = k * stride;
             var len = Math.Min(stride, outMem.Length - start);

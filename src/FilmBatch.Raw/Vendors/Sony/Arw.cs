@@ -232,7 +232,7 @@ internal static class Arw
         var decoded = new (TiffChunk Chunk, Ljpeg.Frame Frame)?[chunks.Count];
         var errors = new RawException?[chunks.Count];
         var ok = 0;
-        Parallel.For(0, chunks.Count, RawParallel.Options, i =>
+        Parallel.For(0, chunks.Count, RawProcessingScope.Options, i =>
         {
             var c = chunks[i];
             try
@@ -309,7 +309,7 @@ internal static class Arw
         var h = (int)info.Height;
         var decoded = new (TiffChunk Chunk, Ljpeg.FrameSubsampled Frame)[chunks.Count];
         var errors = new RawException?[chunks.Count];
-        Parallel.For(0, chunks.Count, RawParallel.Options, i =>
+        Parallel.For(0, chunks.Count, RawProcessingScope.Options, i =>
         {
             var c = chunks[i];
             try
@@ -535,7 +535,7 @@ internal static class Arw
                 var src = TiffImage.ChunkBytes(bytes, chunks[0]) ?? throw RawException.Corrupt("raw strip outside file");
                 var curve = CodeCurve(raw.U64s(ToneCurve) ?? [8000, 10400, 12900, 14100]);
                 var arr = new ushort[w * h];
-                Parallel.For(0, h, RawParallel.Options, y =>
+                Parallel.For(0, h, RawProcessingScope.Options, y =>
                 {
                     var srcSpan = src.Span;
                     var row = y * (long)w + w <= srcSpan.Length ? srcSpan.Slice(y * w, w) : [];
@@ -560,7 +560,7 @@ internal static class Arw
                 var src = TiffImage.ChunkBytes(bytes, chunks[0]) ?? throw RawException.Corrupt("raw strip outside file");
                 var rowBytes = w / 2 * 3;
                 var arr = new ushort[w * h];
-                Parallel.For(0, h, RawParallel.Options, y =>
+                Parallel.For(0, h, RawProcessingScope.Options, y =>
                 {
                     var srcSpan = src.Span;
                     if (y * (long)rowBytes + rowBytes <= srcSpan.Length)

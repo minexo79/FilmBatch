@@ -49,7 +49,7 @@ internal static class Crx
             var qp = TileQp(sample.Span, tile);
             // Capture memory, not a ref-struct span. Exceptions are retained in plane order.
             var decoded = new (int[]? Data, RawException? Error)[tile.Planes.Length];
-            Parallel.For(0, tile.Planes.Length, RawParallel.Options, p =>
+            Parallel.For(0, tile.Planes.Length, RawProcessingScope.Options, p =>
             {
                 try
                 {

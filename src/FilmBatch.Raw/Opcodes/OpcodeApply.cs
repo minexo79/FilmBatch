@@ -95,7 +95,7 @@ public static partial class OpcodeOps
         var rows = 1 + (bottom - 1 - top) / rowPitch;
         var columns = 1 + (right - 1 - left) / colPitch;
         // Rows are disjoint; finish this opcode before the next one sees the buffer.
-        Parallel.For(0, rows, RawParallel.Options, row =>
+        Parallel.For(0, rows, RawProcessingScope.Options, row =>
         {
             var y = top + row * rowPitch;
             var rv = y / (double)h;
@@ -306,7 +306,7 @@ public static partial class OpcodeOps
         var (cx, cy) = (center[0] * (w - 1d), center[1] * (h - 1d));
         var m = MaxRadius(cx, cy, w - 1d, h - 1d);
         var outp = new RgbImage(w, h);
-        Parallel.For(0, h, RawParallel.Options, y =>
+        Parallel.For(0, h, RawProcessingScope.Options, y =>
         {
             for (var x = 0; x < w; x++)
             {
@@ -334,7 +334,7 @@ public static partial class OpcodeOps
         var (cx, cy) = (center[0] * (w - 1d), center[1] * (h - 1d));
         var m = MaxRadius(cx, cy, w - 1d, h - 1d);
         var outp = new RgbImage(w, h);
-        Parallel.For(0, h, RawParallel.Options, y =>
+        Parallel.For(0, h, RawProcessingScope.Options, y =>
         {
             for (var x = 0; x < w; x++)
             {

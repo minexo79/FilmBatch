@@ -47,7 +47,7 @@ internal static class CameraLocalTone
         var orientedW = (double)w;
         var orientedH = (double)h;
         // 定向後影像的畫素中心 → 定向後正規化座標 → 有效區相對位置
-        Parallel.For(0, h, y =>
+        Parallel.For(0, h, RawProcessingScope.Options, y =>
         {
             for (var x = 0; x < w; x++)
             {
@@ -88,7 +88,7 @@ internal static class CameraLocalTone
     {
         var m = matrix.ToF32();
         var data = image.Data;
-        Parallel.For(0, image.Height, y =>
+        Parallel.For(0, image.Height, RawProcessingScope.Options, y =>
         {
             var end = (y + 1) * image.Width * 3;
             for (var i = y * image.Width * 3; i < end; i += 3)

@@ -74,7 +74,7 @@ internal static partial class CameraPreview
         }
         var reach = (int)Math.Ceiling(4.0 * KernelHue / step) + 1;
         var cells = new (float Shift, float Sat, float Val)[TableVals * TableHues * TableSats];
-        Parallel.For(0, cells.Length, index =>
+        Parallel.For(0, cells.Length, RawProcessingScope.Options, index =>
         {
             var (v, h, s) = (index / (TableHues * TableSats), index / TableSats % TableHues, index % TableSats);
             if (s == 0)

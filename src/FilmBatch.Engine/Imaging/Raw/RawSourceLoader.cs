@@ -267,8 +267,12 @@ internal static partial class RawSourceLoader
     {
         var m = matrix.ToF32();
         var data = image.Data;
-        if (RawGpuDemosaic.TryApplyColour(image, wb, m, gain, tables, hueSat)) return;
-        Parallel.For(0, image.Height, RawParallel.Options, y =>
+        // GPU 已提交的前綴不再重跑：避免對已轉換的列做第二次色彩轉換。
+        var startRow = RawGpuDemosaic.TryApplyColour(image, wb, m, gain, tables, hueSat);
+        if (startRow < 0) startRow = 0;
+        if (startRow > image.Height) startRow = image.Height;
+        if (startRow >= image.Height) return;
+        Parallel.For(startRow, image.Height, RawProcessingScope.Options, y =>
         {
             var end = (y + 1) * image.Width * 3;
             for (var i = y * image.Width * 3; i < end; i += 3)

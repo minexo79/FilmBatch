@@ -15,7 +15,7 @@ public static class ImageLoader
     public const int PreviewLongEdge = 1600;
     public const int ThumbnailLongEdge = 240;
 
-    static ImageLoader() => FilmBatch.Engine.Imaging.Raw.RawGpuDemosaic.Install();
+    // RAW GPU 只在 App ImageCache 的 BeginScope 執行內容內啟用；此處不做全域安裝。
 
     public static SourceImage Load(string path, int maxLongEdge = PreviewLongEdge, RawLoadOptions rawOptions = default)
     {

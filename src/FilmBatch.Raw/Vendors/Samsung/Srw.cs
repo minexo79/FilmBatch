@@ -145,7 +145,7 @@ internal static class Srw
                     var lsb = LsbIsSmoother(src, w, h);
                     var srcMem = srcM;
                     var outMem = d.AsMemory();
-                    Parallel.For(0, h, RawParallel.Options, y =>
+                    Parallel.For(0, h, RawProcessingScope.Options, y =>
                     {
                         var row = srcMem.Span.Slice(y * stride, stride);
                         var outRow = outMem.Span.Slice(y * w, w);

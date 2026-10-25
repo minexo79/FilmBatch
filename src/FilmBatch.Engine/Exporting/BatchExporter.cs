@@ -121,6 +121,8 @@ public static class BatchExporter
         IProgress<BatchExportProgress>? progress,
         CancellationToken ct)
     {
+        // 匯出固定使用 CPU RAW 顯影，隔離可能由 Task.Run 繼承的預覽 GPU 範圍。
+        using var rawScope = RawGpuDemosaic.BeginScope(false, FilmBatch.Gpu.Device.GpuBackend.Auto, 0);
         var destination = Path.GetFullPath(options.Destination);
         // 安全：目的地不可指向專案內 .filmbatch
         if (IsInsideFilmbatch(destination))

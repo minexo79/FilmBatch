@@ -167,6 +167,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         Images = new ImageCache(settings.PreviewLongEdge);
         _backgroundCpuPercent = settings.BackgroundCpuPercent;
         Images.SetBackgroundCpuPercent(_backgroundCpuPercent);
+        Images.SetGpuDecodeOptions(settings);
         Renderer = new PreviewService(rendererFactory, post, fallback: () => PreviewService.CreateCpuRenderer(settings));
 
         Toast = new ToastViewModel(Stack);
@@ -1549,6 +1550,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         Settings.Save();
         RawLoadOptions.LensDatabaseDirectory = Settings.LensDatabaseFolder;
         _shownLensWarning = null;
+        Images.SetGpuDecodeOptions(Settings);
         RendererFactory = PreviewService.GpuFactory(Settings);
         Renderer.Reconfigure(RendererFactory,
             Settings.ForceSoftwareGpu ? null : () => PreviewService.CreateCpuRenderer(Settings));

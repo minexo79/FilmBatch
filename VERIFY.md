@@ -53,9 +53,11 @@ dotnet test FilmBatch.sln -c Release --logger trx --results-directory "$work/tes
 | 參數、持久化、貼上、匯出快照 | `PhotoOperationsTests`、`ProjectServiceTests`、`PersistenceTests`、`BatchExporterTests` | [Core 與復原](docs/architecture/core.md#41-core參數-schemaparams) |
 | RAW 場景域、白平衡、語意遮罩、鏡頭、DNG | `RawSceneIntegrationTests`、`RawWhiteBalanceTests`、`RawWhiteBalanceRangeTests`、`RawSemanticRenderingTests`、`LensProfileTests`、`RawDngConversionTests` | [RAW／匯出](docs/architecture/engine.md#48-engine影像讀取與批次匯出imaging--exporting) |
 | CPU／GPU 行為、精度與排程失敗 | `EffectPipelineTests`、`GpuSpikeTests`、`GpuGaussianTests`、`RawGpuDisplayTests`、`RenderSchedulerTests`、`RenderSchedulerReconfigureTests` | [算圖管線](docs/architecture/engine.md#46-engine算圖管線rendering)、[排程](docs/architecture/engine.md#47-engine算圖排程scheduling)、[ADR 0003](docs/adr/0003-gpu-stack-decision.md) |
+| RAW GPU 解碼政策、AHD／色彩精度與 CPU 匯出隔離 | `RawGpuPolicyTests`、`GpuAhdTests`、`GpuColourTests`、`RawEmbeddedThumbnailTests`；原生失敗注入與獨立 CLI 比對另跑 | [載入政策與限制](docs/architecture/app.md#大量照片載入與背景-cpu)、[可執行回歸與容差](docs/testing.md#raw-gpu-與載入隔離回歸)；硬體缺席明確略過，shader／讀回失敗不得略過 |
 | 獨立暗部模組的提亮、黑點／HDR／alpha、降噪與停用時恆等 | `ShadowRecoveryTests`；實際 RAW、Metal、共用介面與匯出另跑端到端 smoke | [操作、回歸命令與實測邊界](docs/building.md#局部暗部還原)、[CPU／GPU 契約](docs/architecture/engine.md#46-engine算圖管線rendering)；測試略過、Headless 與單張 RAW 不代替跨平台或人工畫質驗收 |
 | 非同步來源、裁切取消、undo、視窗狀態與手勢保存 | `EditorLifecycleTests`、`SliderGestureTests`、`PreviewInteractionTests`、`WindowLifecycleTests`、`RawControlsTests`、`RawSourceLifecycleTests` | [編輯生命週期](docs/architecture/app.md#410-app介面層) |
 | 大量照片載入、縮圖保留／重載、即時 CPU 與預覽交付 | `BulkLoadingTests`、`CacheAdmissionTests`、`ThumbnailRetentionTests`、`FilmstripLoadingTests`、`BackgroundLoadingPreferencesTests`、`PreviewDeliveryTests` | [載入與背景 CPU](docs/architecture/app.md#大量照片載入與背景-cpu)、[回歸與桌面檢查](docs/testing.md#大量照片載入與即時預覽回歸) |
+| 背景記憶體等待被前景取代、取消入場、Loupe 級距與來源釋放 | `CacheAdmissionTests`、`DecodeBudgetTests`、`OffThreadScalingTests`、`PreviewCanvasWindowTests` | [Loupe 契約](docs/architecture/app.md#loupe-預覽)；記憶體值為入場估計、並行度為每個 RAW 迴圈的上限，不是程序硬上限 |
 | 底片 LUT、色相帶、舊設定移除 | `FilmLutTests`、`FilmLookTests`、`RetiredParamsTests` | [底片契約與來源](docs/film-looks.md) |
 | 顆粒座標／足跡、局部膚色、白平衡提案與 Zone | `GrainModelTests`、`SurveyRenderingTests`、`PhotoAdjustmentTests`、`PhotoAnalysisTests`、`PhotoToolsTests` | [現行操作與限制](docs/research/grain-white-balance-survey.md#目前實作與操作)、[實作及原生驗收](docs/superpowers/plans/2026-10-19-grain-neutral-zone.md) |
 | AI 分塊／混合、模型完整性、快取、取消與 UI 狀態 | `DenoisingTests`、`DenoisingOrtTests`、`DenoiseViewModelTests`、`RenderSchedulerTests`、`AiFeaturesPanelTests`；真實權重另走原生實拍 smoke | [AI 資料域與授權](docs/adr/0002-ai-denoise.md)、[端到端驗收](docs/superpowers/plans/2026-10-19-ai-denoising.md) |
@@ -121,6 +123,7 @@ shasum -c "$work/source.sha256"
 - 先讀 `samples` 實際回傳的檔名，不假設起始編號。`--long-edge` 大於 0 時合法範圍是 100–20000；256 是合法 smoke 尺寸，0 或負值依現行 CLI 實作選擇原尺寸。
 - 每次匯出確認所有 `Entries[].Status` 為 `ok`；單次執行會更新專案的 `export_log.json`，所以上面另存每次記錄。
 - 必須讀 `Device`／`Renderer`，確認 Metal 真正在用、軟體路徑實際選到哪個後端；兩次 exit 0 不證明 CPU／GPU 互相比對，更不證明獨立色彩正確性。
+- RAW 輸入的解碼固定走 CPU，不隨預覽 GPU 範圍改變；這裡的 CPU／GPU 比較針對效果算圖。另以啟用中的預覽範圍呼叫 `BatchExporter`，可驗證範圍沒有滲入匯出的 RAW 來源；做法與界線見 [RAW GPU 隔離回歸](docs/testing.md#raw-gpu-與載入隔離回歸)。
 - 比較解碼後尺寸／RGB16／alpha，而非 PNG 檔案位元組。本次另用拋棄式 Engine API driver 比對，結果記於[稽核記錄](docs/superpowers/plans/2026-10-18-governed-verification-and-knowledge.md#current-observations)；該 driver 不是 fresh clone 的相依項。需要重做逐像素檢查時，可在儲存庫外建立指向 `FilmBatch.Engine.csproj` 的 .NET console，以 `ImageLoader.LoadFull` 比較 RGBA16；永久回歸仍由 V1 的數值／匯出測試負責。
 - `raw convert` 的 uncompressed 模式會重解碼輸出並比較感光樣本；再次指向既有目的檔應 exit 2，且目的檔雜湊不變。這與 `export --format dng` 的算圖後輸出不同。
 - 此例只涵蓋生成影像與由其匯出的 DNG，不宣稱涵蓋真實相機、所有 JXL tile 或 ProRAW。那些輸入的現行測試與歷史對照另列於 RAW 文件。
