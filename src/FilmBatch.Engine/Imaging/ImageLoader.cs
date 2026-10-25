@@ -17,8 +17,8 @@ public static class ImageLoader
 
     public static SourceImage Load(string path, int maxLongEdge = PreviewLongEdge, RawLoadOptions rawOptions = default)
     {
-        // 只有縮圖使用相機渲染的內嵌預覽；編輯、匯出與語意遮罩仍走場景線性顯影。
-        if (!rawOptions.IncludeSemanticMasks && maxLongEdge <= ThumbnailLongEdge
+        // 只有縮圖使用相機渲染的內嵌預覽（縮圖用不到語意遮罩，故不看 IncludeSemanticMasks）；編輯與匯出仍走場景線性顯影。
+        if (maxLongEdge <= ThumbnailLongEdge
             && RawSourceLoader.TryExtractThumbnail(path, maxLongEdge, out var preview, out var info)
             && ImageBackend.TryLoadEmbeddedPreview(preview, path, rawOptions, maxLongEdge, info!) is { } thumbnail)
             return thumbnail;
