@@ -15,6 +15,8 @@ public static class ImageLoader
     public const int PreviewLongEdge = 1600;
     public const int ThumbnailLongEdge = 240;
 
+    static ImageLoader() => FilmBatch.Engine.Imaging.Raw.RawGpuDemosaic.Install();
+
     public static SourceImage Load(string path, int maxLongEdge = PreviewLongEdge, RawLoadOptions rawOptions = default)
     {
         // 只有縮圖使用相機渲染的內嵌預覽（縮圖用不到語意遮罩，故不看 IncludeSemanticMasks）；編輯與匯出仍走場景線性顯影。
