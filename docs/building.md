@@ -265,6 +265,8 @@ dotnet test tests/FilmBatch.Core.Tests/FilmBatch.Core.Tests.csproj -c Release \
 
 CPU 目標是程序相對全機邏輯核心的合作式背景目標，不是硬性上限，也不保證將輕量工作拉高至 70%。單張不可中斷解碼可短暫超標；計時、CPU 比例與延遲只屬當次機器／輸入的觀察，不當成跨機效能門檻。
 
+資源使用率顯示與背景 CPU 配速共用程序時鐘：macOS／iOS 使用 Darwin `CLOCK_PROCESS_CPUTIME_ID`，其他平台使用 `Process.TotalProcessorTime`。iOS 的 .NET API 不支援後者，不能因為桌面可用就直接沿用。平台檢查以 iOS 目標重新編譯並將 `CA1416` 視為錯誤；通過編譯不代表模擬器或實機已完成資源取樣。實際介面須確認關閉除錯記錄後仍可開啟資源顯示，CPU／RAM／磁碟不因取樣例外全數停留在「—」。
+
 ### RAW 語料測試
 
 RAW 解碼與顯影另有對照 LightCraft 參考輸出的語料測試（逐位元的感光資料、色彩標籤與顯影階段，以及起始外觀擬合後的線性／顯示 RGB）。樣本與參考輸出不進版本庫；沒有設定 `FILMBATCH_RAW_SAMPLES`／`FILMBATCH_RAW_ORACLE` 時（例如 CI）這些測試會略過。取得方式、比較門檻與已知偏差見 [tools/raw-oracle/README.md](../tools/raw-oracle/README.md)。
@@ -478,7 +480,16 @@ filmbatch-cli denoise-models import nafnet-sidd "/path/denoise-nafnet.dtmodel"
 filmbatch-cli export "/path/to/photos" --out "/path/to/output" --format tiff --denoise 75
 ```
 
-`--denoise 0–100` 只覆蓋本次匯出的啟用與強度，省略則沿用專案；不修改專案或預設。介面的總強度、亮度與色彩皆為推論結果與原圖的混合量，不是感光 ISO、模型雜訊 σ 或細節重建保證。相同來源的混合量與藝術效果調整使用神經網路快取；初次仍先全解析度推論。後續 RAW 強度調整使用快取的代理輸入，sRGB 則保留全圖逐像素夾取／量化次序、直接累積預覽，兩者均避免反覆配置全圖暫存；匯出仍用全解析度結果。
+`--denoise 0–100` 只覆蓋本次匯出的啟用與強度，省略則沿用專案；不修改專案或預設。介面的總強度、亮度與色彩皆為推論結果與原圖的混合量，不是感光 ISO、模型雜訊 σ 或細節重建保證。正式預覽／匯出的混合量與藝術效果調整使用全解析度神經結果快取；初次仍先全解析度推論。後續 RAW 強度調整使用快取的代理輸入，sRGB 則保留全圖逐像素夾取／量化次序、直接累積預覽，兩者均避免反覆配置全圖暫存。
+
+縮圖是獨立的低優先工作：AI 只處理已提供的縮圖像素，不重開原檔；相機內嵌 sRGB 預覽用 NAFNet-SIDD，線性 RAW 縮圖用 RawNIND。另有一筆按推論尺寸區分的縮圖神經快取，不會污染或逐出正式預覽／匯出的完整結果。這不關閉照片的 AI 設定，也不降低選取後大圖或匯出的推論品質。
+
+```bash
+dotnet test tests/FilmBatch.Core.Tests/FilmBatch.Core.Tests.csproj -c Release \
+  --filter "FullyQualifiedName~DenoisingOrtTests|FullyQualifiedName~RenderSchedulerTests|FullyQualifiedName~RenderSchedulerReconfigureTests"
+```
+
+`ThumbnailInference_*` 以真正 ORT 微型圖檢查不重開原檔、sRGB／線性像素與 alpha、不同尺寸及全品質快取隔離、取消後不得發布快取。原生實拍另須保留啟用 AI 的專案覆寫，確認兩張 AI 縮圖都有實際推論與交付，不只檢查完成計數；選取 RAW 後應仍以全尺寸 RawNIND 推論。2026-10-26 的 21 張來源建置驗證見[本輪紀錄](history.md#縮圖-ai-降噪與合併意圖複核2026-10-26)，不是封裝版或跨平台畫質驗收。
 
 下載／匯入與照片設定分開；切換到需要不同模型的來源域時，舊安裝作業會取消，不能把 RGB 模型的完成狀態套到 RAW。明確取消預覽不會關閉照片的降噪設定；匯出中的工作請使用匯出面板自己的取消動作。
 

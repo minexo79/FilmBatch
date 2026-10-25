@@ -244,8 +244,7 @@ public sealed class CacheAdmissionTests
             using var cache = new ImageCache();
             cache.SetBackgroundCpuPercent(10);
             // Simulate a completed CPU burst requiring more than one 2-second wait chunk.
-            var cpu = (TimeSpan)typeof(ImageCache).GetMethod("GetProcessCpuTime",
-                BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null, null)!;
+            var cpu = SystemMonitor.GetProcessCpuTime();
             typeof(ImageCache).GetField("_lastPaceCpu", PrivateInstance)!
                 .SetValue(cache, cpu - TimeSpan.FromSeconds(Environment.ProcessorCount * 10));
             typeof(ImageCache).GetField("_lastPaceTimestamp", PrivateInstance)!

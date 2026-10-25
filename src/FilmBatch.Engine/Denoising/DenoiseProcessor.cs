@@ -11,11 +11,13 @@ namespace FilmBatch.Engine.Denoising;
 /// <summary>
 /// 來源階段（effect 之前）的實際 ONNX 降噪入口。實作重點：
 /// • 模型選擇依來源域（RAW 場景線性→RawNIND linear，一般 sRGB→NAFNet-SIDD）。
-/// • 「全解析度先行」：代理來源（有 <see cref="SourceImage.FilePath"/> 且參考尺寸大於
+/// • 正式預覽／匯出「全解析度先行」：代理來源（有 <see cref="SourceImage.FilePath"/> 且參考尺寸大於
 ///   目前尺寸）先以相同 <see cref="RawLoadOptions"/> 重新載入全尺寸做神經推論，神經結果
 ///   以全解析度保留（匯出沿用）。預覽混合依域分路：場景線性先把原始／降噪輸入 box 到
 ///   預覽尺寸再混合（仿射可交換、有界快取）；sRGB 逐像素「混合→u16 量化→覆蓋率 box」
 ///   融合直寫預覽尺寸，與舊「全尺寸混合再降採樣」逐位元一致，兩者都不再配置全尺寸暫存。
+/// • 縮圖只對已提供的像素推論，不重開原檔；另保留一筆按推論尺寸區分的神經結果，
+///   不取代預覽／匯出的全解析度快取。原始參考尺寸仍保留給後續效果。
 /// • 單一行程級推論閘門（所有實例共用）：全域一次只有一趟推論。
 /// • session 有界（最多兩個已知模型身分）；以 (模型路徑, 檔案戳記) 快取，啟用前驗證
 ///   固定 SHA-256，檔案被替換會偵測並重建 session。
@@ -57,6 +59,7 @@ public sealed class DenoiseProcessor : IDisposable
     private string _storeRoot = "";
     private readonly Dictionary<string, SessionHolder> _sessions = new(StringComparer.Ordinal);
     private NeuralResult? _cached;
+    private NeuralResult? _thumbnailCached;
     private bool _disposed;
 
     /// <summary>模型目錄每次存取時重新解析（<see cref="AppPaths.OverrideRoot"/> 變動即生效）。</summary>
@@ -91,7 +94,16 @@ public sealed class DenoiseProcessor : IDisposable
     /// <see cref="SourceImage.Denoise"/> 的來源原樣回傳（不做模型／緩衝工作）。
     /// </summary>
     public SourceImage Prepare(SourceImage source, Settings settings,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        Prepare(source, settings, fullResolution: true, cancellationToken);
+
+    /// <summary>縮圖在實際像素尺寸與資料域上降噪，不重開全尺寸來源，也不取代全品質快取。</summary>
+    internal SourceImage PrepareThumbnail(SourceImage source, Settings settings,
+        CancellationToken cancellationToken = default) =>
+        Prepare(source, settings, fullResolution: false, cancellationToken);
+
+    private SourceImage Prepare(SourceImage source, Settings settings, bool fullResolution,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(settings);
@@ -102,7 +114,7 @@ public sealed class DenoiseProcessor : IDisposable
         if (!ds.IsActive) return source;
         if (source.Denoise is not null) return source; // 已降噪的來源不再跑一次
         var spec = DenoiseModelCatalog.ForSource(source);
-        return Prepare(source, spec, ds, cancellationToken);
+        return Prepare(source, spec, ds, cancellationToken, fullResolution);
     }
 
     /// <summary>
@@ -110,7 +122,7 @@ public sealed class DenoiseProcessor : IDisposable
     /// 測試以「測試自有的微型 ONNX」走完全相同的推論管線（不改變產品行為）。
     /// </summary>
     internal SourceImage Prepare(SourceImage source, DenoiseModelSpec spec, DenoiseSettings ds,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default, bool fullResolution = true)
     {
         var store = Store;
         var modelPath = store.ModelPath(spec);
@@ -120,19 +132,20 @@ public sealed class DenoiseProcessor : IDisposable
                 $"The {spec.Name} denoise model is not installed ({modelPath}). Install it explicitly with 'denoise-models install {spec.Id}' or 'import'."), modelPath);
 
         var modelStamp = ModelStamp(modelPath);
-        var loadFull = source.FilePath is { Length: > 0 } p && File.Exists(p)
+        var loadFull = fullResolution && source.FilePath is { Length: > 0 } p && File.Exists(p)
             && (source.ReferenceWidth > source.Width || source.ReferenceHeight > source.Height);
         var inferW = loadFull ? source.ReferenceWidth : source.Width;
         var inferH = loadFull ? source.ReferenceHeight : source.Height;
         var totalTiles = TilesFor(spec, inferW, inferH);
         var key = new CacheKey(SourceIdentity(source), source.ReferenceWidth,
-            source.ReferenceHeight, source.RawOptions, spec.Id, store.DirectoryPath, modelStamp);
+            source.ReferenceHeight, inferW, inferH, source.RawOptions, spec.Id, store.DirectoryPath, modelStamp);
 
         NeuralResult? cached;
         lock (_sync)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            cached = _cached is { } hit && hit.Key == key ? hit : null;
+            var candidate = fullResolution ? _cached : _thumbnailCached;
+            cached = candidate is { } hit && hit.Key == key ? hit : null;
         }
         if (cached is not null)
         {
@@ -154,7 +167,10 @@ public sealed class DenoiseProcessor : IDisposable
         try
         {
             lock (_sync)
-                cached = _cached is { } completed && completed.Key == key ? completed : null;
+            {
+                var candidate = fullResolution ? _cached : _thumbnailCached;
+                cached = candidate is { } completed && completed.Key == key ? completed : null;
+            }
             if (cached is not null)
                 return Materialize(source, cached, spec, cacheHit: true, ds, cancellationToken);
             var full = loadFull ? LoadFullSource(source, cancellationToken) : source;
@@ -166,7 +182,11 @@ public sealed class DenoiseProcessor : IDisposable
             var result = Materialize(source, neural, spec,
                 cacheHit: false, ds, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
-            lock (_sync) _cached = neural;
+            lock (_sync)
+            {
+                if (fullResolution) _cached = neural;
+                else _thumbnailCached = neural;
+            }
             Report(source, spec, "complete", totalTiles, totalTiles, session.ProviderName);
             return result;
         }
@@ -206,7 +226,7 @@ public sealed class DenoiseProcessor : IDisposable
         return full;
     }
 
-    /// <summary>在閘門內執行 tile 推論；回傳全解析度降噪後 RGB 平面與 alpha 平面（可能為 null＝不透明）。</summary>
+    /// <summary>在閘門內依提供的來源尺寸執行 tile 推論，回傳降噪後的 RGB 平面。</summary>
     private float[] RunInference(DenoiseModelSpec spec, SessionHolder session,
         SourceImage full, SourceImage reportSource, int totalTiles, CancellationToken ct)
     {
@@ -471,15 +491,16 @@ public sealed class DenoiseProcessor : IDisposable
             _disposed = true;
             foreach (var s in _sessions.Values) s.Dispose();
             _cached = null;
+            _thumbnailCached = null;
         }
     }
 
-    /// <summary>快取鍵：來源身分、原始參考尺寸、RawOptions、模型身分與模型根＋戳記。
-    /// 藝術／混合設定不在鍵內；代理與全解析度共用同一鍵（同一來源只留全尺寸神經結果）。</summary>
-    private sealed record CacheKey(object Identity, int RefW, int RefH, RawLoadOptions RawOptions,
-        string ModelId, string ModelRoot, (long Ticks, long Length) ModelStamp);
+    /// <summary>快取鍵含來源身分、原始參考尺寸及實際推論尺寸，防止不同縮圖互用像素。
+    /// 藝術／混合設定不在鍵內；一般代理與全解析度仍共用完整神經結果，縮圖另有一筆快取。</summary>
+    private sealed record CacheKey(object Identity, int RefW, int RefH, int InferW, int InferH,
+        RawLoadOptions RawOptions, string ModelId, string ModelRoot, (long Ticks, long Length) ModelStamp);
 
-    /// <summary>快取的全解析度神經結果（未混合）與其來源；匯出以此做全尺寸混合。</summary>
+    /// <summary>快取的未混合神經結果與實際推論來源；正式預覽／匯出使用完整來源，縮圖使用提供的尺寸。</summary>
     private sealed record NeuralResult(CacheKey Key, float[] Rgb,
         SourceImage FullSource, string Provider, TimeSpan InferenceTime, int TileCount)
     {

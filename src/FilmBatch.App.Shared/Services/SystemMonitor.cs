@@ -1,10 +1,11 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 namespace FilmBatch.App.Services;
 
 /// <summary>
-/// 除錯模式用的系統資源取樣：CPU、GPU（Windows 效能計數器的 3D 引擎）、RAM 與資料所在磁碟的容量。
+/// 系統資源取樣：CPU、GPU（Windows 效能計數器的 3D 引擎）、RAM 與資料所在磁碟的容量。
 /// 取不到的項目回傳 null，由介面顯示「—」。取樣由呼叫端以固定間隔（1 秒）在背景執行緒呼叫 <see cref="Sample"/>。
 /// </summary>
 internal sealed class SystemMonitor : IDisposable
@@ -52,7 +53,7 @@ internal sealed class SystemMonitor : IDisposable
         }
         // 其他平台：以本程序的 CPU 時間近似
         var now = Stopwatch.GetTimestamp();
-        var cpu = Process.GetCurrentProcess().TotalProcessorTime;
+        var cpu = GetProcessCpuTime();
         var elapsed = Stopwatch.GetElapsedTime(_lastProcessTicks, now);
         var used = cpu - _lastProcessCpu;
         var first2 = _lastProcessTicks == 0;
@@ -142,6 +143,30 @@ internal sealed class SystemMonitor : IDisposable
     }
 
     public void Dispose() { if (OperatingSystem.IsWindows()) DisposeCounters(); }
+
+    /// <summary>讀取本程序的 CPU 累計時間；Apple 平台使用 Darwin clock，供資源取樣與背景配速共用。</summary>
+    internal static TimeSpan GetProcessCpuTime()
+    {
+        // .NET for iOS does not implement Process.TotalProcessorTime.
+        if (OperatingSystem.IsIOS() || OperatingSystem.IsMacOS())
+        {
+            if (ReadProcessClock(12, out var time) != 0) // Darwin CLOCK_PROCESS_CPUTIME_ID
+                throw new Win32Exception(Marshal.GetLastPInvokeError(), "Could not read the process CPU clock.");
+            return TimeSpan.FromTicks(checked(time.Seconds * TimeSpan.TicksPerSecond + time.Nanoseconds / 100));
+        }
+        using var process = Process.GetCurrentProcess();
+        return process.TotalProcessorTime;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct ProcessClock
+    {
+        internal long Seconds;
+        internal long Nanoseconds;
+    }
+
+    [DllImport("/usr/lib/libSystem.B.dylib", EntryPoint = "clock_gettime", SetLastError = true)]
+    private static extern int ReadProcessClock(int clockId, out ProcessClock time);
 
     private static ulong ToUInt64(FileTime t) => ((ulong)t.High << 32) | t.Low;
 
