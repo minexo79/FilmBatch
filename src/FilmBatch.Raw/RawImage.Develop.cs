@@ -33,7 +33,7 @@ public sealed partial class RawImage
         }
         var outp = new float[checked((long)a.Width * a.Height * cpp)];
         var rowLen = a.Width * cpp;
-        Parallel.For(0, a.Height, y =>
+        Parallel.For(0, a.Height, RawProcessingScope.Options, y =>
         {
             var rowBase = y * rowLen;
             var baseIdx = ((long)(a.Y + y) * w + a.X) * cpp;

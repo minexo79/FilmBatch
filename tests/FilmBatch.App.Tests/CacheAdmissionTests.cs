@@ -233,6 +233,44 @@ public sealed class CacheAdmissionTests
     }
 
     [Fact]
+    public async Task PacingDebt_SurvivesWaitChunkWithoutBlockingForeground()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "filmbatch-cache-pacing-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        try
+        {
+            var paths = SampleImages.Generate(folder, count: 2, longEdge: 64);
+            using var cache = new ImageCache();
+            cache.SetBackgroundCpuPercent(10);
+            // Simulate a completed CPU burst requiring more than one 2-second wait chunk.
+            var cpu = (TimeSpan)typeof(ImageCache).GetMethod("GetProcessCpuTime",
+                BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null, null)!;
+            typeof(ImageCache).GetField("_lastPaceCpu", PrivateInstance)!
+                .SetValue(cache, cpu - TimeSpan.FromSeconds(Environment.ProcessorCount * 10));
+            typeof(ImageCache).GetField("_lastPaceTimestamp", PrivateInstance)!
+                .SetValue(cache, System.Diagnostics.Stopwatch.GetTimestamp());
+
+            var queued = cache.GetThumbnailSourceAsync(paths[0], cancellationToken: TestContext.Current.CancellationToken);
+            await Task.Delay(TimeSpan.FromSeconds(2.25), TestContext.Current.CancellationToken);
+            Assert.False(queued.IsCompleted, "The first wait chunk must not erase unpaid CPU debt.");
+            var foreground = await cache.GetPreviewAsync(paths[1], cancellationToken: TestContext.Current.CancellationToken)
+                .WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+            Assert.Equal(Path.GetFullPath(paths[1]), foreground.FilePath);
+            Assert.Equal((64, 42), (foreground.Width, foreground.Height));
+            Assert.False(queued.IsCompleted);
+
+            cache.SetBackgroundCpuPercent(100);
+            var thumbnail = await queued.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+            Assert.Equal(Path.GetFullPath(paths[0]), thumbnail.FilePath);
+            Assert.Equal((64, 42), (thumbnail.Width, thumbnail.Height));
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Fact]
     public void SetBackgroundCpuPercent_ClampsAndReportsCurrentValue()
     {
         using var cache = new ImageCache();

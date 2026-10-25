@@ -57,7 +57,7 @@ public sealed class RgbImage
     private RgbImage FlipH()
     {
         var d = new float[Data.Length];
-        Parallel.For(0, Height, y =>
+        Parallel.For(0, Height, RawProcessingScope.Options, y =>
         {
             var row = y * Width * 3;
             for (var x = 0; x < Width; x++)
@@ -76,7 +76,7 @@ public sealed class RgbImage
     {
         var d = new float[Data.Length];
         var n = Width * Height;
-        Parallel.For(0, Height, y =>
+        Parallel.For(0, Height, RawProcessingScope.Options, y =>
         {
             for (var x = 0; x < Width; x++)
             {
@@ -96,7 +96,7 @@ public sealed class RgbImage
         int w = Width, h = Height;
         var d = new float[Data.Length];
         // 輸出為 h × w
-        Parallel.For(0, w, y =>
+        Parallel.For(0, w, RawProcessingScope.Options, y =>
         {
             for (var x = 0; x < h; x++)
             {

@@ -72,7 +72,7 @@ public sealed class SemanticMask
         double kx = (double)c.Width / ow, ky = (double)c.Height / oh;
         var output = new byte[ow * oh];
         // 每列獨立，可平行化（上游 par_rows）；輸出像素 (x, y) 中心對應 crop 相對座標。
-        Parallel.For(0, oh, y =>
+        Parallel.For(0, oh, RawProcessingScope.Options, y =>
         {
             double ay = c.Y + (y + 0.5) * ky;
             int row = y * ow;

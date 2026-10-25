@@ -5,8 +5,14 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
+using Avalonia.Threading;
 using FilmBatch.App.Controls;
+using FilmBatch.App.Services;
 using FilmBatch.App.Services.Loupe;
+using FilmBatch.App.ViewModels;
+using FilmBatch.App.Views;
+using FilmBatch.Engine.Imaging;
+using FilmBatch.Engine.Rendering;
 
 namespace FilmBatch.App.Tests;
 
@@ -67,6 +73,35 @@ public class PreviewCanvasWindowTests
 
         TestEnv.PumpUntil(() => reported is not null);
         Assert.Equal((0.25, 0.25, 0.75, 0.75), reported);
+    }
+
+    [AvaloniaFact]
+    public void Rounded_display_bitmap_does_not_feed_back_into_fit_geometry()
+    {
+        TestEnv.IsolateUserFolder();
+        using var main = new MainWindowViewModel(new AppSettings(), new FakeDialogs(),
+            () => new CpuFakeRenderer(), a => Dispatcher.UIThread.Post(a));
+        main.Preview.SetOriginal(new SourceImage(300, 200, new ushort[300 * 200 * 4]));
+        main.Preview.SetResult(new RenderResult(170, 113, new byte[170 * 113 * 4], TimeSpan.Zero), null, null);
+        var view = new PreviewView { DataContext = main.Preview };
+        var canvas = view.FindControl<PreviewCanvas>("Canvas")!;
+        var reports = new List<double>();
+        canvas.ViewSizesChanged += (drawn, _) => reports.Add(drawn);
+        var window = new Window { Width = 200, Height = 114, Content = view };
+        window.Show();
+        try
+        {
+            window.CaptureRenderedFrame()?.Dispose();
+            TestEnv.PumpUntil(() => reports.Count > 0);
+            // 300×200 畫框受 114px 高度限制：長邊是 171，不能取整後變成 171.5。
+            Assert.Equal(171, reports[^1]);
+
+            main.Preview.SetResult(new RenderResult(172, 115, new byte[172 * 115 * 4], TimeSpan.Zero), null, null);
+            window.CaptureRenderedFrame()?.Dispose();
+            Dispatcher.UIThread.RunJobs();
+            Assert.Single(reports);
+        }
+        finally { window.Close(); }
     }
 
     private static PreviewCanvas Canvas(Bitmap image) => new() { Image = image, Width = 200, Height = 200 };

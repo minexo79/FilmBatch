@@ -66,11 +66,11 @@ public class PreviewCanvas : Control
     public static readonly StyledProperty<bool> ShowTransparencyProperty =
         AvaloniaProperty.Register<PreviewCanvas, bool>(nameof(ShowTransparency));
     /// <summary>
-    /// 影像在版面上的長邊（影像像素）；0 = 使用 bitmap 本身的尺寸。預覽的 bitmap 尺寸跟著畫布走（Main 渲染、顯示縮放），
-    /// 版面與 <see cref="Zoom"/> 改以這個固定的畫框尺寸計算，換 bitmap 尺寸時畫面不跳動、100% 的意義不變。長寬比仍取自 bitmap。
+    /// 影像在版面上的固定畫框尺寸（影像像素）；未提供有效寬高時使用 bitmap 本身。
+    /// 版面與 <see cref="Zoom"/> 都以此計算，避免顯示縮放取整後的長寬比回饋成下一次縮放要求。
     /// </summary>
-    public static readonly StyledProperty<double> LayoutLongEdgeProperty =
-        AvaloniaProperty.Register<PreviewCanvas, double>(nameof(LayoutLongEdge));
+    public static readonly StyledProperty<Size> LayoutFrameSizeProperty =
+        AvaloniaProperty.Register<PreviewCanvas, Size>(nameof(LayoutFrameSize));
     /// <summary>Loupe 窗口的影像（放大時螢幕上可見的那一塊，從 Full 來源算）；與 <see cref="WindowRegion"/> 成對。</summary>
     public static readonly StyledProperty<Bitmap?> WindowImageProperty =
         AvaloniaProperty.Register<PreviewCanvas, Bitmap?>(nameof(WindowImage));
@@ -167,7 +167,7 @@ public class PreviewCanvas : Control
     public ICanvasTool? ActiveTool { get => GetValue(ActiveToolProperty); set => SetValue(ActiveToolProperty, value); }
     public bool ShowTransparency { get => GetValue(ShowTransparencyProperty); set => SetValue(ShowTransparencyProperty, value); }
     public IReadOnlyList<FootprintPath>? Footprint { get => GetValue(FootprintProperty); set => SetValue(FootprintProperty, value); }
-    public double LayoutLongEdge { get => GetValue(LayoutLongEdgeProperty); set => SetValue(LayoutLongEdgeProperty, value); }
+    public Size LayoutFrameSize { get => GetValue(LayoutFrameSizeProperty); set => SetValue(LayoutFrameSizeProperty, value); }
 
     /// <summary>拖曳控制點：參數為正規化座標與是否已放開。</summary>
     public event Action<Point, bool>? ControlPointDragged;
@@ -215,7 +215,7 @@ public class PreviewCanvas : Control
     {
         AffectsRender<PreviewCanvas>(ImageProperty, OriginalProperty, ShowOriginalProperty, IsSplitProperty,
             SplitPositionProperty, ZoomProperty, PanProperty, OverlayTextProperty, ControlPointProperty, CanvasBackgroundProperty, IsBusyProperty, ShowsSpinnerProperty, FootprintProperty, ShowTransparencyProperty,
-            LayoutLongEdgeProperty, WindowImageProperty, WindowRegionProperty, WindowVisibleProperty);
+            LayoutFrameSizeProperty, WindowImageProperty, WindowRegionProperty, WindowVisibleProperty);
         ZoomProperty.Changed.AddClassHandler<PreviewCanvas>((c, e) =>
         {
             if (e.NewValue is <= 0.0) c.Pan = default;
@@ -288,15 +288,9 @@ public class PreviewCanvas : Control
 
     private Bitmap? Displayed => ShowOriginal ? Original ?? Image : Image ?? Original;
 
-    /// <summary>版面用的影像尺寸（影像像素）：長寬比取自 bitmap，長邊為 <see cref="LayoutLongEdge"/>（0 = bitmap 本身）。</summary>
-    private Size LayoutSize(Bitmap img)
-    {
-        var size = img.Size;
-        var longEdge = Math.Max(size.Width, size.Height);
-        if (LayoutLongEdge <= 0 || longEdge <= 0) return size;
-        var k = LayoutLongEdge / longEdge;
-        return new Size(size.Width * k, size.Height * k);
-    }
+    /// <summary>版面用的固定畫框尺寸；顯示 bitmap 的取整誤差不改變畫框的長寬比。</summary>
+    private Size LayoutSize(Bitmap img) =>
+        LayoutFrameSize is { Width: > 0, Height: > 0 } frame ? frame : img.Size;
 
     private double FitScale(Size img) =>
         img.Width <= 0 || img.Height <= 0 ? 1 : Math.Min(Bounds.Width / img.Width, Bounds.Height / img.Height);

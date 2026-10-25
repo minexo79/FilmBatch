@@ -83,8 +83,8 @@ internal static class SonyLens
     /// <summary>raw IFD 目錄的低階掃描（診斷用）：首條目、是否重複、讀取器漏掉條目的原因。</summary>
     private sealed class Directory
     {
-        public byte[] Entries = null!;
-        public byte[] Data = null!;
+        public ReadOnlyMemory<byte> Entries;
+        public ReadOnlyMemory<byte> Data;
         public int Base;
         public ByteOrder Order;
         public bool Big;
@@ -96,12 +96,12 @@ internal static class SonyLens
             int head, size;
             if (Big)
             {
-                if (Order.ReadU64(Entries, 0) is not { } nn || nn > int.MaxValue) return (null, false);
+                if (Order.ReadU64(Entries.Span, 0) is not { } nn || nn > int.MaxValue) return (null, false);
                 n = (int)nn; head = 8; size = 20;
             }
             else
             {
-                if (Order.ReadU16(Entries, 0) is not { } nn) return (null, false);
+                if (Order.ReadU16(Entries.Span, 0) is not { } nn) return (null, false);
                 n = nn; head = 2; size = 12;
             }
             var count = Math.Min(n, MaxEntries);
@@ -111,7 +111,7 @@ internal static class SonyLens
                 try { at = checked((long)i * size + head); }
                 catch (OverflowException) { break; }
                 if (at < 0 || at + size > Entries.Length) break;
-                var e = Entries.AsSpan((int)at, size).ToArray();
+                var e = Entries.Slice((int)at, size).ToArray();
                 if (Order.ReadU16(e, 0) != tag) continue;
                 if (found is not null) return (found, true);
                 found = e;
@@ -134,7 +134,7 @@ internal static class SonyLens
             if (offset is not { } o || o > int.MaxValue) return null;
             var at = (int)o - Base;
             if (at < 0 || (long)at + len > Data.Length) return null;
-            return Data.AsSpan(at, len).ToArray();
+            return Data.Slice(at, len).ToArray();
         }
 
         /// <summary>目錄持有但 TIFF 讀取器漏掉的條目被丟棄的原因。</summary>
@@ -284,7 +284,7 @@ internal static class SonyLens
         try
         {
             if (raw.Offset >= 0 && raw.Offset <= bytes.Length)
-                plain = new Directory { Entries = bytes.Slice((int)raw.Offset).ToArray(), Data = bytes.ToArray(), Base = 0, Order = order, Big = big };
+                plain = new Directory { Entries = bytes.Slice((int)raw.Offset), Data = bytes, Base = 0, Order = order, Big = big };
         }
         catch { plain = null; }
         Directory? encrypted = null;

@@ -232,7 +232,7 @@ internal static class Llvc
             throw RawException.Corrupt("ARW6 wavelet: band sizes do not match");
         var zeros = new int[ww];
         var even = new int[nl * ww];
-        Parallel.For(0, nl, j =>
+        Parallel.For(0, nl, RawProcessingScope.Options, j =>
         {
             var e = even.AsSpan(j * ww, ww);
             var lv = l.AsSpan(j * ww, ww);
@@ -243,7 +243,7 @@ internal static class Llvc
         });
         var outArr = new int[n * ww];
         var lo = phase;
-        Parallel.For(0, n, t =>
+        Parallel.For(0, n, RawProcessingScope.Options, t =>
         {
             var o = outArr.AsSpan(t * ww, ww);
             if (t % 2 == lo)
@@ -302,7 +302,7 @@ internal static class Llvc
         if (BandRows(n, phase) != (nl, nh) || phase is < 0 or > 1)
             throw RawException.Corrupt("ARW6 wavelet: band sizes do not match");
         var outP = Plane.Zeros(w, h);
-        Parallel.For(0, h, i =>
+        Parallel.For(0, h, RawProcessingScope.Options, i =>
         {
             var l = low.Row(i);
             var hi2 = high.Row(i);

@@ -407,7 +407,7 @@ internal static class Arw6
         var results = new HalfLines[halves.Length];
         var errs = new Exception?[halves.Length];
         var tileArr = tile.ToArray(); // Parallel.For 不能捕獲 ref struct 的 ReadOnlySpan；複製一次後平行
-        Parallel.For(0, halves.Length, n =>
+        Parallel.For(0, halves.Length, RawProcessingScope.Options, n =>
         {
             try
             {
@@ -558,7 +558,7 @@ internal static class Arw6
         var tileArr = tile.ToArray();
         var streams = new HalfLines[h.Streams.Count][];
         var errs = new Exception?[h.Streams.Count];
-        Parallel.For(0, h.Streams.Count, i =>
+        Parallel.For(0, h.Streams.Count, RawProcessingScope.Options, i =>
         {
             try
             {
@@ -574,7 +574,7 @@ internal static class Arw6
                 throw e is RawException re ? re : Corrupt("stream decode failed");
         var comps = new Llvc.Plane?[3];
         var cerrs = new Exception?[3];
-        Parallel.For(0, 3, c =>
+        Parallel.For(0, 3, RawProcessingScope.Options, c =>
         {
             try
             {
@@ -620,7 +620,7 @@ internal static class Arw6
         var mw = checked(2 * w2);
         var total = checked((int)(4 * len));
         var g1 = new long[len];
-        Parallel.For(0, h2, j =>
+        Parallel.For(0, h2, RawProcessingScope.Options, j =>
         {
             var m = p.M.Row(j);
             var rp = p.Res.Row(Math.Max(0, j - 1));
@@ -637,7 +637,7 @@ internal static class Arw6
         static long At2(ReadOnlySpan<int> r, int x) => (uint)x < (uint)r.Length ? r[x] : 0;
         var outArr = new ushort[total];
         // 每個平面列產生兩條馬賽克列
-        Parallel.For(0, h2, j =>
+        Parallel.For(0, h2, RawProcessingScope.Options, j =>
         {
             var gj = j * w2 + w2 <= g1.Length ? g1.AsSpan(j * w2, w2) : ReadOnlySpan<long>.Empty;
             var jn = Math.Min(j + 1, h2 - 1);
@@ -694,7 +694,7 @@ internal static class Arw6
         var stripArr = strip.ToArray();
         var decoded = new ushort[tiles.Length][];
         var errs = new Exception?[tiles.Length];
-        Parallel.For(0, tiles.Length, i =>
+        Parallel.For(0, tiles.Length, RawProcessingScope.Options, i =>
         {
             try
             {

@@ -199,7 +199,7 @@ internal static class Cr2Sraw
             int cw = ChromaWidth;
             float centre = (float)ChromaCentre;
             var output = new ushort[Width * Height * 3];
-            Parallel.For(0, Height, y =>
+            Parallel.For(0, Height, RawProcessingScope.Options, y =>
             {
                 int chroma = (y / Vertical) * cw;
                 for (int x = 0; x < Width; x++)

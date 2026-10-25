@@ -156,7 +156,9 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
         _standInBitmap = bitmap;
         StandIn = kind;
         ControlPoint = null;
-        FrameLongEdge = Math.Max(0, layoutLongEdge);
+        var size = bitmap.Size;
+        var scale = Math.Max(0, layoutLongEdge) / Math.Max(size.Width, size.Height);
+        FrameSize = new Size(size.Width * scale, size.Height * scale);
         Image = bitmap;
         UpdateFootprint();
         if (!ReferenceEquals(old, bitmap)) old?.Dispose();
@@ -169,7 +171,7 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
         if (StandIn is null) return;
         if (ReferenceEquals(Image, _standInBitmap)) Image = null;
         ReleaseStandIn();
-        if (Source is null) FrameLongEdge = 0;
+        if (Source is null) FrameSize = default;
     }
 
     /// <summary>替身已不在畫面上：清除狀態並釋放 bitmap，恢復控制點與範圍的顯示。</summary>
@@ -265,11 +267,15 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
     private SourceImage? _compareSource;
 
     /// <summary>
-    /// 目前畫框（裁切 / 方向之後）在代理圖解析度下的長邊。畫布以它做版面與縮放的基準（<c>PreviewCanvas.LayoutLongEdge</c>），
-    /// 所以 Main 渲染尺寸、顯示縮放改變 bitmap 尺寸時，畫面位置與「100%」的意義都不變。沒有來源時為 0。
+    /// 目前畫框（裁切／方向之後）在代理圖解析度下的固定尺寸。
+    /// 畫布以來源幾何計算版面與縮放，不以顯示 bitmap 的取整尺寸反推長寬比；沒有來源時為空尺寸。
     /// </summary>
     [ObservableProperty]
-    private double _frameLongEdge;
+    [NotifyPropertyChangedFor(nameof(FrameLongEdge))]
+    private Size _frameSize;
+
+    /// <summary>目前畫框在代理圖解析度下的長邊，供渲染快取與開圖替身沿用倍率基準。</summary>
+    public double FrameLongEdge => Math.Max(FrameSize.Width, FrameSize.Height);
 
     /// <summary>設定原圖對比要用的（縮放後）來源；與這次算圖請求送出的來源相同。相同時不重算。</summary>
     public void SetCompareSource(SourceImage source)
@@ -292,7 +298,7 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
     {
         if (Source is not { } proxy) return;
         var frame = CropGeometry.Compute(proxy.Width, proxy.Height, _compareCrop);
-        FrameLongEdge = Math.Max(frame.OutWidth, frame.OutHeight);
+        FrameSize = new Size(frame.OutWidth, frame.OutHeight);
         // 未顯示對比時不建立 bitmap，也不觸發 RAW 的延遲顯示編碼。
         if (!ShowOriginal && !IsSplit)
         {
@@ -473,7 +479,7 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
         Original = null;
         _originalShown = null;
         _compareSource = null;
-        FrameLongEdge = 0;
+        FrameSize = default;
         Exif = null;
         IsBusy = false;
         SourceHasTransparency = false;

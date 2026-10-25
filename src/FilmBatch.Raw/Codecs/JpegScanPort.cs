@@ -48,7 +48,7 @@ internal static class JpegScanPort
             Qts[index] = qt;
         }
 
-        public void AppendRow(int index, short[] data)
+        public void AppendRow(int index, ReadOnlySpan<short> data)
         {
             var c = Comps[index] ?? throw RawException.Corrupt("preview JPEG: worker row without start");
             var qt = Qts[index] ?? throw RawException.Corrupt("preview JPEG: worker row without start");
@@ -56,13 +56,13 @@ internal static class JpegScanPort
             int lineStride = c.BlockW * c.DctScale;
             if (data.Length != blockCount * 64)
                 throw RawException.Corrupt("preview JPEG: bad MCU row length");
+            Span<byte> output = Results[index];
+            ReadOnlySpan<ushort> q = qt;
             for (int i = 0; i < blockCount; i++)
             {
                 int x = (i % c.BlockW) * c.DctScale;
                 int y = (i / c.BlockW) * c.DctScale;
-                var coeff = new short[64];
-                Array.Copy(data, i * 64, coeff, 0, 64);
-                JpegIdct.DequantizeAndIdctBlock(c.DctScale, coeff, qt, lineStride, Results[index], Offsets[index] + y * lineStride + x);
+                JpegIdct.DequantizeAndIdctBlock(c.DctScale, data.Slice(i * 64, 64), q, lineStride, output, Offsets[index] + y * lineStride + x);
             }
             Offsets[index] += blockCount * c.DctScale * c.DctScale;
         }
@@ -167,7 +167,7 @@ internal static class JpegScanPort
         }
         int maxMcuX = interleaved ? ctx.McuW : comps[0].BlockW;
         int maxMcuY = interleaved ? ctx.McuH : comps[0].BlockH;
-        var dummy = new short[64];
+        Span<short> dummy = stackalloc short[64];
         for (int mcuY = 0; mcuY < maxMcuY; mcuY++)
         {
             if (mcuY * 8 >= ctx.ImageH)
@@ -204,15 +204,12 @@ internal static class JpegScanPort
                     {
                         for (int hh = 0; hh < mcuHs[i]; hh++)
                         {
-                            short[] block;
                             if (progressive)
                             {
                                 int by = mcuY * mcuVs[i] + v;
                                 int bx = mcuX * mcuHs[i] + hh;
                                 int off = (by * c.BlockW + bx) * 64;
-                                var global = ctx.Coeffs[scan.CompIdx[i]];
-                                block = new short[64];
-                                Array.Copy(global, off, block, 0, 64);
+                                Span<short> block = ctx.Coeffs[scan.CompIdx[i]].AsSpan(off, 64);
                                 if (scan.SuccHigh == 0)
                                     DecodeBlock(ref br, block,
                                         ctx.DcHuff[scan.DcTbl[i]], ctx.AcHuff[scan.AcTbl[i]],
@@ -221,7 +218,6 @@ internal static class JpegScanPort
                                     DecodeBlockRefine(ref br, block,
                                         ctx.AcHuff[scan.AcTbl[i]],
                                         scan.SpecStart, scan.SpecEnd, scan.SuccLow, ref eobRun);
-                                Array.Copy(block, 0, global, off, 64);
                             }
                             else if (finished[i])
                             {
@@ -229,8 +225,7 @@ internal static class JpegScanPort
                                 int by = batchRow * mcuVs[i] + v;
                                 int bx = mcuX * mcuHs[i] + hh;
                                 int off = (by * c.BlockW + bx) * 64;
-                                block = new short[64];
-                                Array.Copy(rowCoeffs[i], off, block, 0, 64);
+                                Span<short> block = rowCoeffs[i].AsSpan(off, 64);
                                 if (scan.SuccHigh == 0)
                                     DecodeBlock(ref br, block,
                                         ctx.DcHuff[scan.DcTbl[i]], ctx.AcHuff[scan.AcTbl[i]],
@@ -239,17 +234,17 @@ internal static class JpegScanPort
                                     DecodeBlockRefine(ref br, block,
                                         ctx.AcHuff[scan.AcTbl[i]],
                                         scan.SpecStart, scan.SpecEnd, scan.SuccLow, ref eobRun);
-                                Array.Copy(block, 0, rowCoeffs[i], off, 64);
                             }
                             else
                             {
-                                Array.Clear(dummy);
+                                Span<short> dummySpan = dummy;
+                                dummySpan.Clear();
                                 if (scan.SuccHigh == 0)
-                                    DecodeBlock(ref br, dummy,
+                                    DecodeBlock(ref br, dummySpan,
                                         ctx.DcHuff[scan.DcTbl[i]], ctx.AcHuff[scan.AcTbl[i]],
                                         scan.SpecStart, scan.SpecEnd, scan.SuccLow, ref eobRun, ref dcPred[i]);
                                 else
-                                    DecodeBlockRefine(ref br, dummy,
+                                    DecodeBlockRefine(ref br, dummySpan,
                                         ctx.AcHuff[scan.AcTbl[i]],
                                         scan.SpecStart, scan.SpecEnd, scan.SuccLow, ref eobRun);
                             }
@@ -265,24 +260,19 @@ internal static class JpegScanPort
                 if (!interleaved && (mcuY + 1) * 8 < ctx.ImageH && (mcuY + 1) % c.V > 0)
                     continue;
                 int perRow = c.BlockW * c.V * 64;
-                short[] row;
                 if (progressive)
                 {
                     int workerY = interleaved ? mcuY : mcuY / c.V;
                     int off = workerY * perRow;
-                    var global = ctx.Coeffs[scan.CompIdx[i]];
-                    row = new short[perRow];
-                    Array.Copy(global, off, row, 0, perRow);
+                    // 漸進式行送 worker 前不複製：IDCT 只讀係數，工作列提交後該行不再被本迴圈寫入。
+                    worker.AppendRow(i, ctx.Coeffs[scan.CompIdx[i]].AsSpan(off, perRow));
                 }
                 else
                 {
-                    row = rowCoeffs[i];
-                    int n = c.BlockW * c.V * 64;
-                    if (n > RawLimits.MaxSamples)
-                        throw RawException.Limit("preview JPEG: image too large");
-                    rowCoeffs[i] = new short[n];
+                    // 已知 sequential 每塊恰寫一次：提交後顯式清零代替丟棄再生，避免每列重配置。
+                    worker.AppendRow(i, rowCoeffs[i]);
+                    rowCoeffs[i].AsSpan().Clear();
                 }
-                worker.AppendRow(i, row);
             }
         }
         // 掃描尾 marker 原樣回傳（上游 take_marker 語意）：RST 由主迴圈忽略（前一 marker 為 SOS），
@@ -304,7 +294,7 @@ internal static class JpegScanPort
         return (marker, planes);
     }
 
-    internal static void DecodeBlock(ref BitReader br, short[] coeff, HuffTable? dcTable, HuffTable? acTable,
+    internal static void DecodeBlock(ref BitReader br, scoped Span<short> coeff, HuffTable? dcTable, HuffTable? acTable,
         int specStart, int specEnd, int succLow, ref ushort eobRun, ref short dcPred)
     {
         if (specStart == 0)
@@ -365,7 +355,7 @@ internal static class JpegScanPort
         }
     }
 
-    internal static void DecodeBlockRefine(ref BitReader br, short[] coeff, HuffTable? acTable,
+    internal static void DecodeBlockRefine(ref BitReader br, scoped Span<short> coeff, HuffTable? acTable,
         int specStart, int specEnd, int succLow, ref ushort eobRun)
     {
         short bit = (short)(1 << succLow);
@@ -411,7 +401,7 @@ internal static class JpegScanPort
         }
     }
 
-    private static int RefineNonZeroes(ref BitReader br, short[] coeff, int start, int end, byte zrl, short bit)
+    private static int RefineNonZeroes(ref BitReader br, scoped Span<short> coeff, int start, int end, byte zrl, short bit)
     {
         int last = end - 1;
         int run = zrl;

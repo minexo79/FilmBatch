@@ -133,7 +133,7 @@ public static class Highlight
         var lum = new float[cw * ch];
         var near = new bool[cw * ch];
         var lo = SourceLo * clip;
-        Parallel.For(0, ch, y =>
+        Parallel.For(0, ch, RawProcessingScope.Options, y =>
         {
             var touched = new bool[cw];
             for (var x = 0; x < cw; x++)
@@ -196,7 +196,7 @@ public static class Highlight
         // 裁剪鄰域與強邊緣上的格剔除（以鄰域亮度比）。
         var edgeLo = MathF.Pow(2f, EdgeLo);
         var edgeHi = MathF.Pow(2f, EdgeHi);
-        Parallel.For(0, ch, y =>
+        Parallel.For(0, ch, RawProcessingScope.Options, y =>
         {
             var ya = y - Margin < 0 ? 0 : y - Margin;
             var yb = Math.Min(y + Margin, ch - 1);
@@ -255,7 +255,7 @@ public static class Highlight
         var cw4 = (w + 3) / 4;
         var ch4 = (h + 3) / 4;
         var cells = new float[cw4 * ch4 * 4];
-        Parallel.For(0, ch4, y =>
+        Parallel.For(0, ch4, RawProcessingScope.Options, y =>
         {
             for (var x = 0; x < cw4; x++)
             {
@@ -298,7 +298,7 @@ public static class Highlight
         var w = (l.W + 1) / 2;
         var h = (l.H + 1) / 2;
         var cells = new float[w * h * 3];
-        Parallel.For(0, h, y =>
+        Parallel.For(0, h, RawProcessingScope.Options, y =>
         {
             for (var x = 0; x < w; x++)
             {
@@ -332,7 +332,7 @@ public static class Highlight
         var w = (l.W + 1) / 2;
         var h = (l.H + 1) / 2;
         var cells = new float[w * h * 4];
-        Parallel.For(0, h, y =>
+        Parallel.For(0, h, RawProcessingScope.Options, y =>
         {
             for (var x = 0; x < w; x++)
             {
@@ -455,7 +455,7 @@ public static class Highlight
             var coarse = levels[li + 1];
             var fw = fine.W;
             var applyNeeded = li == 0 && needed is not null;
-            Parallel.For(0, fine.H, y =>
+            Parallel.For(0, fine.H, RawProcessingScope.Options, y =>
             {
                 for (var x = 0; x < fw; x++)
                 {
@@ -498,7 +498,7 @@ public static class Highlight
             var fine = levels[li];
             var coarse = levels[li + 1];
             var fw = fine.W;
-            Parallel.For(0, fine.H, y =>
+            Parallel.For(0, fine.H, RawProcessingScope.Options, y =>
             {
                 for (var x = 0; x < fw; x++)
                 {
@@ -606,7 +606,7 @@ public static class Highlight
         var h = img.Height;
         var data = img.Data;
         var count = 0;
-        Parallel.For(0, h, () => 0, (y, _, local) =>
+        Parallel.For(0, h, RawProcessingScope.Options, () => 0, (y, _, local) =>
         {
             for (var x = 0; x < w; x++)
             {
@@ -662,7 +662,7 @@ public static class Highlight
         }
         var fw = first.W;
         var fh = first.H;
-        Parallel.For(0, fh, y =>
+        Parallel.For(0, fh, RawProcessingScope.Options, y =>
         {
             for (var x = 0; x < fw; x++)
             {
@@ -699,7 +699,7 @@ public static class Highlight
             rimField = any ? rimLevels[0] : null;
         }
         var maxLevel = RustFloat.Max(RustFloat.Max(RustFloat.Max(0f, w0), w1), w2) * clip;
-        Parallel.For(0, h, y =>
+        Parallel.For(0, h, RawProcessingScope.Options, y =>
         {
             for (var x = 0; x < w; x++)
             {

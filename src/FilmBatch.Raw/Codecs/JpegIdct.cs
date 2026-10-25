@@ -13,15 +13,16 @@ internal static class JpegIdct
     /// </summary>
     internal static int ChooseIdctSize(int fullW, int fullH, int reqW, int reqH)
     {
-        foreach (int s in new[] { 1, 2, 4 })
+        for (int k = 0; k < 3; k++)
         {
+            int s = 1 << k;
             if ((fullW * s - 1) / 8 + 1 >= reqW || (fullH * s - 1) / 8 + 1 >= reqH)
                 return s;
         }
         return 8;
     }
 
-    internal static void DequantizeAndIdctBlock(int scale, short[] coeff, ushort[] qt, int lineStride, byte[] output, int outOff)
+    internal static void DequantizeAndIdctBlock(int scale, ReadOnlySpan<short> coeff, ReadOnlySpan<ushort> qt, int lineStride, Span<byte> output, int outOff)
     {
         switch (scale)
         {
@@ -33,7 +34,7 @@ internal static class JpegIdct
         }
     }
 
-    private static void Block8x8(short[] c, ushort[] q, int lineStride, byte[] output, int outOff)
+    private static void Block8x8(ReadOnlySpan<short> c, ReadOnlySpan<ushort> q, int lineStride, Span<byte> output, int outOff)
     {
         // 上游 dequantize_and_idct_block_8x8_inner（stb）：先縱向 8 列、再橫向 8 行。
         Span<int> tmp = stackalloc int[64];
@@ -149,7 +150,7 @@ internal static class JpegIdct
         t0 = unchecked(tt0 + pp1 + pp3);
     }
 
-    private static void Block4x4(short[] c, ushort[] q, int lineStride, byte[] output, int outOff)
+    private static void Block4x4(ReadOnlySpan<short> c, ReadOnlySpan<ushort> q, int lineStride, Span<byte> output, int outOff)
     {
         Span<int> tmp = stackalloc int[16];
         const int ConstBits = 12;
@@ -190,7 +191,7 @@ internal static class JpegIdct
         }
     }
 
-    private static void Block2x2(short[] c, ushort[] q, int lineStride, byte[] output, int outOff)
+    private static void Block2x2(ReadOnlySpan<short> c, ReadOnlySpan<ushort> q, int lineStride, Span<byte> output, int outOff)
     {
         const int ScaleBits = 3;
         int s00 = unchecked(c[0] * q[0]);
@@ -210,7 +211,7 @@ internal static class JpegIdct
         output[outOff + lineStride + 1] = StbiClamp(unchecked((x2 - x3) >> ScaleBits));
     }
 
-    private static void Block1x1(short[] c, ushort[] q, byte[] output, int outOff)
+    private static void Block1x1(ReadOnlySpan<short> c, ReadOnlySpan<ushort> q, Span<byte> output, int outOff)
     {
         // 上游：(c*q + 128*8) / 8（Wrapping 除法；除數恆 8，C# 整數除法同為截尾，負數語意與 Rust 相同）。
         int s0 = unchecked(c[0] * q[0] + 128 * 8) / 8;

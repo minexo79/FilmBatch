@@ -9,7 +9,7 @@ public static partial class Demosaic
     private static float[] GreenPlane(Mosaic m)
     {
         var (w, h) = (m.W, m.H); var g = new float[w * h];
-        Parallel.For(0, h, y =>
+        Parallel.For(0, h, RawProcessingScope.Options, y =>
         {
             Span<float> grads = stackalloc float[4];
             for (var x = 0; x < w; x++)
@@ -33,7 +33,7 @@ public static partial class Demosaic
     {
         var (w, h) = (m.W, m.H); var g = GreenPlane(m); var outp = new RgbImage(w, h);
         float G(int x, int y) => g[Reflect(y, h) * w + Reflect(x, w)];
-        Parallel.For(0, h, y =>
+        Parallel.For(0, h, RawProcessingScope.Options, y =>
         {
             for (var x = 0; x < w; x++)
             {
