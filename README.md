@@ -1,6 +1,11 @@
 <p align="center">
-  <img src="res/appicon.svg" alt="FilmBatch icon" width="128" height="128">
+  <img src="res/snapshot.png" width="800" />
 </p>
+
+<p align="center">
+  <sub>Cover model: 腦腐 · Instagram: <a href="https://www.instagram.com/ouo.207/">@ouo.207</a></sub>
+</p>
+
 
 <h1 align="center">FilmBatch</h1>
 
