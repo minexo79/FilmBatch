@@ -1,5 +1,4 @@
 using FilmBatch.Engine.Denoising;
-using FilmBatch.Core;
 using System.Diagnostics;
 using FilmBatch.Core.Params;
 using FilmBatch.Engine.Imaging;
@@ -11,7 +10,7 @@ namespace FilmBatch.Engine.Rendering;
 /// </summary>
 public sealed class CpuFakeRenderer : IPreviewRenderer
 {
-    public string DeviceName => CoreText.T("CPU（參考實作）", "CPU (reference implementation)");
+    public string DeviceName => RenderBackend.ReferenceCpu.DeviceName;
     public bool IsSoftware => true;
 
     private readonly EffectAssets _assets;

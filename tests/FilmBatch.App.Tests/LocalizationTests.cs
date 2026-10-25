@@ -163,6 +163,7 @@ public partial class LocalizationTests
         using var emptyVm = TestEnv.CreateViewModel();
         var emptyWindow = new MainWindow(emptyVm) { Width = 1440, Height = 900 };
         emptyWindow.Show();
+        TestEnv.PumpUntil(() => emptyVm.Renderer.DeviceName is not null);
 
         Loc.Instance.Culture = CultureInfo.GetCultureInfo("en");
         try
@@ -171,6 +172,7 @@ public partial class LocalizationTests
             {
                 vm.Preview.EmptyText, vm.GpuName, vm.Filmstrip.CountText, vm.Preview.ZoomText, vm.Preview.HistogramClipping, vm.SelectionText, vm.BackgroundText,
                 vm.Inspector.OverrideText, vm.Sidebar.Export.Summary, vm.Sidebar.Export.StatusText, Loc.Get("AiFeatures.Title"),
+                emptyVm.GpuName,
             };
             foreach (var panel in new[] { vm.Inspector, vm.FilmEffects })
             {

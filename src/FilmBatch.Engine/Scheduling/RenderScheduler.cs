@@ -10,8 +10,9 @@ namespace FilmBatch.Engine.Scheduling;
 /// <param name="Key">照片鍵。</param>
 /// <param name="Generation">預覽世代（PreviewService 的遞增請求編號）。</param>
 /// <param name="Result">算圖結果。</param>
+/// <param name="Backend">完成當下實際後端的快照。</param>
 /// <param name="Epoch">完成資格快照時的算圖世代；重建後送達即丟棄。</param>
-public sealed record PreviewRendered(string Key, long Generation, RenderResult Result, long Epoch);
+public sealed record PreviewRendered(string Key, long Generation, RenderResult Result, RenderBackend Backend, long Epoch);
 
 /// <summary>完成的縮圖，攜帶送出時的算圖世代，供 UI 交付圍欄比對。</summary>
 /// <param name="Key">照片／磁磚鍵。</param>
@@ -30,14 +31,14 @@ public sealed record PrefetchRendered(string Key, RenderResult Result, long Epoc
 /// <param name="Generation">送出時的窗口請求編號（每次 RequestWindow 遞增）。</param>
 /// <param name="View">窗口在畫框中的位置與畫框尺寸。</param>
 /// <param name="Result">算圖結果（窗口大小的 BGRA）。</param>
+/// <param name="Backend">完成當下實際後端的快照。</param>
 /// <param name="Epoch">完成資格快照時的算圖世代；重建後送達即丟棄。</param>
-public sealed record WindowRendered(string Key, long Generation, RenderView View, RenderResult Result, long Epoch);
+public sealed record WindowRendered(string Key, long Generation, RenderView View, RenderResult Result, RenderBackend Backend, long Epoch);
 
 /// <summary>算圖器建立完成（或改用備援），攜帶建立當下的算圖世代。</summary>
-/// <param name="DeviceName">裝置名稱。</param>
-/// <param name="IsSoftware">是否為軟體介面卡。</param>
+/// <param name="Backend">裝置狀態快照，名稱依目前介面語言顯示。</param>
 /// <param name="Epoch">資格快照當下的算圖世代；重建後送達即丟棄。</param>
-public readonly record struct DeviceReady(string DeviceName, bool IsSoftware, long Epoch);
+public readonly record struct DeviceReady(RenderBackend Backend, long Epoch);
 
 /// <summary>需要告知使用者的訊息（例如 GPU 重新初始化），攜帶發出時的算圖世代。</summary>
 /// <param name="Message">訊息本文。</param>
@@ -95,8 +96,6 @@ public sealed class RenderScheduler : IDisposable
     /// <summary>算圖器建立完成（或改用備援），攜帶資格快照當下的算圖世代。</summary>
     public event Action<DeviceReady>? DeviceReady;
 
-    /// <summary>目前算圖器的裝置名稱（CPU 備援的名稱依目前語言；切換語言時重新讀取）。</summary>
-    public string? DeviceName => Volatile.Read(ref _renderer)?.DeviceName;
     public event Action<PreviewRendered>? PreviewRendered;
     public event Action<ThumbnailRendered>? ThumbnailRendered;
     /// <summary>預取完成（只供快取，不是 UI 影像）；在 GPU 執行緒上觸發。</summary>
@@ -390,7 +389,7 @@ public sealed class RenderScheduler : IDisposable
             if (preview is { } p)
             {
                 if (p.Epoch != epoch) return true;
-                if (TryRender(p.Key, p.Source, p.Settings, p.Epoch, cancellation!.Token, p.Generation) is { } r)
+                if (TryRender(p.Key, p.Source, p.Settings, p.Epoch, cancellation!.Token, p.Generation) is { } completedRender)
                 {
                     // 完成資格在送件鎖內快照，昂貴回呼在鎖外執行：直方圖等不得卡住新的 RequestPreview。
                     //  payload 攜帶快照時的世代：鎖釋放後若發生重建，回呼入口不得再取新世代，
@@ -401,13 +400,13 @@ public sealed class RenderScheduler : IDisposable
                         if (p.Epoch == _epoch && !cancellation.IsCancellationRequested)
                             completed = PreviewRendered;
                     }
-                    completed?.Invoke(new PreviewRendered(p.Key, p.Generation, r, p.Epoch));
+                    completed?.Invoke(new PreviewRendered(p.Key, p.Generation, completedRender.Result, completedRender.Backend, p.Epoch));
                 }
             }
             else if (window is { } w)
             {
                 if (w.Epoch != epoch) return true;
-                if (TryRender(w.Key, w.Source, w.Settings, w.Epoch, cancellation!.Token, null, w.View, w.Stats, w.Generation) is { } r)
+                if (TryRender(w.Key, w.Source, w.Settings, w.Epoch, cancellation!.Token, null, w.View, w.Stats, w.Generation) is { } completedRender)
                 {
                     Action<WindowRendered>? completed = null;
                     lock (_lock)
@@ -415,13 +414,13 @@ public sealed class RenderScheduler : IDisposable
                         if (w.Epoch == _epoch && !cancellation.IsCancellationRequested)
                             completed = WindowRendered;
                     }
-                    completed?.Invoke(new WindowRendered(w.Key, w.Generation, w.View, r, w.Epoch));
+                    completed?.Invoke(new WindowRendered(w.Key, w.Generation, w.View, completedRender.Result, completedRender.Backend, w.Epoch));
                 }
             }
             else if (prefetch is { } f)
             {
                 if (f.Epoch != epoch) return true;
-                if (TryRender(f.Key, f.Source, f.Settings, f.Epoch, cancellation!.Token) is { } r)
+                if (TryRender(f.Key, f.Source, f.Settings, f.Epoch, cancellation!.Token) is { } completedRender)
                 {
                     Action<PrefetchRendered>? completed = null;
                     lock (_lock)
@@ -429,13 +428,13 @@ public sealed class RenderScheduler : IDisposable
                         if (f.Epoch == _epoch && f.Generation == _prefetchGeneration && !cancellation.IsCancellationRequested)
                             completed = PrefetchRendered;
                     }
-                    completed?.Invoke(new PrefetchRendered(f.Key, r, f.Epoch));
+                    completed?.Invoke(new PrefetchRendered(f.Key, completedRender.Result, f.Epoch));
                 }
             }
             else if (thumb is { } t)
             {
                 if (t.Epoch != epoch) return true;
-                if (TryRender(t.Key, t.Source, t.Settings, t.Epoch, cancellation!.Token) is { } r)
+                if (TryRender(t.Key, t.Source, t.Settings, t.Epoch, cancellation!.Token) is { } completedRender)
                 {
                     Action<ThumbnailRendered>? completed = null;
                     lock (_lock)
@@ -443,7 +442,7 @@ public sealed class RenderScheduler : IDisposable
                         if (t.Epoch == _epoch && !cancellation.IsCancellationRequested)
                             completed = ThumbnailRendered;
                     }
-                    completed?.Invoke(new ThumbnailRendered(t.Key, r, t.Epoch));
+                    completed?.Invoke(new ThumbnailRendered(t.Key, completedRender.Result, t.Epoch));
                 }
             }
             else return false;
@@ -495,7 +494,7 @@ public sealed class RenderScheduler : IDisposable
         }
     }
 
-    private RenderResult? TryRender(string key, SourceImage source, Settings settings, long epoch,
+    private (RenderResult Result, RenderBackend Backend)? TryRender(string key, SourceImage source, Settings settings, long epoch,
         CancellationToken cancellationToken, long? previewGeneration = null, RenderView? view = null, FrameStats? stats = null,
         long? windowGeneration = null)
     {
@@ -521,11 +520,15 @@ public sealed class RenderScheduler : IDisposable
             try
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                var renderer = _renderer!;
                 var result = view is { } v
-                    ? _renderer!.RenderWindow(source, settings, v, stats!, cancellationToken)
-                    : _renderer!.Render(source, settings, cancellationToken);
+                    ? renderer.RenderWindow(source, settings, v, stats!, cancellationToken)
+                    : renderer.Render(source, settings, cancellationToken);
+                var backend = previewGeneration is not null || windowGeneration is not null
+                    ? RenderBackend.Capture(renderer)
+                    : default;
                 cancellationToken.ThrowIfCancellationRequested();
-                return result;
+                return (result, backend);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -616,7 +619,7 @@ public sealed class RenderScheduler : IDisposable
             readyEpoch = _epoch;
             if (_pendingReset is null) ready = DeviceReady;
         }
-        ready?.Invoke(new DeviceReady(_renderer.DeviceName, _renderer.IsSoftware, readyEpoch));
+        ready?.Invoke(new DeviceReady(RenderBackend.Capture(_renderer), readyEpoch));
     }
 
     /// <summary>在送件鎖內快照當下世代並於鎖外發出通知；回呼不得重新讀取世代。</summary>

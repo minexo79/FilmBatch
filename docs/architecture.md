@@ -338,6 +338,10 @@ App 端由 `FilmBatch.App.Shared/Services/PreviewService.cs` 包裝：核對來�
 
 排程器只在鎖內判斷資格並擷取事件委派，解鎖後才呼叫訂閱者／計算直方圖。預覽、縮圖、失敗、通知與裝置就緒的 payload 都帶「原要求的 Epoch」，`PreviewService` 在計算後及 UI 投遞時再次驗證；不可在回呼入口重新讀取目前 Epoch，否則舊結果可能被誤標為新世代。
 
+Main／Window 完成時，算圖執行緒立即擷取不可變的 `RenderBackend`（裝置名稱與是否使用 CPU，名稱包含回退原因），隨影格送達；不可延後在 UI 讀取 live renderer，因為下一筆縮圖可能已改變後端狀態。`PreviewService` 只在影格通過世代／Epoch 檢查後更新 `DeviceName`／`IsSoftware`，以 `BackendChanged` 更新狀態列；縮圖、預取與單純顯示縮放不改寫此狀態。`DeviceReady` 仍只表示初始化／重建，不拿來逐格發提示。
+
+CPU 名稱與回退原因在快照中保留雙語文字，讀取快照時才依目前語言選擇；裝置初始化也使用同一表示方式。切換語言不需重算影格、不讀取 live renderer，也不把已翻譯的字串當成固定的後端身分。
+
 失敗事件的 `PreviewGeneration` 只有預覽要求有值；縮圖及 `$init` 初始化診斷為空。預覽失敗只結束自己的世代，不消耗較新的預覽，也不替照片縮圖記失敗；背景失敗不得清掉等待中的前景影格。縮圖重算失敗時可以保留舊點陣圖，但仍須完成該筆交付等待，讓下一張繼續；初始化錯誤不能讓已取出的縮圖要求無聲消失。
 
 **陷阱**：`RenderScheduler` 的事件**在 GPU 執行緒上觸發**。在 Engine 以外訂閱時，不要直接更新 UI。
@@ -372,6 +376,8 @@ ProPhoto 色域壓縮以實際限制通道的 0／1 邊界為投影基準，與�
 Magick 與 Apple 編碼器依 `SourceImage.Encoding` 寫入匹配的 ICC，不再轉換已編碼像素；16-bit samples 與 straight alpha 保持不變。ProPhoto 的 EXIF ColorSpace 為 `0xFFFF`，不保留聲稱 sRGB 的 Interop 目錄；Apple TIFF／PNG 均回填相同的標準 ICC 位元組。`export_log.json` 每筆記錄 `ColorSpace`。自建 profile 為 ICC v4.3、parametric gamma 1.8，沒有 ROMM 線性 toe 或 flare；可重建來源及授權見 [ICC 產生器](../tools/prophoto-icc/README.md)，驗收見 [ProPhoto 計畫](superpowers/plans/2026-10-23-prophoto-output.md)。
 
 RAW 預覽擬合會先依 JPEG 的 ICC／EXIF／容器宣告決定色彩，只線性化一次，在線性光下縮放後轉到 Rec.2020。截斷代理像素以 NaN 排除；鄰域對比採 Rust `f32::min/max` 的略過 NaN 語意，避免連帶排除截斷像素周圍的有效樣本。X-Trans 穩健平均則沿用 Rust `total_cmp` 的負數與正負零排序。
+
+同一檔案重疊載入 Thumb／Preview／Full 時，`RawSourceLoader.DecodeLease` 依完整路徑與當次內容 SHA-256 共用感光解碼；色彩擬合另核對實際套用的 List3 校正鏈。每位使用者各自持有可變的色彩標籤與運算碼清單，最後一份租約結束即移除完整 RAW／檔案位元組，不建立常駐感光快取。各等級仍按自己的分箱倍率顯影、保留場景線性與語意遮罩，不拿 Preview 縮小後冒充 Thumb，也不以相機 JPEG 替代最終縮圖。每次仍讀取並雜湊檔案；不同照片的首次解碼不會因此消失。
 
 外部 Lensfun 的徑向／橫向色差校正先計算統一的前置構圖倍率，使 R／G／B 三個通道的完整周界都落在預設裁切的有效像素中心內；除了角落與邊中點，也檢查徑向多項式在邊上的極值。倍率直接折入同一個 `WarpRectilinear` 的係數，完整現像、分箱預覽、相機外觀擬合與語意遮罩沿用同一條逆映射，不增加全圖取樣階段。必要時縮小視野，但保留輸出尺寸與原始解析度；不以重複邊緣像素、遮邊或事後裁切補洞。此構圖只套用在外部校正，不重縮放已驗證的內嵌鏡頭校正。
 
@@ -462,6 +468,7 @@ fn main(@builtin(global_invocation_id) id: vec3u) { /* 每個像素一次 */ }
 - **GPU 預算**：單一窗口區域超過預算時，沿長邊切成最多四塊；每塊各自計算效果鄰域（halo），只拼回窗口需要的像素。整張 Full 來源仍保留，各塊的工作區加來源／素材皆須符合原預算與裝置上限；無法容納才回退 CPU，不提高預算、不縮小細節來源。
 - **可見範圍**：畫布只回報可見範圍（畫框的 0..1 比例）。平移與縮放只改變繪製位置；窗口位置跨過網格時才送出新的請求。
 - **來源生命週期**：Thumb / Preview / Full 三級。Full 每張照片只持有一份（`ImageCache`）；換照片即清除舊窗口持有的來源，沒有窗口持續 3 秒後釋放閒置 Full。對應 GPU 來源快取由算圖執行緒排程逐筆移除，不從 UI 執行緒與進行中的算圖競爭。關閉算圖器也清除來源強參照。
+- **來源縮放**：Main 與 Window 的 `SourceImage.ScaledTo` 都在背景執行緒執行，沿用來源內的兩格身分快取。Main 最多一個縮放工作，期間只保留最新請求；Window 沿用單一載入工作與 pending 機制。UI 先擷取狀態，完成後重新核對照片、來源、設定／畫框與算圖世代；換照片、Suspend 或取消後不送過期結果。`Preview.IsBusy` 包含尚未送進算圖器的 Main 縮放，不能只用 `Renderer.IsBusy` 判斷畫面已完成。
 - **替身順序**：ViewRenderCache → 內嵌 JPEG → 縮圖。替身不進直方圖、照片工具與匯出，顯示期間暫停窗口送件，但仍按正式影像規劃 Main／Window；同尺寸照片送達後不必等待平移或尺寸變更才接上細節窗口。
 - **不畫窗口**：裁切工具、去背編輯、AI 降噪、替身，以及畫布旋轉（裁切拉直）時。
 - **拖曳**：草稿期間不送新窗口，沿用舊窗口；放手後的完整 Main 送達時補送。

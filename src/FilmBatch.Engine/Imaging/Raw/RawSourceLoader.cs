@@ -9,7 +9,7 @@ using FilmBatch.Raw.Vendors.Fujifilm;
 
 namespace FilmBatch.Engine.Imaging.Raw;
 
-internal static class RawSourceLoader
+internal static partial class RawSourceLoader
 {
     private const float HighlightClip = 0.99f;
 
@@ -29,16 +29,17 @@ internal static class RawSourceLoader
             try { _ = RawDecoder.ProbeInfoFile(path); }
             catch (RawException ex) when (ex.Kind == RawErrorKind.NotRaw) { return null; }
         }
-        var bytes = File.ReadAllBytes(path);
+        using var decoded = new DecodeLease(path);
+        var bytes = decoded.Bytes;
         RawImage raw;
-        try { raw = RawDecoder.Decode(bytes); }
+        try { raw = decoded.CreateRaw(); }
         catch (RawException ex) when (!IsRawExtension(path) && ex.Kind == RawErrorKind.NotRaw) { return null; }
         var info = raw.Info();
         var masks = rawOptions.IncludeSemanticMasks ? FilmBatch.Raw.RawSemanticMasks.Read(bytes) : [];
         var directory = rawOptions.LensDatabasePath;
         if (!string.IsNullOrWhiteSpace(directory) && !Path.IsPathRooted(directory))
             directory = Path.GetFullPath(directory, Path.GetDirectoryName(Path.GetFullPath(path))!);
-        var scene = DevelopScene(raw, bytes, edge, rawOptions with { LensDatabasePath = directory }, out var lensWarning);
+        var scene = DevelopScene(raw, bytes, edge, rawOptions with { LensDatabasePath = directory }, out var lensWarning, decoded);
         var (referenceWidth, referenceHeight) = info.DevelopedSize();
         if (info.Orientation.SwapsAxes()) (referenceWidth, referenceHeight) = (referenceHeight, referenceWidth);
         return new SourceImage(scene)
@@ -204,7 +205,7 @@ internal static class RawSourceLoader
     }
 
     private static RawSceneData DevelopScene(RawImage raw, ReadOnlyMemory<byte> bytes, int edge, RawLoadOptions rawOptions,
-        out string? lensWarning)
+        out string? lensWarning, DecodeLease? decoded = null)
     {
         var list3 = raw.Opcodes.List3;
         // Match against the original embedded corrections first: disabling them must not
@@ -215,7 +216,9 @@ internal static class RawSourceLoader
         if (disabled.Length > 0) list3.RemoveAll(op => disabled.Any(original => ReferenceEquals(original, op)));
         var lens = CameraPreviewLens.LensGeometryOf(list3);
         var vignette = EmbeddedVignette.FromList3(list3, raw.ActiveArea, raw.Crop, raw.Orientation);
-        var (xy, transform, look) = CameraPreview.StartingColour(raw, bytes, lens, vignette);
+        var (xy, transform, look) = decoded is null
+            ? CameraPreview.StartingColour(raw, bytes, lens, vignette)
+            : decoded.StartingColour(raw, lens, vignette);
         var whiteBalance = RawWhiteBalance.Create(raw, xy, transform, look);
         var factor = BinFactor(raw, edge);
         var binned = factor is { } k ? DevelopBinned(raw, k) : null;

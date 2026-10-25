@@ -18,7 +18,7 @@ public sealed class RenderSchedulerTests
         var completed = new TaskCompletionSource<(string? Device, bool Software, RenderResult Result)>(TaskCreationOptions.RunContinuationsAsynchronously);
         string? device = null;
         var software = false;
-        scheduler.DeviceReady += ready => { device = ready.DeviceName; software = ready.IsSoftware; };
+        scheduler.DeviceReady += ready => { device = ready.Backend.DeviceName; software = ready.Backend.IsSoftware; };
         scheduler.PreviewRendered += result => completed.TrySetResult((device, software, result.Result));
         scheduler.RenderFailed += failure => completed.TrySetException(failure.Error);
         var source = new SourceImage(1, 1, [ushort.MaxValue, 0, 0, ushort.MaxValue]);

@@ -88,8 +88,8 @@ public sealed class RenderSchedulerReconfigureTests
         var rebuilt = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         scheduler.DeviceReady += ready =>
         {
-            lock (devices) devices.Add(ready.DeviceName);
-            if (ready.DeviceName == "second") rebuilt.TrySetResult();
+            lock (devices) devices.Add(ready.Backend.DeviceName);
+            if (ready.Backend.DeviceName == "second") rebuilt.TrySetResult();
         };
         scheduler.PreviewRendered += r =>
         {

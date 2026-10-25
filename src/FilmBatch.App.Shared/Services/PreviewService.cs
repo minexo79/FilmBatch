@@ -57,8 +57,21 @@ public sealed class PreviewService : IDisposable
     public event Action<string>? Notice;
     public event Action<RenderFailure>? Failed;
 
-    /// <summary>目前的算圖器是否為軟體（CPU 或軟體介面卡）；在 <see cref="DeviceReady"/> 送達 UI 時更新，之前視為 GPU。</summary>
-    public bool IsSoftware { get; private set; }
+    /// <summary>
+    /// 最近一次已接受 Main／Window 影格的實際後端，或初始化／重建時的裝置狀態；
+    /// 背景縮圖／預取結果不改變它。裝置就緒前為 <see langword="false"/>。
+    /// </summary>
+    public bool IsSoftware => _backend?.IsSoftware ?? false;
+
+    /// <summary>最近一次已接受影格或就緒裝置的後端名稱（含 CPU 原因），依目前語言顯示；裝置就緒前為 <see langword="null"/>。</summary>
+    public string? DeviceName => _backend?.DeviceName;
+    private RenderBackend? _backend;
+
+    /// <summary>
+    /// 目前顯示中影格的實際後端改變（UI 執行緒）：只有被圍欄接受的 Main／Window 送達，
+    /// 且後端與目前值不同時觸發。初始化／重建仍走 <see cref="DeviceReady"/>。
+    /// </summary>
+    public event Action<string, bool>? BackendChanged;
 
     /// <summary>
     /// 最近一次送達 UI 的預覽影格資訊（世代、是否為草稿、算圖時間）；在 <see cref="PreviewReady"/> 觸發前寫入，
@@ -68,7 +81,6 @@ public sealed class PreviewService : IDisposable
 
     public bool IsBusy => Interlocked.Read(ref _requested) > Interlocked.Read(ref _delivered);
     public int PendingThumbnails => _scheduler.PendingThumbnails;
-    public string? DeviceName => _scheduler.DeviceName;
 
     public PreviewService(Func<IPreviewRenderer> factory, Action<Action> post, bool cpuFallback = true,
         Func<IPreviewRenderer>? fallback = null)
@@ -77,8 +89,8 @@ public sealed class PreviewService : IDisposable
         _scheduler = new RenderScheduler(factory, cpuFallback ? fallback ?? (() => new CpuFakeRenderer()) : null);
         _scheduler.DeviceReady += ready => PostAtEpoch(ready.Epoch, () =>
         {
-            IsSoftware = ready.IsSoftware;
-            DeviceReady?.Invoke(ready.DeviceName, ready.IsSoftware);
+            _backend = ready.Backend;
+            DeviceReady?.Invoke(ready.Backend.DeviceName, ready.Backend.IsSoftware);
         });
         _scheduler.Notice += notice =>
         {
@@ -130,6 +142,7 @@ public sealed class PreviewService : IDisposable
                     if (g <= r.Generation) _draftGenerations.TryRemove(g, out _);
                 Volatile.Write(ref _lastDelivered, new DeliveredFrame(r.Result, shown.Width, shown.Height, r.Generation, r.Epoch, histogram, original, draft));
                 LastDelivery = new PreviewDelivery(r.Generation, draft, r.Result.Elapsed);
+                UpdateBackend(r.Backend);
                 PreviewReady?.Invoke(shown, histogram, original);
             });
         };
@@ -140,6 +153,7 @@ public sealed class PreviewService : IDisposable
             PostAtEpoch(w.Epoch, () =>
             {
                 if (IsStaleWindow(w.Generation)) return;
+                UpdateBackend(w.Backend);
                 WindowReady?.Invoke(new WindowDelivery(w.View, w.Result, w.Generation));
             });
         };
@@ -155,6 +169,14 @@ public sealed class PreviewService : IDisposable
         };
         _scheduler.ThumbnailRendered += t => PostAtEpoch(t.Epoch, () => ThumbnailReady?.Invoke(t.Key, t.Result));
         _scheduler.PrefetchRendered += t => PostAtEpoch(t.Epoch, () => PrefetchReady?.Invoke(t.Key, t.Result));
+    }
+
+    /// <summary>只在 UI 執行緒上、圍欄接受後呼叫：更新實際後端；改變時才通知 <see cref="BackendChanged"/>。</summary>
+    private void UpdateBackend(RenderBackend backend)
+    {
+        if (_backend == backend) return;
+        _backend = backend;
+        BackendChanged?.Invoke(backend.DeviceName, backend.IsSoftware);
     }
 
     private void PostAtEpoch(long epoch, Action action)

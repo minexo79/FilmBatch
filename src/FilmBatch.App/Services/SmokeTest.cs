@@ -74,7 +74,8 @@ public static class SmokeTest
             vm.Inspector.SetValue("basic.exposure", 0.75, null);
             await vm.OpenFolderAsync(folder);
             Check("重開專案保留編輯", vm.Service!.SettingsFor(file).Number("basic.exposure") == 0.75);
-            await WaitUntil(() => vm.Preview.Source is not null && !vm.Renderer.IsBusy, TimeSpan.FromSeconds(30));
+            // Preview.IsBusy 涵蓋仍在背景縮放、尚未送進算圖器的 Main 請求（此時 Renderer.IsBusy 還是 false）
+            await WaitUntil(() => vm.Preview.Source is not null && !vm.Preview.IsBusy && !vm.Renderer.IsBusy, TimeSpan.FromSeconds(30));
 
             var processedHistogram = vm.Preview.Histogram;
             vm.Preview.ShowOriginal = true;

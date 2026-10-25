@@ -1,9 +1,36 @@
 using System.Runtime.InteropServices;
+using FilmBatch.Core;
 using FilmBatch.Core.Params;
 using FilmBatch.Engine.Imaging;
 using FilmBatch.Engine.Denoising;
 
 namespace FilmBatch.Engine.Rendering;
+
+/// <summary>算圖完成時的後端快照；保留兩種語言的文字，不持有算圖器或影像。</summary>
+/// <param name="Name">裝置名稱，或 CPU 狀態的正體中文文字。</param>
+/// <param name="EnglishName">CPU 狀態的英文文字；硬體名稱與不需翻譯的名稱為 <see langword="null"/>。</param>
+/// <param name="IsSoftware">是否使用 CPU 或軟體介面卡。</param>
+public readonly record struct RenderBackend(string Name, string? EnglishName, bool IsSoftware)
+{
+    /// <summary>取得目前介面語言的名稱；不重新讀取 live renderer。</summary>
+    public string DeviceName => EnglishName is { } english ? CoreText.T(Name, english) : Name;
+
+    internal static RenderBackend ReferenceCpu => new("CPU（參考實作）", "CPU (reference implementation)", true);
+    internal static RenderBackend GpuBudgetExceeded => new("CPU（影像超過 GPU 尺寸或記憶體預算）",
+        "CPU (image exceeds the GPU size or memory budget)", true);
+    internal static RenderBackend GpuSizeExceeded => new("CPU（影像超過 GPU 紋理尺寸上限）",
+        "CPU (image exceeds the GPU texture size limit)", true);
+    internal static RenderBackend GpuAllocationFailed(string error) => new($"CPU（GPU 顯示記憶體不足：{error}）",
+        $"CPU (not enough GPU memory: {error})", true);
+
+    /// <summary>在算圖執行緒擷取狀態；正式算圖器保留可重新翻譯的 CPU 原因，其他名稱照原樣保存。</summary>
+    internal static RenderBackend Capture(IPreviewRenderer renderer) => renderer switch
+    {
+        CpuFakeRenderer => ReferenceCpu,
+        GpuSpikeRenderer gpu => gpu.Backend,
+        _ => new(renderer.DeviceName, null, renderer.IsSoftware),
+    };
+}
 
 /// <summary>算圖結果：8-bit BGRA straight alpha（未預乘；UI 以 AlphaFormat.Unpremul 呈現）。</summary>
 public sealed record RenderResult(int Width, int Height, byte[] Bgra, TimeSpan Elapsed)

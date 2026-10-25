@@ -227,6 +227,12 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             IsSoftwareGpu = software;
             if (software) Toast.Show($"{name} {Loc.Get("Status.SoftwareGpu")}");
         };
+        // 實際後端跟著已接受的 Main／Window 影格（例如超出 GPU 預算改走 CPU 等效路徑再回來）：只更新狀態列，不逐格提示
+        Renderer.BackendChanged += (name, software) =>
+        {
+            GpuName = name;
+            IsSoftwareGpu = software;
+        };
         Renderer.Notice += msg => Toast.Show(msg);
         Renderer.PreviewReady += (r, histogram, originalHistogram) =>
         {
@@ -235,6 +241,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             if (Renderer.LastDelivery is { IsDraft: true } delivery)
                 _dragScale.Observe(delivery.Generation, delivery.Elapsed.TotalMilliseconds, Preview.LastFrameMs);
             Preview.SetResult(r, histogram, originalHistogram);
+            // 較新的請求仍在背景縮放：畫面換成這一格，但預覽仍在忙
+            if (_mainPending is not null) Preview.IsBusy = true;
             OnMainResultDelivered(r);
             RequestWindowIfNeeded();
             // 照片工具以代理圖解析度分析：畫布縮放過的來源換回同一張照片的代理圖來源（降噪後的來源是另一個物件，照舊）
@@ -255,6 +263,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         {
             if (BackgroundRemoval.IsEditing) return;
             Preview.SetResult(r, histogram, originalHistogram);
+            if (_mainPending is not null) Preview.IsBusy = true;
         };
         Renderer.ThumbnailReady += (file, r) =>
         {
@@ -461,6 +470,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         _previewWait = new CancellationTokenSource();
         var cancellationToken = _previewWait.Token;
         Renderer.CancelPreview();
+        // 換照片／重新載入：舊代理圖還在背景縮放的 Main 請求作廢
+        _mainPending = null;
         Denoise.RefreshContext();
         var file = FocusFile;
         var service = Service;
@@ -523,7 +534,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         Toast.Show(Loc.Format("Raw.LensDatabaseWarning", warning));
     }
 
-    /// <summary>以目前呈現的參數（含連續手勢的 transient 值）重算預覽；拖曳中每次修改都會呼叫，排程器只保留最新請求。</summary>
+    /// <summary>
+    /// 以目前呈現的參數（含連續手勢的 transient 值）重算預覽；拖曳中每次修改都會呼叫，排程器只保留最新請求。
+    /// 需要縮小代理圖時改在背景縮放（<see cref="ScaleMainAsync"/>，最新請求勝），完成後回到 UI 執行緒送出。
+    /// </summary>
     public void RequestPreview()
     {
         if (_disposed) return;
@@ -553,20 +567,22 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         var shownDraft = Renderer.LastDelivery is { IsDraft: true } shown ? shown.Generation : (long?)null;
         _draftScale = _dragScale.Scale(drag, gpu: !Renderer.IsSoftware, shownDraft, _dragClock.Elapsed.TotalSeconds);
         var draft = _draftScale is not null;
-        // Main 渲染尺寸跟著畫布走；原圖對比用同一份縮放來源，兩者對齊（草稿不換對比來源：放手後的完整影格才是要比較的畫面）
+        // Main 渲染尺寸跟著畫布走：計畫在 UI 執行緒上決定，縮小代理圖本身不在 UI 執行緒上做
         OnMainPreviewRequested(settings);
-        var (scaled, displayFit) = MainRenderSource(Preview.Source, crop, settings);
-        if (!draft) Preview.SetCompareSource(scaled);
-        var source = SourceForPhoto(FocusFile, scaled);
-        if (!ReferenceEquals(scaled, Preview.Source))
-            _analysisSources.AddOrUpdate(source, SourceForPhoto(FocusFile, Preview.Source));
-        Preview.ShowTransparency = Preview.SourceHasTransparency || source.ForegroundMask is not null;
-        // 裁切工具的全幅與照片工具的取樣視圖不是照片的最終畫面：送達後不放進 ViewCache
-        _lastRequest = new RenderRequest(Service, FocusFile, Service.Project.PathOf(FocusFile), settings, Preview.Source.RawOptions,
-            Cacheable: !CropTool.IsActive && PhotoTools.PreviewOverlay is null);
-        Renderer.RequestPreview(FocusFile, source, settings, displayFit, draft);
+        var request = new MainRequest(Service, FocusFile, Preview.Source, settings, MainRenderEdge(Preview.Source, crop, settings), draft,
+            // 裁切工具的全幅與照片工具的取樣視圖不是照片的最終畫面：送達後不放進 ViewCache
+            Cacheable: !CropTool.IsActive && PhotoTools.PreviewOverlay is null, Renderer.Epoch);
         _lastRequestDraft = draft;
+        if (request.Edge is null)
+        {
+            // 不必縮小（畫布未回報、AI 降噪、代理圖不大於 Main）：立即送出，並取代還在背景縮放的舊請求
+            _mainPending = null;
+            SubmitMain(request, request.Proxy);
+            return;
+        }
+        _mainPending = request;
         Preview.IsBusy = true;
+        if (_mainScaling.IsCompleted) _mainScaling = ScaleMainAsync();
     }
 
     // ───────────── 拖曳草稿（DRAG-01） ─────────────
@@ -576,7 +592,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private readonly Stopwatch _dragClock = Stopwatch.StartNew();
     /// <summary>目前的草稿倍率；沒有連續手勢時為 null（靜止的計畫尺寸）。</summary>
     private double? _draftScale;
-    /// <summary>最近一次送出的預覽請求是否為草稿：手勢結束時若是，補送一次完整品質的請求。</summary>
+    /// <summary>最近一次預覽請求（含仍在背景縮放、尚未送出的）是否為草稿：手勢結束時若是，補送一次完整品質的請求。</summary>
     private bool _lastRequestDraft;
 
     /// <summary>
@@ -737,7 +753,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>與 <see cref="MainRenderSource"/> 相同的縮放規則，以目前的 Main 長邊（受這張照片的原圖畫框約束）縮小代理圖。</summary>
+    /// <summary>與 <see cref="MainRenderEdge"/> 相同的縮放規則，以目前的 Main 長邊（受這張照片的原圖畫框約束）縮小代理圖。</summary>
     private static (SourceImage Source, double FrameLongEdge) PrefetchSource(SourceImage proxy, CropParams crop, int? mainEdge)
     {
         var frame = CropGeometry.Compute(proxy.Width, proxy.Height, crop);
@@ -762,9 +778,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// </summary>
     private const int AssumedTextureSide = 8192;
 
-    /// <summary>最近一次送出的 Main 長邊；null = 畫布還沒回報尺寸（以代理圖原尺寸算圖）。</summary>
+    /// <summary>最近一次請求（含仍在背景縮放的）的 Main 長邊；null = 畫布還沒回報尺寸（以代理圖原尺寸算圖）。</summary>
     private int? _requestedMainEdge;
-    /// <summary>最近一次送出（或 refit）的顯示縮放目標長邊。</summary>
+    /// <summary>最近一次請求（或 refit）的顯示縮放目標長邊；背景縮放完成後送出時以它為準。</summary>
     private int? _requestedFitEdge;
     /// <summary>畫布縮放後的算圖來源 → 同一張照片的代理圖解析度來源（含相同遮罩），供照片工具分析。</summary>
     private readonly ConditionalWeakTable<SourceImage, SourceImage> _analysisSources = new();
@@ -772,7 +788,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private CropParams _requestedCrop;
 
     /// <summary>
-    /// 依畫布尺寸決定這次算圖的來源與顯示縮放目標。
+    /// 依畫布尺寸決定這次算圖要把代理圖縮到多長，並記下顯示縮放目標（<see cref="_requestedFitEdge"/>）。
     /// <list type="bullet">
     /// <item>NativeLongPx：原圖參考尺寸（<see cref="SourceImage.ReferenceWidth"/>／<see cref="SourceImage.ReferenceHeight"/>，
     /// 即未縮小的已轉正來源）套用同一個裁切 / 方向後的輸出長邊——Main 不必比原圖畫框更大。</item>
@@ -781,9 +797,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     /// 同一 MainEdge 與裁切得到同一個長邊，<c>ScaledTo</c> 回傳同一個物件，GPU 來源紋理不重新上傳。</item>
     /// <item>AI 降噪啟用時不縮小來源：降噪在來源階段執行且依來源快取，改尺寸會讓整張重新推論。</item>
     /// </list>
-    /// 畫布還沒回報尺寸時沿用代理圖原尺寸、不做顯示縮放（與先前行為相同）。
+    /// 畫布還沒回報尺寸時沿用代理圖原尺寸、不做顯示縮放（與先前行為相同）。只決定尺寸，不在 UI 執行緒上縮放。
     /// </summary>
-    private (SourceImage Source, (int W, int H)? DisplayFit) MainRenderSource(SourceImage proxy, CropParams crop, Settings settings)
+    /// <returns>代理圖要縮到的長邊；<see langword="null"/> 表示直接以代理圖算圖。</returns>
+    private int? MainRenderEdge(SourceImage proxy, CropParams crop, Settings settings)
     {
         var native = CropGeometry.Compute(proxy.ReferenceWidth, proxy.ReferenceHeight, crop);
         var plan = Preview.UpdatePlan(Math.Max(native.OutWidth, native.OutHeight), AssumedTextureSide, Images.PreviewLimit, _draftScale,
@@ -791,17 +808,86 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         _requestedMainEdge = plan?.MainEdge;
         _requestedCrop = crop;
         _requestedFitEdge = null;
-        if (plan is not { } p || Preview.ViewSizes is not { } sizes) return (proxy, null);
-        var drawn = (int)Math.Round(sizes.DrawnLongPx);
+        if (plan is not { } p || Preview.ViewSizes is not { } sizes) return null;
         // 草稿不做顯示縮放（每格省一次 Lanczos，由畫布插值）；放手後的完整影格才縮到 1:1
-        if (_draftScale is null) _requestedFitEdge = drawn;
-        (int, int)? fit = drawn > 0 && _draftScale is null ? (drawn, drawn) : null;
-        if (DenoiseSettings.From(settings).IsActive) return (proxy, fit);
-        var frame = CropGeometry.Compute(proxy.Width, proxy.Height, crop);
+        if (_draftScale is null) _requestedFitEdge = (int)Math.Round(sizes.DrawnLongPx);
+        if (DenoiseSettings.From(settings).IsActive) return null;
+        return ScaledLongEdge(proxy, crop, p.MainEdge);
+    }
+
+    /// <summary>
+    /// 讓來源裁切後的輸出畫框長邊約為 <paramref name="frameEdge"/> 時，來源要縮到的長邊：
+    /// ceil(來源長邊 × frameEdge ÷ 來源輸出畫框長邊)。輸出畫框不大於 <paramref name="frameEdge"/> 時為 <see langword="null"/>（直接用來源）。
+    /// Main 與窗口共用。
+    /// </summary>
+    private static int? ScaledLongEdge(SourceImage source, CropParams crop, int frameEdge)
+    {
+        var frame = CropGeometry.Compute(source.Width, source.Height, crop);
         var frameLong = Math.Max(frame.OutWidth, frame.OutHeight);
-        if (p.MainEdge >= frameLong) return (proxy, fit);
-        var edge = (int)Math.Ceiling(Math.Max(proxy.Width, proxy.Height) * (double)p.MainEdge / frameLong);
-        return (proxy.ScaledTo(edge), fit);
+        return frameEdge >= frameLong ? null : (int)Math.Ceiling(Math.Max(source.Width, source.Height) * (double)frameEdge / frameLong);
+    }
+
+    /// <summary>一次 Main 預覽請求在 UI 執行緒上的快照；背景縮放完成後與目前狀態比對，過期即丟棄。</summary>
+    /// <param name="Edge">代理圖要縮到的長邊；<see langword="null"/> 表示直接以代理圖算圖。</param>
+    /// <param name="Epoch">請求當下的算圖世代（<see cref="PreviewService.Epoch"/>）。</param>
+    private sealed record MainRequest(ProjectService Service, string File, SourceImage Proxy, Settings Settings, int? Edge, bool Draft,
+        bool Cacheable, long Epoch);
+
+    /// <summary>等待背景縮放的最新 Main 請求；送出、換照片、取消與背景化時清除，之後完成的縮放結果因此丟棄。</summary>
+    private MainRequest? _mainPending;
+    /// <summary>進行中的背景縮放；同一時間只有一個，期間的新請求只更新 <see cref="_mainPending"/>。</summary>
+    private Task _mainScaling = Task.CompletedTask;
+
+    /// <summary>
+    /// 在背景執行緒縮小 Main 代理圖（<see cref="SourceImage.ScaledTo"/>），完成後回到 UI 執行緒：最新請求仍是同一個代理圖與長邊時
+    /// 以這個結果送出（縮放期間改的設定一併生效），否則以最新請求再縮一次；已清除或與目前狀態不符的請求不送出。
+    /// </summary>
+    private async Task ScaleMainAsync()
+    {
+        while (_mainPending is { Edge: { } edge } request)
+        {
+            var proxy = request.Proxy;
+            SourceImage scaled;
+            try
+            {
+                scaled = await Task.Run(() => proxy.ScaledTo(edge));
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                AppLog.Error($"預覽來源縮放失敗：{request.File}", ex);
+                if (!ReferenceEquals(_mainPending, request)) continue;
+                _mainPending = null;
+                Preview.IsBusy = Renderer.IsBusy;
+                Toast.Show(Loc.Format("Toast.RenderFailed", ex.Message));
+                return;
+            }
+            if (_mainPending is not { } latest || !ReferenceEquals(latest.Proxy, proxy) || latest.Edge != edge) continue;
+            _mainPending = null;
+            if (IsCurrentMain(latest)) SubmitMain(latest, scaled);
+        }
+    }
+
+    /// <summary>請求仍屬於目前的服務、照片、代理圖與算圖世代，且沒有背景化、釋放或進入去背編輯。</summary>
+    private bool IsCurrentMain(MainRequest request) =>
+        !_disposed && !_suspended && !BackgroundRemoval.IsEditing && Service == request.Service && FocusFile == request.File
+        && ReferenceEquals(Preview.Source, request.Proxy) && Renderer.Epoch == request.Epoch;
+
+    /// <summary>
+    /// 在 UI 執行緒送出 Main 預覽。原圖對比改用同一份縮放來源，兩者對齊（草稿不換對比來源：放手後的完整影格才是要比較的畫面）；
+    /// 顯示縮放取目前的目標（等待縮放期間同一級內的 refit 可能已更新它）。
+    /// </summary>
+    private void SubmitMain(MainRequest request, SourceImage scaled)
+    {
+        if (!request.Draft) Preview.SetCompareSource(scaled);
+        var source = SourceForPhoto(request.File, scaled);
+        if (!ReferenceEquals(scaled, request.Proxy))
+            _analysisSources.AddOrUpdate(source, SourceForPhoto(request.File, request.Proxy));
+        Preview.ShowTransparency = Preview.SourceHasTransparency || source.ForegroundMask is not null;
+        _lastRequest = new RenderRequest(request.Service, request.File, request.Service.Project.PathOf(request.File), request.Settings,
+            request.Proxy.RawOptions, request.Cacheable);
+        (int, int)? fit = _requestedFitEdge is { } drawn && drawn > 0 ? (drawn, drawn) : null;
+        Renderer.RequestPreview(request.File, source, request.Settings, fit, request.Draft);
+        Preview.IsBusy = true;
     }
 
     /// <summary>
@@ -832,6 +918,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     public void CancelDenoisePreview()
     {
         Renderer.CancelPreview(cancelMatchingThumbnails: true);
+        _mainPending = null;
         Preview.IsBusy = false;
     }
 
@@ -1543,7 +1630,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         // Preview decode/render: cancel the waiter and drop stale in-flight results.
         ++_previewLoadGeneration;
         _previewWait?.Cancel();
-        _resumePreview = FocusFile is not null && (Preview.IsBusy || Renderer.IsBusy || Preview.Source is null);
+        // 還在背景縮放的 Main 請求不在背景化期間送出：作廢，Resume 時以當時的狀態重新請求
+        _resumePreview = FocusFile is not null && (Preview.IsBusy || Renderer.IsBusy || Preview.Source is null || _mainPending is not null);
+        _mainPending = null;
         Preview.IsBusy = false;
         Renderer.CancelThumbnails();
         CancelWindowForSuspend();

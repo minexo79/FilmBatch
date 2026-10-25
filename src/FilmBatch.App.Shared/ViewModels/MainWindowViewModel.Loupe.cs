@@ -67,12 +67,14 @@ public sealed partial class MainWindowViewModel
 
     /// <summary>
     /// Main 結果送達、畫布尺寸改變（同一級內除外）或可見範圍改變時呼叫：算出目前可見的窗口，必要時送出。
-    /// 拖曳中不送新窗口（保留舊窗口），放手後的完整 Main 送達時再補送。
+    /// 拖曳中不送新窗口（保留舊窗口），放手後的完整 Main 送達時再補送；Main 還在背景縮放時同樣等它送達。
     /// </summary>
     internal void RequestWindowIfNeeded()
     {
         if (_disposed || _suspended) return;
         if (_draftScale is not null) return;
+        // 尚未送出的 Main 會換掉算圖來源，讓先送的窗口作廢：Main 送達時再補送
+        if (_mainPending is not null) return;
         if (_windowLoading)
         {
             _windowPending = true;
@@ -89,7 +91,7 @@ public sealed partial class MainWindowViewModel
     }
 
     /// <summary>
-    /// 窗口送出流程：Full 來源（每張照片一份，共用）→ 依 Main 的畫框長邊縮放 → 可見範圍 → 窗口 → 送進算圖器。
+    /// 窗口送出流程：Full 來源（每張照片一份，共用）→ 依 Main 的畫框長邊在背景執行緒縮放 → 可見範圍 → 窗口 → 送進算圖器。
     /// 同格平移（窗口位置不變）不重算；在途時新的需求由 <see cref="RequestWindowIfNeeded"/> 記為 pending。
     /// </summary>
     private async Task SendWindowAsync()
@@ -105,16 +107,22 @@ public sealed partial class MainWindowViewModel
                 || _windowSettings is not { } settings)
                 return;
             var key = _settingsKey;
+            var epoch = Renderer.Epoch;
             var path = service.Project.PathOf(focus);
             var crop = CropGeometry.FromSettings(settings);
+            // 換照片、取消、背景化（取消 token）、重建或新的 Main 請求（設定世代）之後，載入或縮放的結果作廢
+            bool Stale() => token.IsCancellationRequested || _disposed || Service != service || FocusFile != focus
+                || key != _settingsKey || Renderer.Epoch != epoch;
             var full = await Images.GetSourceAsync(path, SourceLevel.Full, proxy.RawOptions, token);
-            if (token.IsCancellationRequested || _disposed || Service != service || FocusFile != focus || key != _settingsKey) return;
+            if (Stale()) return;
 
-            var fullFrame = CropGeometry.Compute(full.Width, full.Height, crop);
-            var fullLong = Math.Max(fullFrame.OutWidth, fullFrame.OutHeight);
-            var frameSource = frameEdge >= fullLong
-                ? full
-                : full.ScaledTo((int)Math.Ceiling(Math.Max(full.Width, full.Height) * (double)frameEdge / fullLong));
+            // Full 很大：縮放在背景執行緒；ScaledTo 對同一長邊回傳同一個物件，GPU 端的來源紋理可沿用
+            var frameSource = ScaledLongEdge(full, crop, frameEdge) is { } edge
+                ? await Task.Run(() => full.ScaledTo(edge), token)
+                : full;
+            // 縮放期間改變了窗口畫框（縮放）：這個來源已不對，由 pending 以新的畫框重算；平移只換可見範圍，用最新的
+            if (Stale() || Preview.CurrentPlan?.WindowFrameEdge != frameEdge) return;
+            if (Preview.VisibleFrame is { } latest) visible = latest;
             var frame = CropGeometry.Compute(frameSource.Width, frameSource.Height, crop);
             var visibleRect = (visible.U0 * frame.OutWidth, visible.V0 * frame.OutHeight, visible.U1 * frame.OutWidth, visible.V1 * frame.OutHeight);
             var window = LoupePlan.WindowFor(frame.OutWidth, frame.OutHeight, visibleRect, LoupePlan.MaxSpanFor(AssumedTextureSide));
@@ -140,6 +148,8 @@ public sealed partial class MainWindowViewModel
         {
             _windowLoading = false;
             if (_windowPending) RequestWindowIfNeeded();
+            // 沒有送出窗口、目前的計畫也不要窗口（例如縮放期間回到符合視窗）：ClearWindow 沒有東西可清，Full 照樣閒置 3 秒後釋放
+            if (!_windowLoading && _sentRegion is null && !_suspended && Preview.CurrentPlan?.WindowFrameEdge is null) ScheduleFullRelease();
         }
     }
 
