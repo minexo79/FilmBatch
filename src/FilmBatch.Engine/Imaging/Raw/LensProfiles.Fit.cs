@@ -2,6 +2,49 @@ namespace FilmBatch.Engine.Imaging.Raw;
 
 internal static partial class LensProfiles
 {
+    /// <summary>
+    /// Finds a uniform pre-warp scale whose entire default-crop perimeter stays in that crop.
+    /// The radial ratio is cubic in r²; endpoints and its local maximum bound every edge,
+    /// including extrema between corners and edge midpoints. Embedded opcodes are unchanged.
+    /// </summary>
+    private static double FrameScale(double[][] planes, int width, int height, double radius)
+    {
+        var x = (width - 1d) / (2 * radius);
+        var y = (height - 1d) / (2 * radius);
+        var minRadius2 = Math.Min(x * x, y * y);
+        var maxRadius2 = x * x + y * y;
+        var scale = 1d;
+        foreach (var k in planes)
+        {
+            // There is at most one local maximum of a cubic. Solve its derivative
+            // once, using the non-cancelling quadratic root when b is negative.
+            var a = 3 * k[3]; var b = 2 * k[2]; var c = k[1];
+            var discriminant = b * b - 4 * a * c;
+            var peak = a == 0 ? (b < 0 ? -c / b : double.NaN)
+                : discriminant < 0 ? double.NaN
+                : b < 0 ? 2 * c / (-b + Math.Sqrt(discriminant))
+                : (-b - Math.Sqrt(discriminant)) / (2 * a);
+            double Factor(double r2) => k[0] + r2 * (k[1] + r2 * (k[2] + r2 * k[3]));
+            bool Fits(double s)
+            {
+                var low = s * s * minRadius2; var high = s * s * maxRadius2;
+                var maximum = Math.Max(Factor(low), Factor(high));
+                if (peak > low && peak < high) maximum = Math.Max(maximum, Factor(peak));
+                return s * maximum <= 1;
+            }
+            if (Fits(scale)) continue;
+            // Fit has already rejected folding radial maps, so containment is monotonic.
+            double low = 0, high = scale;
+            for (var i = 0; i < 48; i++)
+            {
+                var mid = (low + high) / 2;
+                if (Fits(mid)) low = mid; else high = mid;
+            }
+            scale = low;
+        }
+        return scale;
+    }
+
     // Same bounded least-squares basis and error limits as the pinned lensdb implementation.
     // Warp errors are displacement in half-diagonal units; gain errors are relative.
     private static double[]? Fit(Func<double, double> model, bool gain)

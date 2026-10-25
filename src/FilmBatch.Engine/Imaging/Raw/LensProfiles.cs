@@ -96,7 +96,18 @@ internal static partial class LensProfiles
                 planes[ch] = [fit[0], fit[1], fit[2], fit[3], 0, 0];
             }
             if (planes.Length > 0)
+            {
+                var scale = FrameScale(planes, frame.Width, frame.Height, warpRadius);
+                // Fold the uniform pre-warp scale into r·P(r²): coefficient i gets
+                // scale^(2i+1). Keep one spatial sample, no extra full-image pass.
+                if (scale < 1)
+                    foreach (var plane in planes)
+                    {
+                        var power = scale;
+                        for (var i = 0; i < 4; i++, power *= scale * scale) plane[i] *= power;
+                    }
                 result.Add(new WarpRectilinear(planes, [(cx - .5) / (width - 1), (cy - .5) / (height - 1)]));
+            }
         }
         if (p.Vignette.Length > 0 && aperture is { } a && Positive(a))
         {

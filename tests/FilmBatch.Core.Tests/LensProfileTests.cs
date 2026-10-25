@@ -2,6 +2,8 @@ using FilmBatch.Engine.Imaging.Raw;
 using FilmBatch.Raw;
 using FilmBatch.Raw.Meta;
 using FilmBatch.Raw.Opcodes;
+using FilmBatch.Raw.Develop;
+using FilmBatch.Raw.Raster;
 
 namespace FilmBatch.Core.Tests;
 
@@ -31,6 +33,106 @@ public sealed class LensProfileTests
         Metadata = new Metadata { Make = "Testcam", Model = "TC-1", LensMake = "Testcam", LensModel = "Test 18-55mm", FocalLength = focal, FNumber = aperture },
     };
     private static void Near(double expected, double actual, double tolerance = 1e-8) => Assert.True(Math.Abs(expected - actual) <= tolerance, $"expected {expected}, got {actual}");
+
+    [Theory]
+    [InlineData(.1, 0)]
+    [InlineData(.1, -.032)]
+    public void ExternalWarpKeepsEntirePerimeterInsideDefaultCrop(double k1, double k2)
+    {
+        using var f = new Fixture(FormattableString.Invariant(
+            $"<distortion model=\"poly5\" focal=\"30\" k1=\"{k1}\" k2=\"{k2}\"/>"));
+        var raw = Raw();
+        raw.Crop = new(11, 23, 80, 40);
+        LensProfiles.ApplyFallback(raw, f.DirectoryPath);
+        // The second profile has inward corners but an outward maximum between
+        // the corner and edge midpoint. Checking only eight points misses it.
+        foreach (var vertical in new[] { false, true })
+        {
+            var image = new RgbImage(101, 101);
+            for (var y = 0; y < 101; y++)
+            for (var x = 0; x < 101; x++)
+            for (var ch = 0; ch < 3; ch++)
+                image.Data[(y * 101 + x) * 3 + ch] = (vertical ? y : x) / 100f;
+            var corrected = RawSourceGeometry.ApplyList3(raw.Opcodes.List3, image);
+            for (var y = 23; y <= 62; y++)
+            for (var x = 11; x <= 90; x++)
+            {
+                if (x is not (11 or 90) && y is not (23 or 62)) continue;
+                for (var ch = 0; ch < 3; ch++)
+                    Assert.InRange(corrected.Data[(y * 101 + x) * 3 + ch],
+                        vertical ? .23f - 1e-6f : .11f - 1e-6f,
+                        vertical ? .62f + 1e-6f : .90f + 1e-6f);
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData(1, 1.15)]
+    [InlineData(1.15, 1)]
+    public void TcaFramingUsesOutermostChannelWithoutRepeatingEdgePixels(double red, double blue)
+    {
+        using var f = new Fixture(FormattableString.Invariant(
+            $"<tca model=\"linear\" focal=\"30\" kr=\"{red}\" kb=\"{blue}\"/>"));
+        var raw = Raw();
+        raw.Crop = new(11, 23, 80, 40);
+        var data = new float[101 * 101 * 3];
+        for (var y = 0; y < 101; y++)
+        for (var x = 0; x < 101; x++)
+        for (var ch = 0; ch < 3; ch++)
+            data[(y * 101 + x) * 3 + ch] = x / 100f;
+        raw.Data = new RawData.F32(data);
+        raw.Black = BlackLevel.Uniform(0);
+        raw.White = [1];
+        LensProfiles.ApplyFallback(raw, f.DirectoryPath);
+        var corrected = RawSourceGeometry.Develop(raw, DemosaicMethod.Bilinear);
+        Assert.Equal((80, 40), (corrected.Width, corrected.Height));
+        // Uniform pre-warp scale is 1/1.15 for ALL channels, not independent
+        // channel clamps. The outer channel reaches x=11 and x=90 exactly.
+        var channelRatios = new[] { red / 1.15, 1 / 1.15, blue / 1.15 };
+        for (var x = 0; x < 80; x++)
+        for (var ch = 0; ch < 3; ch++)
+        {
+            var expected = (50.5 + (x - 39.5) * channelRatios[ch]) / 100;
+            Near(expected, corrected.Data[x * 3 + ch], 1e-6);
+        }
+    }
+
+    [Theory]
+    [InlineData(2)]
+    [InlineData(4)]
+    [InlineData(8)]
+    public void ExternalFramingPreservesBinnedEdgeSamples(int k)
+    {
+        using var f = new Fixture("<tca model=\"linear\" focal=\"30\" kr=\"1\" kb=\"1.15\"/>");
+        var data = new ushort[101 * 101];
+        for (var y = 0; y < 101; y++)
+        for (var x = 0; x < 101; x++)
+            data[y * 101 + x] = (ushort)(1024 + (x - 11) / k * 32 + (y - 23) / k * 16);
+        var raw = new RawImage
+        {
+            Format = RawFormat.Dng, Width = 101, Height = 101, Cpp = 1,
+            Data = new RawData.U16(data), Cfa = Cfa.Bayer("RGGB"),
+            ActiveArea = new(0, 0, 101, 101), Crop = new(11, 23, 80, 40),
+            Black = BlackLevel.Uniform(0), White = [4096], Bits = 12, Metadata = Raw().Metadata,
+        };
+        LensProfiles.ApplyFallback(raw, f.DirectoryPath);
+        var (image, _, region, _) = RawSourceLoader.DevelopBinned(raw, k)!.Value;
+        var corrected = RawSourceGeometry.ApplyLensChainBinned(raw.Opcodes.List3, image, region, k, 101, 101);
+        Assert.Equal((80 / k, 40 / k), (corrected.Width, corrected.Height));
+        var midX = (corrected.Width - 1) / 2d;
+        var midY = (corrected.Height - 1) / 2d;
+        for (var y = 0; y < corrected.Height; y++)
+        for (var x = 0; x < corrected.Width; x++)
+        for (var ch = 0; ch < 3; ch++)
+        {
+            var ratio = ch == 2 ? 1 : 1 / 1.15;
+            var sx = midX + (x - midX) * ratio;
+            var sy = midY + (y - midY) * ratio;
+            Near((1024 + sx * 32 + sy * 16) / 4096,
+                corrected.Data[(y * corrected.Width + x) * 3 + ch], 1e-6);
+        }
+    }
+
     private static double Ratio(WarpRectilinear op, double r, int channel = 1)
     {
         // Compare at a physical half-diagonal radius, not the opcode's pixel-centre units.
@@ -48,8 +150,10 @@ public sealed class LensProfileTests
             """);
         var raw = Raw(); LensProfiles.ApplyFallback(raw, f.DirectoryPath);
         var op = Assert.IsType<WarpRectilinear>(Assert.Single(raw.Opcodes.List3));
-        // Midpoint k=.02. Lensfun radius = DNG radius * sqrt(1 + 1.5²).
-        Near(.98 + .02 * 3.25 * .25, Ratio(op, .5));
+        // Midpoint k=.02. Independently solving s·(.98 + .065·(s·100/101)²)=1
+        // gives the largest scale that retains the pixel-centre corners.
+        const double scale = .9624427146262926;
+        Near(scale * (.98 + .02 * 3.25 * .25 * scale * scale), Ratio(op, .5));
         // Applying twice preserves verified correction; no double warp.
         LensProfiles.ApplyFallback(raw, f.DirectoryPath); Assert.Single(raw.Opcodes.List3);
     }
@@ -76,12 +180,14 @@ public sealed class LensProfileTests
             """);
         var raw = Raw(); LensProfiles.ApplyFallback(raw, f.DirectoryPath);
         var op = Assert.IsType<WarpRectilinear>(Assert.Single(raw.Opcodes.List3));
+        // Solve the unfitted Lensfun model's red corner for unit coverage.
+        const double scale = .9984152223787026;
         for (var i = 1; i <= 100; i++)
         {
-            var r = i / 100d; var l = r * Math.Sqrt(3.25);
+            var r = i / 100d; var l = scale * r * Math.Sqrt(3.25);
             var distortion = .001 * l * l * l - .002 * l * l + .001 * l + 1;
             var landed = l * distortion;
-            var red = distortion * (1 + .0001 * landed + .0001 * landed * landed);
+            var red = scale * distortion * (1 + .0001 * landed + .0001 * landed * landed);
             Assert.True(Math.Abs(r * (Ratio(op, r, 0) - red)) <= .001);
         }
     }

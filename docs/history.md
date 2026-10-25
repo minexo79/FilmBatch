@@ -129,9 +129,25 @@ LightCraft v0.13.0 差異只採用經重現的 Canon coded-width 與 Fujifilm pl
 
 重現程式、修改前後 TRX、像素比較、配對量測與原生畫面保留在本機忽略檔 `artifacts/verification/2026-10-25-preview-lifecycle.tar.gz`；不包含原始 ARW，不上傳私人照片與驗證畫面。核心回歸為 `GpuWindowBudgetTests`、`RenderSchedulerTests`、`WindowDeliveryRaceTests` 與 `PreviewBitmapLifetimeTests`。
 
-**未結案：ARW 周邊破圖。** 現有照片的完整解碼、四角／中央窗口像素比較、原生四角平移與目前提供的截圖，仍未隔離出報告的周邊破圖。不能把已修正的過期窗口交付直接當成該畫面的根因；也沒有以邊緣抹除、RAW 特例或放寬精度處理。需要發生當下的倍率、平移／設定與畫面才能閉合因果。
+**本輪當時未結案：ARW 周邊破圖。** 完整解碼、四角／中央窗口像素比較與原生切圖排除了已修正的窗口交付問題，但當時尚未納入使用者補充的外部 Lensfun 校正條件，不能據此宣稱周邊破圖已修復。同日後續重現與修正見下一節。
 
 原生驗證使用真正 Avalonia macOS 視窗與 Apple M3 Metal；桌面鎖定，驅動程式明確以 inactive 模式操作並擷取視窗渲染，不當成已解鎖桌面的滑鼠／鍵盤驗收。Windows／DX12、iOS 未重跑；設定與專案格式未變，沒有重新封裝、commit 或 push。契約見[預覽排程](architecture.md#47-engine算圖排程scheduling)與[Loupe 預覽](architecture.md#loupe-預覽)。
+
+## Lensfun 校正邊緣重複條紋（2026-10-25）
+
+使用相同 `DSC01282.ARW` 與使用者提供的 Lensfun `data/db`，匹配 Sony ILCE-7M4／Sigma `24-70mm F2.8 DG DN II | Art 024`、34 mm。這張 ARW 沒有可用內嵌校正；啟用外部校正後，完整現像與分箱預覽都出現截圖所示的邊緣重複條紋，不是只有縮圖或窗口交付出錯。
+
+根因是外部徑向／橫向色差校正缺少自動構圖：逆映射落到有效來源外，取樣器的邊界 clamp 把最外列／行延伸成條紋。完整周界的 70,068 個 RGB 通道樣本中，修改前有 40,726 個超出 ActiveArea，最大越界約 36.02 px；修改後皆在預設裁切內。修正依所有通道與連續周界極值求統一前置倍率，折入原有 `WarpRectilinear`；這張照片需要約 1.01267 倍構圖放大，仍輸出 4672×7008，不遮邊、不事後裁切、不停用分箱，也不增加第二次全圖取樣。
+
+`LensProfileTests` 新增的兩個周界案例、兩個紅／藍色差像素案例與三個分箱倍率案例均先失敗、修正後通過；相關幾何、內嵌校正優先順序、暗角與語意遮罩等 101 項 focused 回歸通過。實拍長邊 1600／2560 預覽與四個 512×512 全尺寸角落的 CPU／Apple M3 Metal 比較，RGB 最大差 1、平均差低於 0.000007 個 8-bit LSB；沒有放寬既有精度門檻。
+
+原生 macOS 視窗以程式驅動完成 270% 放大、四角平移、300% 原始解析度與兩次放大切圖；實際算圖器都是 Metal，來源雜湊不變，四角畫面未再看到重複條紋。270% 依代理畫框長邊 2560 換算為 6912；另在 300% 明確確認 4672×7008 的原始畫框，不能把兩個驗收條件混為一談。初版驅動程式誤要求 270% 必須已達原始尺寸而逾時，修正的是驗證程式，不是產品或精度門檻。
+
+最終以 `dotnet test FilmBatch.sln -c Release --no-restore --no-build -m:1` 完成 **1,856 passed／321 skipped／0 failed**。首次完整測試與原生操作並行時，既有非 RAW 的 `BulkLoadingTests.SuspendedEditor_DefersEditsAndPreferenceRendersUntilResume` 在 Resume 等待逾時；沒有修改產品、測試斷言或逾時，結束原生操作後循序完整重跑通過，該次逾時原因未另行隔離。略過項仍限平台專用、未提供的外部語料與既有診斷；本次新增案例全數執行。Windows／DX12、iOS 原生與 CLI／匯出介面未另跑，完整來源與共用算圖路徑已驗證。
+
+修改前後影像、TRX、座標／像素比較、輸入與來源版本雜湊、原生驅動程式保留在本機忽略檔 `artifacts/verification/2026-10-25-lensfun-edge-framing.tar.gz`；不含原始 ARW，不上傳私人畫面。此次沒有 commit、push 或重新封裝。
+
+只修改外部校正的構圖及對應回歸；沒有更動 RAW decoder、內嵌校正、照片、資料庫、GPU 預算或設定格式。先前未重現邊緣條紋的無外部校正測量仍保留為歷史證據，不把它當成此次修正的基線。
 
 ## 如何新增歷史列
 
