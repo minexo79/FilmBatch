@@ -247,6 +247,8 @@ public sealed partial class MainWindowViewModel
                 _windowFrameSource = null;
                 Renderer.ReleaseSource(frameSource);
             }
+            // 一次 Full 解碼暫時配置約 1.7 GB；GC 預設不會把空出的區段還給系統，Aggressive 才會 decommit。
+            _ = Task.Run(() => GC.Collect(2, GCCollectionMode.Aggressive, blocking: true, compacting: true));
         });
     }
 
