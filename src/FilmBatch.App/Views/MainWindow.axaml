@@ -97,32 +97,26 @@
           <TextBlock Text="{Binding GpuName}" Classes.warning="{Binding IsSoftwareGpu}" TextTrimming="CharacterEllipsis" MaxWidth="260" />
         </StackPanel>
         <!-- 除錯模式：CPU／GPU／RAM／磁碟使用量，每秒更新 -->
-        <StackPanel Name="DebugMetrics" Orientation="Horizontal" Spacing="6" IsVisible="{Binding IsDebugMode}">
-          <Border Classes="status-pill metric">
-            <StackPanel Orientation="Horizontal" Spacing="6">
+        <Border Name="DebugMetrics" Classes="status-pill metric" IsVisible="{Binding IsDebugMode}">
+          <StackPanel Orientation="Horizontal" Spacing="12">
+            <StackPanel Orientation="Horizontal" Spacing="5">
               <TextBlock Classes="pill-label" Text="CPU" />
               <TextBlock Classes="numeric" Text="{Binding CpuText}" />
             </StackPanel>
-          </Border>
-          <Border Classes="status-pill metric">
-            <StackPanel Orientation="Horizontal" Spacing="6">
+            <StackPanel Orientation="Horizontal" Spacing="5">
               <TextBlock Classes="pill-label" Text="GPU" />
               <TextBlock Classes="numeric" Text="{Binding GpuText}" />
             </StackPanel>
-          </Border>
-          <Border Classes="status-pill metric">
-            <StackPanel Orientation="Horizontal" Spacing="6">
+            <StackPanel Orientation="Horizontal" Spacing="5">
               <TextBlock Classes="pill-label" Text="RAM" />
               <TextBlock Classes="numeric" Text="{Binding RamText}" />
             </StackPanel>
-          </Border>
-          <Border Classes="status-pill metric">
-            <StackPanel Orientation="Horizontal" Spacing="6">
+            <StackPanel Orientation="Horizontal" Spacing="5">
               <TextBlock Classes="pill-label" Text="DISK" />
               <TextBlock Classes="numeric" Text="{Binding DiskText}" />
             </StackPanel>
-          </Border>
-        </StackPanel>
+          </StackPanel>
+        </Border>
       </StackPanel>
 
       <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" Margin="14,0" HorizontalAlignment="Right" VerticalAlignment="Center">

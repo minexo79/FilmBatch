@@ -126,13 +126,13 @@ public sealed partial class MainWindowViewModel
     {
         if (_disposed || !IsDebugMode) return;
         CpuPercent = s.CpuPercent ?? 0;
-        CpuText = s.CpuPercent is { } cpu ? $"{cpu:F0}%" : "—";
+        CpuText = s.CpuPercent is { } cpu ? $"{cpu:F1}%" : "—";
         GpuPercent = s.GpuPercent ?? 0;
-        GpuText = s.GpuPercent is { } gpu ? $"{gpu:F0}%" : "—";
+        GpuText = s.GpuPercent is { } gpu ? $"{gpu:F1}%" : "—";
         RamPercent = s.RamPercent;
-        RamText = $"{s.RamPercent:F0}%";
+        RamText = $"{s.RamPercent:F1}%";
         DiskPercent = s.DiskPercent;
-        DiskText = s.DiskTotalBytes <= 0 ? "—" : $"{s.DiskPercent:F0}%";
+        DiskText = s.DiskTotalBytes <= 0 ? "—" : $"{s.DiskPercent:F1}%";
     }
 
     private static double Gb(long bytes) => bytes / (1024.0 * 1024 * 1024);

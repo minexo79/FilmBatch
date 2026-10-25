@@ -88,8 +88,12 @@
     <Setter Property="FontWeight" Value="SemiBold" />
     <Setter Property="FontSize" Value="10" />
   </Style>
-  <Style Selector="Grid.bottombar Border.metric TextBlock">
-    <Setter Property="Foreground" Value="{DynamicResource FB.OverrideBrush}" />
+  <Style Selector="Border.metric">
+    <Setter Property="CornerRadius" Value="8" />
+    <Setter Property="Padding" Value="10,2" />
+  </Style>
+  <Style Selector="Grid.bottombar Border.metric TextBlock.numeric">
+    <Setter Property="Foreground" Value="{DynamicResource FB.TextBrush}" />
   </Style>
   <Style Selector="ProgressBar.pill-bar">
     <Setter Property="Height" Value="4" />
