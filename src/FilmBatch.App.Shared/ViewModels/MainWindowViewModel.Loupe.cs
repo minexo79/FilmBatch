@@ -100,6 +100,7 @@ public sealed partial class MainWindowViewModel
     private async Task SendWindowAsync()
     {
         _windowLoading = true;
+        UpdateRenderProgress();
         _windowPending = false;
         CancelFullRelease();
         var token = _windowCts.Token;
@@ -147,6 +148,7 @@ public sealed partial class MainWindowViewModel
             _windowFrameSource = renderSource;
             _inFlightWindowGeneration = Renderer.RequestWindow(path, renderSource, settings,
                 ViewOf(region), _mainStats ?? new FrameStats(frame.OutWidth, frame.OutHeight));
+            UpdateRenderProgress();
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) when (ex is not OutOfMemoryException)
@@ -157,6 +159,7 @@ public sealed partial class MainWindowViewModel
         finally
         {
             _windowLoading = false;
+            UpdateRenderProgress();
             if (_windowPending) RequestWindowIfNeeded();
             // 沒有送出窗口、目前的計畫也不要窗口（例如縮放期間回到符合視窗）：ClearWindow 沒有東西可清，Full 照樣閒置 3 秒後釋放
             if (!_windowLoading && _sentRegion is null && !_suspended && Preview.CurrentPlan?.WindowFrameEdge is null) ScheduleFullRelease();

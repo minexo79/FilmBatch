@@ -49,6 +49,38 @@ public sealed partial class MainWindowViewModel
     [ObservableProperty]
     private double _diskPercent;
 
+
+    // ───────────── 底列右側共用的進度條：算圖進度優先，其次是縮圖載入 ─────────────
+
+    public bool IsStatusProgressVisible => IsRenderProgressVisible || IsLoadingPhotos;
+    public double StatusProgress => IsRenderProgressVisible ? RenderProgress : LoadingProgress;
+    public bool IsStatusProgressIndeterminate => !IsRenderProgressVisible && IsScanningFolder;
+    public string StatusText => IsRenderProgressVisible ? $"{RenderProgressText} {RenderProgress:F0}%" : BackgroundText;
+
+    private void NotifyStatusProgress()
+    {
+        OnPropertyChanged(nameof(IsStatusProgressVisible));
+        OnPropertyChanged(nameof(StatusProgress));
+        OnPropertyChanged(nameof(IsStatusProgressIndeterminate));
+        OnPropertyChanged(nameof(StatusText));
+    }
+
+    partial void OnIsRenderProgressVisibleChanged(bool value) => NotifyStatusProgress();
+    partial void OnRenderProgressChanged(double value) => NotifyStatusProgress();
+    partial void OnRenderProgressTextChanged(string value) => NotifyStatusProgress();
+    partial void OnBackgroundTextChanged(string value) => NotifyStatusProgress();
+
+    /// <summary>預覽（Main）或放大窗口（Full 解碼縮放 → 算圖）任一在忙；窗口在途時以 Full 載入為解碼階段、送進算圖器後為算圖階段。</summary>
+    private bool RenderActive(out bool rendering)
+    {
+        if (Preview.IsBusy)
+        {
+            rendering = Preview.Source is not null;
+            return true;
+        }
+        rendering = _inFlightRegion is not null;
+        return _windowLoading || _inFlightRegion is not null;
+    }
     private void InitStatusIndicators()
     {
         Preview.PropertyChanged += OnPreviewBusyForProgress;
@@ -70,7 +102,8 @@ public sealed partial class MainWindowViewModel
     private void UpdateRenderProgress()
     {
         if (_disposed) return;
-        var visible = _progressTracker.Update(Preview.IsBusy, Preview.Source is not null, _renderClock.Elapsed.TotalSeconds);
+        var active = RenderActive(out var rendering);
+        var visible = _progressTracker.Update(active, rendering, _renderClock.Elapsed.TotalSeconds);
         if (visible)
         {
             _renderProgressTimer ??= new DispatcherTimer(TimeSpan.FromMilliseconds(80), DispatcherPriority.Background,

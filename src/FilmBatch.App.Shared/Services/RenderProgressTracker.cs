@@ -33,6 +33,8 @@ internal sealed class RenderProgressTracker
             return false;
         }
         var stage = hasSource ? Stage.Render : Stage.Decode;
+        // 算圖階段又回到解碼（例如先看完預覽再放大載入 Full）：視為新的一輪
+        if (_stage == Stage.Render && stage == Stage.Decode) _stage = Stage.Idle;
         if (_stage == Stage.Idle || stage != _stage)
         {
             // 新的一輪（從 Idle 進入）從 0 起算；解碼 → 算圖接著上一階段的進度走

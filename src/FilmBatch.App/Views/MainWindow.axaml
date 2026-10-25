@@ -83,14 +83,6 @@
     <!-- ───── 底列：左｜算圖狀態與 GPU；右｜選取數量與背景工作（檢視控制移至預覽區下方中央） ───── -->
     <Grid DockPanel.Dock="Bottom" Classes="bottombar" ColumnDefinitions="*,*" IsVisible="{Binding !IsFullScreen}">
       <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="12" Margin="14,0" VerticalAlignment="Center">
-        <!-- 預覽算圖進度（解碼 → 算圖）：膠囊內沿用底列進度條樣式 -->
-        <Border Name="RenderProgressPill" Classes="status-pill progress" IsVisible="{Binding IsRenderProgressVisible}">
-          <StackPanel Orientation="Horizontal" Spacing="8">
-            <TextBlock Classes="pill-label" Text="{Binding RenderProgressText}" />
-            <ProgressBar Classes="pill-bar" Width="96" Minimum="0" Maximum="100" Value="{Binding RenderProgress}" />
-            <TextBlock Classes="numeric" Width="30" TextAlignment="Right" Text="{Binding RenderProgress, StringFormat={}{0:F0}%}" />
-          </StackPanel>
-        </Border>
         <TextBlock Classes="numeric" Text="{Binding LastRenderText}" ToolTip.Tip="{l:Tr Tip.LastRender}" />
         <StackPanel Orientation="Horizontal" Spacing="4">
           <PathIcon Data="{StaticResource Icon.Warning}" Width="11" Height="11" Foreground="{DynamicResource FB.WarningTextBrush}" IsVisible="{Binding IsSoftwareGpu}" />
@@ -130,9 +122,9 @@
                 ToolTip.Tip="{Binding BackgroundText}">
           <StackPanel Orientation="Horizontal" Spacing="8">
             <ProgressBar Name="PhotoLoadProgress" Width="80" Height="3" MinHeight="3" Minimum="0" Maximum="100"
-                         Value="{Binding LoadingProgress}" IsIndeterminate="{Binding IsScanningFolder}"
-                         IsVisible="{Binding IsLoadingPhotos}" VerticalAlignment="Center" />
-            <TextBlock Text="{Binding BackgroundText}" MaxWidth="460" TextTrimming="CharacterEllipsis" />
+                         Value="{Binding StatusProgress}" IsIndeterminate="{Binding IsStatusProgressIndeterminate}"
+                         IsVisible="{Binding IsStatusProgressVisible}" VerticalAlignment="Center" />
+            <TextBlock Text="{Binding StatusText}" MaxWidth="460" TextTrimming="CharacterEllipsis" />
           </StackPanel>
           <Button.Flyout>
             <Flyout>
