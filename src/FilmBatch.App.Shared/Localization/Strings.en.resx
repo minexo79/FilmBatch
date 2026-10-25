@@ -187,8 +187,7 @@ R {1:P2}  G {2:P2}  B {3:P2}  Luma {4:P2}</value></data>
   <data name="Pref.Textures.Desc" xml:space="preserve"><value>Textures for light leaks, dust &amp; scratches and photo plates; procedural effects are used when empty</value></data>
   <data name="Pref.LensDatabase" xml:space="preserve"><value>External Lensfun Lens Database</value></data>
   <data name="Pref.LensDatabase.Desc" xml:space="preserve"><value>Lensfun XML in this folder is matched by camera and lens when a RAW file has no embedded lens corrections; when empty, FILMBATCH_LENSFUN_DIR (if set) and then the database downloaded below are used</value></data>
-  <data name="Pref.LensDatabase.None" xml:space="preserve"><value>Not set</value></data>
-  <data name="Pref.LensDownload" xml:space="preserve"><value>Download Lensfun Database</value></data>
+  <data name="Pref.LensDatabase.None" xml:space="preserve"><value>Not set</value></data>  <data name="Pref.LensDownload" xml:space="preserve"><value>Download Lensfun Database</value></data>
   <data name="Pref.LensDownload.Desc" xml:space="preserve"><value>Downloads only the latest data/db XML (about 5 MB) from the official Lensfun repository into your user folder, replacing the old copy only after every file is verified; nothing is downloaded or updated automatically</value></data>
   <data name="Pref.LensDownload.Attribution" xml:space="preserve"><value>{0} · {1} · not distributed with FilmBatch</value></data>
   <data name="Pref.LensDownload.Button" xml:space="preserve"><value>Download latest</value></data>

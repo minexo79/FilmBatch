@@ -102,6 +102,11 @@ public sealed class LensDatabasePreferenceTests
             RawLoadOptions.LensDatabaseDirectory = "vendor/lensfun";
             Assert.Equal("vendor/lensfun", RawLoadOptions.FromSettings(raw).LensDatabasePath);
             Assert.Contains("0123456", new PreferencesViewModel(main).LensDownloadStatus);
+            // 未指定外部資料夾時，輸入框顯示下載的資料夾，且儲存後仍視為跟隨下載的資料庫。
+            var prefs = new PreferencesViewModel(main);
+            Assert.Equal(version, prefs.LensDatabaseFolder);
+            Assert.True(prefs.Apply());
+            Assert.Null(main.Settings.LensDatabaseFolder);
         }
         finally
         {

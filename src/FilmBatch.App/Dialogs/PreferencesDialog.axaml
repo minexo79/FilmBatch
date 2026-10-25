@@ -183,8 +183,7 @@
                 <TextBox Text="{Binding LensDatabaseFolder}" PlaceholderText="{l:Tr Pref.LensDatabase.None}" />
                 <Button Grid.Column="1" Classes="outline" Content="{l:Tr Pref.Browse}" Command="{Binding BrowseLensDatabaseCommand}" />
                 <Button Grid.Column="2" Classes="outline" Content="{l:Tr Pref.Clear}" Command="{Binding ClearLensDatabaseCommand}" />
-              </Grid>
-            </StackPanel>
+              </Grid>            </StackPanel>
           </Border>
           <Border Classes="settings-card">
             <StackPanel Classes="settings-row-block">

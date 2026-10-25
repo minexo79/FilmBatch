@@ -180,15 +180,14 @@ public sealed partial class PreferencesViewModel : ObservableObject
         _gpuMemoryLimitMb = s.GpuMemoryLimitMb;
         _backgroundCpuPercent = s.BackgroundCpuPercent;
         _texturesFolder = s.TexturesFolder ?? Core.AppPaths.Textures;
-        _lensDatabaseFolder = s.LensDatabaseFolder ?? "";
+        _lensDatabaseFolder = s.LensDatabaseFolder ?? _lensStore.InstalledDirectory ?? "";
         _language = Languages.First(l => l.Value == s.EffectiveLanguage);
         _debugLogging = s.DebugLogging;
         ShowInstalledLensDatabase();
         Loc.OnCultureChanged(this, static vm =>
         {
             vm.OnPropertyChanged(nameof(LensDownloadStatus));
-            vm.OnPropertyChanged(nameof(LensDownloadAttribution));
-        });
+            vm.OnPropertyChanged(nameof(LensDownloadAttribution));        });
         _ = LoadAdaptersAsync();
     }
 
@@ -272,6 +271,7 @@ public sealed partial class PreferencesViewModel : ObservableObject
         LensDownloadProgress = 0;
         LensDownloadError = null;
         var before = _lensStore.Installed?.Commit;
+        var beforeDirectory = _lensStore.InstalledDirectory;
         SetLensStatus(static () => Loc.Format("Pref.LensDownload.Status.Downloading", 0.0));
         var progress = new Progress<double>(p =>
         {
@@ -289,6 +289,9 @@ public sealed partial class PreferencesViewModel : ObservableObject
                 return;
             }
             SetLensStatus(() => Loc.Format("Pref.LensDownload.Status.Installed", info.ShortCommit, info.CommitDate.ToLocalTime(), info.FileCount));
+            // 輸入框空白或仍指向舊版本時，改顯示新下載的資料夾（儲存時仍視為「跟隨下載的資料庫」）。
+            if (string.IsNullOrWhiteSpace(LensDatabaseFolder) || LensDatabaseFolder == beforeDirectory)
+                LensDatabaseFolder = _lensStore.InstalledDirectory ?? "";
             _main.Toast.Show(Loc.Format("Pref.LensDownload.Toast", info.ShortCommit));
             if (string.IsNullOrWhiteSpace(_main.Settings.LensDatabaseFolder)) _main.ApplyLensDatabase();
         }
@@ -353,7 +356,9 @@ public sealed partial class PreferencesViewModel : ObservableObject
         s.ForceSoftwareGpu = forceSoftware;
         s.GpuMemoryLimitMb = GpuMemoryLimitMb;
         s.TexturesFolder = TexturesFolder;
-        var lensDatabase = string.IsNullOrWhiteSpace(LensDatabaseFolder) ? null : LensDatabaseFolder.Trim();
+        // 顯示的是下載的資料夾時不另存，讓之後下載的新版本自動生效。
+        var lensDatabase = string.IsNullOrWhiteSpace(LensDatabaseFolder) || LensDatabaseFolder.Trim() == _lensStore.InstalledDirectory
+            ? null : LensDatabaseFolder.Trim();
         var lensChanged = s.LensDatabaseFolder != lensDatabase;
         s.LensDatabaseFolder = lensDatabase;
         ApplyError = null;

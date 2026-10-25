@@ -187,8 +187,7 @@ R {1:P2}　G {2:P2}　B {3:P2}　亮度 {4:P2}</value></data>
   <data name="Pref.Textures.Desc" xml:space="preserve"><value>漏光、灰塵與刮痕、古典版材使用的材質；沒有材質時改用程序化效果</value></data>
   <data name="Pref.LensDatabase" xml:space="preserve"><value>外部 Lensfun 鏡頭資料庫</value></data>
   <data name="Pref.LensDatabase.Desc" xml:space="preserve"><value>RAW 檔沒有內嵌鏡頭校正時，從此資料夾的 Lensfun XML 比對相機與鏡頭；留空時依序使用 FILMBATCH_LENSFUN_DIR（若有設定）與下方下載的資料庫</value></data>
-  <data name="Pref.LensDatabase.None" xml:space="preserve"><value>未設定</value></data>
-  <data name="Pref.LensDownload" xml:space="preserve"><value>下載 Lensfun 資料庫</value></data>
+  <data name="Pref.LensDatabase.None" xml:space="preserve"><value>未設定</value></data>  <data name="Pref.LensDownload" xml:space="preserve"><value>下載 Lensfun 資料庫</value></data>
   <data name="Pref.LensDownload.Desc" xml:space="preserve"><value>只從 Lensfun 官方儲存庫下載最新的 data/db XML（約 5 MB）到使用者資料夾，逐檔驗證後才取代舊版；不會自動下載或更新</value></data>
   <data name="Pref.LensDownload.Attribution" xml:space="preserve"><value>{0}・{1}・不隨 FilmBatch 散布</value></data>
   <data name="Pref.LensDownload.Button" xml:space="preserve"><value>下載最新版</value></data>
