@@ -141,7 +141,7 @@ public sealed partial class MainWindowViewModel
     private void StartMonitor()
     {
         if (_monitor is not null || _disposed) return;
-        _monitor = new SystemMonitor(() => Folder);
+        _monitor = new SystemMonitor();
         // 每秒取樣一次（背景執行緒；上一次尚未完成就略過），結果回到 UI 執行緒更新
         _monitorTimer = new Timer(_ =>
         {
@@ -176,8 +176,8 @@ public sealed partial class MainWindowViewModel
         GpuText = s.GpuPercent is { } gpu ? $"{gpu:F1}%" : "—";
         RamPercent = s.RamPercent;
         RamText = $"{s.RamPercent:F1}%";
-        DiskPercent = s.DiskPercent;
-        DiskText = s.DiskTotalBytes <= 0 ? "—" : $"{s.DiskPercent:F1}%";
+        DiskPercent = s.DiskPercent ?? 0;
+        DiskText = s.DiskPercent is { } disk ? $"{disk:F1}%" : "—";
     }
 
     private static double Gb(long bytes) => bytes / (1024.0 * 1024 * 1024);

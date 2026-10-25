@@ -4,35 +4,32 @@ using System.Runtime.InteropServices;
 namespace FilmBatch.App.Services;
 
 /// <summary>
-/// 除錯模式用的系統資源取樣：CPU、GPU（Windows 效能計數器的 3D 引擎）、RAM 與資料所在磁碟的容量。
+/// 底列「顯示使用率」用的系統資源取樣：CPU、GPU（Windows 效能計數器的 3D 引擎）、RAM 與磁碟作用時間。
 /// 取不到的項目回傳 null，由介面顯示「—」。取樣由呼叫端以固定間隔（1 秒）在背景執行緒呼叫 <see cref="Sample"/>。
 /// </summary>
 internal sealed class SystemMonitor : IDisposable
 {
     internal readonly record struct Snapshot(
         double? CpuPercent, double? GpuPercent,
-        long RamUsedBytes, long RamTotalBytes, long AppBytes,
-        long DiskUsedBytes, long DiskTotalBytes)
+        long RamUsedBytes, long RamTotalBytes, long AppBytes, double? DiskPercent)
     {
         internal double RamPercent => RamTotalBytes <= 0 ? 0 : 100.0 * RamUsedBytes / RamTotalBytes;
-        internal double DiskPercent => DiskTotalBytes <= 0 ? 0 : 100.0 * DiskUsedBytes / DiskTotalBytes;
     }
 
-    private readonly Func<string?> _diskPath;
     private ulong _lastIdle, _lastTotal;
     private TimeSpan _lastProcessCpu;
     private long _lastProcessTicks;
     private List<System.Diagnostics.PerformanceCounter>? _gpuCounters;
     private int _gpuRefreshIn;
     private bool _gpuUnavailable;
+    private System.Diagnostics.PerformanceCounter? _diskCounter;
+    private bool _diskWarm, _diskUnavailable;
 
-    internal SystemMonitor(Func<string?> diskPath) => _diskPath = diskPath;
 
     internal Snapshot Sample()
     {
         var (used, total) = Memory();
-        var (diskUsed, diskTotal) = Disk();
-        return new Snapshot(Cpu(), Gpu(), used, total, Process.GetCurrentProcess().WorkingSet64, diskUsed, diskTotal);
+        return new Snapshot(Cpu(), Gpu(), used, total, Process.GetCurrentProcess().WorkingSet64, Disk());
     }
 
     // ───────────── CPU ─────────────
@@ -128,20 +125,39 @@ internal sealed class SystemMonitor : IDisposable
 
     // ───────────── 磁碟 ─────────────
 
-    private (long Used, long Total) Disk()
+    /// <summary>磁碟使用率＝工作管理員的「作用時間」（100 − PhysicalDisk 閒置時間），全部實體磁碟合計；非 Windows 或沒有計數器時為 null。</summary>
+    private double? Disk()
+    {
+        if (!OperatingSystem.IsWindows() || _diskUnavailable) return null;
+        return DiskWindows();
+    }
+
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private double? DiskWindows()
     {
         try
         {
-            var path = _diskPath() ?? AppContext.BaseDirectory;
-            var root = Path.GetPathRoot(Path.GetFullPath(path));
-            if (string.IsNullOrEmpty(root)) return (0, 0);
-            var drive = new DriveInfo(root);
-            return (drive.TotalSize - drive.AvailableFreeSpace, drive.TotalSize);
+            _diskCounter ??= new System.Diagnostics.PerformanceCounter("PhysicalDisk", "% Idle Time", "_Total", readOnly: true);
+            var idle = _diskCounter.NextValue();
+            if (_diskWarm) return Math.Clamp(100 - idle, 0, 100);
+            _diskWarm = true; // 第一次取值沒有差值，先暖機
+            return null;
         }
-        catch { return (0, 0); }
+        catch
+        {
+            _diskUnavailable = true;
+            _diskCounter?.Dispose();
+            _diskCounter = null;
+            return null;
+        }
     }
 
-    public void Dispose() { if (OperatingSystem.IsWindows()) DisposeCounters(); }
+    public void Dispose()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        DisposeCounters();
+        _diskCounter?.Dispose();
+    }
 
     private static ulong ToUInt64(FileTime t) => ((ulong)t.High << 32) | t.Low;
 
