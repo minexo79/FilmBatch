@@ -130,9 +130,9 @@ public sealed partial class MainWindowViewModel
         GpuPercent = s.GpuPercent ?? 0;
         GpuText = s.GpuPercent is { } gpu ? $"{gpu:F0}%" : "—";
         RamPercent = s.RamPercent;
-        RamText = $"{Gb(s.RamUsedBytes):F1}/{Gb(s.RamTotalBytes):F0} GB · App {Gb(s.AppBytes):F1}";
+        RamText = $"{s.RamPercent:F0}%";
         DiskPercent = s.DiskPercent;
-        DiskText = s.DiskTotalBytes <= 0 ? "—" : $"{Gb(s.DiskUsedBytes):F0}/{Gb(s.DiskTotalBytes):F0} GB";
+        DiskText = s.DiskTotalBytes <= 0 ? "—" : $"{s.DiskPercent:F0}%";
     }
 
     private static double Gb(long bytes) => bytes / (1024.0 * 1024 * 1024);

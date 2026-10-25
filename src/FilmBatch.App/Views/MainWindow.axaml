@@ -101,28 +101,24 @@
           <Border Classes="status-pill metric">
             <StackPanel Orientation="Horizontal" Spacing="6">
               <TextBlock Classes="pill-label" Text="CPU" />
-              <ProgressBar Classes="pill-bar" Width="34" Minimum="0" Maximum="100" Value="{Binding CpuPercent}" />
-              <TextBlock Classes="numeric" Width="30" TextAlignment="Right" Text="{Binding CpuText}" />
+              <TextBlock Classes="numeric" Text="{Binding CpuText}" />
             </StackPanel>
           </Border>
           <Border Classes="status-pill metric">
             <StackPanel Orientation="Horizontal" Spacing="6">
               <TextBlock Classes="pill-label" Text="GPU" />
-              <ProgressBar Classes="pill-bar" Width="34" Minimum="0" Maximum="100" Value="{Binding GpuPercent}" />
-              <TextBlock Classes="numeric" Width="30" TextAlignment="Right" Text="{Binding GpuText}" />
+              <TextBlock Classes="numeric" Text="{Binding GpuText}" />
             </StackPanel>
           </Border>
           <Border Classes="status-pill metric">
             <StackPanel Orientation="Horizontal" Spacing="6">
               <TextBlock Classes="pill-label" Text="RAM" />
-              <ProgressBar Classes="pill-bar" Width="34" Minimum="0" Maximum="100" Value="{Binding RamPercent}" />
               <TextBlock Classes="numeric" Text="{Binding RamText}" />
             </StackPanel>
           </Border>
           <Border Classes="status-pill metric">
             <StackPanel Orientation="Horizontal" Spacing="6">
               <TextBlock Classes="pill-label" Text="DISK" />
-              <ProgressBar Classes="pill-bar" Width="34" Minimum="0" Maximum="100" Value="{Binding DiskPercent}" />
               <TextBlock Classes="numeric" Text="{Binding DiskText}" />
             </StackPanel>
           </Border>
