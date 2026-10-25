@@ -331,6 +331,54 @@ public sealed class RenderSchedulerTests
         lock (prefetched) Assert.Equal(["later.tif"], prefetched);
     }
 
+    [Theory]
+    [InlineData("preview")]
+    [InlineData("window")]
+    [InlineData("thumbnail")]
+    [InlineData("prefetch")]
+    public async Task CompletedRender_ReleasesSourceWhileWorkerRemainsIdle(string kind)
+    {
+        using var scheduler = new RenderScheduler(() => new CpuFakeRenderer());
+        var delivered = new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously);
+        scheduler.PreviewRendered += result => delivered.TrySetResult(result.Result.Bgra);
+        scheduler.WindowRendered += result => delivered.TrySetResult(result.Result.Bgra);
+        scheduler.ThumbnailRendered += result => delivered.TrySetResult(result.Result.Bgra);
+        scheduler.PrefetchRendered += result => delivered.TrySetResult(result.Result.Bgra);
+        scheduler.RenderFailed += failure => delivered.TrySetException(failure.Error);
+        scheduler.WindowFailed += failure => delivered.TrySetException(failure.Error);
+        var source = QueueCollectibleSource(scheduler, kind);
+        scheduler.Start();
+        var pixels = await delivered.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        Assert.Equal(new byte[] { 0, 0, 255, 255 }, pixels.AsSpan(0, 4).ToArray());
+
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        do
+        {
+            await Task.Delay(20, TestContext.Current.CancellationToken);
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+        } while (source.IsAlive && clock.Elapsed < TimeSpan.FromSeconds(5));
+        Assert.False(source.IsAlive, "An idle worker must not retain the completed render's source.");
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static WeakReference QueueCollectibleSource(RenderScheduler scheduler, string kind)
+    {
+        var pixels = new ushort[4 * 4 * 4];
+        for (var i = 0; i < pixels.Length; i += 4) pixels[i] = pixels[i + 3] = ushort.MaxValue;
+        var source = new SourceImage(4, 4, pixels);
+        switch (kind)
+        {
+            case "preview": scheduler.RequestPreview("source.tif", source, ModuleCatalog.Defaults, 1); break;
+            case "window": scheduler.RequestWindow("source.tif", source, ModuleCatalog.Defaults, WindowView(0), new FrameStats(4, 4), 1); break;
+            case "thumbnail": scheduler.RequestThumbnail("source.tif", source, ModuleCatalog.Defaults); break;
+            case "prefetch": scheduler.RequestPrefetch("source.tif", source, ModuleCatalog.Defaults); break;
+            default: throw new ArgumentOutOfRangeException(nameof(kind));
+        }
+        return new WeakReference(source);
+    }
+
     // Simulates a slow native inference boundary, but keeps rendering and its pixels real.
     private sealed class SlowFirstCpuRenderer(bool holdCancellation = false) : IPreviewRenderer
     {

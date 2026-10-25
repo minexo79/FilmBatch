@@ -25,9 +25,9 @@ public sealed record ThumbnailRendered(string Key, RenderResult Result, long Epo
 /// <param name="Epoch">完成資格快照時的算圖世代；重建或換資料夾後送達即丟棄。</param>
 public sealed record PrefetchRendered(string Key, RenderResult Result, long Epoch);
 
-/// <summary>完成的窗口渲染（Loupe 的 Window 層），攜帶送出時的預覽世代與窗口，供 UI 交付圍欄比對。</summary>
+/// <summary>完成的窗口渲染（Loupe 的 Window 層），攜帶送出時的窗口請求編號與窗口，供 UI 交付圍欄比對。</summary>
 /// <param name="Key">照片鍵。</param>
-/// <param name="Generation">送出時的預覽世代（與 Main 相同的標籤，不遞增）。</param>
+/// <param name="Generation">送出時的窗口請求編號（每次 RequestWindow 遞增）。</param>
 /// <param name="View">窗口在畫框中的位置與畫框尺寸。</param>
 /// <param name="Result">算圖結果（窗口大小的 BGRA）。</param>
 /// <param name="Epoch">完成資格快照時的算圖世代；重建後送達即丟棄。</param>
@@ -49,7 +49,11 @@ public readonly record struct SchedulerNotice(string Message, long Epoch);
 /// <param name="Error">The original render or initialization exception.</param>
 /// <param name="PreviewGeneration">The failed preview generation; null for thumbnails and initialization.</param>
 /// <param name="Epoch">失敗當下的算圖世代（逐筆請求沿用其送出世代；<c>$init</c> 為快照當下）；重建後送達即丟棄。</param>
-public readonly record struct RenderFailure(string Key, Exception Error, long? PreviewGeneration, long Epoch);
+public readonly record struct RenderFailure(string Key, Exception Error, long? PreviewGeneration, long Epoch)
+{
+    /// <summary>取得失敗窗口的請求編號；非窗口失敗為 <see langword="null"/>。</summary>
+    public long? WindowGeneration { get; init; }
+}
 
 /// <summary>
 /// 單一 GPU 執行緒：所有算圖都在這裡序列化執行（計畫書 9.2、11.3）。
@@ -83,6 +87,8 @@ public sealed class RenderScheduler : IDisposable
     /// <summary>窗口 slot 只保留最新一筆；<see cref="CancelWindow"/>、重建與清空縮圖時遞增，被讓出的舊世代窗口不重新排隊。</summary>
     private (string Key, SourceImage Source, Settings Settings, RenderView View, FrameStats Stats, long Generation, long Epoch, long WindowGeneration)? _window;
     private long _windowGeneration;
+    /// <summary>等待在 GPU 執行緒上釋放常駐紋理的來源（idle／換照片時排入，兩次算圖之間執行）。</summary>
+    private readonly Queue<SourceImage> _releases = new();
     private string? _previewKey, _previewPath, _activeKey;
     private (string? Key, string? Path)? _cancelledPreview;
 
@@ -97,6 +103,8 @@ public sealed class RenderScheduler : IDisposable
     public event Action<PrefetchRendered>? PrefetchRendered;
     /// <summary>窗口渲染完成；在 GPU 執行緒上觸發。</summary>
     public event Action<WindowRendered>? WindowRendered;
+    /// <summary>窗口渲染失敗（不經 <see cref="RenderFailed"/>，避免污染預覽／縮圖的失敗通道）；在 GPU 執行緒上觸發。</summary>
+    public event Action<RenderFailure>? WindowFailed;
     /// <summary>需要告知使用者的訊息（例如 GPU 重新初始化），攜帶發出時的算圖世代。</summary>
     public event Action<SchedulerNotice>? Notice;
     public event Action<RenderFailure>? RenderFailed;
@@ -251,6 +259,17 @@ public sealed class RenderScheduler : IDisposable
         }
     }
 
+    /// <summary>在 GPU 執行緒上釋放指定來源的常駐紋理（idle／換照片時呼叫，不阻塞呼叫端）。</summary>
+    public void EnqueueRelease(SourceImage source)
+    {
+        lock (_lock)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            _releases.Enqueue(source);
+        }
+        _signal.Set();
+    }
+
     public void CancelThumbnails()
     {
         lock (_lock)
@@ -296,163 +315,189 @@ public sealed class RenderScheduler : IDisposable
         while (!_disposed)
         {
             _signal.WaitOne(500);
-            while (!_disposed)
-            {
-                // 偏好設定觸發的重建優先於任何算圖；在 GPU 執行緒上序列化執行。
-                (Func<IPreviewRenderer> Factory, Func<IPreviewRenderer>? Fallback)? reset = null;
-                lock (_lock)
-                {
-                    reset = _pendingReset;
-                    _pendingReset = null;
-                }
-                if (reset is { } job)
-                {
-                    // 佇列已在 ResetRenderer 送出時清空並推進世代；此處只換工廠並重建，
-                    // 避免清除送出後才到達的新世代請求。
-                    lock (_lock)
-                    {
-                        _factory = job.Factory;
-                        _fallback = job.Fallback;
-                    }
-                    InitRenderer();
-                    continue;
-                }
-
-                (string Key, SourceImage Source, Settings Settings, long Generation, long Epoch)? preview;
-                (string Key, SourceImage Source, Settings Settings, RenderView View, FrameStats Stats, long Generation, long Epoch, long WindowGeneration)? window = null;
-                (string Key, SourceImage Source, Settings Settings, long Epoch)? thumb = null;
-                (string Key, SourceImage Source, Settings Settings, long Epoch, long Generation)? prefetch = null;
-                long epoch;
-                CancellationTokenSource? cancellation = null;
-                lock (_lock)
-                {
-                    epoch = _epoch;
-                    preview = _preview;
-                    _preview = null;
-                    if (preview is null && _window is { } pendingWindow)
-                    {
-                        window = pendingWindow;
-                        _window = null;
-                    }
-                    if (preview is null && window is null && _prefetches.First is { } next)
-                    {
-                        prefetch = next.Value;
-                        _prefetches.RemoveFirst();
-                    }
-                    else if (preview is null && window is null && _thumbs.First is { } first)
-                    {
-                        thumb = first.Value;
-                        _thumbs.RemoveFirst();
-                    }
-                    if (preview is not null || window is not null || thumb is not null || prefetch is not null)
-                    {
-                        cancellation = _activeRender = new CancellationTokenSource();
-                        _activeIsPreview = preview is not null;
-                        _activeIsWindow = window is not null;
-                        _activePrefetch = prefetch is not null;
-                        _activeSource = preview?.Source ?? window?.Source ?? prefetch?.Source ?? thumb!.Value.Source;
-                        _activeKey = preview?.Key ?? window?.Key ?? prefetch?.Key ?? thumb!.Value.Key;
-                        _activeDenoise = DenoiseSettings.From(preview?.Settings ?? window?.Settings ?? prefetch?.Settings ?? thumb!.Value.Settings).IsActive;
-                    }
-                }
-
-                try
-                {
-                    if (preview is { } p)
-                    {
-                        if (p.Epoch != epoch) continue;
-                        if (TryRender(p.Key, p.Source, p.Settings, p.Epoch, cancellation!.Token, p.Generation) is { } r)
-                        {
-                            // 完成資格在送件鎖內快照，昂貴回呼在鎖外執行：直方圖等不得卡住新的 RequestPreview。
-                            //  payload 攜帶快照時的世代：鎖釋放後若發生重建，回呼入口不得再取新世代，
-                            // 過期交付由 payload 世代與 PreviewService 的世代/epoch 圍欄擋下。
-                            Action<PreviewRendered>? completed = null;
-                            lock (_lock)
-                            {
-                                if (p.Epoch == _epoch && !cancellation.IsCancellationRequested)
-                                    completed = PreviewRendered;
-                            }
-                            completed?.Invoke(new PreviewRendered(p.Key, p.Generation, r, p.Epoch));
-                        }
-                    }
-                    else if (window is { } w)
-                    {
-                        if (w.Epoch != epoch) continue;
-                        if (TryRender(w.Key, w.Source, w.Settings, w.Epoch, cancellation!.Token, null, w.View, w.Stats) is { } r)
-                        {
-                            Action<WindowRendered>? completed = null;
-                            lock (_lock)
-                            {
-                                if (w.Epoch == _epoch && !cancellation.IsCancellationRequested)
-                                    completed = WindowRendered;
-                            }
-                            completed?.Invoke(new WindowRendered(w.Key, w.Generation, w.View, r, w.Epoch));
-                        }
-                    }
-                    else if (prefetch is { } f)
-                    {
-                        if (f.Epoch != epoch) continue;
-                        if (TryRender(f.Key, f.Source, f.Settings, f.Epoch, cancellation!.Token) is { } r)
-                        {
-                            Action<PrefetchRendered>? completed = null;
-                            lock (_lock)
-                            {
-                                if (f.Epoch == _epoch && f.Generation == _prefetchGeneration && !cancellation.IsCancellationRequested)
-                                    completed = PrefetchRendered;
-                            }
-                            completed?.Invoke(new PrefetchRendered(f.Key, r, f.Epoch));
-                        }
-                    }
-                    else if (thumb is { } t)
-                    {
-                        if (t.Epoch != epoch) continue;
-                        if (TryRender(t.Key, t.Source, t.Settings, t.Epoch, cancellation!.Token) is { } r)
-                        {
-                            Action<ThumbnailRendered>? completed = null;
-                            lock (_lock)
-                            {
-                                if (t.Epoch == _epoch && !cancellation.IsCancellationRequested)
-                                    completed = ThumbnailRendered;
-                            }
-                            completed?.Invoke(new ThumbnailRendered(t.Key, r, t.Epoch));
-                        }
-                    }
-                    else break;
-                }
-                finally
-                {
-                    lock (_lock)
-                    {
-                        // Foreground preemption must not lose the thumbnail when that preview is
-                        // itself replaced/cancelled while rendering unwinds. Explicit cancellation wins.
-                        if (thumb is { } interrupted && cancellation!.IsCancellationRequested
-                            && !_disposed && interrupted.Epoch == _epoch
-                            && !MatchesCancelled(interrupted.Key, interrupted.Source)
-                            && !_thumbs.Any(item => item.Key == interrupted.Key))
-                            _thumbs.AddFirst(interrupted);
-                        // 被預覽或新窗口讓出的窗口重新排隊（只在槽位空著時）；明確取消推進了窗口世代，不再排回
-                        if (window is { } lost && cancellation!.IsCancellationRequested
-                            && !_disposed && lost.Epoch == _epoch && lost.WindowGeneration == _windowGeneration && _window is null)
-                            _window = lost;
-                        // 被預覽讓出的預取重新排隊；明確取消（換照片、換資料夾、重建）推進了世代，不再排回
-                        if (prefetch is { } yielded && cancellation!.IsCancellationRequested
-                            && !_disposed && yielded.Epoch == _epoch && yielded.Generation == _prefetchGeneration
-                            && !_prefetches.Any(item => item.Key == yielded.Key))
-                            _prefetches.AddFirst(yielded);
-                        _activeRender = null;
-                        _activeIsWindow = false;
-                        _activePrefetch = false;
-                        _activeSource = null;
-                    }
-                    cancellation?.Dispose();
-                }
-            }
+            while (!_disposed && RunNext()) { }
         }
         _renderer?.Dispose();
     }
 
+    /// <summary>以獨立堆疊框架處理一筆工作，避免閒置執行緒的區域變數持續保留已完成的來源與結果。</summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private bool RunNext()
+    {
+        // 偏好設定觸發的重建優先於任何算圖；在 GPU 執行緒上序列化執行。
+        (Func<IPreviewRenderer> Factory, Func<IPreviewRenderer>? Fallback)? reset = null;
+        lock (_lock)
+        {
+            reset = _pendingReset;
+            _pendingReset = null;
+        }
+        if (reset is { } job)
+        {
+            // 佇列已在 ResetRenderer 送出時清空並推進世代；此處只換工廠並重建，
+            // 避免清除送出後才到達的新世代請求。
+            lock (_lock)
+            {
+                _factory = job.Factory;
+                _fallback = job.Fallback;
+            }
+            InitRenderer();
+            return true;
+        }
+
+        // 明確釋放排在算圖之前：在 GPU 執行緒上依序釋放常駐紋理，不與飛行中的算圖並行。
+        DrainReleases();
+
+        (string Key, SourceImage Source, Settings Settings, long Generation, long Epoch)? preview;
+        (string Key, SourceImage Source, Settings Settings, RenderView View, FrameStats Stats, long Generation, long Epoch, long WindowGeneration)? window = null;
+        (string Key, SourceImage Source, Settings Settings, long Epoch)? thumb = null;
+        (string Key, SourceImage Source, Settings Settings, long Epoch, long Generation)? prefetch = null;
+        long epoch;
+        CancellationTokenSource? cancellation = null;
+        lock (_lock)
+        {
+            epoch = _epoch;
+            preview = _preview;
+            _preview = null;
+            if (preview is null && _window is { } pendingWindow)
+            {
+                window = pendingWindow;
+                _window = null;
+            }
+            if (preview is null && window is null && _prefetches.First is { } next)
+            {
+                prefetch = next.Value;
+                _prefetches.RemoveFirst();
+            }
+            else if (preview is null && window is null && _thumbs.First is { } first)
+            {
+                thumb = first.Value;
+                _thumbs.RemoveFirst();
+            }
+            if (preview is not null || window is not null || thumb is not null || prefetch is not null)
+            {
+                cancellation = _activeRender = new CancellationTokenSource();
+                _activeIsPreview = preview is not null;
+                _activeIsWindow = window is not null;
+                _activePrefetch = prefetch is not null;
+                _activeSource = preview?.Source ?? window?.Source ?? prefetch?.Source ?? thumb!.Value.Source;
+                _activeKey = preview?.Key ?? window?.Key ?? prefetch?.Key ?? thumb!.Value.Key;
+                _activeDenoise = DenoiseSettings.From(preview?.Settings ?? window?.Settings ?? prefetch?.Settings ?? thumb!.Value.Settings).IsActive;
+            }
+        }
+
+        try
+        {
+            if (preview is { } p)
+            {
+                if (p.Epoch != epoch) return true;
+                if (TryRender(p.Key, p.Source, p.Settings, p.Epoch, cancellation!.Token, p.Generation) is { } r)
+                {
+                    // 完成資格在送件鎖內快照，昂貴回呼在鎖外執行：直方圖等不得卡住新的 RequestPreview。
+                    //  payload 攜帶快照時的世代：鎖釋放後若發生重建，回呼入口不得再取新世代，
+                    // 過期交付由 payload 世代與 PreviewService 的世代/epoch 圍欄擋下。
+                    Action<PreviewRendered>? completed = null;
+                    lock (_lock)
+                    {
+                        if (p.Epoch == _epoch && !cancellation.IsCancellationRequested)
+                            completed = PreviewRendered;
+                    }
+                    completed?.Invoke(new PreviewRendered(p.Key, p.Generation, r, p.Epoch));
+                }
+            }
+            else if (window is { } w)
+            {
+                if (w.Epoch != epoch) return true;
+                if (TryRender(w.Key, w.Source, w.Settings, w.Epoch, cancellation!.Token, null, w.View, w.Stats, w.Generation) is { } r)
+                {
+                    Action<WindowRendered>? completed = null;
+                    lock (_lock)
+                    {
+                        if (w.Epoch == _epoch && !cancellation.IsCancellationRequested)
+                            completed = WindowRendered;
+                    }
+                    completed?.Invoke(new WindowRendered(w.Key, w.Generation, w.View, r, w.Epoch));
+                }
+            }
+            else if (prefetch is { } f)
+            {
+                if (f.Epoch != epoch) return true;
+                if (TryRender(f.Key, f.Source, f.Settings, f.Epoch, cancellation!.Token) is { } r)
+                {
+                    Action<PrefetchRendered>? completed = null;
+                    lock (_lock)
+                    {
+                        if (f.Epoch == _epoch && f.Generation == _prefetchGeneration && !cancellation.IsCancellationRequested)
+                            completed = PrefetchRendered;
+                    }
+                    completed?.Invoke(new PrefetchRendered(f.Key, r, f.Epoch));
+                }
+            }
+            else if (thumb is { } t)
+            {
+                if (t.Epoch != epoch) return true;
+                if (TryRender(t.Key, t.Source, t.Settings, t.Epoch, cancellation!.Token) is { } r)
+                {
+                    Action<ThumbnailRendered>? completed = null;
+                    lock (_lock)
+                    {
+                        if (t.Epoch == _epoch && !cancellation.IsCancellationRequested)
+                            completed = ThumbnailRendered;
+                    }
+                    completed?.Invoke(new ThumbnailRendered(t.Key, r, t.Epoch));
+                }
+            }
+            else return false;
+        }
+        finally
+        {
+            lock (_lock)
+            {
+                // Foreground preemption must not lose the thumbnail when that preview is
+                // itself replaced/cancelled while rendering unwinds. Explicit cancellation wins.
+                if (thumb is { } interrupted && cancellation!.IsCancellationRequested
+                    && !_disposed && interrupted.Epoch == _epoch
+                    && !MatchesCancelled(interrupted.Key, interrupted.Source)
+                    && !_thumbs.Any(item => item.Key == interrupted.Key))
+                    _thumbs.AddFirst(interrupted);
+                // 被預覽或新窗口讓出的窗口重新排隊（只在槽位空著時）；明確取消推進了窗口世代，不再排回
+                if (window is { } lost && cancellation!.IsCancellationRequested
+                    && !_disposed && lost.Epoch == _epoch && lost.WindowGeneration == _windowGeneration && _window is null)
+                    _window = lost;
+                // 被預覽讓出的預取重新排隊；明確取消（換照片、換資料夾、重建）推進了世代，不再排回
+                if (prefetch is { } yielded && cancellation!.IsCancellationRequested
+                    && !_disposed && yielded.Epoch == _epoch && yielded.Generation == _prefetchGeneration
+                    && !_prefetches.Any(item => item.Key == yielded.Key))
+                    _prefetches.AddFirst(yielded);
+                _activeRender = null;
+                _activeIsWindow = false;
+                _activePrefetch = false;
+                _activeSource = null;
+            }
+            cancellation?.Dispose();
+        }
+        return true;
+    }
+
+    /// <summary>在 GPU 執行緒上釋放排入的常駐來源（呼叫端保證的 GPU 執行緒專用 API）。</summary>
+    private void DrainReleases()
+    {
+        while (true)
+        {
+            SourceImage? source;
+            IPreviewRenderer? renderer;
+            lock (_lock)
+            {
+                if (_releases.Count == 0) return;
+                source = _releases.Dequeue();
+                renderer = _renderer;
+            }
+            (renderer as GpuSpikeRenderer)?.EvictSource(source);
+        }
+    }
+
     private RenderResult? TryRender(string key, SourceImage source, Settings settings, long epoch,
-        CancellationToken cancellationToken, long? previewGeneration = null, RenderView? view = null, FrameStats? stats = null)
+        CancellationToken cancellationToken, long? previewGeneration = null, RenderView? view = null, FrameStats? stats = null,
+        long? windowGeneration = null)
     {
         if (_renderer is null)
         {
@@ -464,10 +509,10 @@ public sealed class RenderScheduler : IDisposable
                 Exception? initError = null;
                 lock (_lock)
                 {
-                    if (epoch == _epoch) failed = RenderFailed;
+                    if (epoch == _epoch) failed = windowGeneration is not null ? WindowFailed : RenderFailed;
                     initError = _initError;
                 }
-                failed?.Invoke(new(key, initError!, previewGeneration, epoch));
+                failed?.Invoke(new(key, initError!, previewGeneration, epoch) { WindowGeneration = windowGeneration });
                 return null;
             }
         }
@@ -498,10 +543,10 @@ public sealed class RenderScheduler : IDisposable
                     Exception? initError = null;
                     lock (_lock)
                     {
-                        if (epoch == _epoch) failed = RenderFailed;
+                        if (epoch == _epoch) failed = windowGeneration is not null ? WindowFailed : RenderFailed;
                         initError = _initError;
                     }
-                    failed?.Invoke(new(key, initError!, previewGeneration, epoch));
+                    failed?.Invoke(new(key, initError!, previewGeneration, epoch) { WindowGeneration = windowGeneration });
                     return null;
                 }
             }
@@ -510,9 +555,9 @@ public sealed class RenderScheduler : IDisposable
                 Action<RenderFailure>? failed = null;
                 lock (_lock)
                 {
-                    if (epoch == _epoch) failed = RenderFailed;
+                    if (epoch == _epoch) failed = windowGeneration is not null ? WindowFailed : RenderFailed;
                 }
-                failed?.Invoke(new(key, ex, previewGeneration, epoch));
+                failed?.Invoke(new(key, ex, previewGeneration, epoch) { WindowGeneration = windowGeneration });
             }
         }
         return null;

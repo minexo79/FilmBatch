@@ -17,6 +17,8 @@ public sealed class PreviewService : IDisposable
     private long _requested;
     private long _delivered;
     private long _firstSourceGeneration;
+    private long _windowRequested;
+    private long _firstWindowGeneration;
     private bool _disposed;
     private volatile bool _collectHistogram = true;
     private SourceImage? _source;
@@ -49,6 +51,8 @@ public sealed class PreviewService : IDisposable
     public event Action<string, RenderResult>? PrefetchReady;
     /// <summary>Loupe 窗口渲染完成（UI 執行緒；換照片、取消或重建後的舊窗口已丟棄）。</summary>
     public event Action<WindowDelivery>? WindowReady;
+    /// <summary>Loupe 窗口渲染失敗（UI 執行緒；只供窗口重送判斷，不顯示、不進縮圖錯誤）。</summary>
+    public event Action<RenderFailure>? WindowFailed;
     public event Action<string, bool>? DeviceReady;
     public event Action<string>? Notice;
     public event Action<RenderFailure>? Failed;
@@ -129,14 +133,24 @@ public sealed class PreviewService : IDisposable
                 PreviewReady?.Invoke(shown, histogram, original);
             });
         };
-        // 窗口沿用主預覽的世代標籤；換照片後（世代早於第一個世代）或重建後的結果一律丟棄，不進直方圖、不做顯示縮放。
+        // 窗口用獨立請求編號；換照片推進第一個有效編號，重建後舊結果一律丟棄，不進直方圖、不做顯示縮放。
         _scheduler.WindowRendered += w =>
         {
-            if (w.Generation < Interlocked.Read(ref _firstSourceGeneration)) return;
+            if (IsStaleWindow(w.Generation)) return;
             PostAtEpoch(w.Epoch, () =>
             {
-                if (w.Generation < Interlocked.Read(ref _firstSourceGeneration)) return;
+                if (IsStaleWindow(w.Generation)) return;
                 WindowReady?.Invoke(new WindowDelivery(w.View, w.Result, w.Generation));
+            });
+        };
+        // 窗口失敗只記日誌並通知窗口層清除抑制，不經 Failed（避免污染預覽／縮圖錯誤與提示）。
+        _scheduler.WindowFailed += failure =>
+        {
+            if (failure.WindowGeneration is not { } generation || IsStaleWindow(generation)) return;
+            AppLog.Warn($"Loupe 窗口算圖失敗：{failure.Key}：{failure.Error.Message}");
+            PostAtEpoch(failure.Epoch, () =>
+            {
+                if (!IsStaleWindow(generation)) WindowFailed?.Invoke(failure);
             });
         };
         _scheduler.ThumbnailRendered += t => PostAtEpoch(t.Epoch, () => ThumbnailReady?.Invoke(t.Key, t.Result));
@@ -154,6 +168,10 @@ public sealed class PreviewService : IDisposable
     private bool IsStalePreview(long generation) =>
         generation < Interlocked.Read(ref _firstSourceGeneration)
         || generation <= Interlocked.Read(ref _delivered);
+
+    private bool IsStaleWindow(long generation) =>
+        generation < Interlocked.Read(ref _firstWindowGeneration)
+        || generation != Interlocked.Read(ref _windowRequested);
 
     /// <summary>Start after the view model has subscribed to initialization and failure events.</summary>
     public void Start() => _scheduler.Start();
@@ -218,7 +236,10 @@ public sealed class PreviewService : IDisposable
         var generation = Interlocked.Increment(ref _requested);
         if (draft) _draftGenerations[generation] = true;
         if (!ReferenceEquals(source, Volatile.Read(ref _source)))
+        {
             Interlocked.Exchange(ref _firstSourceGeneration, generation);
+            Interlocked.Exchange(ref _firstWindowGeneration, Interlocked.Read(ref _windowRequested) + 1);
+        }
         Volatile.Write(ref _source, source);
         _scheduler.RequestPreview(fileName, source, settings, generation);
         return generation;
@@ -284,30 +305,38 @@ public sealed class PreviewService : IDisposable
     public void CancelPreview(bool cancelMatchingThumbnails = false)
     {
         Interlocked.Exchange(ref _delivered, Interlocked.Increment(ref _requested));
+        Interlocked.Exchange(ref _firstWindowGeneration, Interlocked.Read(ref _windowRequested) + 1);
         _scheduler.CancelPreview(cancelMatchingThumbnails);
         _scheduler.CancelWindow();
         Volatile.Write(ref _source, null);
     }
-
     /// <summary>
-    /// 送出窗口渲染（放大時螢幕上可見的那一塊，從 Full 來源算）。世代沿用目前的主預覽世代，不遞增，
-    /// 因此不會讓正常的主預覽結果被判成過期。結果經 <see cref="WindowReady"/> 送出，不進直方圖、不做顯示縮放。
+    /// 送出窗口渲染（放大時螢幕上可見的那一塊，從 Full 來源算）。每次送出遞增獨立的窗口請求編號，
+    /// 與 Main 世代無關，因此同一 Main 世代下的連續窗口（平移／設定變更）送達時可分辨新舊。
+    /// 結果經 <see cref="WindowReady"/> 送出，不進直方圖、不做顯示縮放。
     /// </summary>
     /// <param name="fileName">照片鍵。</param>
     /// <param name="frameSource">已縮放到窗口畫框尺寸的來源（同一個物件應被重用，GPU 端以參考相等快取紋理）。</param>
     /// <param name="settings">目前的算圖設定。</param>
     /// <param name="view">窗口在畫框中的位置與畫框尺寸。</param>
     /// <param name="stats">Main 渲染記錄的全畫框統計。</param>
-    /// <returns>送出時的主預覽世代。</returns>
+    /// <returns>這次窗口請求的編號（即送達時的比對鍵）。</returns>
     public long RequestWindow(string fileName, SourceImage frameSource, Settings settings, RenderView view, FrameStats stats)
     {
-        var generation = Interlocked.Read(ref _requested);
+        var generation = Interlocked.Increment(ref _windowRequested);
         _scheduler.RequestWindow(fileName, frameSource, settings, view, stats, generation);
         return generation;
     }
 
     /// <summary>丟棄排隊中與執行中的窗口（換照片、取消、重建前）。</summary>
-    public void CancelWindow() => _scheduler.CancelWindow();
+    public void CancelWindow()
+    {
+        Interlocked.Exchange(ref _firstWindowGeneration, Interlocked.Read(ref _windowRequested) + 1);
+        _scheduler.CancelWindow();
+    }
+
+    /// <summary>在 GPU 執行緒上釋放指定來源的常駐紋理（idle／換照片時呼叫，不阻塞呼叫端）。</summary>
+    public void ReleaseSource(SourceImage source) => _scheduler.EnqueueRelease(source);
 
     public void RequestThumbnail(string fileName, SourceImage source, Settings settings) =>
         _scheduler.RequestThumbnail(fileName, source, settings);
@@ -346,5 +375,5 @@ public sealed record PreviewDelivery(long Generation, bool IsDraft, TimeSpan Ela
 /// <summary>一次窗口渲染的送達資訊。</summary>
 /// <param name="View">窗口在畫框中的位置與畫框尺寸。</param>
 /// <param name="Result">窗口大小的 BGRA 結果（GPU 原尺寸，由畫布縮放到繪製位置）。</param>
-/// <param name="Generation">送出時的主預覽世代。</param>
+/// <param name="Generation">這次窗口請求的編號（與送出時的 <see cref="PreviewService.RequestWindow"/> 回傳值相同）。</param>
 public sealed record WindowDelivery(RenderView View, RenderResult Result, long Generation);

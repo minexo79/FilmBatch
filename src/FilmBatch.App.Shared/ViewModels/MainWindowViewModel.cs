@@ -249,6 +249,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         };
         Renderer.PrefetchReady += OnPrefetchReady;
         Renderer.WindowReady += OnWindowReady;
+        Renderer.WindowFailed += OnWindowFailed;
         // 同一級內改變畫布尺寸：只換 bitmap（直方圖沿用），不是新影格
         Renderer.PreviewRefitted += (r, histogram, originalHistogram) =>
         {
@@ -1545,6 +1546,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         _resumePreview = FocusFile is not null && (Preview.IsBusy || Renderer.IsBusy || Preview.Source is null);
         Preview.IsBusy = false;
         Renderer.CancelThumbnails();
+        CancelWindowForSuspend();
         CancelPrefetch();
         _prefetchArmedFor = FocusFile;
         // Freeze the scan and queue explicit edits until foreground recovery.
@@ -1586,6 +1588,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             if (Preview.Source is null) _ = LoadPreviewAsync();
             else RequestPreview();
         }
+        RequestWindowIfNeeded();
         _resumePreview = false;
         _ = ResolvePresetUpdatesAsync();
         UpdateBackgroundText();
@@ -1603,6 +1606,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         ++_openGeneration;
         _loadingTimer.Stop();
         _windowCts.Cancel();
+        _windowCts.Dispose();
+        _windowFrameSource = null;
         _fullReleaseSeq++;
         _previewWait?.Cancel();
         _previewWait?.Dispose();

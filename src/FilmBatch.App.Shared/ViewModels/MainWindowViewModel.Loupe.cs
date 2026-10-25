@@ -6,6 +6,7 @@ using FilmBatch.Core.Params;
 using FilmBatch.Engine.Denoising;
 using FilmBatch.Engine.Imaging;
 using FilmBatch.Engine.Rendering;
+using FilmBatch.Engine.Scheduling;
 
 namespace FilmBatch.App.ViewModels;
 
@@ -25,6 +26,10 @@ public sealed partial class MainWindowViewModel
     private RegionView? _sentRegion;
     /// <summary>已送進算圖器、尚未送達的窗口；送達時以它比對結果。</summary>
     private RegionView? _inFlightRegion;
+    /// <summary>在途窗口的請求編號（<see cref="PreviewService.RequestWindow"/> 回傳值）；送達時必須相同才顯示。</summary>
+    private long? _inFlightWindowGeneration;
+    /// <summary>在途／已顯示窗口使用的 frame 來源；idle／換照片時排入 GPU 執行緒釋放常駐紋理。</summary>
+    private SourceImage? _windowFrameSource;
     /// <summary>Full 來源載入與窗口送出進行中；期間新的需求只記下 pending，結束後再算一次。</summary>
     private bool _windowLoading;
     private bool _windowPending;
@@ -32,10 +37,10 @@ public sealed partial class MainWindowViewModel
     private long _fullReleaseSeq;
 
     /// <summary>
-    /// 窗口是否允許：裁切工具、去背編輯、替身顯示與 AI 降噪期間都不畫（降噪作用在整張來源，Full 來源降噪太慢）。
+    /// 正式影像是否使用窗口：裁切工具、去背編輯與 AI 降噪期間都不畫（降噪作用在整張來源，Full 來源降噪太慢）。
     /// </summary>
     private bool WindowsAllowedFor(Settings? settings) =>
-        !CropTool.IsActive && !BackgroundRemoval.IsEditing && Preview.StandIn is null
+        !CropTool.IsActive && !BackgroundRemoval.IsEditing
         && (settings is null || !DenoiseSettings.From(settings).IsActive);
 
     /// <summary>畫布可見範圍改變（平移、縮放）：只在窗口位置跨過 256 格線時才會真的送出新的窗口。</summary>
@@ -66,14 +71,16 @@ public sealed partial class MainWindowViewModel
     /// </summary>
     internal void RequestWindowIfNeeded()
     {
-        if (_disposed) return;
+        if (_disposed || _suspended) return;
         if (_draftScale is not null) return;
         if (_windowLoading)
         {
             _windowPending = true;
             return;
         }
-        if (Preview.CurrentPlan?.WindowFrameEdge is null || Preview.VisibleFrame is null || !WindowsAllowedFor(_windowSettings))
+        // 替身只暫停送件，不改變正式影像的計畫；同尺寸照片送達時不一定會再回報尺寸。
+        if (Preview.StandIn is not null || Preview.CurrentPlan?.WindowFrameEdge is null
+            || Preview.VisibleFrame is null || !WindowsAllowedFor(_windowSettings))
         {
             ClearWindow();
             return;
@@ -112,12 +119,15 @@ public sealed partial class MainWindowViewModel
             var visibleRect = (visible.U0 * frame.OutWidth, visible.V0 * frame.OutHeight, visible.U1 * frame.OutWidth, visible.V1 * frame.OutHeight);
             var window = LoupePlan.WindowFor(frame.OutWidth, frame.OutHeight, visibleRect, LoupePlan.MaxSpanFor(AssumedTextureSide));
             if (window is not { } win) return;
-
             var region = new RegionView(path, false, frame.OutWidth, frame.OutHeight, win, key);
             if (region == _sentRegion) return;
             _sentRegion = region;
             _inFlightRegion = region;
-            Renderer.RequestWindow(path, SourceForPhoto(focus, frameSource), settings,
+            var renderSource = SourceForPhoto(focus, frameSource);
+            if (_windowFrameSource is { } previous && !ReferenceEquals(previous, renderSource))
+                Renderer.ReleaseSource(previous);
+            _windowFrameSource = renderSource;
+            _inFlightWindowGeneration = Renderer.RequestWindow(path, renderSource, settings,
                 ViewOf(region), _mainStats ?? new FrameStats(frame.OutWidth, frame.OutHeight));
         }
         catch (OperationCanceledException) { }
@@ -137,35 +147,70 @@ public sealed partial class MainWindowViewModel
     private void OnWindowReady(WindowDelivery delivery)
     {
         if (_disposed || _inFlightRegion is not { } region || Service is null || FocusFile is null) return;
+        if (_inFlightWindowGeneration is not { } expected || delivery.Generation != expected) return;
         if (delivery.View != ViewOf(region)) return;
         _inFlightRegion = null;
+        _inFlightWindowGeneration = null;
         if (!region.IsCurrent(Service.Project.PathOf(FocusFile), (region.FrameW, region.FrameH), _settingsKey, _draftScale is not null)) return;
         Preview.SetWindow(PreviewViewModel.BitmapFrom(delivery.Result), region);
         RefreshWindowVisibility();
     }
 
+    /// <summary>窗口算圖失敗（UI 執行緒）：清除抑制讓下一次可見範圍回報可重送；不碰縮圖錯誤與提示。</summary>
+    private void OnWindowFailed(RenderFailure failure)
+    {
+        if (_disposed) return;
+        if (_inFlightRegion is null || failure.WindowGeneration != _inFlightWindowGeneration) return;
+        _inFlightRegion = null;
+        _inFlightWindowGeneration = null;
+        _sentRegion = null;
+    }
+
     /// <summary>目前的窗口不需要（回到符合視窗、切換到替身、裁切等）：清掉畫面與在途請求，Full 來源閒置 3 秒後釋放。</summary>
     private void ClearWindow()
     {
-        if (_sentRegion is null && _inFlightRegion is null && Preview.WindowImage is null) return;
+        if (_sentRegion is null && _inFlightRegion is null && Preview.WindowImage is null && _windowFrameSource is null) return;
         _sentRegion = null;
         _inFlightRegion = null;
+        _inFlightWindowGeneration = null;
         Renderer.CancelWindow();
         Preview.ClearWindow();
         ScheduleFullRelease();
     }
 
-    /// <summary>換照片：作廢在途的 Full 載入與窗口，清除畫面。</summary>
+    /// <summary>換照片：作廢在途的 Full 載入與窗口，清除畫面，並即時釋放舊 Full（含 GPU 常駐）。</summary>
     private void CancelWindowForPhotoChange()
     {
         _windowCts.Cancel();
+        _windowCts.Dispose();
         _windowCts = new CancellationTokenSource();
         _windowPending = false;
         _sentRegion = null;
         _inFlightRegion = null;
+        _inFlightWindowGeneration = null;
         _mainStats = null;
         Renderer.CancelWindow();
         Preview.ClearWindow();
+        CancelFullRelease();
+        Images.ReleaseFullIfIdle();
+        if (_windowFrameSource is { } frameSource)
+        {
+            _windowFrameSource = null;
+            if (!_disposed) Renderer.ReleaseSource(frameSource);
+        }
+    }
+
+    /// <summary>Suspend：取消在途窗口並清除抑制（不釋放 Full 快取），Resume 後 Main 送達即可重送。</summary>
+    private void CancelWindowForSuspend()
+    {
+        _windowCts.Cancel();
+        _windowCts.Dispose();
+        _windowCts = new CancellationTokenSource();
+        _windowPending = false;
+        _sentRegion = null;
+        _inFlightRegion = null;
+        _inFlightWindowGeneration = null;
+        Renderer.CancelWindow();
     }
 
     /// <summary>沒有窗口的狀態持續 3 秒後釋放 Full 來源（每張照片只持有一份，閒置才還給快取）。</summary>
@@ -187,6 +232,11 @@ public sealed partial class MainWindowViewModel
             // 排定後又有新的窗口需求（seq 改變）、或窗口仍在進行中：不釋放
             if (_disposed || seq != _fullReleaseSeq || _windowLoading || _sentRegion is not null) return;
             Images.ReleaseFullIfIdle();
+            if (_windowFrameSource is { } frameSource)
+            {
+                _windowFrameSource = null;
+                Renderer.ReleaseSource(frameSource);
+            }
         });
     }
 
