@@ -86,7 +86,7 @@ public sealed partial class RawImage
         var outp = new RgbImage(bw, bh);
         var mask = new byte[bw * bh];
         // 每個工作分區重用 k 列暫存；每輪完整覆寫，不跨列保留樣本。
-        Parallel.For(0, bh, () => new float[k * wlen], (by, _, rows) =>
+        Parallel.For(0, bh, RawParallel.Options, () => new float[k * wlen], (by, _, rows) =>
         {
             for (var dy = 0; dy < k; dy++)
             {

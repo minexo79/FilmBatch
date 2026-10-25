@@ -105,7 +105,7 @@ internal static class TiffRaw
         float[] outF32 = isFloat ? new float[total] : [];
         // 平行解碼各區塊（結果與排程無關），再依名目位置合併
         var decoded = new (TiffChunk Chunk, ushort[]? U16, float[]? F32, bool IsFloat, RawException? Error)[chunks.Count];
-        Parallel.For(0, chunks.Count, i =>
+        Parallel.For(0, chunks.Count, RawParallel.Options, i =>
         {
             try
             {

@@ -209,7 +209,7 @@ internal static class Raf
                 data = new ushort[n];
                 var outMem = data.AsMemory();
                 var rowsMem = stripMem;
-                Parallel.For(0, hgt, y =>
+                Parallel.For(0, hgt, RawParallel.Options, y =>
                 {
                     var s = rowsMem.Span.Slice((int)(y * stride), (int)packedRow);
                     UnpackRow(s, (uint)store, words32, outMem.Span.Slice(y * w, w));

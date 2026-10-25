@@ -50,7 +50,7 @@ public static partial class Demosaic
         if (n.Cpp != 1)
         {
             var outp = new RgbImage(w, h);
-            Parallel.For(0, h, y =>
+            Parallel.For(0, h, RawParallel.Options, y =>
             {
                 for (var x = 0; x < w; x++) for (var c = 0; c < 3; c++)
                     outp.Data[(y * w + x) * 3 + c] = n.Data[(y * w + x) * cpp + Math.Min(c, cpp - 1)];
@@ -60,7 +60,7 @@ public static partial class Demosaic
         if (n.Cfa is not { } cfa)
         {
             var outp = new RgbImage(w, h);
-            Parallel.For(0, h, y => { for (var x = 0; x < w; x++) { var i = y * w + x; var v = n.Data[i]; outp.Data[i * 3] = v; outp.Data[i * 3 + 1] = v; outp.Data[i * 3 + 2] = v; } });
+            Parallel.For(0, h, RawParallel.Options, y => { for (var x = 0; x < w; x++) { var i = y * w + x; var v = n.Data[i]; outp.Data[i * 3] = v; outp.Data[i * 3 + 1] = v; outp.Data[i * 3 + 2] = v; } });
             return outp;
         }
         if (!cfa.Valid) throw RawException.Unsupported($"CFA pattern {cfa.Name}");

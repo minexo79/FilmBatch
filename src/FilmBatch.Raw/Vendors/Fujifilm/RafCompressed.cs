@@ -111,7 +111,7 @@ internal static class RafCompressed
 
         var decoded = new ushort[count][];
         var errors = new Exception?[count];
-        Parallel.For(0, count, i =>
+        Parallel.For(0, count, RawParallel.Options, i =>
         {
             try
             {
