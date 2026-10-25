@@ -1696,7 +1696,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         _loadingTimer.Stop();
         _windowCts.Cancel();
         _windowCts.Dispose();
-        _windowFrameSource = null;
+        _windowFrameSource = null; _windowScaleEdge = 0;
         _fullReleaseSeq++;
         _previewWait?.Cancel();
         _previewWait?.Dispose();

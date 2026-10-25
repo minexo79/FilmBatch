@@ -30,6 +30,9 @@ public sealed partial class MainWindowViewModel
     private long? _inFlightWindowGeneration;
     /// <summary>在途／已顯示窗口使用的 frame 來源；idle／換照片時排入 GPU 執行緒釋放常駐紋理。</summary>
     private SourceImage? _windowFrameSource;
+    /// <summary>目前窗口來源所在的吸附級距；換級時先等 <see cref="ScaleSettleDelay"/> 再縮放。</summary>
+    private int _windowScaleEdge;
+    private static readonly TimeSpan ScaleSettleDelay = TimeSpan.FromMilliseconds(250);
     /// <summary>Full 來源載入與窗口送出進行中；期間新的需求只記下 pending，結束後再算一次。</summary>
     private bool _windowLoading;
     private bool _windowPending;
@@ -116,12 +119,19 @@ public sealed partial class MainWindowViewModel
             var full = await Images.GetSourceAsync(path, SourceLevel.Full, proxy.RawOptions, token);
             if (Stale()) return;
 
-            // Full 很大：縮放在背景執行緒；ScaledTo 對同一長邊回傳同一個物件，GPU 端的來源紋理可沿用
-            var frameSource = ScaledLongEdge(full, crop, frameEdge) is { } edge
-                ? await Task.Run(() => full.ScaledTo(edge), token)
-                : full;
-            // 縮放期間改變了窗口畫框（縮放）：這個來源已不對，由 pending 以新的畫框重算；平移只換可見範圍，用最新的
-            if (Stale() || Preview.CurrentPlan?.WindowFrameEdge != frameEdge) return;
+            // Full 很大：縮放在背景執行緒；畫框長邊吸附到固定級距，同一級的 ScaledTo 回傳同一個物件，GPU 端的來源紋理可沿用
+            var scaleEdge = LoupePlan.QuantizeFrameEdge(frameEdge);
+            var frameSource = full;
+            if (ScaledLongEdge(full, crop, scaleEdge) is { } edge)
+            {
+                // 滾輪連續放大時跨級也要等停下來再縮，避免中間級各產生一份；已在該級的後續平移不等
+                if (_windowScaleEdge != scaleEdge) await Task.Delay(ScaleSettleDelay, token);
+                if (Stale() || LoupePlan.QuantizeFrameEdge(Preview.CurrentPlan?.WindowFrameEdge ?? 0) != scaleEdge) return;
+                frameSource = await Task.Run(() => full.ScaledTo(edge), token);
+            }
+            _windowScaleEdge = scaleEdge;
+            // 縮放期間改變了窗口畫框（跨級縮放）：這個來源已不對，由 pending 以新的畫框重算；平移只換可見範圍，用最新的
+            if (Stale() || LoupePlan.QuantizeFrameEdge(Preview.CurrentPlan?.WindowFrameEdge ?? 0) != scaleEdge) return;
             if (Preview.VisibleFrame is { } latest) visible = latest;
             var frame = CropGeometry.Compute(frameSource.Width, frameSource.Height, crop);
             var visibleRect = (visible.U0 * frame.OutWidth, visible.V0 * frame.OutHeight, visible.U1 * frame.OutWidth, visible.V1 * frame.OutHeight);
@@ -205,7 +215,7 @@ public sealed partial class MainWindowViewModel
         Images.ReleaseFullIfIdle();
         if (_windowFrameSource is { } frameSource)
         {
-            _windowFrameSource = null;
+            _windowFrameSource = null; _windowScaleEdge = 0;
             if (!_disposed) Renderer.ReleaseSource(frameSource);
         }
     }
@@ -244,7 +254,7 @@ public sealed partial class MainWindowViewModel
             Images.ReleaseFullIfIdle();
             if (_windowFrameSource is { } frameSource)
             {
-                _windowFrameSource = null;
+                _windowFrameSource = null; _windowScaleEdge = 0;
                 Renderer.ReleaseSource(frameSource);
             }
             // 一次 Full 解碼暫時配置約 1.7 GB；GC 預設不會把空出的區段還給系統，Aggressive 才會 decommit。
