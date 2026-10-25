@@ -87,6 +87,11 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
     [ObservableProperty]
     private Bitmap? _original;
 
+    partial void OnOriginalChanged(Bitmap? oldValue, Bitmap? newValue)
+    {
+        if (!ReferenceEquals(oldValue, newValue)) oldValue?.Dispose();
+    }
+
     /// <summary>按住空白鍵：顯示原圖。</summary>
     [ObservableProperty]
     private bool _showOriginal;
@@ -427,7 +432,10 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
     {
         // 雙緩衝：寫入目前沒在顯示的那一張，再交換
         if (_back is null || _back.PixelSize.Width != r.Width || _back.PixelSize.Height != r.Height)
+        {
+            _back?.Dispose();
             _back = CreateBitmap(r.Width, r.Height);
+        }
         Write(_back, r.Bgra, r.Width);
         (_front, _back) = (_back, _front);
         LastFrameMs = null;
@@ -444,6 +452,9 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
         EndControlPointEdit();
         Source = null;
         Image = null;
+        _front?.Dispose();
+        _back?.Dispose();
+        _front = _back = null;
         ReleaseStandIn();
         ClearWindow();
         Original = null;

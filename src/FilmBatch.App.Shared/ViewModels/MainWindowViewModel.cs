@@ -1599,6 +1599,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         PhotoTools.InvalidateForPhotoChange();
         BackgroundRemoval.Dispose();
         Denoise.Dispose();
+        Preview.Clear();
         ++_openGeneration;
         _loadingTimer.Stop();
         _windowCts.Cancel();
