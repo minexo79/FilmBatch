@@ -169,7 +169,7 @@ R {1:P2}  G {2:P2}  B {3:P2}  Luma {4:P2}</value></data>
   <data name="Pref.DebugLogging" xml:space="preserve"><value>Debug Mode</value></data>
   <data name="Pref.DebugLogging.Desc" xml:space="preserve"><value>Write detailed debug messages (load and render timings, etc.) to the log; turn on when reporting a problem. Applies immediately</value></data>
   <data name="Pref.ShowResourceUsage" xml:space="preserve"><value>Show resource usage</value></data>
-  <data name="Pref.ShowResourceUsage.Desc" xml:space="preserve"><value>Show CPU, GPU, memory and disk usage at the bottom left, updated every second; independent of debug mode</value></data>
+  <data name="Pref.ShowResourceUsage.Desc" xml:space="preserve"><value>Show CPU, GPU, memory and disk usage at the bottom left, updated every second</value></data>
   <data name="Pref.LogFolder" xml:space="preserve"><value>Log Folder</value></data>
   <data name="Pref.LogFolder.Open" xml:space="preserve"><value>Open Folder</value></data>
   <data name="Pref.Background" xml:space="preserve"><value>Preview Background</value></data>

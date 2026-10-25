@@ -169,7 +169,7 @@ R {1:P2}　G {2:P2}　B {3:P2}　亮度 {4:P2}</value></data>
   <data name="Pref.DebugLogging" xml:space="preserve"><value>除錯模式</value></data>
   <data name="Pref.DebugLogging.Desc" xml:space="preserve"><value>記錄檔額外寫入詳細的除錯訊息（載入與算圖耗時等），回報問題時開啟；切換後立即套用</value></data>
   <data name="Pref.ShowResourceUsage" xml:space="preserve"><value>顯示使用率</value></data>
-  <data name="Pref.ShowResourceUsage.Desc" xml:space="preserve"><value>在左下角顯示 CPU、GPU、記憶體與硬碟使用率，每秒更新；與除錯模式分開</value></data>
+  <data name="Pref.ShowResourceUsage.Desc" xml:space="preserve"><value>在左下角顯示 CPU、GPU、記憶體與硬碟使用率，每秒更新</value></data>
   <data name="Pref.LogFolder" xml:space="preserve"><value>記錄檔資料夾</value></data>
   <data name="Pref.LogFolder.Open" xml:space="preserve"><value>開啟資料夾</value></data>
   <data name="Pref.Background" xml:space="preserve"><value>預覽背景</value></data>
