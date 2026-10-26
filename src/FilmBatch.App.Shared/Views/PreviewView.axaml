@@ -54,6 +54,27 @@
         <Button Classes="tool" Command="{Binding Main.ZoomFitCommand}" ToolTip.Tip="{l:Tr Tip.ZoomFit}"><PathIcon Data="{StaticResource Icon.ZoomFit}" /></Button>
         <Button Classes="tool" Command="{Binding Main.Zoom100Command}" ToolTip.Tip="{OnPlatform '100%（Ctrl+1）', macOS='100%（⌘1）'}"><PathIcon Data="{StaticResource Icon.Zoom100}" /></Button>
         <TextBlock Classes="numeric" Text="{Binding ZoomText}" Margin="6,0,10,0" MinWidth="64" TextAlignment="Center" VerticalAlignment="Center" />
+        <!-- 星級評分：與照片資訊的評分同一套邏輯（作用於選取照片；按下目前評分的那顆清除）；無焦點照片時隱藏 -->
+        <StackPanel Orientation="Horizontal" IsVisible="{Binding Main.Inspector.HasPhoto}">
+          <Border Classes="preview-zoombar-divider" />
+          <ItemsControl DataContext="{Binding Main.Inspector}" x:DataType="vm:InspectorViewModel" ItemsSource="{Binding RatingStars}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel Orientation="Horizontal" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:RatingStarViewModel">
+                <Button Classes="icon" Padding="2,0"
+                        Command="{Binding $parent[ItemsControl].((vm:InspectorViewModel)DataContext).ClickStarCommand}"
+                        CommandParameter="{Binding Value}"
+                        ToolTip.Tip="{Binding Value, StringFormat='★ {0}'}">
+                  <TextBlock Classes="star" Classes.filled="{Binding IsFilled}" Text="★" />
+                </Button>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
       </StackPanel>
     </Border>
   </Panel>

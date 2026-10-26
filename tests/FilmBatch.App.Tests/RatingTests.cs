@@ -4,6 +4,7 @@ using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using FilmBatch.App.ViewModels;
 using FilmBatch.App.Views;
 
@@ -90,6 +91,33 @@ public sealed class RatingTests
 
         vm.UndoCommand.Execute(null);
         Assert.Equal(4, vm.Inspector.Rating);
+    }
+
+    [AvaloniaFact]
+    public async Task PreviewStars_ReflectFocusRating_AndClickSetsIt()
+    {
+        using var vm = TestEnv.CreateViewModel();
+        await TestEnv.OpenSamplesAsync(vm);
+        var file = vm.Filmstrip.Items[0].FileName;
+        vm.Filmstrip.SelectOnly(file);
+        var view = new PreviewView { DataContext = vm.Preview };
+        var window = new Window { Content = view, DataContext = vm, Width = 800, Height = 600 };
+        window.Show();
+        try
+        {
+            Dispatcher.UIThread.RunJobs();
+            var stars = view.GetVisualDescendants().OfType<ItemsControl>().Single(c => c.ItemsSource == vm.Inspector.RatingStars);
+            var buttons = stars.GetVisualDescendants().OfType<Button>().ToList();
+            Assert.Equal(5, buttons.Count);
+
+            buttons[2].Command!.Execute(buttons[2].CommandParameter);
+            Assert.Equal(3, vm.Service!.Project[file].Rating);
+            Assert.Equal([true, true, true, false, false], vm.Inspector.RatingStars.Select(s => s.IsFilled));
+
+            buttons[2].Command!.Execute(buttons[2].CommandParameter);
+            Assert.Equal(0, vm.Service.Project[file].Rating);
+        }
+        finally { window.Close(); }
     }
 
     [AvaloniaFact]

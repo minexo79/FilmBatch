@@ -414,6 +414,20 @@
   <Style Selector="Border.preview-zoombar :is(Button).tool">
     <Setter Property="ToolTip.Placement" Value="Top" />
   </Style>
+  <Style Selector="Border.preview-zoombar-divider">
+    <Setter Property="Width" Value="1" />
+    <Setter Property="Height" Value="14" />
+    <Setter Property="Margin" Value="4,0" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="Background" Value="{DynamicResource FB.BorderLightBrush}" />
+  </Style>
+  <Style Selector="Border.preview-zoombar TextBlock.star">
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="Foreground" Value="{DynamicResource FB.PlaceholderBrush}" />
+  </Style>
+  <Style Selector="Border.preview-zoombar TextBlock.star.filled">
+    <Setter Property="Foreground" Value="#F2C14E" />
+  </Style>
 
   <!-- 預覽區拍攝資訊（EXIF）：浮在預覽區右下角，外觀與檢視控制列一致 -->
   <Style Selector="Border.preview-exif">
