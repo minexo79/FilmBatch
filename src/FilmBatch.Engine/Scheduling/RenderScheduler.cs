@@ -161,14 +161,22 @@ public sealed class RenderScheduler : IDisposable
         _signal.Set();
     }
 
-    public void CancelPreview(bool cancelMatchingThumbnails = false)
+    /// <summary>
+    /// 丟棄目前預覽；<paramref name="cancelMatchingThumbnails"/> 為 <see langword="true"/> 時一併丟棄
+    /// 同照片／同來源的排隊縮圖並取消飛行中的同來源縮圖，之後同照片的縮圖請求一律丟棄，
+    /// 直到下一筆 <see cref="RequestPreview"/>（明確取消不被悄悄重排）。
+    /// </summary>
+    /// <returns>被抑制的預覽身分（鍵與來源路徑），呼叫端以此暫停對應的交付等待；未抑制時為 <see langword="null"/>。</returns>
+    public (string? Key, string? Path)? CancelPreview(bool cancelMatchingThumbnails = false)
     {
+        (string? Key, string? Path)? suppressed = null;
         lock (_lock)
         {
             _preview = null;
             if (cancelMatchingThumbnails)
             {
                 _cancelledPreview = (_previewKey, _previewPath);
+                suppressed = _cancelledPreview;
                 for (var node = _thumbs.First; node is not null;)
                 {
                     var next = node.Next;
@@ -179,6 +187,7 @@ public sealed class RenderScheduler : IDisposable
             }
             if (_activeIsPreview) _activeRender?.Cancel();
         }
+        return suppressed;
     }
 
     private bool MatchesCancelled(string? key, SourceImage source) =>

@@ -888,6 +888,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         _lastRequest = new RenderRequest(request.Service, request.File, request.Service.Project.PathOf(request.File), request.Settings,
             request.Proxy.RawOptions, request.Cacheable);
         (int, int)? fit = _requestedFitEdge is { } drawn && drawn > 0 ? (drawn, drawn) : null;
+        // 新的前景預覽要求放行被「取消 AI 預覽」壓住的同照片縮圖（排程器同時解除丟棄）。
+        Filmstrip.ResumeCancelledPreview();
         Renderer.RequestPreview(request.File, source, request.Settings, fit, request.Draft);
         Preview.IsBusy = true;
     }
@@ -919,7 +921,9 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     public void CancelDenoisePreview()
     {
-        Renderer.CancelPreview(cancelMatchingThumbnails: true);
+        var suppressed = Renderer.CancelPreview(cancelMatchingThumbnails: true);
+        // 排程器在下一筆預覽前會丟棄同照片縮圖：通知縮圖列暫停該交付，幫浦不空等。
+        if (suppressed is { } s) Filmstrip.SuppressCancelledPreview(s.Key, s.Path);
         _mainPending = null;
         Preview.IsBusy = false;
     }

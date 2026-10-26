@@ -324,13 +324,15 @@ public sealed class PreviewService : IDisposable
     private bool IsCurrentFrame(DeliveredFrame frame) =>
         Interlocked.Read(ref _requested) == frame.Generation && Interlocked.Read(ref _delivered) == frame.Generation;
 
-    public void CancelPreview(bool cancelMatchingThumbnails = false)
+    /// <returns>被抑制的預覽身分（同照片的縮圖請求在下一筆預覽前一律丟棄）；未抑制時為 <see langword="null"/>。</returns>
+    public (string? Key, string? Path)? CancelPreview(bool cancelMatchingThumbnails = false)
     {
         Interlocked.Exchange(ref _delivered, Interlocked.Increment(ref _requested));
         Interlocked.Exchange(ref _firstWindowGeneration, Interlocked.Read(ref _windowRequested) + 1);
-        _scheduler.CancelPreview(cancelMatchingThumbnails);
+        var suppressed = _scheduler.CancelPreview(cancelMatchingThumbnails);
         _scheduler.CancelWindow();
         Volatile.Write(ref _source, null);
+        return suppressed;
     }
     /// <summary>
     /// 送出窗口渲染（放大時螢幕上可見的那一塊，從 Full 來源算）。每次送出遞增獨立的窗口請求編號，
