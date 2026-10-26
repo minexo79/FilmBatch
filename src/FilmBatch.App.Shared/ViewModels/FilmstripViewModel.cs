@@ -108,6 +108,9 @@ public sealed partial class FilmstripViewModel : ObservableObject
     private bool _pendingStart;
     /// <summary>交付等待專用：算圖器重建或取消時打斷等待，讓幫浦回收或重試。</summary>
     private CancellationTokenSource? _deliveryAbort;
+    /// <summary>被「取消 AI 預覽」明確壓住的照片（<see cref="RenderScheduler.CancelPreview"/> 的對應鏡像）：
+    /// 其縮圖請求會被排程器丟棄，在下一筆預覽要求放行前不得挑選或等待交付，否則幫浦會空等。</summary>
+    private readonly HashSet<string> _suppressed = new(StringComparer.Ordinal);
     private bool _initialActive;
     private bool _initialComplete;
     private int _terminalSeen;
@@ -263,6 +266,38 @@ public sealed partial class FilmstripViewModel : ObservableObject
         abort?.Dispose();
     }
 
+    /// <summary>
+    /// 明確取消 AI 預覽時由父層呼叫：記住被排程器壓住的照片並打斷其交付等待。
+    /// 壓住的照片既不送達也不記終態（交付暫欠），直到新的前景預覽要求放行；明確取消不自動重排。
+    /// </summary>
+    internal void SuppressCancelledPreview(string? key, string? path)
+    {
+        var file = key ?? (path is { Length: > 0 } p ? Path.GetFileName(p) : null);
+        var abort = false;
+        if (file is not null)
+            lock (_pumpLock)
+            {
+                _suppressed.Add(file);
+                abort = _inflight is { } inflight && string.Equals(inflight.FileName, file, StringComparison.Ordinal);
+            }
+        if (abort) AbortDeliveryWait();
+        LoadingProgressChanged?.Invoke();
+    }
+
+    /// <summary>新的前景預覽要求放行被壓住的縮圖（排程器同時解除丟棄）；喚醒幫浦補送暫欠的交付。</summary>
+    internal void ResumeCancelledPreview()
+    {
+        var wake = false;
+        lock (_pumpLock)
+        {
+            if (_suppressed.Count == 0) return;
+            _suppressed.Clear();
+            wake = !_pumpRunning && (_initialActive || _explicitQueue.Count > 0);
+        }
+        if (wake) StartPumpLoop();
+        LoadingProgressChanged?.Invoke();
+    }
+
     /// <summary>停止幫浦並丟棄其等待鏈；<paramref name="abandonScan"/> 為 <see langword="true"/> 時連資料夾順序掃描也終止（取消後不自動續載，明確編輯仍會喚醒幫浦）。</summary>
     private void StopPump(bool abandonScan)
     {
@@ -373,9 +408,12 @@ public sealed partial class FilmstripViewModel : ObservableObject
                 try
                 {
                     var rawOptions = RawLoadOptions.FromSettings(service.SettingsFor(next.FileName));
-                    // 已去背 RAW 必須與未裁切現像來源對齊；相機內嵌 JPEG 可能有不同裁切。
-                    var needsDeveloped = service.Project[next.FileName].ForegroundMask is not null
-                        && Project.IsRawFile(next.FileName);
+                    // 已去背或啟用 AI 降噪的 RAW 必須走場景線性現像來源：相機內嵌 JPEG 是另一資料域
+                    //（裁切與 gamma 皆不同），用它做 AI 縮圖會把模型選成 NAFNet 而非 RawNIND。
+                    bool NeedsDeveloped() => Project.IsRawFile(next.FileName)
+                        && (service.Project[next.FileName].ForegroundMask is not null
+                            || service.SettingsFor(next.FileName).Bool("denoise.enabled"));
+                    var needsDeveloped = NeedsDeveloped();
                     var source = next.Source is { } cached && cached.RawOptions == rawOptions
                         && (!needsDeveloped || cached.IsSceneLinear)
                         ? cached
@@ -388,9 +426,10 @@ public sealed partial class FilmstripViewModel : ObservableObject
                     if (_main.Service != service || !_main.Images.IsCurrent(generation)
                         || !_byName.TryGetValue(next.FileName, out var after) || !ReferenceEquals(after, next))
                         continue;
-                    if (rawOptions != RawLoadOptions.FromSettings(service.SettingsFor(next.FileName)))
+                    if (rawOptions != RawLoadOptions.FromSettings(service.SettingsFor(next.FileName))
+                        || needsDeveloped != NeedsDeveloped())
                     {
-                        // 等待期間 RAW 選項改變：以目前設定重新排入同世代佇列（不算終態）。
+                        // 等待期間 RAW 選項或 AI／去背需求改變：以目前設定重新排入同世代佇列（不算終態）。
                         lock (_pumpLock)
                             if (!_explicitSet.ContainsKey(next)) _explicitSet[next] = _explicitQueue.AddFirst(next);
                         continue;
@@ -399,9 +438,14 @@ public sealed partial class FilmstripViewModel : ObservableObject
                     next.Source = source;
                     var epoch = _main.Renderer.Epoch;
                     _main.RequestThumbnail(next.FileName, source);
+                    // 提交與「取消 AI 預覽」交錯：排程器已丟棄此請求，不會有交付，直接挑下一張。
+                    lock (_pumpLock)
+                        if (_suppressed.Contains(next.FileName)) continue;
 
                     var outcome = await WaitForDeliveryAsync(next, epoch, token).ConfigureAwait(true);
-                    delivered = outcome == DeliveryOutcome.Delivered;
+                    // 取消 AI 預覽會丟棄同照片縮圖且不交付：壓住的照片不記終態、不自動重排。
+                    delivered = outcome == DeliveryOutcome.Delivered
+                        || (outcome == DeliveryOutcome.Aborted && (next.Bitmap is not null || next.HasError));
                     if (outcome == DeliveryOutcome.Reset)
                     {
                         // 算圖器重建後舊交付永遠不會來：同一張重新排隊再以新世代提交。
@@ -533,9 +577,10 @@ public sealed partial class FilmstripViewModel : ObservableObject
         return vm;
     }
 
-    /// <summary>照片是否仍需要縮圖工作（鎖內呼叫）。明確重試（<see cref="_explicitSet"/>）可重新進入；已送達但被釋放的舊圖只在可見／焦點時捲回重載。</summary>
+    /// <summary>照片是否仍需要縮圖工作（鎖內呼叫）。明確重試（<see cref="_explicitSet"/>）可重新進入；已送達但被釋放的舊圖只在可見／焦點時捲回重載。被「取消 AI 預覽」壓住的照片暫停交付，直到新的預覽要求放行。</summary>
     private bool IsPendingLocked(ThumbnailViewModel vm)
     {
+        if (_suppressed.Contains(vm.FileName)) return false;
         if (_explicitSet.ContainsKey(vm)) return true;
         if (vm.Bitmap is not null || vm.Error is not null) return false;
         if (_initialActive) return true;
@@ -693,6 +738,7 @@ public sealed partial class FilmstripViewModel : ObservableObject
             _visibleFirst = _visibleLast = -1;
             _explicitQueue.Clear();
             _explicitSet.Clear();
+            _suppressed.Clear();
             _pumpCts?.Dispose();
             _pumpCts = new CancellationTokenSource();
             _terminalCounted.Clear();

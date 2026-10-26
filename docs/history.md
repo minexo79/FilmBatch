@@ -389,6 +389,18 @@ App 流程（選取、按 1:1 按鈕、平移、滾輪放大 6 格、`Ctrl+0` �
 
 **未測與驗證程式限制。** iOS smoke 的 Release 裁剪先逾時，改用 Debug／interpreter 後可編譯，但原生啟動在進入託管程式前因 `CODESIGNING Invalid Page` 終止；重新簽署與獨立模擬器亦未能取得取樣收據。因此 iOS 僅有平台分析的失敗前／通過後證據，不能宣稱模擬器或實機通過。macOS 拋棄式取樣程式首次因 AOT 停用反射 JSON 而在序列化失敗，改用來源產生器後才取得成功收據，沒有為此改產品。未執行封裝版、Windows／DX12／DirectML、355 張資料夾或實體鍵鼠驗收；原生計時受同時工作的影響，不當成受控效能結論。私有收據、TRX、畫面與限縮來源保存在忽略的 `artifacts/verification/2026-10-26-thumbnail-repair.tar.gz`；不含原始照片、模型或執行檔，不上傳或推送。
 
+## RAW AI 縮圖資料域與取消預覽交付（2026-10-26）
+
+使用者回報 Windows 上複製 AI 降噪設定貼到 RAW 照片（或貼上途中裁切／改其他參數）後提示缺少 `nafnet-sidd.onnx`。重現確認：有界幫浦為縮圖解碼時取用相機內嵌 JPEG，貼上降噪後沿用該 sRGB 來源，`DenoiseModelCatalog.ForSource` 依資料域選到 NAFNet 而非 RAW 應用的 RawNIND；模型只安裝其一時即報缺。裁切交錯是同一機制的第二形態：解碼等待期間設定改變不會重評估來源需求。
+
+修正：`FilmstripViewModel` 把「RAW＋降噪啟用」與既有「RAW＋去背遮罩」同列為需要現像來源，改由 `GetPreviewAsync` 取場景線性來源再縮至縮圖長邊；等待返回後重新比對 RAW 選項與來源需求，不一致即同世代重排，不算終態。一般影像仍用內嵌縮圖與 NAFNet。
+
+同輪修正「取消 AI 預覽」造成的縮圖列停滯：`RenderScheduler.CancelPreview(cancelMatchingThumbnails)` 會丟棄同照片排隊與飛行中的縮圖，之後同照片請求一律丟棄直到下一筆預覽；幫浦的交付等待沒有對應終態，會永久空等並擋住後續明確重算。排程器現在回傳被壓制的預覽身分，`MainWindowViewModel` 轉交縮圖列暫停該照片的挑選與等待（交付暫欠、不記終態、不自動重排），下一筆 `RequestPreview` 放行；等待期間壓制到達也會打斷交付等待。
+
+新增三項回歸：RAW 貼上 AI（含裁切交錯）兩參數案例——修復前要求 `nafnet-sidd.onnx` 失敗、修復後來源保持場景線性且失敗終態要求 `rawnind-linear.onnx`；取消 AI 預覽案例——修復前另一張的明確重算永遠等不到（30 秒逾時），修復後照常送達、目標照片不靜默完成也不記終態，重新選回後的再送達仍回報缺少模型而非略過 AI。
+
+原生取樣驗收（macOS M3 · Metal，3 張：DSC02462/DSC03376 ARW＋IMG_7548 JPG）：兩張 ARW 縮圖以 `rawnind-linear`（CoreML）單一 bounded tile、場景線性來源完成；DSC03376 全尺寸預覽 247 tiles、13.26s 推論；IMG_7548 啟用降噪回報 4 次 `FileNotFoundException` 指明 `nafnet-sidd.onnx` 且儲存的 `denoise.enabled` 保留——無模型代換、無靜默停用。21 張照片與專案 SHA-256 前後不變。附註：原生驗收器需顯示器供電（`caffeinate -disu`），Avalonia 調度器掛在 CFRunLoop，顯示器休眠時 UI 延續會凍結；縮圖列進度仍由背景執行緒上報。
+
 ## 如何新增歷史列
 
 只記對未來修改有用的決定：真實 commit／日期、可核對的理由或重現、被拒絕方案、目前契約／檢查、後續取代。沒有當時證據時明寫「只確認提交意圖」；數值必須保留平台、輸入與來源版本，不把舊測試 totals 複製成新版本的驗收結果。

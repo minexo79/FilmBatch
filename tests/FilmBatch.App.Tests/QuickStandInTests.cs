@@ -5,6 +5,11 @@ using FilmBatch.App.Services.Loupe;
 using FilmBatch.App.ViewModels;
 using FilmBatch.Core;
 using FilmBatch.Engine.Imaging;
+using FilmBatch.Engine.Denoising;
+using FilmBatch.Engine.Rendering;
+using FilmBatch.Core.Params;
+using Avalonia.Threading;
+using FilmBatch.Engine.Scheduling;
 using FilmBatch.Raw.Tests.Support;
 using FilmBatch.Raw.Tiff;
 using SkiaSharp;
@@ -132,6 +137,144 @@ public sealed class QuickStandInTests
             }
         }
         finally { gate.Release(permits); }
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Raw_ai_paste_keeps_thumbnail_in_raw_domain_even_during_decode_and_crop(bool editDuringDecode)
+    {
+        using var main = TestEnv.CreateViewModel();
+        var folder = Path.Combine(AppPaths.Root, "raw-ai-paste-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        var raw = PreviewDng(64, SolidJpeg(320, 240, 200, 60, 40), 320, 240);
+        File.WriteAllBytes(Path.Combine(folder, "first.dng"), raw);
+        File.WriteAllBytes(Path.Combine(folder, "second.dng"), raw);
+        var gate = BackgroundGate(main.Images);
+        var held = editDuringDecode ? Hold(gate) : 0;
+        var failures = new List<RenderFailure>();
+        main.Renderer.Failed += failure =>
+        {
+            if (failure.PreviewGeneration is null) failures.Add(failure);
+        };
+        try
+        {
+            await main.OpenFolderAsync(folder);
+            TestEnv.PumpUntil(() => main.Preview.Source is { IsSceneLinear: true } && !main.Preview.IsBusy);
+            if (!editDuringDecode)
+            {
+                TestEnv.PumpUntil(() => !main.Filmstrip.IsLoadingThumbnails);
+                Assert.All(main.Filmstrip.Items, photo => Assert.False(photo.Source!.IsSceneLinear));
+            }
+            main.Inspector.SetValue("denoise.enabled", true, null);
+            main.Inspector.SetValue("denoise.amount", 50.0, null);
+            main.CopyCommand.Execute(null);
+            main.Filmstrip.SelectOnly("second.dng");
+            main.PasteCommand.Execute(null);
+            if (editDuringDecode)
+            {
+                main.ToggleCropCommand.Execute(null);
+                main.Inspector.SetValue("basic.exposure", 0.7, null);
+            }
+            if (held > 0) { gate.Release(held); held = 0; }
+            TestEnv.PumpUntil(() => !main.Filmstrip.IsLoadingThumbnails && !main.Renderer.IsBusy
+                && failures.Select(failure => failure.Key).Distinct().Count() == 2);
+
+            Assert.All(main.Filmstrip.Items, photo =>
+            {
+                Assert.True(photo.Source!.IsSceneLinear);
+                Assert.True(main.Service!.SettingsFor(photo.FileName).Bool("denoise.enabled"));
+                Assert.Equal(50.0, main.Service.SettingsFor(photo.FileName).Number("denoise.amount"));
+            });
+            // Both models are deliberately absent: the actual inference request must require only
+            // the RAW model, never the unrelated RGB model selected by an embedded JPEG.
+            Assert.All(failures, failure => Assert.Equal(DenoiseModelCatalog.RawNindLinear.FileName,
+                Path.GetFileName(Assert.IsType<FileNotFoundException>(failure.Error).FileName)));
+            if (editDuringDecode)
+            {
+                Assert.True(main.CropTool.IsActive);
+                Assert.Equal(0.7, main.Service!.SettingsFor("second.dng").Number("basic.exposure"), 6);
+            }
+        }
+        finally { if (held > 0) gate.Release(held); }
+    }
+
+    /// <summary>
+    /// 取消 AI 預覽會讓排程器丟棄同照片縮圖且永遠不交付：幫浦不得空等，其他照片照常完成；
+    /// 該張暫停交付直到新的預覽要求放行，明確取消不自動重排。
+    /// </summary>
+    private sealed class GatedRenderer(CpuFakeRenderer inner) : IPreviewRenderer
+    {
+        public readonly SemaphoreSlim Gate = new(0);
+        public int AiRenderEntered;
+        public string DeviceName => inner.DeviceName;
+        public bool IsSoftware => inner.IsSoftware;
+        public RenderResult Render(SourceImage source, Settings settings, CancellationToken cancellationToken = default)
+        {
+            if (DenoiseSettings.From(settings).IsActive)
+            {
+                Interlocked.Increment(ref AiRenderEntered);
+                Gate.Wait(cancellationToken);
+            }
+            return inner.Render(source, settings, cancellationToken);
+        }
+        public SourceImage Render16(SourceImage source, Settings settings, CancellationToken cancellationToken = default,
+            RgbEncoding encoding = RgbEncoding.Srgb) => inner.Render16(source, settings, cancellationToken, encoding);
+        public void Dispose() { }
+    }
+
+    [AvaloniaFact]
+    public async Task Cancelling_ai_preview_suspends_only_its_thumbnail_until_next_preview()
+    {
+        TestEnv.IsolateUserFolder();
+        var gated = new GatedRenderer(new CpuFakeRenderer());
+        using var main = new MainWindowViewModel(new AppSettings(), new FakeDialogs(), () => gated,
+            a => Dispatcher.UIThread.Post(a));
+        var folder = Path.Combine(AppPaths.Root, "cancel-ai-stall-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        var files = SampleImages.Generate(folder, count: 4, longEdge: 64);
+        var target = Path.GetFileName(files[0]);
+        await main.OpenFolderAsync(folder);
+        TestEnv.PumpUntil(() => main.Preview.Source is not null && !main.Preview.IsBusy);
+
+        // 目標照片啟用 AI：預覽渲染進入 gate 後取消,同照片縮圖無論排隊或飛行都被明確丟棄。
+        main.Filmstrip.SelectOnly(target);
+        TestEnv.PumpUntil(() => main.FocusFile == target && main.Preview.Source is not null && !main.Preview.IsBusy);
+        main.Inspector.SetValue("denoise.enabled", true, null);
+        main.Inspector.SetValue("denoise.amount", 50.0, null);
+        TestEnv.PumpUntil(() => Volatile.Read(ref gated.AiRenderEntered) == 1);
+        var targetVm = main.Filmstrip.Items.Single(t => t.FileName == target);
+        var bitmapBefore = targetVm.Bitmap;
+
+        main.CancelDenoisePreview();
+        gated.Gate.Release(64);
+
+        // 修復前幫浦會永遠空等被丟棄的交付：另一張的明確重算必須照樣送達（新 bitmap 實例），
+        // 目標不得收到新交付（保留先前 bitmap、無錯誤終態），明確取消不靜默完成。
+        var otherVm = main.Filmstrip.Items.First(t => t.FileName != target);
+        var otherBefore = otherVm.Bitmap;
+        main.Filmstrip.RequestThumbnail(otherVm.FileName);
+        TestEnv.PumpUntil(() => !ReferenceEquals(otherVm.Bitmap, otherBefore), timeoutMs: 30000);
+        Assert.Same(bitmapBefore, targetVm.Bitmap);
+        Assert.Null(targetVm.Error);
+        Assert.False(main.Filmstrip.IsLoadingThumbnails);
+        Assert.True(main.Service!.SettingsFor(target).Bool("denoise.enabled"));
+
+        // 下一筆預覽要求（重新選回照片）解除壓制：之後的縮圖請求不再被丟棄；
+        // 模型缺失仍是失敗終態（縮圖來源的 RenderFailed），不是靜默略過。
+        var failures = new List<RenderFailure>();
+        main.Renderer.Failed += failure => { if (failure.PreviewGeneration is null) failures.Add(failure); };
+        main.Filmstrip.SelectOnly(otherVm.FileName);
+        TestEnv.PumpUntil(() => main.FocusFile == otherVm.FileName && main.Preview.Source is not null && !main.Preview.IsBusy);
+        main.Filmstrip.SelectOnly(target);
+        TestEnv.PumpUntil(() => Volatile.Read(ref gated.AiRenderEntered) >= 2, timeoutMs: 30000);
+        main.Filmstrip.RequestThumbnail(target);
+        TestEnv.PumpUntil(() => failures.Any(f => f.Key == target), timeoutMs: 30000);
+        Assert.All(failures.Where(f => f.Key == target), f =>
+            Assert.Equal("nafnet-sidd.onnx",
+                Path.GetFileName(Assert.IsType<FileNotFoundException>(f.Error).FileName)));
+        Assert.False(main.Filmstrip.IsLoadingThumbnails);
+        Assert.Equal(main.Filmstrip.TotalThumbnails, main.Filmstrip.CompletedThumbnails);
     }
 
     [AvaloniaFact]
