@@ -8,7 +8,7 @@
 
 後續追加實測已區分 ORT 算子分配與 host CPU 工作：RawNIND 49／49 交 CoreML，NAFNet 另有一個 ORT CPU `/Pad`；strict 控制分別可跑／明確拒絕，不能把 `CoreML + CPU` 標籤當實際 CPU 比例。已確認且修正同來源／同 mix 的 AI 命中成品身分重建：弱單槽重用讓七幀維持一份 GPU 來源、像素逐 byte 不變；未改模型、品質或推論同步。完整 CPU／fallback 盤點、實測邊界與後續排序見[追加實測 §11](../evidence/performance-local-2026-10-26.md#11-追加gpu-only-可行性cpu-路徑與-ai-命中後重用修復)；原始 E01–E07 不改寫成修正後結果。
 
-暗部合併反例的後續修復：同一 CPU scene 的階段擷取確認 guided 二階矩相減會放大暗部捨入差；CPU／WGSL 對統計 guide 平移後再減回，不改理想算法或原容差。原八組與四組相鄰尺寸的真實 Metal `Render16` 皆 RGB≤1 LSB、alpha 相同；獨立 double 回歸先失敗後通過，詳見[數值修復 §12](../evidence/performance-local-2026-10-26.md#12-暗部-guided-矩抵消修復)。RAW AHD 已續定位至 green／Lab／同質性方向選擇，尚未宣稱修復；不把較高捨入精度直接當成全相機畫質證明。
+暗部合併反例的後續修復：同一 CPU scene 的階段擷取確認 guided 二階矩相減會放大暗部捨入差；CPU／WGSL 對統計 guide 平移後再減回，不改理想算法或原容差。原八組與四組相鄰尺寸的真實 Metal `Render16` 皆 RGB≤1 LSB、alpha 相同；獨立 double 回歸先失敗後通過，詳見[數值修復 §12](../evidence/performance-local-2026-10-26.md#12-暗部-guided-矩抵消修復)。RAW AHD 隨後以 f32 捨入屏障、相同運算順序與餘差立方根修正 green／Lab／方向分歧：兩種 Bayer 合成回歸先失敗後通過，單張全尺寸 camera RGB 與同 CPU 收尾均逐位元相同，見[追加 §13](../evidence/performance-local-2026-10-26.md#13-raw-ahd-捨入與方向選擇修復)。不回改原研究反例，也不把本機結果當成全相機畫質證明。
 
 ## 1. 結論與方法
 

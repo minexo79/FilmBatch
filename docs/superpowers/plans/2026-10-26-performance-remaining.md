@@ -53,9 +53,9 @@
 **Interfaces:** 消費現有 `Demosaic.AhdGpu`、`FillAhdBand` 和 `RawGpuDemosaic.BeginScope`，產出同幾何／同資料域的 camera RGB；不加診斷產品介面。
 
 - [x] 擷取原尺寸 CPU／GPU demosaic 原始結果與高光前後，對照最差點與方向／邊界，辨別第一分歧。
-- [ ] 由已定位的不變量建立最小消費者可見回歸，在修正前觀察失敗；不將私人實拍加入永久 fixture。
-- [ ] 最小修正，執行相關 RAW／GPU 回歸、shader 檢查、同張全尺寸實拍及邊界控制，核對未 fallback 與來源不變。
-- [ ] 更新現行契約／歷史、保留失敗與成功收據、獨立提交。
+- [x] 由已定位的不變量建立最小消費者可見回歸，在修正前觀察失敗；不將私人實拍加入永久 fixture。
+- [x] 最小修正，執行相關 RAW／GPU 回歸、shader 檢查、同張全尺寸實拍及邊界控制，核對未 fallback 與來源不變。
+- [x] 更新現行契約／歷史、保留失敗與成功收據、獨立提交。
 
 ## Task 2: 合併效果精度
 
@@ -72,10 +72,10 @@
 
 | 消費者 | 範圍／要求 |
 |---|---|
-| RAW App preview／Full／thumbnail | AHD／Bilinear 入場不變，直接 camera RGB 與完整收尾均檢查 |
-| CLI／匯出 | RAW 解碼 CPU 隔離不變；效果修正對相同來源 CPU／Metal 收尾驗證 |
-| Main／窗口／縮圖 | 不改排程／來源世代；相關 rendering regression 覆蓋共用數學 |
-| AI／模型／專案資料 | 不改推論、tile、provider、設定與專案格式 |
+| RAW App preview／Full／thumbnail | covered：直接 camera RGB、完整同 CPU 收尾及六處 tile／band 比對；AHD／Bilinear 入場不變 |
+| CLI／匯出 | covered：完整政策／匯出回歸保持 RAW 解碼 CPU 隔離；色彩與效果公式未改 |
+| Main／窗口／縮圖 | covered：完整 Core／App 回歸；不改排程／來源世代，本批不重測實體手勢 |
+| AI／模型／專案資料 | not applicable：不改推論、tile、provider、設定與專案格式；完整回歸仍執行 |
 | AI 同 mix 的 GPU 來源快取 | covered：場景／SDR 的 Tiny Neg 回歸＋真實 247-tile RAW／Metal 八幀重播；首次 miss／hit 報告與三個混合參數、遮罩、預取消均驗證 |
 | 強保留／GC | covered：單槽弱參考 1×1 真實模型控制，原先 full 准入／取消回歸不變；成品已失效時允許重建 |
 | 檔案／模型／專案資料 | covered：來源與權重固定 digest；公開 API／schema／儲存格式不變 |
@@ -88,7 +88,7 @@
 | Item | Status | Evidence |
 |---|---|---|
 | 排序與範圍 | verified | 已讀現行契約與 E03/E04，P1 三段已完成；使用者要求排序並開始 |
-| RAW AHD 第一分歧／修正 | in_progress | 同輸入 tile／band 擷取：green 約 1 ULP，Lab 近等距放大為 homogeneity／方向差；最差點 H/V 10/10→11/13，camera RGB 差 0.039443016；根因修正仍未交付 |
+| RAW AHD 第一分歧／修正 | verified | 兩項近等距回歸先 RED；f32 屏障／相同運算樹／餘差立方根後，全尺寸 camera RGB／scene／同 CPU 收尾差 0，六處階段／方向與 tile-band 差 0；Raw 656 passed／293 skipped、Core 865／28、App 395／0、WGSL 43／43；獨立重建的 driver 已重播成功，文件與收據見實測 §13 |
 | 合併效果第一分歧／修正 | verified | CPU／WGSL 平移矩：獨立 double fixture 先 RED 後 GREEN；原八組及四組相鄰尺寸 RGB≤1／alpha=0／Metal；相關回歸 88／88、嵌入 WGSL 43／43；重播 driver 與收據封存，見實測 §12 |
 | AI GPU-only／CPU 盤點／卡頓排序 | verified | 49／49 與 1245／1246 ORT placement、strict 對照及完整 CPU／fallback 分層，見實測 §11 |
 | AI 身分重用修正 | verified | 先 RED 3 cases；相關 Core 67／67、完整 Core 864 passed／28 skipped；實拍來源 1 slot、像素逐 byte 保持、弱輸出可回收 |

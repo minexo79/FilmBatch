@@ -40,4 +40,42 @@ public class GpuAhdTests
             if (Math.Abs(cpu[i] - gpu[i]) > 1e-4f * Math.Max(1e-3f, Math.Abs(cpu[i]))) different++;
         Assert.True(different < cpu.Length / 1000, $"{different} of {cpu.Length} samples differ beyond 1e-4");
     }
+
+    [Theory]
+    [InlineData("RGGB")]
+    [InlineData("GBRG")]
+    public void Gpu_ahd_near_ties_do_not_amplify_math_roundoff(string pattern)
+    {
+        const int width = 2049, height = 2049; // Above admission threshold; partial CPU tiles and GPU bands.
+        var cfa = Cfa.Bayer(pattern)!;
+        var data = new float[width * height];
+        for (var y = 0; y < height; y++)
+        for (var x = 0; x < width; x++)
+        {
+            var hash = unchecked((uint)(x + y * width) * 0x45d9f3bu);
+            hash ^= hash >> 16;
+            var signal = (((x / 13) ^ (y / 17)) & 1) == 0 ? 900 : 3000;
+            var code = signal + ((x * 19 + y * 31) & 255) - 127 + (int)(hash & 31) - 16;
+            // Exact 12-bit samples isolate the Lab/homogeneity decision from candidate interpolation error.
+            data[y * width + x] = code / 4096f;
+        }
+        if (RawGpuDemosaic.ProbeUnavailableReason(GpuBackend.Auto) is { } reason)
+            Assert.Skip("No hardware GPU: " + reason);
+        using var scope = RawGpuDemosaic.BeginScope(true, GpuBackend.Auto, 0);
+        var gpu = RawGpuDemosaic.TryRun(data, width, height, cfa);
+        var errors = RawGpuDemosaic.LastErrors;
+        Assert.SkipWhen(gpu is null && errors.Ahd is null,
+            "GPU AHD declined without an error (budget or device limits); rerun with a larger budget for parity.");
+        Assert.NotNull(gpu);
+        float[] cpu;
+        using (RawGpuDemosaic.BeginScope(false, GpuBackend.Auto, 0))
+            cpu = Demosaic.Run(new Normalized { Width = width, Height = height, Cpp = 1, Data = data, Cfa = cfa },
+                DemosaicMethod.Ahd).Data;
+
+        Assert.Equal(cpu.Length, gpu.Length);
+        var maxDifference = 0f;
+        for (var i = 0; i < cpu.Length; i++)
+            maxDifference = Math.Max(maxDifference, Math.Abs(cpu[i] - gpu[i]));
+        Assert.InRange(maxDifference, 0f, 2e-6f);
+    }
 }

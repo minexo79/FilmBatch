@@ -427,6 +427,14 @@ App 流程（選取、按 1:1 按鈕、平移、滾輪放大 6 格、`Ctrl+0` �
 
 現行 Engine 契約、排序計畫與[追加數值證據](evidence/performance-local-2026-10-26.md#12-暗部-guided-矩抵消修復)同步更新；文字重播 driver、獨立推導、RED／GREEN 與 digest 封存於 gitignored `artifacts/verification/2026-10-26-shadow-moments.tar.gz`，不含照片／模型／點陣／執行檔或私人路徑。未驗 Windows／Vulkan／iOS、實體 UI 手勢 p95 或跨相機普遍精度；不宣稱消除首次推論與讀回卡頓。
 
+## RAW GPU AHD 的捨入與方向選擇修復（2026-10-26）
+
+接續暗部數值修正 `d583c0a`，獨立追蹤 AHD 的第一分歧：green 約 1 ULP，加上 Lab 的 `pow(t, fl32(1/3))` 與運算重組誤差，使近等距同質性比較翻向；原最差點 H/V 從 CPU 10/10 變成 GPU 11/13，camera RGB 相差 0.039443016。四個 AHD shader 沿用既有 RAW 收尾的零 uniform 捨入屏障、對齊 CPU 結合順序；立方根加乘積餘差與中點判定，不改 CPU、CFA／鏡射／整數門檻／平手規則、品質或 GPU 政策，不新增相依／診斷產品介面。
+
+精確 12-bit RGGB／GBRG 的 2049×2049 回歸先失敗，修正後差 0，涵蓋不完整 CPU tile 與 GPU band。獨立 double 立方根控制在 Metal 的 1,048,576 個輸入上與 GPU／CPU 零 ULP 差；六處原出錯位置的 green／RGB／Lab／同質性／方向與 tile-band 皆差 0。Sony 隔離副本的 7040×4688 camera RGB 共 99,010,560 分量逐位元相同；固定 CPU 色彩收尾後，7008×4672 scene 與同一 CPU `Render16` 輸出亦逐位元相同。最初診斷旗標在選後端時被重設，已修復診斷的隔離順序；該次混合色彩結果保留，不誤作純 AHD 證據。
+
+完整 solution：Raw 656 passed／293 skipped、Core 865 passed／28 skipped、App 395 passed／0 skipped，全部 0 failed；略過為外部 RAW／oracle／工具資料缺席與平台限定，AHD 硬體回歸未略過。43 個嵌入 WGSL 全通過；來源與副本 SHA-256 不變。現行 Engine／測試契約、研究與[追加實測 §13](evidence/performance-local-2026-10-26.md#13-raw-ahd-捨入與方向選擇修復)同步更新，文字 driver、RED／GREEN、TRX 與 digest 保存於 gitignored `artifacts/verification/2026-10-26-ahd-precision.tar.gz`。不包含 RAW／模型／點陣／執行檔或私人路徑；不宣稱跨相機／後端位元相同、消除首次推論卡頓，亦不修改原有 GPU 色彩收尾的剩餘小差異。
+
 ## 如何新增歷史列
 
 只記對未來修改有用的決定：真實 commit／日期、可核對的理由或重現、被拒絕方案、目前契約／檢查、後續取代。沒有當時證據時明寫「只確認提交意圖」；數值必須保留平台、輸入與來源版本，不把舊測試 totals 複製成新版本的驗收結果。

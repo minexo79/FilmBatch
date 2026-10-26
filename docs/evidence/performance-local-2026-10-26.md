@@ -472,3 +472,50 @@ Apple M3／Metal、.NET 10.0.13，同一隔離 Sony RAW，SHA-256 `2655aca052775
 ### 重播與保存
 
 gitignored `artifacts/verification/2026-10-26-shadow-moments.tar.gz` 保存失敗／成功命令與 TRX、階段擷取、十二組產品 smoke、獨立 double 推導、可獨立建置的重播 driver 及來源 digest。只含文字，不含 RAW、模型、浮點點陣、圖片、執行檔、私人路徑或 macOS AppleDouble／xattrs。使用外部已持有且 digest 相同的 RAW 副本；先指定 `FilmBatchRepo` 建置，再執行 driver，重播命令以封包 `REPLAY.md` 為準。RAW AHD 第一分歧另行處理，不以本修復宣稱已解決。
+
+## 13. RAW AHD 捨入與方向選擇修復
+
+起點為暗部修正 `d583c0a`；以下只處理既有 GPU AHD，不擴大 RAW 卸載範圍、不改相機高光算法或既有數值門檻。硬體為 Apple M3／Metal，SDK 10.0.402、runtime 10.0.13、WebGPUSharp 0.5.7；實拍為 §12 同一 SHA-256 的 Sony RAW 隔離副本。
+
+### 第一分歧與數學修正
+
+原始 7040×4688 去馬賽克最大 camera-RGB 差 `0.039443016`，在感光座標 `(2502,3440)`。六處 tile／同帶狀輸入擷取把第一差異定位在 green 的約 1 ULP；Lab 的近等距比較再放大它與立方根差異，最差點的 H/V 同質性和由 CPU `10/10` 變 GPU `11/13`，從平均候選改成垂直候選。這不是高光函式本身出現的第一差異，也不是帶狀／tile 邊界錯位。
+
+獨立 primitive 控制從產品 `ahd_complete.wgsl` 的 `lab_f` 讀回 1,048,576 個正規 f32 輸入，位元等間距涵蓋 `[0.008857,8]`，同時比較 `(float)Math.Cbrt(double)` 與 CPU `MathF.Cbrt`。原 `pow` 最大差 3 ULP、431,816 個與 double 不同；不能用這種近似誤差直接判定兩個 Lab 距離的精確大小關係。
+
+四個 AHD pass 共用新的 `raw/ahd_math.wgsl`：
+
+- 既有 RAW finish 的整數屏障：`bitcast<f32>(bitcast<u32>(v) ^ p.rounding_mask)`，host 固定上傳 0，但編譯時不是常數；保留每次 f32 捨入，不截斷有效位元，也不加 epsilon。
+- green、RGB、XYZ／Lab、色度距離與平手平均依 CPU 的運算樹／左結合順序計算；同質性的整數計數、`<=` 門檻與 H/V 選擇不變。
+- Lab 正值分支用整數位元種子與三次 inverse-root Newton，乘積餘差修正後，以相鄰浮點中點立方的符號判斷最後一 ULP。線性分支不計算立方根；CPU 的 `Ahd.cs` 與 `MathF.Cbrt` 不變。
+- 共用 uniform 從 16 增至 32 bytes，host、四個 shader 與入場估計同步；pass／band／幾何／緩衝數量不變，沒有 f16、f64、新原生 ABI 或新產品診斷 API。
+
+新增永久回歸 `Gpu_ahd_near_ties_do_not_amplify_math_roundoff`：2049×2049、RGGB／GBRG、精確 12-bit 高低紋理及 deterministic 小擾動，預先固定最大絕對差 `2e-6`。兩案例先在舊產品失敗；修正後差 0。這個輸入同時涵蓋 CPU 128-pixel tile／GPU 256-row band 的不完整尾部，不含私人照片。
+
+### 最終實測與隔離邊界
+
+| 控制 | 修正前 | 最終修正後 |
+|---|---:|---:|
+| 合成 RGGB：最大 camera-RGB 差 | 0.036499023 | 0 |
+| 合成 GBRG：最大 camera-RGB 差 | 0.041275024 | 0 |
+| 實拍全尺寸：最大 camera-RGB 差 | 0.039443016 | 0 |
+| 六處 tile：各階段／方向不一致 | 有 | 0 |
+| 原最差點：GPU band 與 CPU tile 差 | 有 | 0 |
+| primitive 立方根：double 不一致輸入 | 431816 | 0 |
+| primitive 立方根：最大 ULP | 3 | 0 |
+
+全尺寸直接 AHD 比較涵蓋 99,010,560 個 camera-RGB 分量，CPU／GPU SHA-256 同為 `073610ab7a689017c11cb4999aca75433a0f7119ccf618b93308c06c4d0be5d0`。六處擷取的 green、候選 RGB／Lab、同質性計數、方向與最差點 band/tile 全部逐位元相同，輸入 mosaic 不變。
+
+為辨別 AHD 對後續高光／顯示的影響，診斷先選定 Metal，再明確固定 CPU 色彩收尾。GPU AHD 確實回傳一次非 null 結果、無 AHD／色彩執行錯誤，並驗證隔離旗標仍啟用。7008×4672 完整 scene 的 CPU／GPU SHA-256 同為 `58230b3d1009c15de16d4c72928f3add0349383d2a5ae5f26191c28c43daf837`；同一 CPU `Render16` 收尾最大差 0、超過 2 LSB 分量 0。這是診斷的單階段對照，不是將產品的色彩 GPU 或效果 GPU 停用。
+
+最初 post-repair driver 在首次選後端前寫入色彩停用旗標，該旗標被 `SelectBackend` 重設，實際量到的是 GPU AHD＋GPU 色彩：camera RGB 已差 0，但 scene 最大差 `5.6885183e-5`、同 CPU 收尾最大差 10 LSB、31 分量超過 2 LSB。此收據保留並明確改列混合色彩對照；修正的是 throwaway driver 的隔離順序，不修改產品或隱藏該差異。原 E04 四組階段歸因已有先選後端的控制；新的純 AHD 對照另有旗標讀回證據。
+
+完整 `dotnet test FilmBatch.sln -c Release --no-restore`：Raw 656 passed／293 skipped、Core 865 passed／28 skipped、App 395 passed／0 skipped，皆 0 failed。略過理由為未提供的外部 RAW／LightCraft oracle／rawinfo／既有 probe 及 Windows 限定，非 AHD shader 或 GPU 讀回失敗；兩項新 AHD 案例與既有 GPU／政策案例均實際通過。Naga 30.0.1 檢查 43 個嵌入 WGSL 全通過。
+
+### 複核、保存與未驗範圍
+
+複核沒有新增 pass、完整像素副本、常駐快取、相依或精度特判；昂貴立方根只在 Lab 正值分支執行。搜尋 GPU `pow(...,1/3)` 尚有 `film/look.wgsl` 的三個 Oklab 通道運算；它們不參與 AHD 的離散方向選擇，沒有把它們視為已證明的同一缺陷或在此批改動。
+
+gitignored `artifacts/verification/2026-10-26-ahd-precision.tar.gz` 保存原失敗與修正後的文字收據、實際 driver／重播入口、RED／GREEN 與最終 solution TRX、source／input digest 及隔離順序的修正。只含文字，不含 RAW、模型、正規化／RGB float 點陣、圖片、native／managed 執行檔、私人絕對路徑或 macOS AppleDouble／xattrs；重播時使用自備且 digest 相同的 RAW，依封包 `REPLAY.md` 先重建 driver 與正規化輸入。
+
+本機位元相同不等於全 f32 定義域的形式證明，也不保證其他 .NET／GPU compiler／相機具有同樣結果。Windows DX12／Vulkan、iOS 裝置、原生手勢 p95 與嚴格算術的受控效能差未驗；本批不宣稱全 GPU、消除首次 AI 推論／讀回等待，亦不以 CPU 為感光畫質的絕對真值。

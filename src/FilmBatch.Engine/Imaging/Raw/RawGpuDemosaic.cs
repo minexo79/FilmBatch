@@ -219,7 +219,7 @@ internal static class RawGpuDemosaic
         var pixels = ((long)w + 2 * Demosaic.AhdBandMargin) * (BandRows + 2 * Demosaic.AhdBandMargin);
         var output = (long)w * BandRows * 3;
         // Device buffers plus host result and mosaic/CFA scratch; no full-result allocation before admission.
-        var bytes = pixels * 88 + output * 8 + 16 + (long)w * h * 12 + pixels * 8;
+        var bytes = pixels * 88 + output * 8 + 32 + (long)w * h * 12 + pixels * 8;
         return budget <= 0 || bytes <= budget;
     }
 
@@ -233,7 +233,8 @@ internal static class RawGpuDemosaic
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    private readonly record struct Params(int Bw, int Bh, int W, int Rows);
+    private readonly record struct Params(int Bw, int Bh, int W, int Rows,
+        uint RoundingMask = 0, uint Pad0 = 0, uint Pad1 = 0, uint Pad2 = 0);
 
     [StructLayout(LayoutKind.Sequential)]
     private readonly record struct Int4(int X, int Y, int Z, int W);
@@ -382,7 +383,7 @@ internal static class RawGpuDemosaic
             using var hv = _gpu.CreateBuffer((ulong)maxPx * 4, GpuBufferUsage.Storage, "ahd hv");
             using var output = _gpu.CreateBuffer((ulong)maxOut * f32, GpuBufferUsage.Storage | GpuBufferUsage.CopySrc, "ahd out");
             using var readback = _gpu.CreateBuffer((ulong)maxOut * f32, GpuBufferUsage.MapRead | GpuBufferUsage.CopyDst, "ahd readback");
-            using var uniform = _gpu.CreateBuffer(16, GpuBufferUsage.Uniform | GpuBufferUsage.CopyDst, "ahd params");
+            using var uniform = _gpu.CreateBuffer(32, GpuBufferUsage.Uniform | GpuBufferUsage.CopyDst, "ahd params");
 
             for (var y0 = 0; y0 < h; y0 += BandRows)
             {

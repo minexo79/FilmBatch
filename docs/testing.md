@@ -143,6 +143,8 @@ GPU 像素測試先檢查硬體；沒有硬體或裝置限制使案例無法執�
 | AHD | `abs(cpu - gpu) > 1e-4 × max(1e-3, abs(cpu))` | 少於 0.1% |
 | 色彩收尾 | `abs(cpu - gpu) > 1e-3 × max(1e-2, abs(cpu))` | 少於 0.1% |
 
+額外的 `GpuAhdTests.Gpu_ahd_near_ties_do_not_amplify_math_roundoff` 使用精確 12-bit 合成馬賽克、RGGB／GBRG 與 2049×2049 尺寸，檢查 Lab 近等距不會把捨入差放大成另一組 RGB 候選；最大絕對差上限為預先固定的 `2e-6`。尺寸同時跨越 CPU 128-pixel tile、GPU 256-row band 與最後一列／行；兩案例先在舊 shader 失敗，再於修正後通過。這是特定回歸的不變量，不替代上表的既有一般容差或跨硬體畫質驗收。全尺寸與獨立立方根控制見[實測 §13](evidence/performance-local-2026-10-26.md#13-raw-ahd-捨入與方向選擇修復)。
+
 `FILMBATCH_NO_GPU_DEMOSAIC=1` 須在啟動前設定，會同時停用兩個 RAW GPU 階段；它不會停用效果算圖器。App 的 RAW GPU 政策遵守 `ForceSoftwareGpu`、指定後端及 `GpuMemoryLimitMb`，且 iOS 不啟用。直接 `ImageLoader.LoadFull`、CLI 與 `BatchExporter` 的 RAW 解碼固定走 CPU；驗證 V4 時仍須分別確認效果算圖真的使用硬體／CPU，不能只看啟動成功。
 
 原生 smoke 另檢查載入途中切換照片、100%／177%／300% 縮放與平移、取消背景後換資料夾，以及軟體模式切換後恢復 Metal。每個縮放步驟須等新畫框級距的窗口送達，不能把上一級仍可見的窗口當成完成。CPU／GPU 匯出比較使用相同 CPU RAW 來源；另以啟用中的預覽範圍呼叫 `BatchExporter`，檢查送入效果算圖的浮點場景 hash 仍與未啟用 GPU 的直接載入一致。
