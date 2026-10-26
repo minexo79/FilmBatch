@@ -243,6 +243,80 @@ public class DenoisingOrtTests : IDisposable
         Assert.False(third.Denoise!.CacheHit);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CacheHit_UnchangedMixReusesPreparedPixelsAndChangedMixInvalidates(bool scene)
+    {
+        var onnx = MakeNegOnnx(TinyTile);
+        var dir = Dir("prepared-reuse");
+        File.WriteAllBytes(Path.Combine(dir, "tiny.onnx"), onnx);
+        var spec = TinySpec("prepared-reuse", "tiny.onnx", onnx, matchGain: false);
+        var source = scene
+            ? new SourceImage(new RawSceneData(new FilmBatch.Raw.Raster.RgbImage(1, 1, [.2f, .4f, .6f]),
+                null, null, DenoiseTestScene.Geometry(1, 1)))
+            : new SourceImage(1, 1, [10000, 20000, 30000, 65535]);
+        using var processor = new DenoiseProcessor(dir, "CPU");
+        var mix = new DenoiseSettings(true, 25f, 100f, 100f);
+        var ct = TestContext.Current.CancellationToken;
+        var first = processor.Prepare(source, spec, mix, ct);
+        var hit = processor.Prepare(source, spec, mix, ct);
+        Assert.False(first.Denoise!.CacheHit);
+        Assert.True(hit.Denoise!.CacheHit);
+        // Stable prepared identity is consumed by the GPU source cache, not just an allocation detail.
+        Assert.Same(hit, processor.Prepare(source, spec, mix, ct));
+        if (scene)
+        {
+            Assert.Equal(.1f, hit.Scene!.Image.Data[0], 6);
+            Assert.Equal(.2f, hit.Scene.Image.Data[1], 6);
+            Assert.Equal(.3f, hit.Scene.Image.Data[2], 6);
+        }
+        else Assert.Equal(new ushort[] { 5000, 10000, 15000, 65535 }, hit.Rgba16);
+
+        DenoiseSettings[] changes = [mix with { Amount = 50f }, mix with { Luminance = 0f }, mix with { Color = 0f }];
+        foreach (var changed in changes)
+        {
+            var result = processor.Prepare(source, spec, changed, ct);
+            Assert.NotSame(hit, result);
+            Assert.True(result.Denoise!.CacheHit);
+            if (scene) Assert.NotEqual(hit.Scene!.Image.Data, result.Scene!.Image.Data);
+            else Assert.NotEqual(hit.Rgba16, result.Rgba16);
+            Assert.Same(result, processor.Prepare(source, spec, changed, ct));
+        }
+        var restored = processor.Prepare(source, spec, mix, ct);
+        if (scene) Assert.Equal(hit.Scene!.Image.Data, restored.Scene!.Image.Data);
+        else Assert.Equal(hit.Rgba16, restored.Rgba16);
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
+        Assert.Throws<OperationCanceledException>(() => processor.Prepare(source, spec, mix, cancelled.Token));
+        Assert.Same(restored, processor.Prepare(source, spec, mix, ct));
+    }
+
+    [Fact]
+    public void CacheHit_ChangedSourceMaskDoesNotReuseEarlierPreparedSource()
+    {
+        var onnx = MakeNegOnnx(TinyTile);
+        var dir = Dir("prepared-mask");
+        var path = Path.Combine(dir, "tiny.onnx");
+        File.WriteAllBytes(path, onnx);
+        var spec = TinySpec("prepared-mask", "tiny.onnx", onnx, matchGain: false);
+        var source = new SourceImage(1, 1, [10000, 20000, 30000, 65535]) { FilePath = path };
+        using var processor = new DenoiseProcessor(dir, "CPU");
+        var mix = new DenoiseSettings(true, 25f, 100f, 100f);
+        var ct = TestContext.Current.CancellationToken;
+        _ = processor.Prepare(source, spec, mix, ct);
+        var plain = processor.Prepare(source, spec, mix, ct);
+        var mask = new FilmBatch.Core.Projects.ForegroundMask(1, 1, 1, 1, [32768]);
+        var maskedSource = source.WithForegroundMask(mask);
+        var masked = processor.Prepare(maskedSource, spec, mix, ct);
+        Assert.True(masked.Denoise!.CacheHit);
+        Assert.NotSame(plain, masked);
+        Assert.Same(mask, masked.ForegroundMask);
+        Assert.Null(plain.ForegroundMask);
+        Assert.Equal(new ushort[] { 5000, 10000, 15000, 65535 }, masked.Rgba16);
+        Assert.Same(masked, processor.Prepare(maskedSource, spec, mix, ct));
+    }
+
     [Fact]
     public void MemoryUsage_SharedFullAndThumbnailSourceIsCountedOnce()
     {

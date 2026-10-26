@@ -409,6 +409,16 @@ App 流程（選取、按 1:1 按鈕、平移、滾輪放大 6 格、`Ctrl+0` �
 
 最後 Core：861 passed／28 skipped／0 failed；跳過為 21 項未提供的 CC0 RAW corpus、5 項 Windows-only、1 項 RAW oracle 無資料及 1 項未配置的既有臨時 probe。App：395 passed／0 skipped／0 failed。兩張原始 RAW、隔離副本與已安裝 RawNIND digest 皆與固定基準相同。重播 driver、失敗／成功收據及 TRX 保存於 gitignored `artifacts/verification/2026-10-26-performance-p1.tar.gz`，不含照片、權重、點陣圖、執行檔或私人絕對路徑。Windows／iOS 原生及多相機完整驗收不在此批證據內。
 
+## AI 命中後的來源重用與 CPU 分工（2026-10-26）
+
+接續 P1 full-cache 生命周期提交 `3f81cf3`，使用者追加 AI 卡頓／GPU-only 問題後先確認實際 ORT placement：固定 RawNIND 49／49 nodes 交 CoreML，NAFNet 1245／1246 交 CoreML、`/Pad` 留在 ORT CPU；隔離 strict 控制分別可執行／明確拒絕，不改產品 fallback 或模型。`MLComputeUnits=ALL` 的偏好 GPU 計畫不是實際逐算子硬體 trace，也不代表 host pack／mix／IO 沒有 CPU 工作。完整 CPU 像素與 renderer／RAW fallback 盤點見[追加實測 §11](evidence/performance-local-2026-10-26.md#11-追加gpu-only-可行性cpu-路徑與-ai-命中後重用修復)。
+
+真實 Sony RAW／RawNIND 247 tiles 完成後，只交替改曝光仍每幀混合出新 `SourceImage`，破壞 GPU 來源快取。修正只為 neural 結果增加同來源／同 mix 的單槽弱重用，不改數學或品質，不增加混合 Full 的強保留。M3／Metal 的後七幀：Prepare wall 中位 7.6495→0.0291 ms，Render 20.6080→3.7887 ms，來源 entries 由 2–6 變為固定 1；沒有 CPU renderer fallback。交替影格及首次未快取 mix 的對照逐 byte 相同；額外 1×1 真實模型弱參考控制可回收輸出。這不是原生 UI p95，首次準備本次仍約 13.24 s。
+
+三個 Tiny Neg ORT 新案例先失敗再通過；最後相關 Core 67／67，完整 Core 864 passed／28 skipped／0 failed。App 首輪 394 passed／1 failed，揭露取消 fixture 沒有等初次四張掃描完成就斷言整批停止；只補齊此前提，不改產品取消邏輯或斷言。同類 11／11、最後完整 App 395／395。現行 Engine 契約、研究／證據與排序計畫同步更新；RAW、兩個權重及隔離副本 digest 不變，收據保存於 gitignored `artifacts/verification/2026-10-26-ai-source-reuse.tar.gz`。
+
+尚未修復：首次全尺寸推論佔用 render worker、讀回／histogram／display fit 的同步成本，以及 RAW AHD 與 combined 3 LSB 的數值問題；不把這一筆快取修復宣稱成「全 GPU」或全部卡頓已消失。Windows／DirectML、iOS 與原生實體手勢延遲此輪未驗。
+
 ## 如何新增歷史列
 
 只記對未來修改有用的決定：真實 commit／日期、可核對的理由或重現、被拒絕方案、目前契約／檢查、後續取代。沒有當時證據時明寫「只確認提交意圖」；數值必須保留平台、輸入與來源版本，不把舊測試 totals 複製成新版本的驗收結果。

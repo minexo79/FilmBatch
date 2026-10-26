@@ -1,10 +1,12 @@
 # 效能、RAW、AI 降噪與亮暗部 Survey
 
-查核日期：2026-10-26。比較 LightCraft、RapidRAW、darktable 與 FilmBatch；正式版和開發主線分開釘選。本文記錄原始碼／官方文件研究與先前單次 smoke，不代表四產品同機畫質或速度排名。所有採用建議仍是研究候選，不是已支援功能。
+查核日期：2026-10-26。比較 LightCraft、RapidRAW、darktable 與 FilmBatch；正式版和開發主線分開釘選。本文記錄原始碼／官方文件研究與先前單次 smoke，不代表四產品同機畫質或速度排名。下列上游機制仍是研究建議；後續已採用的小修正另依現行契約與有日期的證據辨識。
 
 本機後續工作分開保存：[先寫定的實驗規格](../superpowers/plans/2026-10-26-performance-local-experiments.md)、[當次實測與裁決](../evidence/performance-local-2026-10-26.md)。現行行為以[Engine](../architecture/engine.md)、[App](../architecture/app.md)、[GPU](../architecture/gpu.md)及 [VERIFY](../../VERIFY.md) 為準。
 
 本機 E01–E07 與固定強度補測已完成，見上述實測文件。來源身分重用、AI 保留量與 f32 I/O 已有本機證據；RAW 大離群隨 AHD 路徑切換重現，但 kernel／高光內部分支根因未定。兩模型 CPU／CoreML 與 1／2／4 worker scope 均實跑；局部 guided 原型四組等亮度不可達且階梯有 overshoot，不採用為 Basic 替代。1600 px 亮暗部合併的 3 LSB 反例仍保留，不放寬精度或擴大既有 GPU 適用範圍。下文第 7 節仍保留前輪單次 smoke，不覆寫成這輪樣本。
+
+後續追加實測已區分 ORT 算子分配與 host CPU 工作：RawNIND 49／49 交 CoreML，NAFNet 另有一個 ORT CPU `/Pad`；strict 控制分別可跑／明確拒絕，不能把 `CoreML + CPU` 標籤當實際 CPU 比例。已確認且修正同來源／同 mix 的 AI 命中成品身分重建：弱單槽重用讓七幀維持一份 GPU 來源、像素逐 byte 不變；未改模型、品質或推論同步。完整 CPU／fallback 盤點、實測邊界與後續排序見[追加實測 §11](../evidence/performance-local-2026-10-26.md#11-追加gpu-only-可行性cpu-路徑與-ai-命中後重用修復)；原始 E01–E07 不改寫成修正後結果。
 
 ## 1. 結論與方法
 

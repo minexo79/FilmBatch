@@ -333,7 +333,7 @@ public sealed class DenoiseProcessor : IDisposable
     }
 
     /// <summary>
-    /// 把快取的神經結果套上後神經混合並封裝成新的 SourceImage（含 report）。三種路徑：
+    /// 把快取的神經結果套上後神經混合並封裝成 SourceImage（含 report）；命中時弱重用同來源／同混合的存活成品。三種建立路徑：
     /// • 匯出／同尺寸：全解析度混合→量化／寫回場景（與舊版逐位元相同，含透明像素
     ///   保留原始 RGB）。
     /// • 場景線性代理：mix 為逐像素仿射——先把原始／降噪輸入 box 到預覽尺寸（依尺寸
@@ -343,6 +343,25 @@ public sealed class DenoiseProcessor : IDisposable
     ///   直接寫出預覽尺寸；與舊鏈逐位元相同，但不配置全解析度暫存。
     /// </summary>
     private SourceImage Materialize(SourceImage source, NeuralResult neural,
+        DenoiseModelSpec spec, bool cacheHit, DenoiseSettings ds, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        if (!cacheHit) return CreatePreparedSource(source, neural, spec, cacheHit, ds, ct);
+        lock (_sync)
+        {
+            if (neural.Materialized is { } cached && cached.Settings == ds
+                && cached.Input.TryGetTarget(out var input) && ReferenceEquals(input, source)
+                && cached.Output.TryGetTarget(out var output))
+                return output;
+        }
+        var prepared = CreatePreparedSource(source, neural, spec, cacheHit, ds, ct);
+        ct.ThrowIfCancellationRequested();
+        lock (_sync)
+            neural.Materialized = (new(source), ds, new(prepared));
+        return prepared;
+    }
+
+    private SourceImage CreatePreparedSource(SourceImage source, NeuralResult neural,
         DenoiseModelSpec spec, bool cacheHit, DenoiseSettings ds, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
@@ -562,6 +581,10 @@ public sealed class DenoiseProcessor : IDisposable
         /// <summary>場景線性代理的預覽尺寸 box 輸入（最近 4 個尺寸，MRU 在前）。
         /// 依附於本結果：結果失效時一併拋棄，不需額外失效邏輯；由 <see cref="_sync"/> 保護。</summary>
         internal List<ScenePreview>? Previews;
+
+        // The GPU/caller owns mixed pixels; this slot must not keep another full image alive.
+        internal (WeakReference<SourceImage> Input, DenoiseSettings Settings,
+            WeakReference<SourceImage> Output)? Materialized;
     }
 
     /// <summary>單一模型的 ORT session 與可重用 tensor 平面。</summary>

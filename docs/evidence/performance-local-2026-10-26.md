@@ -368,3 +368,77 @@ CPU RAW 固定相同輸入／選項，三個 worker scope 各暖機一次，再�
 
 **裁決：不採用此局部原型替代 Basic。** 基底重用的數值可行與小量 apply 成本不會抵銷不可達匹配、階梯 overshoot、噪聲與舊設定外觀相容等問題。研究目標已實跑，負面結果就是結論；沒有改產品或調寬既有精度契約。
 
+## 11. 追加：GPU-only 可行性、CPU 路徑與 AI 命中後重用修復
+
+這是 E01–E07 研究提交及 P1 三段實作之後的追加工作，起點 `3f81cf3`。以下「源碼」只表示目前呼叫鏈／分支，不等於各階段耗時已量完；「實測」限本機 Apple M3／Metal、ORT 1.25.0、既有固定 digest 權重。`CoreML + CPU` 是允許的 provider 組合名稱，不是 CPU 算子比例或 renderer fallback 的證據。
+
+### 11.1 CPU 像素運算與 GPU 邊界盤點
+
+範圍為 `FilmBatch.Raw`、`FilmBatch.Engine`、桌面／行動 host、來源與顯示交付；排除一般 UI layout、專案序列化等非影像運算。以下依共用演算法分組，涵蓋正常 CPU 準備、選用加速與真正 fallback，不以「找到 Parallel.For」當完整盤點。
+
+| 階段／源碼入口 | 目前在哪裡運算 | GPU 化可行性與本批裁決 |
+|---|---|---|
+| RAW 容器、解壓縮：`RawDecoder`、`Codecs/`、`Vendors/` | host／原生 codec，包含 LJPEG、Huffman、wavelet、JXL | 部分解碼器理論可另作 accelerator；不是一個效果 shader 即可替換。保留既有 codec／錯誤處理，不重寫格式引擎 |
+| 一般影像與素材解碼：`MagickImageCodec`、`AppleImageCodec`、`EffectAssets` | 現行 host／codec API | 不推定 OS／第三方內部每個算子用哪個硬體；不為「全 GPU」替換成熟編解碼器 |
+| 感光正規化、List1／2：`RawImage.Develop`、`OpcodeApply.ApplyList` | CPU：扣黑、縮放、表格／增益與壞點處理 | 逐點 normalization／gain map 可搬；鄰域壞點與 opcode 順序須完整對齊。需連同相鄰步驟避免新增來回傳輸 |
+| 去馬賽克：`Demosaic`、`RawGpuDemosaic.TryRun` | 有範圍且合資格的 Bayer AHD 可走 GPU；Bilinear／PPG／Directional／分箱為 CPU | GPU AHD 已存在但有大型離群待定位；小圖 Bilinear／分箱可另研究，不先擴大錯誤路徑 |
+| 高光重建：`Highlight.ReconstructWith` | CPU：多層來源估計／pull-push／重建 | 可設計 GPU 多 pass，但需維持裁剪／邊界／金字塔不變量。不能直接套其他資料域的 tone mapping 取代 |
+| List3／鏡頭與局部相機色調：`OpcodeApply.ApplyList3`、`CameraLocalTone` | CPU：幾何取樣／增益網格 | 可搬規律取樣與增益；不能把現有藝術鏡頭 shader 當完整 DNG opcode 實作 |
+| 相機色彩收尾：`RawSourceLoader.ApplyColour` | 合資格 App decode 可 GPU 分帶；未提交後綴由 CPU 補完 | 已有 accelerator；RAW→linear working 的上傳前轉換仍另見下列來源入場，不混為同一步 |
+| 相機起始外觀、WB 擬合：`CameraPreview`、`CameraPreviewProxies`、`WbEstimate` | CPU 的有界代理圖／矩陣／中繼資料分析 | 保留 CPU；尚無證據顯示搬到 GPU 可抵銷 dispatch／讀回成本，不聲稱已量出微秒收益 |
+| AI：`DenoiseTiling`、`DenoiseProcessor.RunInference` | CPU 透明填色、NCHW pack／reflect border、tile 回填、gain matching／finite 檢查；模型由 ORT providers 分配 | 多數規律像素工作可 GPU 化，但現行 ORT tensor 是 host memory；需要同時解決 EP 資源／同步，不能只加 shader 再多一次拷貝 |
+| AI 混合與代理：`CreatePreparedSource`、`PreviewInputs`、`MixDownscale16` | CPU 的 luma／color 混合、box、SDR 量化 | 本批先消除同來源同 mix 的重複工作；mix 真正改變時仍 CPU。保持 f32、全品質與 SDR 先量化再縮小的順序 |
+| 來源縮放：`SourceImage.Resize`、`Resample`、Main／Loupe `ScaledTo` | CPU，依既有級距／LRU 重用 | GPU resample／Mip 可研究；須驗窗口／粒徑／alpha 等價。來源已在 CPU 時，單獨搬一步未必省傳輸 |
+| 原始／去背遮罩：`RawSemanticAdjustments.Evaluate`、`ForegroundAlpha.ToFloatPlane` | CPU 評估幾何／融合／轉 float；套用在 CPU renderer 或 GPU shader | rasterize／轉換可另搬，套用段已 GPU；Apple Vision 走原生框架，不能把 host 呼叫或 ANE 當 CPU fallback |
+| GPU 來源入場：`GpuEffectPipeline.DecodeSource` | RAW／ProPhoto 先 CPU `DecodeLinear` 再上傳；一般 sRGB 上傳 u16 後由 shader 解碼 | 色域轉換可另搬；先沿用穩定來源避免重做。不改 GPU cache 為僅依檔名命中，以免遮罩／RAW 選項失效錯誤 |
+| 效果：`CpuPipeline.Process`／`GpuEffectPipeline.Process` | 正常 GPU 模式的裁切／白平衡／語意套用／ShadowRecovery／Zone／光學／底片／表面效果有對應 WGSL；CPU reference／fallback 跑 CPU | 不需要再發明第二份 GPU 效果管線。RAW `Rgba16` 的延遲顯示編碼可由原圖比較／直方圖在 CPU 觸發，不代表 GPU 效果退回 |
+| 分析與顯示：`PhotoAnalysis`、`ImageHistogram`、`DisplayFit`、`PreviewViewModel` | 分析有界 CPU；直方圖與 Lanczos fit 在 render worker；最後把 BGRA 複製到 Avalonia bitmap | histogram／fit 可移到 GPU 或解耦 worker；只搬到另一個 CPU 執行緒是排程改善，不是全 GPU，也不代表 Avalonia 本身純 CPU |
+| 匯出：`BatchExporter.DownscaleLongEdge`、`Encode`、codec／`DngWriter` | RAW decode 明確固定 CPU；效果可 GPU；16-bit 讀回後 CPU Lanczos、alpha 檢查／量化／色彩與格式編碼 | GPU 最終縮放後才讀回可能省頻寬，但須獨立量測；保留檔案原子寫入、ICC／EXIF 與格式語意，不聲稱目前已實作 |
+
+真正的 renderer 轉 CPU 分支：`PreviewService.CreateRenderer` 的軟體偏好／iOS；`RenderScheduler.InitRenderer` 的 GPU 建立失敗；`GpuSpikeRenderer.Render` 的尺寸／預算、`RenderWindow` 無可用 tile plan、`Render16` 的尺寸超限／配置失敗。`TryRender` 遇非取消且非特定 AI IO 錯誤先重建重試一次，之後失敗會回報；**不是所有例外都被 CPU 吞掉**。Mobile host 固定 CPU renderer，但 AI provider／Vision 不因此變成純 CPU。
+
+RAW accelerator 另受 `BeginScope`、Bayer／400 萬像素／記憶體／硬體、環境停用與執行期失敗限制。失敗會記錄並停用該 accelerator；後續 backend 切換可重新選擇 runner，所以不是跨所有 backend／程序永久停用。匯出 `RunJobs` 明確用停用 scope，與 GPU 效果算圖分開。
+
+### 11.2 實際模型分配：有 GPU 不等於每個算子都能 GPU-only
+
+獨立 placement driver 使用與產品相同的兩個權重、FP32、固定 NCHW shape、CoreML `MLProgram`／`MLComputeUnits=ALL`／`AllowLowPrecisionAccumulationOnGPU=0`，另開 ORT profiling、verbose 與 CoreML compute-plan。輸入是 deterministic tile，不是實拍畫質比較；每組跑五次。strict 控制只在 driver 加 `session.disable_cpu_ep_fallback=1`，產品預設未改。
+
+| 模型 | ORT graph 分配／實測 | 禁用 ORT CPU fallback 的控制 |
+|---|---|---|
+| RawNIND Linear | 49／49 nodes 交 CoreML，profile 無 ORT CPU node；CoreML 計畫列 49 個偏好 GPU 裝置 | session 成功、五次 tile 完成；不能由此推廣所有照片／平台或 CoreML 內部每算子的實際硬體 |
+| NAFNet-SIDD | 1245／1246 nodes 交 CoreML，ORT CPU node 為 `/Pad`；CoreML 計畫列 1253 個偏好 GPU 裝置，計畫 operation 與 ONNX node 不是同一計數單位 | session 明確拒絕：存在指派到 default CPU EP 的節點；未靜默重試／修改模型 |
+
+兩組均有 CPU host tensor／呼叫成本；RawNIND 在 ORT 邊界沒有 CPU 算子，不代表完全沒有 CPU 工作。CoreML `ALL` 允許 CPU／GPU／ANE；compute-plan 的偏好不是 Instruments 的實際逐算子硬體 trace。Windows／DirectML 此輪未跑，不用 Mac 結果推定其 operator coverage。
+
+來源：[ORT CoreML EP 選項與支援算子](https://onnxruntime.ai/docs/execution-providers/CoreML-ExecutionProvider.html)、[Apple MLComputeUnits](https://developer.apple.com/documentation/coreml/mlcomputeunits)、[ORT v1.25 CPU fallback 設定](https://github.com/microsoft/onnxruntime/blob/v1.25.0/include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h)、[ORT I/O binding 邊界](https://onnxruntime.ai/docs/performance/tune-performance/iobinding.html)。這些文件解釋 API，實際分配結論來自本機保存的 log／profile，不是 provider 名稱。
+
+### 11.3 已確認的命中成本與最小修復
+
+真實同一 Sony RAW：提供 1600×1067 scene proxy，正式推論仍重開 7008×4672 Full、RawNIND／CoreML＋CPU、247 tiles；推論完成後八幀只交替曝光 0.2／0.3，降噪 amount=80 不變。前後各一個程序，首幀另列、下表各取其餘七幀中位；不是原生 UI p95、硬體利用率或受控跨產品速度排名。
+
+| 同一條 Engine／Metal 路徑 | 修正前 | 修正後 |
+|---|---:|---:|
+| 命中後 Prepare wall ms，中位 | 7.6495 | 0.0291 |
+| Render wall ms，中位 | 20.6080 | 3.7887 |
+| 七幀相同 prepared 參考 | 0／7 | 7／7 |
+| GPU 來源快取 entries 範圍 | 2–6 | 1 |
+| CPU renderer fallback 次數 | 0 | 0 |
+
+原根因不是「CPU EP 不夠快」：神經已命中，但每次 `Materialize` 仍混合／配置新的 `SourceImage`，`Acquire` 的 `ReferenceEquals` 因而失效，重新做 RAW 色域轉換、紋理配置／上傳。修正只在既有 neural 結果內保存最近一筆 `(弱來源參考, DenoiseSettings, 弱成品參考)`；未改混合公式／模型／tile／正式品質，沒有增加完整混合圖的強保留。
+
+第一次 miss 的報告仍是 false；第一次 hit 建立 true 的成品，之後同來源／同 mix 才沿用。改 Amount／Luminance／Color、遮罩包裝來源或神經快取身分便不重用；成品已被 GC 也正常重建，不把弱快取命中當生命週期承諾。來源與模型 digest 前後不變。
+
+三項真實 Tiny Neg ORT 案例先於修正失敗在來源身分斷言，再通過，涵蓋場景／SDR、三種 mix 失效、遮罩與預取消；相關降噪／排程 67 passed。實拍八幀交替結果逐 byte 相同，並與首次未快取混合的兩種曝光成品逐 byte 相同。額外 1×1 真實 RawNIND 控制經外部 GC 後，混合 `SourceImage` 與像素弱參考均失效，原始／neural 共 24 B 仍保留；這是弱槽生命週期控制，不是全解析度 RSS 比較。Core 完整回歸 864 passed／28 skipped／0 failed，跳過範圍與 P1 同類；沒有 shader／schema／UI／相依變更。
+
+App 首輪為 394 passed／1 failed，失敗在取消 fixture 將單張縮圖交付誤作初次掃描完成；改為先等初次掃描結束再進入明確取消／重算案例，原有斷言與 30 s 截止不變。其後同類 11／11，完整 App 395／395；產品排程／取消邏輯未改。此輪 driver、placement 原始 profile／log、先失敗後通過的 TRX、輸入／source digest 與命令保存在 gitignored `artifacts/verification/2026-10-26-ai-source-reuse.tar.gz`，不含照片、權重或點陣／執行檔。ORT 原始 profile 不採用所設 prefix 而落在工作目錄，封存後移除本輪四份產生檔，不把它們留在儲存庫根目錄。
+
+### 11.4 卡頓分層與後續排序
+
+1. **已修：** 同 mix 的來源重建／重傳。此案例命中後的重複 CPU 像素工作已消除，不是用另一個 CPU worker 隱藏它。
+2. **仍在：** 首次正式推論。修正後這次 Full 準備約 13.24 s，仍 247 tiles。`Prepare`／`InferenceGate.Wait` 在 renderer 呼叫鏈同步執行，可佔住唯一的 render worker；應另以準備工作與派送解耦驗證，不是移動 GPU renderer 到任意 `Task.Run`。
+3. **仍在：** GPU 讀回的 `WaitIdle`／`MapSync`，以及 `PreviewService.PreviewRendered` 內的 histogram／display fit。源碼可確認同步邊界，但沒有分段 driver trace，不宣稱各自佔多少卡頓。
+4. **保留正確性優先：** RAW AHD 大型離群及 combined 3 LSB 的階段修復仍在原排序；尚未以放寬容差、CPU fallback 或改高光閾值收尾。
+5. **其餘候選：** 已在 CPU 的規律 normalization／遮罩／縮放／混合可挑有端到端收益者 GPU 化；跨 session f32 AI 持久化、昂貴 prefix 與 Avalonia GPU interop 仍需完整失效／取消／容量／等價驗收。
+
+取消策略不能直接改成「同來源每次拖曳都取消」：排程器已只保留最新待算預覽，允許同來源在途影格交付是避免飢餓；換來源／開關／取消仍有圍欄，tile 邊界也已有取消檢查。降低正式品質、把 Loupe 改成僅局部模型推論、移除所有 CPU 後備或強制 strict provider 失敗不是本批修復。既有 idle full-release 的背景 blocking GC 可能停頓 managed 執行緒，但未量出在此次卡頓中的占比，不以推測移除。
+
