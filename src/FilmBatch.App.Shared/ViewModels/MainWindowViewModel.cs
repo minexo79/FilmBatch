@@ -1160,6 +1160,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     {
         Presets.Rebuild();
         Inspector.RefreshPresetOptions();
+        Filmstrip.RefreshPresetOptions();
         if (Sidebar.IsExport) Sidebar.Export.Refresh();
         if (Service is null) return;
         if (Library.IsExternalChange) Service.Project.KeepPresetSnapshots();

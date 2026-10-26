@@ -160,6 +160,45 @@ public class MainWindowViewModelTests
         var created = vm.Library.Presets.Single(p => p.Name == "測試預設");
         Assert.Equal(created.Id, vm.Service.Project[file].PresetId);
         Assert.Contains(vm.Presets.Categories.SelectMany(c => c.Presets), p => p.Id == created.Id);
+        Assert.Contains(vm.Filmstrip.PresetOptions, p => p.Id == created.Id);
+    }
+
+    [AvaloniaFact]
+    public async Task PresetFilter_KeepsSelectionAndListsNewPreset_AfterLibraryChanges()
+    {
+        using var vm = TestEnv.CreateViewModel();
+        await TestEnv.OpenSamplesAsync(vm);
+        // 下拉選單綁定的是同一個可觀察集合；預設庫變動時就地更新，而不是每次重新列舉。
+        var options = vm.Filmstrip.PresetOptions;
+        Assert.IsType<System.Collections.ObjectModel.ObservableCollection<ViewModels.PresetItemViewModel>>(options);
+        var before = options.Count;
+        var neutral = options.First(p => p.Name.StartsWith("Neutral", StringComparison.Ordinal));
+        vm.Inspector.SetValue("basic.exposure", 0.4, null);
+        vm.Filmstrip.FilterPreset = neutral;
+        vm.Filmstrip.Filter = ViewModels.FilmstripFilter.OverridesOnly;
+
+        await vm.CreatePresetCommand.ExecuteAsync(null);
+
+        Assert.Same(options, vm.Filmstrip.PresetOptions);
+        Assert.Equal(before + 1, options.Count);
+        Assert.Contains(options, p => p.Name == "測試預設");
+        Assert.Equal(ViewModels.FilmstripFilter.OverridesOnly, vm.Filmstrip.Filter);
+        Assert.Equal(neutral.Id, vm.Filmstrip.FilterPreset?.Id);
+    }
+
+    [AvaloniaFact]
+    public async Task NonNeutralPreset_CountsAsOverride_ForMarkerAndFilter()
+    {
+        using var vm = TestEnv.CreateViewModel();
+        await TestEnv.OpenSamplesAsync(vm);
+        var file = vm.Filmstrip.Items[0].FileName;
+        vm.Filmstrip.SelectOnly(file);
+        await vm.ApplyPinnedCommand.ExecuteAsync(3);
+        Assert.False(vm.Service!.Project[file].HasOverrides);
+
+        Assert.True(vm.Filmstrip.Items.Single(t => t.FileName == file).HasOverrides);
+        vm.Filmstrip.Filter = ViewModels.FilmstripFilter.OverridesOnly;
+        Assert.Equal([file], vm.Filmstrip.Items.Select(t => t.FileName));
     }
 
     [AvaloniaFact]

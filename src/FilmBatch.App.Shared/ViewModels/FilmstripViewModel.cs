@@ -9,6 +9,7 @@ using Avalonia.Platform;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FilmBatch.App.Services;
+using FilmBatch.Core.Presets;
 using FilmBatch.Core.Projects;
 using FilmBatch.Engine.Imaging;
 using FilmBatch.Engine.Rendering;
@@ -203,7 +204,22 @@ public sealed partial class FilmstripViewModel : ObservableObject
         _ => 0,
     };
 
-    public IEnumerable<PresetItemViewModel> PresetOptions => _main.Library.Presets.Select(p => new PresetItemViewModel(p));
+    /// <summary>依預設篩選的下拉清單；與 <see cref="InspectorViewModel"/> 相同，預設庫變動時由 <see cref="RefreshPresetOptions"/> 重建。</summary>
+    public ObservableCollection<PresetItemViewModel> PresetOptions { get; } = [];
+
+    private bool _refreshingPresets;
+
+    /// <summary>重建篩選列的預設清單並保留目前選取的預設；不改變篩選模式。</summary>
+    public void RefreshPresetOptions()
+    {
+        var selectedId = FilterPreset?.Id;
+        _refreshingPresets = true;
+        PresetOptions.Clear();
+        foreach (var p in _main.Library.Presets) PresetOptions.Add(new PresetItemViewModel(p));
+        FilterPreset = PresetOptions.FirstOrDefault(p => p.Id == selectedId);
+        _refreshingPresets = false;
+        ApplyFilter();
+    }
 
 
     [ObservableProperty]
@@ -249,6 +265,7 @@ public sealed partial class FilmstripViewModel : ObservableObject
         Selection.Source = Items;
         Selection.SelectionChanged += (_, _) => OnSelectionChanged();
         Localization.Loc.OnCultureChanged(this, static vm => vm.UpdateCountText());
+        RefreshPresetOptions();
     }
 
     // ── 有界幫浦 ──
@@ -926,7 +943,7 @@ public sealed partial class FilmstripViewModel : ObservableObject
             var preset = svc.PresetFor(entry.PresetId);
             vm.PresetLabel = preset is null ? "—" : Abbreviate(preset.Name);
             vm.PresetBrush = preset is null ? Brushes.Gray : PresetItemViewModel.BrushOf(preset.ColorLabel);
-            vm.HasOverrides = entry.HasOverrides;
+            vm.HasOverrides = ShowsOverride(entry);
             vm.Rating = entry.Rating;
             vm.MarkedEntry = entry;
             vm.PresetUpdated = entry.PresetId is { } id
@@ -980,6 +997,7 @@ public sealed partial class FilmstripViewModel : ObservableObject
     }
     partial void OnFilterPresetChanged(PresetItemViewModel? value)
     {
+        if (_refreshingPresets) return;
         if (value is not null) Filter = FilmstripFilter.ByPreset;
         ApplyFilter();
     }
@@ -993,12 +1011,15 @@ public sealed partial class FilmstripViewModel : ObservableObject
         if (!MatchesRating(e.Rating)) return false;
         return Filter switch
         {
-            FilmstripFilter.OverridesOnly => e.HasOverrides,
+            FilmstripFilter.OverridesOnly => ShowsOverride(e),
             FilmstripFilter.Unassigned => e.PresetId is null || svc.PresetFor(e.PresetId) is null,
             FilmstripFilter.ByPreset => FilterPreset is null || e.PresetId == FilterPreset.Id,
             _ => true,
         };
     }
+
+    /// <summary>非 Neutral 的預設也算覆寫照片：縮圖黃點與「只顯示有覆寫」篩選共用此判定。</summary>
+    private static bool ShowsOverride(PhotoEntry e) => e.HasOverrides || (e.PresetId is { } id && id != SamplePresets.Neutral);
 
     private bool MatchesRating(int rating) => RatingFilter switch
     {
