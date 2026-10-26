@@ -10,10 +10,10 @@ namespace FilmBatch.Engine.Rendering;
 /// <item>導引 u = log2((max(Y,0)+c)/0.18)，c = 2⁻⁷：中高亮度近似 EV；深暗部近似線性，
 /// 雜訊不會被 log 放大成假邊緣。alpha=0 或非有限顏色的權重為 0，隱藏顏色不進任何鄰域。</item>
 /// <item>覆蓋率加權（權重 = alpha）自導引 guided filter 求基底 B；視窗半徑 r = 半徑% × 裁切後短邊。
-/// 統計量 (Σw, Σw·u, Σw·u²) 先累加到 s×s 區塊代理格，s = clamp(⌈r/4⌉, 1, 32)，
+/// 統計量 (Σw, Σw·v, Σw·v²)，v = u + 4，先累加到 s×s 區塊代理格，s = clamp(⌈r/4⌉, 1, 32)，
 /// 再以分數盒狀濾波（半徑 r/s、鏡射邊界）求均值／變異數與係數 a = var/(var+ε)、b = mean·(1−a)；
 /// 係數以視窗覆蓋率加權再盒狀平均。像素中心 ((x+0.5)/s−0.5) 雙線性取回係數後以本像素導引
-/// 重建 B = ā·u + b̄（邊緣感知上採樣）。</item>
+/// 重建 B = ā·(u+4) + b̄ − 4（邊緣感知上採樣）；平移不改變變異數，減少深暗部二階矩相減的抵消。</item>
 /// <item>增益之前的亮度／色度降噪：小視窗（σ 以來源參考像素計：亮度 1、色度 2）權重
 /// = alpha × (1−Δu²)²₊ × 空間 Gaussian，取鄰域差的加權平均；Y 與 C = RGB − Y 各自乘
 /// 強度 × 暗部權重後加回（C 的變化不改亮度）。純黑（RGB 皆 0）不降噪。</item>
@@ -27,6 +27,8 @@ internal static class ShadowRecovery
     private const float MidGrey = 0.18f;
     /// <summary>導引偏移 c = 2⁻⁷（約中性灰下 4.5 EV）。</summary>
     private const float GuideOffset = 1f / 128f;
+    // 暗部 u 約 −4；平移後累積矩，避免 E[u²]−E[u]² 相減時丟失小變異數。
+    private const float MomentShift = 4f;
     /// <summary>guided filter 正則化（導引 EV²）：標準差小於約 0.2 EV 的紋理併入基底。</summary>
     private const float Epsilon = 0.04f;
     /// <summary>抬升膝點（相對中性灰 EV）與 C1 膝寬（EV）。</summary>
@@ -108,7 +110,7 @@ internal static class ShadowRecovery
         });
         token.ThrowIfCancellationRequested();
 
-        // ② 區塊統計 (Σw, Σw·u, Σw·u²) → scratch[n..]；右／下緣不完整區塊只含實際像素
+        // ② 區塊統計 (Σw, Σw·v, Σw·v²)，v = u + MomentShift → scratch[n..]
         Parallel.For(0, ph, options, by =>
         {
             var y0 = by * factor;
@@ -122,7 +124,7 @@ internal static class ShadowRecovery
                 for (var x = x0; x < x1; x++)
                 {
                     var i = y * width + x;
-                    var u = scratch[i];
+                    var u = scratch[i] + MomentShift;
                     var w = Weight(src[i * 4 + 3], u);
                     if (!(w > 0f)) continue;
                     s0 += w;
@@ -276,7 +278,7 @@ internal static class ShadowRecovery
         float Lerp(int c) =>
             (coefficients[c00 + c] * (1 - fx) + coefficients[c10 + c] * fx) * (1 - fy)
             + (coefficients[c01 + c] * (1 - fx) + coefficients[c11 + c] * fx) * fy;
-        return (Lerp(0) * guide + Lerp(1)) / Lerp(2);
+        return (Lerp(0) * (guide + MomentShift) + Lerp(1)) / Lerp(2) - MomentShift;
     }
 
     private static float Guide(float luminance) =>

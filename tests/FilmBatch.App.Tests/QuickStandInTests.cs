@@ -235,7 +235,9 @@ public sealed class QuickStandInTests
         var files = SampleImages.Generate(folder, count: 4, longEdge: 64);
         var target = Path.GetFileName(files[0]);
         await main.OpenFolderAsync(folder);
-        TestEnv.PumpUntil(() => main.Preview.Source is not null && !main.Preview.IsBusy);
+        // 後續檢查明確重算／取消，不把另一張交付誤當成初次四張掃描已完成。
+        TestEnv.PumpUntil(() => main.Preview.Source is not null && !main.Preview.IsBusy
+            && !main.Filmstrip.IsLoadingThumbnails);
 
         // 目標照片啟用 AI：預覽渲染進入 gate 後取消,同照片縮圖無論排隊或飛行都被明確丟棄。
         main.Filmstrip.SelectOnly(target);

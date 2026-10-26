@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using FilmBatch.Engine.Denoising;
 
 namespace FilmBatch.App.Services;
 
@@ -12,7 +13,8 @@ internal sealed class SystemMonitor : IDisposable
 {
     internal readonly record struct Snapshot(
         double? CpuPercent, double? GpuPercent,
-        long RamUsedBytes, long RamTotalBytes, long AppBytes, double? DiskPercent)
+        long RamUsedBytes, long RamTotalBytes, long AppBytes, double? DiskPercent,
+        DenoiseMemoryUsage AiPixels)
     {
         internal double RamPercent => RamTotalBytes <= 0 ? 0 : 100.0 * RamUsedBytes / RamTotalBytes;
     }
@@ -30,7 +32,8 @@ internal sealed class SystemMonitor : IDisposable
     internal Snapshot Sample()
     {
         var (used, total) = Memory();
-        return new Snapshot(Cpu(), Gpu(), used, total, Process.GetCurrentProcess().WorkingSet64, Disk());
+        return new Snapshot(Cpu(), Gpu(), used, total, Process.GetCurrentProcess().WorkingSet64,
+            Disk(), DenoiseProcessor.SharedMemoryUsage);
     }
 
     // ───────────── CPU ─────────────

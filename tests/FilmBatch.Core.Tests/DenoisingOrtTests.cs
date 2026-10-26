@@ -243,6 +243,158 @@ public class DenoisingOrtTests : IDisposable
         Assert.False(third.Denoise!.CacheHit);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CacheHit_UnchangedMixReusesPreparedPixelsAndChangedMixInvalidates(bool scene)
+    {
+        var onnx = MakeNegOnnx(TinyTile);
+        var dir = Dir("prepared-reuse");
+        File.WriteAllBytes(Path.Combine(dir, "tiny.onnx"), onnx);
+        var spec = TinySpec("prepared-reuse", "tiny.onnx", onnx, matchGain: false);
+        var source = scene
+            ? new SourceImage(new RawSceneData(new FilmBatch.Raw.Raster.RgbImage(1, 1, [.2f, .4f, .6f]),
+                null, null, DenoiseTestScene.Geometry(1, 1)))
+            : new SourceImage(1, 1, [10000, 20000, 30000, 65535]);
+        using var processor = new DenoiseProcessor(dir, "CPU");
+        var mix = new DenoiseSettings(true, 25f, 100f, 100f);
+        var ct = TestContext.Current.CancellationToken;
+        var first = processor.Prepare(source, spec, mix, ct);
+        var hit = processor.Prepare(source, spec, mix, ct);
+        Assert.False(first.Denoise!.CacheHit);
+        Assert.True(hit.Denoise!.CacheHit);
+        // Stable prepared identity is consumed by the GPU source cache, not just an allocation detail.
+        Assert.Same(hit, processor.Prepare(source, spec, mix, ct));
+        if (scene)
+        {
+            Assert.Equal(.1f, hit.Scene!.Image.Data[0], 6);
+            Assert.Equal(.2f, hit.Scene.Image.Data[1], 6);
+            Assert.Equal(.3f, hit.Scene.Image.Data[2], 6);
+        }
+        else Assert.Equal(new ushort[] { 5000, 10000, 15000, 65535 }, hit.Rgba16);
+
+        DenoiseSettings[] changes = [mix with { Amount = 50f }, mix with { Luminance = 0f }, mix with { Color = 0f }];
+        foreach (var changed in changes)
+        {
+            var result = processor.Prepare(source, spec, changed, ct);
+            Assert.NotSame(hit, result);
+            Assert.True(result.Denoise!.CacheHit);
+            if (scene) Assert.NotEqual(hit.Scene!.Image.Data, result.Scene!.Image.Data);
+            else Assert.NotEqual(hit.Rgba16, result.Rgba16);
+            Assert.Same(result, processor.Prepare(source, spec, changed, ct));
+        }
+        var restored = processor.Prepare(source, spec, mix, ct);
+        if (scene) Assert.Equal(hit.Scene!.Image.Data, restored.Scene!.Image.Data);
+        else Assert.Equal(hit.Rgba16, restored.Rgba16);
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
+        Assert.Throws<OperationCanceledException>(() => processor.Prepare(source, spec, mix, cancelled.Token));
+        Assert.Same(restored, processor.Prepare(source, spec, mix, ct));
+    }
+
+    [Fact]
+    public void CacheHit_ChangedSourceMaskDoesNotReuseEarlierPreparedSource()
+    {
+        var onnx = MakeNegOnnx(TinyTile);
+        var dir = Dir("prepared-mask");
+        var path = Path.Combine(dir, "tiny.onnx");
+        File.WriteAllBytes(path, onnx);
+        var spec = TinySpec("prepared-mask", "tiny.onnx", onnx, matchGain: false);
+        var source = new SourceImage(1, 1, [10000, 20000, 30000, 65535]) { FilePath = path };
+        using var processor = new DenoiseProcessor(dir, "CPU");
+        var mix = new DenoiseSettings(true, 25f, 100f, 100f);
+        var ct = TestContext.Current.CancellationToken;
+        _ = processor.Prepare(source, spec, mix, ct);
+        var plain = processor.Prepare(source, spec, mix, ct);
+        var mask = new FilmBatch.Core.Projects.ForegroundMask(1, 1, 1, 1, [32768]);
+        var maskedSource = source.WithForegroundMask(mask);
+        var masked = processor.Prepare(maskedSource, spec, mix, ct);
+        Assert.True(masked.Denoise!.CacheHit);
+        Assert.NotSame(plain, masked);
+        Assert.Same(mask, masked.ForegroundMask);
+        Assert.Null(plain.ForegroundMask);
+        Assert.Equal(new ushort[] { 5000, 10000, 15000, 65535 }, masked.Rgba16);
+        Assert.Same(masked, processor.Prepare(maskedSource, spec, mix, ct));
+    }
+
+    [Fact]
+    public void MemoryUsage_SharedFullAndThumbnailSourceIsCountedOnce()
+    {
+        var onnx = MakeNegOnnx(TinyTile);
+        var dir = Dir("memory-shared");
+        File.WriteAllBytes(Path.Combine(dir, "tiny.onnx"), onnx);
+        var spec = TinySpec("memory-shared", "tiny.onnx", onnx, matchGain: false);
+        var source = new SourceImage(1, 1, [10000, 20000, 30000, 65535]);
+        using var processor = new DenoiseProcessor(dir, "CPU");
+        var mix = new DenoiseSettings(true, 25, 100, 100);
+
+        processor.Prepare(source, spec, mix, TestContext.Current.CancellationToken);
+        Assert.Equal(12, processor.MemoryUsage.NeuralBytes);
+        Assert.Equal(8, processor.MemoryUsage.SourceBytes);
+        processor.Prepare(source, spec, mix, TestContext.Current.CancellationToken, fullResolution: false);
+        var usage = processor.MemoryUsage;
+        Assert.Equal(24, usage.NeuralBytes);
+        Assert.Equal(8, usage.SourceBytes);
+        Assert.Equal(0, usage.PreviewBytes);
+        Assert.Equal(32, usage.TotalBytes);
+
+        processor.Dispose();
+        Assert.Equal(0, processor.MemoryUsage.TotalBytes);
+    }
+
+    [Fact]
+    public void MemoryUsage_CountsExistingSceneVariantsWithoutCreatingDisplayPixels()
+    {
+        var onnx = MakeNegOnnx(TinyTile);
+        var dir = Dir("memory-scene");
+        File.WriteAllBytes(Path.Combine(dir, "tiny.onnx"), onnx);
+        var spec = TinySpec("memory-scene", "tiny.onnx", onnx, matchGain: false)
+            with { SceneLinear = true };
+        var source = new SourceImage(new RawSceneData(
+            new FilmBatch.Raw.Raster.RgbImage(3, 2, Enumerable.Repeat(.2f, 18).ToArray()),
+            null, null, DenoiseTestScene.Geometry(3, 2)));
+        using var processor = new DenoiseProcessor(dir, "CPU");
+        processor.Prepare(source, spec, new(true, 25, 100, 100), TestContext.Current.CancellationToken);
+
+        Assert.Equal(72, processor.MemoryUsage.NeuralBytes);
+        Assert.Equal(72, processor.MemoryUsage.SourceBytes);
+        Assert.Equal(144, processor.MemoryUsage.TotalBytes);
+        source.ScaledTo(2); // 2×1×3 float；由 source 保留，不另取用顯示編碼。
+        Assert.Equal(96, processor.MemoryUsage.SourceBytes);
+        _ = source.Rgba16; // 只有明確取用才建立 3×2×4 ushort。
+        Assert.Equal(144, processor.MemoryUsage.SourceBytes);
+        Assert.Equal(216, processor.MemoryUsage.TotalBytes);
+    }
+
+    [Fact]
+    public void MemoryUsage_PreviewInputEvictionRemovesSupersededPixelBytes()
+    {
+        var onnx = MakeNegOnnx(TinyTile);
+        var dir = Dir("memory-previews");
+        var modelPath = Path.Combine(dir, "tiny.onnx");
+        File.WriteAllBytes(modelPath, onnx);
+        var spec = TinySpec("memory-previews", "tiny.onnx", onnx, matchGain: false)
+            with { SceneLinear = true };
+        var source = new SourceImage(new RawSceneData(
+            new FilmBatch.Raw.Raster.RgbImage(16, 8, Enumerable.Repeat(.2f, 384).ToArray()),
+            null, null, DenoiseTestScene.Geometry(16, 8)))
+            { FilePath = modelPath };
+        using var processor = new DenoiseProcessor(dir, "CPU");
+        var mix = new DenoiseSettings(true, 25, 100, 100);
+        processor.Prepare(source, spec, mix, TestContext.Current.CancellationToken);
+        foreach (var edge in new[] { 4, 6, 8, 10, 12 })
+        {
+            var result = processor.Prepare(source.Downscale(edge), spec, mix, TestContext.Current.CancellationToken);
+            Assert.True(result.Denoise!.CacheHit);
+        }
+
+        var usage = processor.MemoryUsage;
+        Assert.Equal(1536, usage.NeuralBytes);
+        Assert.Equal(1536, usage.SourceBytes);
+        Assert.Equal(4128, usage.PreviewBytes); // 最近四筆：(18+32+50+72) pixels × 2×RGB float。
+        Assert.Equal(7200, usage.TotalBytes);
+    }
+
     [Fact]
     public void Prepare_TinyOnnx_Proxy_LoadsFullResolution()
     {
@@ -360,6 +512,151 @@ public class DenoisingOrtTests : IDisposable
         Assert.False(retry.Denoise!.CacheHit);
         Assert.Equal(new ushort[] { 5000, 10000, 15000, 65535 }, retry.Rgba16);
     }
+
+    [Fact]
+    public void FullCacheMiss_ReleasesOldPixelsAtInferenceButKeepsThumbnail()
+    {
+        var onnx = MakeNegOnnx(TinyTile);
+        var dir = Dir("full-admission");
+        File.WriteAllBytes(Path.Combine(dir, "tiny.onnx"), onnx);
+        var spec = TinySpec("full-admission", "tiny.onnx", onnx, matchGain: false);
+        var source = new SourceImage(2, 2,
+            Enumerable.Range(0, 4).SelectMany(_ => new ushort[] { 10000, 20000, 30000, 65535 }).ToArray());
+        var thumbnail = new SourceImage(1, 1, [20000, 40000, 60000, 32768]);
+        using var processor = new DenoiseProcessor(dir, "CPU");
+        var mix = new DenoiseSettings(true, 25, 100, 100);
+        var previous = processor.Prepare(source, spec, mix, TestContext.Current.CancellationToken);
+        processor.Prepare(thumbnail, spec, mix, TestContext.Current.CancellationToken, fullResolution: false);
+        Assert.True(processor.Prepare(source, spec, new(true, 50, 100, 100),
+            TestContext.Current.CancellationToken).Denoise!.CacheHit);
+        DenoiseMemoryUsage? atInference = null;
+        void Observe(DenoiseProgress progress)
+        {
+            if (progress.ModelId == spec.Id && progress.Stage == "infer" && progress.Completed == 0)
+                atInference = processor.MemoryUsage;
+        }
+        DenoiseProcessor.ProgressChanged += Observe;
+        try
+        {
+            processor.Prepare(new SourceImage(1, 1, [30000, 20000, 10000, 65535]),
+                spec, mix, TestContext.Current.CancellationToken);
+        }
+        finally { DenoiseProcessor.ProgressChanged -= Observe; }
+
+        Assert.Equal(new DenoiseMemoryUsage(12, 8, 0), atInference);
+        var retainedThumbnail = processor.Prepare(thumbnail, spec, mix,
+            TestContext.Current.CancellationToken, fullResolution: false);
+        Assert.True(retainedThumbnail.Denoise!.CacheHit);
+        Assert.Equal(new ushort[] { 10000, 20000, 30000, 32768 }, retainedThumbnail.Rgba16);
+        Assert.Equal(new ushort[] { 5000, 10000, 15000, 65535 }, previous.Rgba16.AsSpan(0, 4).ToArray());
+    }
+
+    [Fact]
+    public async Task FullCacheMiss_CancelledWhileWaitingKeepsExistingFull()
+    {
+        var onnx = MakeNegOnnx(TinyTile);
+        var dir = Dir("full-wait-cancel");
+        File.WriteAllBytes(Path.Combine(dir, "tiny.onnx"), onnx);
+        var spec = TinySpec("full-wait-cancel", "tiny.onnx", onnx, matchGain: false);
+        var blockerSpec = spec with { Id = "full-wait-blocker" };
+        var source = new SourceImage(1, 1, [10000, 20000, 30000, 65535]);
+        var replacement = new SourceImage(1, 1, [60000, 40000, 20000, 65535]);
+        using var processor = new DenoiseProcessor(dir, "CPU");
+        using var blocker = new DenoiseProcessor(dir, "CPU");
+        var mix = new DenoiseSettings(true, 25, 100, 100);
+        processor.Prepare(source, spec, mix, TestContext.Current.CancellationToken);
+        var before = processor.MemoryUsage;
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        cancellation.Cancel();
+        Assert.Throws<OperationCanceledException>(() => processor.Prepare(replacement, spec, mix, cancellation.Token));
+        Assert.Equal(before, processor.MemoryUsage);
+
+        using var waitingCancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        using var release = new ManualResetEventSlim();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var queued = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void Observe(DenoiseProgress progress)
+        {
+            if (progress.ModelId == blockerSpec.Id && progress.Stage == "infer" && progress.Completed == 0)
+            {
+                entered.TrySetResult();
+                release.Wait(TestContext.Current.CancellationToken);
+            }
+            if (progress.ModelId == spec.Id && progress.Stage == "loading") queued.TrySetResult();
+        }
+        DenoiseProcessor.ProgressChanged += Observe;
+        var occupying = Task.Run(() => blocker.Prepare(replacement, blockerSpec, mix,
+            TestContext.Current.CancellationToken), TestContext.Current.CancellationToken);
+        Task<SourceImage>? waiting = null;
+        try
+        {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            waiting = Task.Run(() => processor.Prepare(replacement, spec, mix, waitingCancellation.Token),
+                TestContext.Current.CancellationToken);
+            await queued.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            Assert.Equal(before, processor.MemoryUsage);
+            waitingCancellation.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await waiting);
+            Assert.Equal(before, processor.MemoryUsage);
+            Assert.True(processor.Prepare(source, spec, mix, TestContext.Current.CancellationToken).Denoise!.CacheHit);
+        }
+        finally
+        {
+            waitingCancellation.Cancel();
+            release.Set();
+            try
+            {
+                await occupying;
+                if (waiting is not null)
+                    try { await waiting; } catch (OperationCanceledException) { }
+            }
+            finally { DenoiseProcessor.ProgressChanged -= Observe; }
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void FullCacheMiss_InterruptedReplacementPublishesNoPartialCache(bool nonFiniteOutput)
+    {
+        var onnx = MakeNegOnnx(TinyTile);
+        var dir = Dir("full-interrupted");
+        File.WriteAllBytes(Path.Combine(dir, "tiny.onnx"), onnx);
+        var spec = TinySpec("full-interrupted", "tiny.onnx", onnx, matchGain: false)
+            with { SceneLinear = true };
+        using var processor = new DenoiseProcessor(dir, "CPU");
+        var mix = new DenoiseSettings(true, 25, 100, 100);
+        processor.Prepare(new SourceImage(1, 1, [10000, 20000, 30000, 65535]),
+            spec, mix, TestContext.Current.CancellationToken);
+        var replacement = new SourceImage(new RawSceneData(
+            new FilmBatch.Raw.Raster.RgbImage(1, 1, [nonFiniteOutput ? float.NaN : .2f, .4f, .6f]),
+            null, null, DenoiseTestScene.Geometry(1, 1)));
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        void Cancel(DenoiseProgress progress)
+        {
+            if (!nonFiniteOutput && progress.ModelId == spec.Id && progress.Stage == "infer"
+                && progress.Completed == progress.Total) cancellation.Cancel();
+        }
+        DenoiseProcessor.ProgressChanged += Cancel;
+        try
+        {
+            if (nonFiniteOutput)
+                Assert.Throws<InvalidDataException>(() => processor.Prepare(replacement, spec, mix, cancellation.Token));
+            else
+                Assert.Throws<OperationCanceledException>(() => processor.Prepare(replacement, spec, mix, cancellation.Token));
+        }
+        finally { DenoiseProcessor.ProgressChanged -= Cancel; }
+        Assert.Equal(0, processor.MemoryUsage.TotalBytes);
+        var valid = new SourceImage(new RawSceneData(
+            new FilmBatch.Raw.Raster.RgbImage(1, 1, [.2f, .4f, .6f]),
+            null, null, DenoiseTestScene.Geometry(1, 1)));
+        var retry = processor.Prepare(valid, spec, mix, TestContext.Current.CancellationToken);
+        Assert.False(retry.Denoise!.CacheHit);
+        Assert.Equal(.1f, retry.Scene!.Image.Data[0], 6);
+        Assert.Equal(.2f, retry.Scene.Image.Data[1], 6);
+        Assert.Equal(.3f, retry.Scene.Image.Data[2], 6);
+    }
+
     // ---- 預覽代理混合（快取命中後的重複強度變更） --------------------------------
     // FilePath 一律指向實際存在的檔案（tiny ONNX 本身）：全尺寸來源先跑推論，
     // 代理呼叫才走「來源戳記相同」的快取命中路徑，不會真的去解碼該檔案。

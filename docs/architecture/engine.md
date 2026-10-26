@@ -25,7 +25,7 @@ flowchart LR
 | `GpuEffectPipeline` | `GpuEffectPipeline.cs` | GPU 管線；高斯模糊沿用相同權重、tap 順序與 clamp 邊界，半徑 ≤320 用 14 KiB workgroup tile 共讀來源，較大半徑走直接核心；兩核心共用展平 workgroup 起點，每累計至多 64 Mi 個輸出取樣運算就提交並等待，跨軸／效果也計入，不延長裝置的 10 秒期限 |
 | `GpuSpikeRenderer` | `GpuSpikeRenderer.cs` | **正式的 GPU 算圖器**（名稱沿用自 M0 技術驗證）。超過 GPU 紋理上限或顯示記憶體不足時，自動改走 CPU 並在 `DeviceName` 標示原因 |
 | `CpuFakeRenderer` | `CpuFakeRenderer.cs` | **正式的 CPU 算圖器**（名稱同樣是歷史遺留），內部呼叫 `CpuPipeline`；無 GPU 或使用者強制軟體模式時使用 |
-| `DenoiseProcessor` | `Denoising/` | CPU／GPU 共用的效果前來源階段。正式預覽／匯出仍先全解析度推論；縮圖只處理提供的像素，不重開原檔，另有一筆神經結果快取。RAW 快取代理輸入後混合；sRGB 串流混合／量化並直接縮小；見 [ADR 0002](adr/0002-ai-denoise.md) |
+| `DenoiseProcessor` | `Denoising/` | CPU／GPU 共用的效果前來源階段。正式預覽／匯出仍先全解析度推論；縮圖只處理提供的像素，不重開原檔，另有一筆神經結果快取。RAW 快取代理輸入後混合；sRGB 串流混合／量化並直接縮小；見 [ADR 0002](../adr/0002-ai-denoise.md) |
 | `FilmLookProcessing` | `FilmLookProcessing.cs` | 底片風格的 CPU 參考實作：LUT → 八色相帶（OKLCh）→ 暖色 → 褪色 → 依效果比例混合；`BandWeight` 為色相帶權重 |
 | `FilmLookUniforms` | `FilmLookUniforms.cs` | 傳給 `film/look.wgsl` 的 uniform（`Mix`、`Flags`、`Band0`…`Band7`，與 WGSL `struct LookParams` 對齊） |
 | `PhotoAdjustments` | `PhotoAdjustments.cs` | BasicLinear 後的羽化膚色與單調 Zone 亮度曲線；CPU 逐像素與有界分析共用純量數學，GPU 對應 `linear/photo_adjustments.wgsl` |
@@ -33,6 +33,12 @@ flowchart LR
 | `Oklab` | `Oklab.cs` | 線性 sRGB ↔ OKLab 轉換（與 `look.wgsl` 的 `to_oklab`／`from_oklab` 同係數） |
 | `EffectAssets` | `EffectAssets.cs` | 解析外部素材：雙重曝光的第二張照片、漏光與灰塵的材質檔。材質庫為空時改用程序化效果 |
 | `RenderView` / `FrameStats` | `RenderView.cs` | 窗口渲染的視圖（畫框內的子矩形）與 Main 整張渲染記錄的全畫框統計。`IPreviewRenderer.RenderWindow` 只算窗口，結果等於「整張渲染後裁切」（逐通道誤差 ≤ 1 LSB、平均 < 0.05 LSB） |
+
+**AI 像素保留量**：`DenoiseProcessor.MemoryUsage` 分列未混合神經結果、來源與既有縮放／顯示陣列，以及預覽尺寸混合輸入。full／thumbnail 共用的陣列依參考去重；查詢不建立 RAW 的延遲 `Rgba16`，重用的去重集合在查詢後清空，不成為保留者。`SharedMemoryUsage` 在未使用 AI 時回傳零，不建立處理器或 session。這只是 AI 快取可達的主要 managed 像素陣列，不含遮罩、中繼資料、session tensor、ORT/native 或 GPU 記憶體；不是 heap、RSS 或入場預算，不能與程序 RSS 相加。
+
+全品質 cache miss 取得行程級 `InferenceGate` 後，先檢查取消並再次查找；仍未命中才釋放舊 full 結果，再載入／推論新來源。等待中或預先取消的呼叫、同來源混合命中與縮圖工作都不逐出 full。查找集中於禁止內嵌的 `FindCached`，避免未命中的舊結果被長時間推論的 JIT stack frame 保留；不在產品路徑加入強制 GC。新 full 取消／失敗不發布半成品，也不恢復舊快取；返回舊照片可能重推論，既有呼叫者持有的結果與設定不變。
+
+神經快取命中後，相同請求來源物件與相同 `DenoiseSettings` 可沿用最近一筆仍存活的混合 `SourceImage`，讓 GPU 來源紋理依參考命中；模型／RAW 選項／來源快取失效時隨神經結果作廢。單槽只弱參考輸入與成品，不把全尺寸混合像素加入 AI 強保留量。首次推論回報 `CacheHit=false`，首次命中建立 `true` 的報告後才重用；改變混合量或遮罩包裝來源會重建，不改像素公式、正式解析度、推論／模型或取消語意。
 
 **處理順序**（`CpuPipeline.Process` 與 `GpuEffectPipeline.Process` 相同）
 
@@ -60,6 +66,8 @@ RAW 來源保持未夾取的浮點線性 Rec.2020，`Rgba16` 只在原圖比較�
 **基本調整的細節契約**：`basic.structure` 比較目前像素與 Gaussian 基底的亮度，兩者必須來自相同、尚未套用全域顯示調整的影像。`CpuPipeline.BasicDisplay` 與 `basic_display.wgsl` 都先做細節，再做亮度／對比／亮部陰影／飽和；不能用調整後亮度與調整前基底相減，再除以正負通道相消後接近零的亮度。均勻色塊沒有空間細節，即使極端全域設定下也不應被細節增益改色；回歸入口為 `EffectPipelineTests.BasicStructure_UniformColourRemainsUniformUnderExtremeGlobalAdjustments`。這項順序修正不增加 blur、pass 或暫存，不變更參數格式；細節與全域調整同時非零的舊設定會得到修正後外觀，單獨啟用任一類則維持原行為。
 
 **暗部還原契約**：獨立的 `shadow_recovery` 模組預設關閉，不重定義顯示域的 `basic.shadows`。在未夾取的工作線性 sRGB 上，以 `log2((max(Y,0)+2⁻⁷)/0.18)` 作導引，按 alpha 加權的代理格統計與分數盒狀 guided filter 求局部基底，再把亮度／色度降噪與共同 RGB 增益套回來源。增益曲線不加黑位偏移，基底階調斜率下限 0.3；高於膝點的基底增益為 1，不在此處裁掉 HDR。alpha 不變，完全透明的隱藏 RGB 不進鄰域；純黑仍為黑。一般 RGB 來源先按既有流程線性化。
+
+guided 統計先對導引作固定平移 `v=u+4`，累積 `(Σw,Σw·v,Σw·v²)`，重建後減回 4；變異數與理想 guided 基底不變，避免深暗部以兩個接近的大二階矩相減而丟失小變異數。CPU／GPU 同步採用，原導引仍供降噪差值使用，不加 pass、緩衝、量化或控制參數。`Recovery_SmoothDarkCoverageMatchesIndependentGuideReference` 以獨立 double／中心差平方的字面值檢查鏡射與不完整代理格；實拍修復與非普遍性的 2 LSB 研究目標見[追加數值證據](../evidence/performance-local-2026-10-26.md#12-暗部-guided-矩抵消修復)。
 
 局部半徑按裁切後短邊比例；降噪 σ 按 `ReferenceWidth/Height` 的來源像素足跡換算，因此縮小預覽可能減弱／跳過次像素降噪，不宣稱和全圖逐像素相同。CPU 重用既有兩張暫存，GPU 重用工作紋理；有效曝光與兩種降噪均為零時直接跳過，不讀取未寫入的暫存。取消在各 pass／列間檢查。`PhotoSamplingSettings` 暫停此局部算子，避免白平衡／Zone 取樣納入創意映射；參數沿用 Settings、預設、貼上、undo 與匯出快照，專案格式仍為 3。實際操作與測試入口見[建置說明](../building.md#局部暗部還原)，研究／解碼比較的證據與產品驗收分列於[暗部研究](../research/shadow-recovery-survey.md)。
 

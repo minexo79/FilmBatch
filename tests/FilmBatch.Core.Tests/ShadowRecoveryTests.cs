@@ -176,6 +176,46 @@ public sealed class ShadowRecoveryTests
     }
 
     [Fact]
+    public void Recovery_SmoothDarkCoverageMatchesIndependentGuideReference()
+    {
+        const int width = 225, height = 145;
+        float[] greys = [.004f, .0042f, .0044f, .0046f, .0048f, .005f, .0052f, .0054f, .0056f,
+            .0058f, .006f, .0062f, .0064f, .0066f, .0068f, .007f, .0072f];
+        var pixels = new float[width * height * 4];
+        for (var y = 0; y < height; y++)
+        for (var x = 0; x < width; x++)
+        {
+            var i = (y * width + x) * 4;
+            pixels[i] = pixels[i + 1] = pixels[i + 2] = greys[(x / 4) % greys.Length];
+            pixels[i + 3] = ((x / 4) % 3) switch { 0 => 1f, 1 => .25f, _ => .5f };
+        }
+        var source = new SourceImage(width, height, new ushort[pixels.Length]);
+        var parameters = ModuleParams.From(source, Recovery().With("shadow_recovery.radius", 10.0));
+        var output = new float[pixels.Length];
+        ShadowRecovery.Apply(pixels, output, new float[pixels.Length], width, height, parameters,
+            TestContext.Current.CancellationToken);
+
+        // Independent f64 reference: evaluate variance from weighted squared deviations, not E[u²]−E[u]².
+        // Rows are constant; the vertical coverage factors cancel. Radius 14.5 gives proxy s=4, r=3.625.
+        // Include mirrored borders and the incomplete right/bottom proxy cells; compare the lifted RGB.
+        (int X, double Value)[] reference =
+        [
+            (0, .02696592362752479), (32, .03635096053321995), (64, .045933400630358834),
+            (96, .03525138552569103), (128, .044364222415281054), (160, .03403072440436738),
+            (192, .0432930439246547), (224, .03334405075457169),
+        ];
+        foreach (var y in new[] { 0, 72, height - 1 })
+        foreach (var (x, expected) in reference)
+        {
+            var i = (y * width + x) * 4;
+            var ulp = MathF.BitIncrement((float)expected) - (float)expected;
+            for (var c = 0; c < 3; c++)
+                Assert.InRange(Math.Abs(output[i + c] - expected), 0, 8 * ulp);
+            Assert.Equal(pixels[i + 3], output[i + 3]);
+        }
+    }
+
+    [Fact]
     public void GpuRecovery_MatchesCpuOnDarkEdgesAndFractionalAlpha()
     {
         GpuDevice device;

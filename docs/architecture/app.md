@@ -108,6 +108,8 @@ flowchart TB
 
 直方圖的平滑只在 `Controls/HistogramView.cs` 的顯示高度上套用五格 `[1,4,6,4,1]/16` 濾波，不改 `ImageHistogram` 的原始 bins 或黑白裁切比例。每次資料更新建立新的 `StreamGeometry`，只在相同資料的重繪間快取；重新 `Open()` 舊 geometry 會累加 figures。空資料與卸載必須清掉舊圖，避免把歷史曲線當成目前統計。
 
+資源使用率沿用既有左下角 RAM 區塊：提示分列系統 RAM、FilmBatch RSS 與 AI retained pixels（神經／來源／預覽輸入），不相加。`SystemMonitor` 每秒在背景取得值型別快照，經既有 `_post` 更新 UI；監控本身不建立 shared AI processor／ORT session。提示在語言切換時立即更新，關閉原有「顯示使用率」偏好即一起隱藏。RAM 百分比與 hot 門檻不變；非 Windows 仍沿用 .NET GC 的系統記憶體觀測，程序尚未 GC 時可能顯示零，這不是 AI 像素統計或即時 OS 計數器。
+
 ### 主題
 
 - `Themes/Colors.axaml`：所有顏色 token（`FB.*Brush`）。介面灰階必須 R = G = B，強調色只有一個藍色。新顏色請加 token，不要在 View 裡寫色碼。

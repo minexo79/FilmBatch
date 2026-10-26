@@ -99,7 +99,7 @@
               <TextBlock Classes="pill-label" Text="GPU" />
               <TextBlock Classes="numeric" Classes.hot="{Binding GpuHot}" Text="{Binding GpuText}" />
             </StackPanel>
-            <StackPanel Orientation="Horizontal" Spacing="5">
+            <StackPanel Orientation="Horizontal" Spacing="5" ToolTip.Tip="{Binding RamDetails}">
               <TextBlock Classes="pill-label" Text="RAM" />
               <TextBlock Classes="numeric" Classes.hot="{Binding RamHot}" Text="{Binding RamText}" />
             </StackPanel>

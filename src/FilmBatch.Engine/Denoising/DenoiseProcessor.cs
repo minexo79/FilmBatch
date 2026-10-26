@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using FilmBatch.Core;
 using FilmBatch.Core.Params;
@@ -61,6 +62,51 @@ public sealed class DenoiseProcessor : IDisposable
     private NeuralResult? _cached;
     private NeuralResult? _thumbnailCached;
     private bool _disposed;
+    private readonly HashSet<Array> _pixelBuffers = new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>取得已建立共用處理器的主要像素保留量；不建立處理器或 ORT session。</summary>
+    public static DenoiseMemoryUsage SharedMemoryUsage
+    {
+        get { lock (SharedLock) return _shared?.MemoryUsage ?? default; }
+    }
+
+    /// <summary>取得 full／thumbnail 快取可達的主要像素保留量，不觸發顯示編碼或推論。</summary>
+    public DenoiseMemoryUsage MemoryUsage
+    {
+        get
+        {
+            lock (_sync)
+            {
+                long neural = 0, sources = 0, previews = 0;
+                try
+                {
+                    Count(_cached);
+                    Count(_thumbnailCached);
+                    return new(neural, sources, previews);
+                }
+                finally
+                {
+                    // 只重用集合容量；統計本身不能延長任何像素陣列的存活期。
+                    _pixelBuffers.Clear();
+                }
+
+                void Count(NeuralResult? result)
+                {
+                    if (result is null) return;
+                    neural += Add(result.Rgb);
+                    sources += result.FullSource.CollectRetainedPixelBytes(_pixelBuffers);
+                    if (result.Key.Identity is SourceImage identity)
+                        sources += identity.CollectRetainedPixelBytes(_pixelBuffers);
+                    if (result.Previews is not { } inputs) return;
+                    foreach (var input in inputs)
+                        previews += Add(input.Original) + Add(input.Denoised);
+                }
+
+                long Add(float[] pixels) =>
+                    _pixelBuffers.Add(pixels) ? pixels.LongLength * sizeof(float) : 0;
+            }
+        }
+    }
 
     /// <summary>模型目錄每次存取時重新解析（<see cref="AppPaths.OverrideRoot"/> 變動即生效）。</summary>
     private DenoiseModelStore Store
@@ -144,8 +190,7 @@ public sealed class DenoiseProcessor : IDisposable
         lock (_sync)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            var candidate = fullResolution ? _cached : _thumbnailCached;
-            cached = candidate is { } hit && hit.Key == key ? hit : null;
+            cached = FindCached(key, fullResolution);
         }
         if (cached is not null)
         {
@@ -168,8 +213,10 @@ public sealed class DenoiseProcessor : IDisposable
         {
             lock (_sync)
             {
-                var candidate = fullResolution ? _cached : _thumbnailCached;
-                cached = candidate is { } completed && completed.Key == key ? completed : null;
+                cancellationToken.ThrowIfCancellationRequested();
+                cached = FindCached(key, fullResolution);
+                // 新 full 工作已入場才放掉舊結果；等待、命中及縮圖都不能逐出 full。
+                if (cached is null && fullResolution) _cached = null;
             }
             if (cached is not null)
                 return Materialize(source, cached, spec, cacheHit: true, ds, cancellationToken);
@@ -199,6 +246,14 @@ public sealed class DenoiseProcessor : IDisposable
         {
             InferenceGate.Release();
         }
+    }
+
+    // 未命中的舊結果不得留在長時間推論的 stack frame；禁止 JIT 把查找內嵌回呼叫端。
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private NeuralResult? FindCached(CacheKey key, bool fullResolution)
+    {
+        var candidate = fullResolution ? _cached : _thumbnailCached;
+        return candidate is not null && candidate.Key == key ? candidate : null;
     }
 
     private static int TilesFor(DenoiseModelSpec spec, int w, int h) =>
@@ -278,7 +333,7 @@ public sealed class DenoiseProcessor : IDisposable
     }
 
     /// <summary>
-    /// 把快取的神經結果套上後神經混合並封裝成新的 SourceImage（含 report）。三種路徑：
+    /// 把快取的神經結果套上後神經混合並封裝成 SourceImage（含 report）；命中時弱重用同來源／同混合的存活成品。三種建立路徑：
     /// • 匯出／同尺寸：全解析度混合→量化／寫回場景（與舊版逐位元相同，含透明像素
     ///   保留原始 RGB）。
     /// • 場景線性代理：mix 為逐像素仿射——先把原始／降噪輸入 box 到預覽尺寸（依尺寸
@@ -288,6 +343,25 @@ public sealed class DenoiseProcessor : IDisposable
     ///   直接寫出預覽尺寸；與舊鏈逐位元相同，但不配置全解析度暫存。
     /// </summary>
     private SourceImage Materialize(SourceImage source, NeuralResult neural,
+        DenoiseModelSpec spec, bool cacheHit, DenoiseSettings ds, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        if (!cacheHit) return CreatePreparedSource(source, neural, spec, cacheHit, ds, ct);
+        lock (_sync)
+        {
+            if (neural.Materialized is { } cached && cached.Settings == ds
+                && cached.Input.TryGetTarget(out var input) && ReferenceEquals(input, source)
+                && cached.Output.TryGetTarget(out var output))
+                return output;
+        }
+        var prepared = CreatePreparedSource(source, neural, spec, cacheHit, ds, ct);
+        ct.ThrowIfCancellationRequested();
+        lock (_sync)
+            neural.Materialized = (new(source), ds, new(prepared));
+        return prepared;
+    }
+
+    private SourceImage CreatePreparedSource(SourceImage source, NeuralResult neural,
         DenoiseModelSpec spec, bool cacheHit, DenoiseSettings ds, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
@@ -507,6 +581,10 @@ public sealed class DenoiseProcessor : IDisposable
         /// <summary>場景線性代理的預覽尺寸 box 輸入（最近 4 個尺寸，MRU 在前）。
         /// 依附於本結果：結果失效時一併拋棄，不需額外失效邏輯；由 <see cref="_sync"/> 保護。</summary>
         internal List<ScenePreview>? Previews;
+
+        // The GPU/caller owns mixed pixels; this slot must not keep another full image alive.
+        internal (WeakReference<SourceImage> Input, DenoiseSettings Settings,
+            WeakReference<SourceImage> Output)? Materialized;
     }
 
     /// <summary>單一模型的 ORT session 與可重用 tensor 平面。</summary>

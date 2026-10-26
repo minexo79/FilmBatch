@@ -16,6 +16,7 @@ public sealed partial class MainWindowViewModel
     private SystemMonitor? _monitor;
     private Timer? _monitorTimer;
     private int _monitorBusy;
+    private SystemMonitor.Snapshot _resourceSnapshot;
 
     /// <summary>預覽正在解碼或算圖（底列左側的進度條）。</summary>
     [ObservableProperty]
@@ -44,6 +45,15 @@ public sealed partial class MainWindowViewModel
     private string _ramText = "—";
     [ObservableProperty]
     private double _ramPercent;
+
+    /// <summary>取得系統 RAM、程序 RSS 與 AI 像素保留量的分列說明，不將三者相加。</summary>
+    public string RamDetails => Loc.Format("Tip.RamUsage",
+        Gb(_resourceSnapshot.RamUsedBytes), Gb(_resourceSnapshot.RamTotalBytes),
+        Gb(_resourceSnapshot.AppBytes), _resourceSnapshot.AiPixels.TotalBytes / (1024.0 * 1024),
+        _resourceSnapshot.AiPixels.NeuralBytes / (1024.0 * 1024),
+        _resourceSnapshot.AiPixels.SourceBytes / (1024.0 * 1024),
+        _resourceSnapshot.AiPixels.PreviewBytes / (1024.0 * 1024));
+
     [ObservableProperty]
     private string _diskText = "—";
 
@@ -170,6 +180,8 @@ public sealed partial class MainWindowViewModel
     private void ApplySnapshot(SystemMonitor.Snapshot s)
     {
         if (_disposed || !ShowResourceUsage) return;
+        _resourceSnapshot = s;
+        OnPropertyChanged(nameof(RamDetails));
         CpuPercent = s.CpuPercent ?? 0;
         CpuText = s.CpuPercent is { } cpu ? $"{cpu:F1}%" : "—";
         GpuPercent = s.GpuPercent ?? 0;

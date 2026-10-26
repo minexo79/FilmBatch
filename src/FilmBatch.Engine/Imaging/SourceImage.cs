@@ -159,6 +159,21 @@ public sealed class SourceImage
         }
     }
 
+    /// <summary>計入已存在的主要像素陣列與縮放變體，不建立延遲顯示編碼。</summary>
+    internal long CollectRetainedPixelBytes(HashSet<Array> buffers)
+    {
+        long bytes = 0;
+        if (Scene is { } scene && buffers.Add(scene.Image.Data))
+            bytes += scene.Image.Data.LongLength * sizeof(float);
+        var display = _rgba16 ?? (_display is { IsValueCreated: true } lazy ? lazy.Value : null);
+        if (display is not null && buffers.Add(display))
+            bytes += display.LongLength * sizeof(ushort);
+        lock (_scaledLock)
+            foreach (var variant in _scaled)
+                bytes += variant.Image.CollectRetainedPixelBytes(buffers);
+        return bytes;
+    }
+
     /// <summary>縮小（box filter），用於縮圖或拖曳中的降解析度預覽。RAW 來源在場景域縮放並保留中繼資料。</summary>
     public SourceImage Downscale(int maxLongEdge)
     {

@@ -313,7 +313,7 @@ App 流程（選取、按 1:1 按鈕、平移、滾輪放大 6 格、`Ctrl+0` �
 - **共用並行度**：移除 `RawParallel`，保留唯一 `RawProcessingScope.Options`，預設半數邏輯核心，背景比例只能再降低；既有範圍外的 Engine／原生迴圈沒有擴大改寫。這是每個迴圈的上限，不是程序 CPU 上限。
 - **畫框與釋放**：保留來源／裁切的固定 `LayoutFrameSize`，不再從已取整顯示 bitmap 推導；上述 `e74cb72`／`bd2405b` 為歷史引入點，不是本輪仍未修的缺陷。保留上游 1024 級距／250 ms 取捨，修正沒有窗口時被當成 1024 級距的判斷。Aggressive GC 只在確實釋放 Full／窗口來源後執行，但仍可能暫停託管執行緒。
 - **不採用的重構**：RAW 的負值保留、純量 transfer、HSV 捨入與 Rec.2020 亮度不等同 `common/color.wgsl`，不能直接替換；只保護未選取 `pow` 分支的輸入。AHD 的整張結果與色彩的逐帶提交契約不同，不增加泛用 `TryExecute`。沒有證據支持本輪重寫四個 AHD pass、改 CFA 格式或新增持久緩衝區／table 快取。保留原有 f32 容差，不加入無關的捨入屏障。
-- **文件**：更新 RAW 內嵌縮圖、量化窗口、GPU 政策、環境停用、記憶體估計與 CPU 上限；`VERIFY.md` 加入相應入口。[現行回歸與精度門檻](building.md#raw-gpu-與載入隔離回歸)取代先前文件偏差。
+- **文件**：更新 RAW 內嵌縮圖、量化窗口、GPU 政策、環境停用、記憶體估計與 CPU 上限；`VERIFY.md` 加入相應入口。[現行回歸與精度門檻](testing.md#raw-gpu-與載入隔離回歸)取代先前文件偏差。
 
 ### 合併後實測
 
@@ -375,6 +375,57 @@ App 流程（選取、按 1:1 按鈕、平移、滾輪放大 6 格、`Ctrl+0` �
 新增三項回歸：RAW 貼上 AI（含裁切交錯）兩參數案例——修復前要求 `nafnet-sidd.onnx` 失敗、修復後來源保持場景線性且失敗終態要求 `rawnind-linear.onnx`；取消 AI 預覽案例——修復前另一張的明確重算永遠等不到（30 秒逾時），修復後照常送達、目標照片不靜默完成也不記終態，重新選回後的再送達仍回報缺少模型而非略過 AI。
 
 原生取樣驗收（macOS M3 · Metal，3 張：DSC02462/DSC03376 ARW＋IMG_7548 JPG）：兩張 ARW 縮圖以 `rawnind-linear`（CoreML）單一 bounded tile、場景線性來源完成；DSC03376 全尺寸預覽 247 tiles、13.26s 推論；IMG_7548 啟用降噪回報 4 次 `FileNotFoundException` 指明 `nafnet-sidd.onnx` 且儲存的 `denoise.enabled` 保留——無模型代換、無靜默停用。21 張照片與專案 SHA-256 前後不變。附註：原生驗收器需顯示器供電（`caffeinate -disu`），Avalonia 調度器掛在 CFRunLoop，顯示器休眠時 UI 延續會凍結；縮圖列進度仍由背景執行緒上報。
+
+## 上游效能 Survey 與隔離本機實驗（2026-10-26）
+
+依使用者要求，先把 LightCraft v0.14.0／main、RapidRAW v1.6.7／main、darktable 5.6.2／5.7 與 FilmBatch `890b13f` 的版本、來源、RAW／CPU／GPU、AI、亮暗部及採用界線寫入[完整 Survey](research/performance-raw-ai-survey.md)，再依[預先規格](superpowers/plans/2026-10-26-performance-local-experiments.md)在 M3／Metal、同一 7008×4672 Sony ARW 隔離副本循序實跑。產品、shader、模型、schema、oracle 未改；沒有 commit／push／發行。
+
+- **保留來源身分有實測收益**：真正 BGRA8 預覽，同物件／等像素新物件各 6 筆中位 5.24／20.20 ms、配置 6.52／32.58 MiB，完整輸出 bytes 相同。初輪錯用會清來源快取的 `Render16` 匯出入口，保留為匯出控制，另追加正確預覽入口，不以文件改判原數據。
+- **AI 主要保留量已定位**：真實 RawNIND／CoreML＋CPU，縮圖 1 tile、正式預覽 247 tiles；12 次強度混合命中不重推論。Full 神經快取存活約 788 MiB managed、dispose 後約 31–34 MiB；新顯示尺寸仍可能有 135–184 ms 的 box 準備成本。配置、GC 後存活、採樣 RSS 分列，不推廣成硬上限／穩定交互 p95。
+- **精度優先於擴大卸載**：Full CPU／Metal policy 暖機 6 對中位 2.019／0.666 s，但不同 RAW 解碼結果交同一 CPU 算圖器，最大輸出差 13,650 LSB、1,899 個 RGB 分量超過 2。追加四組 AHD／colour 分離後，大離群隨 AHD 切換重現；colour-only 場景最大差約 5.69e-5、輸出最大 10 LSB。這只是 AHD 路徑的歸因邊界，未分開其原始輸出與高光重建，也不知道哪側更正確；不宣稱解碼等價。
+- **保留失敗與不採用裁決**：1600 px 暗部還原＋亮部調整有 1 個分量為 3 LSB，tone mode 依預先 2 LSB 研究目標 exit 2，未放寬判準。全域 rational shoulder 雖能匹配亮部 ROI 均值，卻明顯壓窄分布並改變顯示 RGB 比例，不採用為 Basic 替代。
+- **補齊 AI／CPU 實驗**：RawNIND 與 NAFNet 各完成 CPU／CoreML 新 session 首次＋六筆真推論，均 1 tile／非 cache hit，顯示差最大 1 LSB。完整 247-tile 未混合 neural RGB 的 374.70 MiB f32 三次寫入／flush／讀回逐 byte 相同；不是已完成持久產品快取。RAW 1／2／4 workers 各六筆交錯 Full、場景 hash 相同，wall 中位約 5.73／2.98／1.65 s，不藉降低 workers 宣稱少做工作。
+- **真正局部亮部候選亦不採用**：獨立 alpha 加權 log-guided base 的兩尺寸×兩半徑均達不到原等亮度目標；合成控制保留更多 checker 振幅，也保留更多雜訊並有階梯 overshoot。另以原定 k=1.75 補量 apply／實際 Metal finisher，四組 fresh／reused 完整 float 與輸出 hash 相同、收尾最大 1 LSB；不把這個非等亮度控制當成品質通過。
+
+完整逐輪結果、組件／輸入 digest、命令／exit 與限制見[實測證據](evidence/performance-local-2026-10-26.md)。774 個產品來源檔及隔離輸入／來源副本／權重 digest 不變。原 probe／診斷 source、收據與重播說明保存在 gitignored `artifacts/verification/2026-10-26-performance-local.tar.gz`；不含照片、模型、點陣、執行檔或私人絕對路徑。未執行本輪原生 GUI、Windows／iOS、多相機或四產品同機比較。
+
+## P1：AI 像素保留量（2026-10-26）
+
+研究已先提交為 `6c1afa1`，依[分段實作計畫](superpowers/plans/2026-10-26-performance-p1-implementation.md)先補最小觀測面：`DenoiseMemoryUsage` 區分 neural／source／preview 陣列，共享來源只計一次，包含已存在的縮放與顯示陣列；查詢不建立延遲顯示像素或 shared processor，集合用後清空。不改像素數學、provider、tile、全品質或任何精度門檻，也不把保留量誤稱為 RSS／硬預算。
+
+新增三項真實微型 ORT 回歸，先觀察 API 缺席失敗，再通過 accounting 與既有降噪共 39 項測試。隔離 Sony 7008×4672 RAW／RawNIND CoreML＋CPU smoke 保持 247 tiles；neural／source 各 392,896,512 B，200×133 preview 輸入 638,400 B，合計 786,431,424 B。兩次強度變更命中且還原像素 hash 相同；暖集合後 100 次查詢配置 0 B。Dispose 快照歸零，受控 GC 後 neural 弱參考已回收，來源與模型 digest 不變。這是單次本機路徑證據，不推廣為程序峰值或跨平台驗收。
+
+## P1：既有 RAM 區塊的 AI 明細（2026-10-26）
+
+接續 accounting 提交 `74e8690`，只在既有 RAM StackPanel 加提示；背景快照帶回程序 RSS 與 AI neural／source／preview 位元組，沒有新狀態列、偏好或相依。沿用 RAM 百分比、hot 門檻與顯示開關；繁中／英文同步提供排除範圍與「不是預算、不可與 RSS 相加」，切換語言立即重算提示。
+
+原生 macOS MainWindow 先以缺少 AI／RSS 明細失敗，再以真實 RawNIND 247-tile CoreML＋CPU、實際照片與 Metal 畫面完成驗收：提示顯示約 850.9 MiB AI pixels，與 1.26–1.31 GiB 程序 RSS 分列；空快取監控未建立 shared processor。兩語系 ToolTip 實際點陣已檢視，英文縮短欄位標籤以保留完整末行；原有顯示偏好可隱藏區塊。相關 App 回歸 28/28；最後資源版本語系回歸 11/11。首輪螢幕區域擷取失敗屬驗收器問題，改為擷取已開啟的原生 ToolTip／視窗，失敗收據保留，產品未為驗收器加後門。
+
+## P1：新 full 推論入場釋放舊結果（2026-10-26）
+
+接續 RAM 提示提交 `d36b04e`，全品質 miss 只在取得既有推論閘門、確認未取消且二次查找仍 miss 後清除舊 full。縮圖、同來源強度混合與等待中取消仍保留原快取；已交付的畫面不失效。新工作失敗或取消後不發布半成品、不回復舊快取，回到前張可能重推論；沒有新增品質降級、公共清除設定或產品端強制 GC。
+
+四項准入／取消案例先有三個失敗，再通過。初版只清 `_cached` 雖通過單元測試，真實兩張 Sony RAW 的弱參考 smoke 仍見舊 neural／source 存活；把兩次查找集中到禁止內嵌的 `FindCached` 後，同一 smoke 的兩份舊陣列均已回收。新推論開始時可達快取由 787,069,824 B 降至僅縮圖的 638,400 B；兩張照片與取消後重試皆保持 RawNIND／CoreML＋CPU、247 tiles，混合命中、縮圖隔離、先前畫面及重試像素 hash 均保持。GC 僅在外部 smoke 中辨識根存活；10 ms 採樣 RSS 峰值 2,584,559,616 B 不是未干預的比較實驗或新的硬上限。
+
+最後 Core：861 passed／28 skipped／0 failed；跳過為 21 項未提供的 CC0 RAW corpus、5 項 Windows-only、1 項 RAW oracle 無資料及 1 項未配置的既有臨時 probe。App：395 passed／0 skipped／0 failed。兩張原始 RAW、隔離副本與已安裝 RawNIND digest 皆與固定基準相同。重播 driver、失敗／成功收據及 TRX 保存於 gitignored `artifacts/verification/2026-10-26-performance-p1.tar.gz`，不含照片、權重、點陣圖、執行檔或私人絕對路徑。Windows／iOS 原生及多相機完整驗收不在此批證據內。
+
+## AI 命中後的來源重用與 CPU 分工（2026-10-26）
+
+接續 P1 full-cache 生命周期提交 `3f81cf3`，使用者追加 AI 卡頓／GPU-only 問題後先確認實際 ORT placement：固定 RawNIND 49／49 nodes 交 CoreML，NAFNet 1245／1246 交 CoreML、`/Pad` 留在 ORT CPU；隔離 strict 控制分別可執行／明確拒絕，不改產品 fallback 或模型。`MLComputeUnits=ALL` 的偏好 GPU 計畫不是實際逐算子硬體 trace，也不代表 host pack／mix／IO 沒有 CPU 工作。完整 CPU 像素與 renderer／RAW fallback 盤點見[追加實測 §11](evidence/performance-local-2026-10-26.md#11-追加gpu-only-可行性cpu-路徑與-ai-命中後重用修復)。
+
+真實 Sony RAW／RawNIND 247 tiles 完成後，只交替改曝光仍每幀混合出新 `SourceImage`，破壞 GPU 來源快取。修正只為 neural 結果增加同來源／同 mix 的單槽弱重用，不改數學或品質，不增加混合 Full 的強保留。M3／Metal 的後七幀：Prepare wall 中位 7.6495→0.0291 ms，Render 20.6080→3.7887 ms，來源 entries 由 2–6 變為固定 1；沒有 CPU renderer fallback。交替影格及首次未快取 mix 的對照逐 byte 相同；額外 1×1 真實模型弱參考控制可回收輸出。這不是原生 UI p95，首次準備本次仍約 13.24 s。
+
+三個 Tiny Neg ORT 新案例先失敗再通過；最後相關 Core 67／67，完整 Core 864 passed／28 skipped／0 failed。App 首輪 394 passed／1 failed，揭露取消 fixture 沒有等初次四張掃描完成就斷言整批停止；只補齊此前提，不改產品取消邏輯或斷言。同類 11／11、最後完整 App 395／395。現行 Engine 契約、研究／證據與排序計畫同步更新；RAW、兩個權重及隔離副本 digest 不變，收據保存於 gitignored `artifacts/verification/2026-10-26-ai-source-reuse.tar.gz`。
+
+尚未修復：首次全尺寸推論佔用 render worker、讀回／histogram／display fit 的同步成本，以及 RAW AHD 與 combined 3 LSB 的數值問題；不把這一筆快取修復宣稱成「全 GPU」或全部卡頓已消失。Windows／DirectML、iOS 與原生實體手勢延遲此輪未驗。
+
+## 暗部 guided 矩的數值穩定化（2026-10-26）
+
+接續 AI 命中來源重用 `cb9bec4`，先修已定位的 combined 3 LSB 反例；RAW AHD 的方向分歧仍分開處理。相同 CPU scene 的分段 Metal 擷取可逐 byte 重建產品結果，確認暗部約 −4 的 guide 直接以 `E[u²]−E[u]²` 求變異數會放大捨入差。CPU／WGSL 改累積 `v=u+4` 的矩、基底重建後減回；理想 guided 基底不變，不增 pass／緩衝／設定，不改降噪差值、HDR／alpha、效果順序或精度門檻。
+
+獨立 double 的中心差平方推導字面值，永久回歸在舊碼失敗、修正後通過，含分數 alpha、鏡射與右／下不完整代理格。Sony RAW 的 512／1600 四組控制及 511／513／1599／1601 相鄰尺寸合併控制共 12 組，實際 Metal 與 CPU `Render16` 最大差均 1 LSB、alpha 完全相同、無 fallback，來源浮點與原檔 digest 不變；原 3 LSB 收據不回改。相關算圖回歸 88 passed／0 skipped／0 failed，Naga 30.0.1 驗證全部 43 個嵌入 WGSL 通過；最初 PATH 缺 naga 的未執行收據亦保留。
+
+現行 Engine 契約、排序計畫與[追加數值證據](evidence/performance-local-2026-10-26.md#12-暗部-guided-矩抵消修復)同步更新；文字重播 driver、獨立推導、RED／GREEN 與 digest 封存於 gitignored `artifacts/verification/2026-10-26-shadow-moments.tar.gz`，不含照片／模型／點陣／執行檔或私人路徑。未驗 Windows／Vulkan／iOS、實體 UI 手勢 p95 或跨相機普遍精度；不宣稱消除首次推論與讀回卡頓。
 
 ## 如何新增歷史列
 
