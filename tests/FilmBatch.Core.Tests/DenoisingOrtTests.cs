@@ -244,6 +244,84 @@ public class DenoisingOrtTests : IDisposable
     }
 
     [Fact]
+    public void MemoryUsage_SharedFullAndThumbnailSourceIsCountedOnce()
+    {
+        var onnx = MakeNegOnnx(TinyTile);
+        var dir = Dir("memory-shared");
+        File.WriteAllBytes(Path.Combine(dir, "tiny.onnx"), onnx);
+        var spec = TinySpec("memory-shared", "tiny.onnx", onnx, matchGain: false);
+        var source = new SourceImage(1, 1, [10000, 20000, 30000, 65535]);
+        using var processor = new DenoiseProcessor(dir, "CPU");
+        var mix = new DenoiseSettings(true, 25, 100, 100);
+
+        processor.Prepare(source, spec, mix, TestContext.Current.CancellationToken);
+        Assert.Equal(12, processor.MemoryUsage.NeuralBytes);
+        Assert.Equal(8, processor.MemoryUsage.SourceBytes);
+        processor.Prepare(source, spec, mix, TestContext.Current.CancellationToken, fullResolution: false);
+        var usage = processor.MemoryUsage;
+        Assert.Equal(24, usage.NeuralBytes);
+        Assert.Equal(8, usage.SourceBytes);
+        Assert.Equal(0, usage.PreviewBytes);
+        Assert.Equal(32, usage.TotalBytes);
+
+        processor.Dispose();
+        Assert.Equal(0, processor.MemoryUsage.TotalBytes);
+    }
+
+    [Fact]
+    public void MemoryUsage_CountsExistingSceneVariantsWithoutCreatingDisplayPixels()
+    {
+        var onnx = MakeNegOnnx(TinyTile);
+        var dir = Dir("memory-scene");
+        File.WriteAllBytes(Path.Combine(dir, "tiny.onnx"), onnx);
+        var spec = TinySpec("memory-scene", "tiny.onnx", onnx, matchGain: false)
+            with { SceneLinear = true };
+        var source = new SourceImage(new RawSceneData(
+            new FilmBatch.Raw.Raster.RgbImage(3, 2, Enumerable.Repeat(.2f, 18).ToArray()),
+            null, null, DenoiseTestScene.Geometry(3, 2)));
+        using var processor = new DenoiseProcessor(dir, "CPU");
+        processor.Prepare(source, spec, new(true, 25, 100, 100), TestContext.Current.CancellationToken);
+
+        Assert.Equal(72, processor.MemoryUsage.NeuralBytes);
+        Assert.Equal(72, processor.MemoryUsage.SourceBytes);
+        Assert.Equal(144, processor.MemoryUsage.TotalBytes);
+        source.ScaledTo(2); // 2×1×3 float；由 source 保留，不另取用顯示編碼。
+        Assert.Equal(96, processor.MemoryUsage.SourceBytes);
+        _ = source.Rgba16; // 只有明確取用才建立 3×2×4 ushort。
+        Assert.Equal(144, processor.MemoryUsage.SourceBytes);
+        Assert.Equal(216, processor.MemoryUsage.TotalBytes);
+    }
+
+    [Fact]
+    public void MemoryUsage_PreviewInputEvictionRemovesSupersededPixelBytes()
+    {
+        var onnx = MakeNegOnnx(TinyTile);
+        var dir = Dir("memory-previews");
+        var modelPath = Path.Combine(dir, "tiny.onnx");
+        File.WriteAllBytes(modelPath, onnx);
+        var spec = TinySpec("memory-previews", "tiny.onnx", onnx, matchGain: false)
+            with { SceneLinear = true };
+        var source = new SourceImage(new RawSceneData(
+            new FilmBatch.Raw.Raster.RgbImage(16, 8, Enumerable.Repeat(.2f, 384).ToArray()),
+            null, null, DenoiseTestScene.Geometry(16, 8)))
+            { FilePath = modelPath };
+        using var processor = new DenoiseProcessor(dir, "CPU");
+        var mix = new DenoiseSettings(true, 25, 100, 100);
+        processor.Prepare(source, spec, mix, TestContext.Current.CancellationToken);
+        foreach (var edge in new[] { 4, 6, 8, 10, 12 })
+        {
+            var result = processor.Prepare(source.Downscale(edge), spec, mix, TestContext.Current.CancellationToken);
+            Assert.True(result.Denoise!.CacheHit);
+        }
+
+        var usage = processor.MemoryUsage;
+        Assert.Equal(1536, usage.NeuralBytes);
+        Assert.Equal(1536, usage.SourceBytes);
+        Assert.Equal(4128, usage.PreviewBytes); // 最近四筆：(18+32+50+72) pixels × 2×RGB float。
+        Assert.Equal(7200, usage.TotalBytes);
+    }
+
+    [Fact]
     public void Prepare_TinyOnnx_Proxy_LoadsFullResolution()
     {
         var onnx = MakeNegOnnx(TinyTile);

@@ -61,6 +61,51 @@ public sealed class DenoiseProcessor : IDisposable
     private NeuralResult? _cached;
     private NeuralResult? _thumbnailCached;
     private bool _disposed;
+    private readonly HashSet<Array> _pixelBuffers = new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>取得已建立共用處理器的主要像素保留量；不建立處理器或 ORT session。</summary>
+    public static DenoiseMemoryUsage SharedMemoryUsage
+    {
+        get { lock (SharedLock) return _shared?.MemoryUsage ?? default; }
+    }
+
+    /// <summary>取得 full／thumbnail 快取可達的主要像素保留量，不觸發顯示編碼或推論。</summary>
+    public DenoiseMemoryUsage MemoryUsage
+    {
+        get
+        {
+            lock (_sync)
+            {
+                long neural = 0, sources = 0, previews = 0;
+                try
+                {
+                    Count(_cached);
+                    Count(_thumbnailCached);
+                    return new(neural, sources, previews);
+                }
+                finally
+                {
+                    // 只重用集合容量；統計本身不能延長任何像素陣列的存活期。
+                    _pixelBuffers.Clear();
+                }
+
+                void Count(NeuralResult? result)
+                {
+                    if (result is null) return;
+                    neural += Add(result.Rgb);
+                    sources += result.FullSource.CollectRetainedPixelBytes(_pixelBuffers);
+                    if (result.Key.Identity is SourceImage identity)
+                        sources += identity.CollectRetainedPixelBytes(_pixelBuffers);
+                    if (result.Previews is not { } inputs) return;
+                    foreach (var input in inputs)
+                        previews += Add(input.Original) + Add(input.Denoised);
+                }
+
+                long Add(float[] pixels) =>
+                    _pixelBuffers.Add(pixels) ? pixels.LongLength * sizeof(float) : 0;
+            }
+        }
+    }
 
     /// <summary>模型目錄每次存取時重新解析（<see cref="AppPaths.OverrideRoot"/> 變動即生效）。</summary>
     private DenoiseModelStore Store

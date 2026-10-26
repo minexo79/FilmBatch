@@ -389,6 +389,12 @@ App 流程（選取、按 1:1 按鈕、平移、滾輪放大 6 格、`Ctrl+0` �
 
 完整逐輪結果、組件／輸入 digest、命令／exit 與限制見[實測證據](evidence/performance-local-2026-10-26.md)。774 個產品來源檔及隔離輸入／來源副本／權重 digest 不變。原 probe／診斷 source、收據與重播說明保存在 gitignored `artifacts/verification/2026-10-26-performance-local.tar.gz`；不含照片、模型、點陣、執行檔或私人絕對路徑。未執行本輪原生 GUI、Windows／iOS、多相機或四產品同機比較。
 
+## P1：AI 像素保留量（2026-10-26）
+
+研究已先提交為 `6c1afa1`，依[分段實作計畫](superpowers/plans/2026-10-26-performance-p1-implementation.md)先補最小觀測面：`DenoiseMemoryUsage` 區分 neural／source／preview 陣列，共享來源只計一次，包含已存在的縮放與顯示陣列；查詢不建立延遲顯示像素或 shared processor，集合用後清空。不改像素數學、provider、tile、全品質或任何精度門檻，也不把保留量誤稱為 RSS／硬預算。
+
+新增三項真實微型 ORT 回歸，先觀察 API 缺席失敗，再通過 accounting 與既有降噪共 39 項測試。隔離 Sony 7008×4672 RAW／RawNIND CoreML＋CPU smoke 保持 247 tiles；neural／source 各 392,896,512 B，200×133 preview 輸入 638,400 B，合計 786,431,424 B。兩次強度變更命中且還原像素 hash 相同；暖集合後 100 次查詢配置 0 B。Dispose 快照歸零，受控 GC 後 neural 弱參考已回收，來源與模型 digest 不變。這是單次本機路徑證據，不推廣為程序峰值或跨平台驗收。
+
 ## 如何新增歷史列
 
 只記對未來修改有用的決定：真實 commit／日期、可核對的理由或重現、被拒絕方案、目前契約／檢查、後續取代。沒有當時證據時明寫「只確認提交意圖」；數值必須保留平台、輸入與來源版本，不把舊測試 totals 複製成新版本的驗收結果。
