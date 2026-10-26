@@ -435,6 +435,12 @@ App 流程（選取、按 1:1 按鈕、平移、滾輪放大 6 格、`Ctrl+0` �
 
 完整 solution：Raw 656 passed／293 skipped、Core 865 passed／28 skipped、App 395 passed／0 skipped，全部 0 failed；略過為外部 RAW／oracle／工具資料缺席與平台限定，AHD 硬體回歸未略過。43 個嵌入 WGSL 全通過；來源與副本 SHA-256 不變。現行 Engine／測試契約、研究與[追加實測 §13](evidence/performance-local-2026-10-26.md#13-raw-ahd-捨入與方向選擇修復)同步更新，文字 driver、RED／GREEN、TRX 與 digest 保存於 gitignored `artifacts/verification/2026-10-26-ahd-precision.tar.gz`。不包含 RAW／模型／點陣／執行檔或私人路徑；不宣稱跨相機／後端位元相同、消除首次推論卡頓，亦不修改原有 GPU 色彩收尾的剩餘小差異。
 
+## Sony Creative Look 研究：暫不整合（2026-10-27）
+
+檢查 `751K/sony-a7m5-looks` 的固定提交 `d6e014b65d5103a0f094b1dad90a38bdc8c545d2`，完成功能／依賴／授權調查、12 種預生成外觀的實際網頁操作與 profile 求值，以及兩張隔離 ARW 經 FilmBatch CPU 管線的比較。8 張 PNG16 經獨立解碼與渲染 RGBA16 逐位元相同；這不是 Sony 原廠一致性或其他平台的驗收。
+
+採用裁決為 NO-GO：host 專用 profile 不是現行 sRGB 藝術 LUT，直接置入已有亮度／色彩偏移反例；上游 MIT 不涵蓋所有 Sony／Adobe 生成資料；原版流程又缺少指定 Edit 4.0.00.10312 與原廠對照。完整實作計畫與整合仍以這些條件通過為前提，不加入產品或復活 Recipe Lab。功能清單、色彩域差異、可繼續的方案與重播證據見 [Sony Survey](research/sony-creative-looks-survey.md)；本次只提交研究文件，不含私人 RAW、截圖、第三方 profiles 或可執行檔。
+
 ## 如何新增歷史列
 
 只記對未來修改有用的決定：真實 commit／日期、可核對的理由或重現、被拒絕方案、目前契約／檢查、後續取代。沒有當時證據時明寫「只確認提交意圖」；數值必須保留平台、輸入與來源版本，不把舊測試 totals 複製成新版本的驗收結果。
