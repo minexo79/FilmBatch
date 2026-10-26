@@ -17,6 +17,7 @@
 | 使用 AI 降噪或去背、CLI | [CLI 與本機 AI](cli.md) | [ADR 0002](adr/0002-ai-denoise.md)、[去背驗證](evidence/cutout-2026-10-22.md) |
 | 評估物件移除 | [物件移除結論與 Survey](research/object-removal-survey.md) | [ADR 0005](research/0005-ai-object-removal.md)、[設計](research/object-removal-design.md)；通用移除 T1 仍 NO-GO |
 | 評估顆粒、白平衡或 Zone | [Survey](research/grain-white-balance-survey.md) | 候選不等於已採用功能 |
+| 評估 RAW／AI／CPU／GPU 效能與亮暗部演算法 | [四產品 Survey](research/performance-raw-ai-survey.md) | [本機實驗規格](superpowers/plans/2026-10-26-performance-local-experiments.md)、[實測與裁決](evidence/performance-local-2026-10-26.md)；候選不是已支援功能 |
 | 重播跨平台編解碼或色彩差異 | [實驗手冊](cross-platform-imaging-experiments.md) | |
 | 建置 Windows／Mac 發佈檔、iOS | [發佈](release.md) | [ADR 0004](adr/0004-apple-mobile-shared-core.md)、[診斷命令](../tools/apple-mobile/README.md) |
 | 了解當時為何這樣做 | [history.md](history.md) | 對應的 ADR 與計畫 |

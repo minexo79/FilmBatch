@@ -313,7 +313,7 @@ App 流程（選取、按 1:1 按鈕、平移、滾輪放大 6 格、`Ctrl+0` �
 - **共用並行度**：移除 `RawParallel`，保留唯一 `RawProcessingScope.Options`，預設半數邏輯核心，背景比例只能再降低；既有範圍外的 Engine／原生迴圈沒有擴大改寫。這是每個迴圈的上限，不是程序 CPU 上限。
 - **畫框與釋放**：保留來源／裁切的固定 `LayoutFrameSize`，不再從已取整顯示 bitmap 推導；上述 `e74cb72`／`bd2405b` 為歷史引入點，不是本輪仍未修的缺陷。保留上游 1024 級距／250 ms 取捨，修正沒有窗口時被當成 1024 級距的判斷。Aggressive GC 只在確實釋放 Full／窗口來源後執行，但仍可能暫停託管執行緒。
 - **不採用的重構**：RAW 的負值保留、純量 transfer、HSV 捨入與 Rec.2020 亮度不等同 `common/color.wgsl`，不能直接替換；只保護未選取 `pow` 分支的輸入。AHD 的整張結果與色彩的逐帶提交契約不同，不增加泛用 `TryExecute`。沒有證據支持本輪重寫四個 AHD pass、改 CFA 格式或新增持久緩衝區／table 快取。保留原有 f32 容差，不加入無關的捨入屏障。
-- **文件**：更新 RAW 內嵌縮圖、量化窗口、GPU 政策、環境停用、記憶體估計與 CPU 上限；`VERIFY.md` 加入相應入口。[現行回歸與精度門檻](building.md#raw-gpu-與載入隔離回歸)取代先前文件偏差。
+- **文件**：更新 RAW 內嵌縮圖、量化窗口、GPU 政策、環境停用、記憶體估計與 CPU 上限；`VERIFY.md` 加入相應入口。[現行回歸與精度門檻](testing.md#raw-gpu-與載入隔離回歸)取代先前文件偏差。
 
 ### 合併後實測
 
@@ -375,6 +375,19 @@ App 流程（選取、按 1:1 按鈕、平移、滾輪放大 6 格、`Ctrl+0` �
 新增三項回歸：RAW 貼上 AI（含裁切交錯）兩參數案例——修復前要求 `nafnet-sidd.onnx` 失敗、修復後來源保持場景線性且失敗終態要求 `rawnind-linear.onnx`；取消 AI 預覽案例——修復前另一張的明確重算永遠等不到（30 秒逾時），修復後照常送達、目標照片不靜默完成也不記終態，重新選回後的再送達仍回報缺少模型而非略過 AI。
 
 原生取樣驗收（macOS M3 · Metal，3 張：DSC02462/DSC03376 ARW＋IMG_7548 JPG）：兩張 ARW 縮圖以 `rawnind-linear`（CoreML）單一 bounded tile、場景線性來源完成；DSC03376 全尺寸預覽 247 tiles、13.26s 推論；IMG_7548 啟用降噪回報 4 次 `FileNotFoundException` 指明 `nafnet-sidd.onnx` 且儲存的 `denoise.enabled` 保留——無模型代換、無靜默停用。21 張照片與專案 SHA-256 前後不變。附註：原生驗收器需顯示器供電（`caffeinate -disu`），Avalonia 調度器掛在 CFRunLoop，顯示器休眠時 UI 延續會凍結；縮圖列進度仍由背景執行緒上報。
+
+## 上游效能 Survey 與隔離本機實驗（2026-10-26）
+
+依使用者要求，先把 LightCraft v0.14.0／main、RapidRAW v1.6.7／main、darktable 5.6.2／5.7 與 FilmBatch `890b13f` 的版本、來源、RAW／CPU／GPU、AI、亮暗部及採用界線寫入[完整 Survey](research/performance-raw-ai-survey.md)，再依[預先規格](superpowers/plans/2026-10-26-performance-local-experiments.md)在 M3／Metal、同一 7008×4672 Sony ARW 隔離副本循序實跑。產品、shader、模型、schema、oracle 未改；沒有 commit／push／發行。
+
+- **保留來源身分有實測收益**：真正 BGRA8 預覽，同物件／等像素新物件各 6 筆中位 5.24／20.20 ms、配置 6.52／32.58 MiB，完整輸出 bytes 相同。初輪錯用會清來源快取的 `Render16` 匯出入口，保留為匯出控制，另追加正確預覽入口，不以文件改判原數據。
+- **AI 主要保留量已定位**：真實 RawNIND／CoreML＋CPU，縮圖 1 tile、正式預覽 247 tiles；12 次強度混合命中不重推論。Full 神經快取存活約 788 MiB managed、dispose 後約 31–34 MiB；新顯示尺寸仍可能有 135–184 ms 的 box 準備成本。配置、GC 後存活、採樣 RSS 分列，不推廣成硬上限／穩定交互 p95。
+- **精度優先於擴大卸載**：Full CPU／Metal policy 暖機 6 對中位 2.019／0.666 s，但不同 RAW 解碼結果交同一 CPU 算圖器，最大輸出差 13,650 LSB、1,899 個 RGB 分量超過 2。追加四組 AHD／colour 分離後，大離群隨 AHD 切換重現；colour-only 場景最大差約 5.69e-5、輸出最大 10 LSB。這只是 AHD 路徑的歸因邊界，未分開其原始輸出與高光重建，也不知道哪側更正確；不宣稱解碼等價。
+- **保留失敗與不採用裁決**：1600 px 暗部還原＋亮部調整有 1 個分量為 3 LSB，tone mode 依預先 2 LSB 研究目標 exit 2，未放寬判準。全域 rational shoulder 雖能匹配亮部 ROI 均值，卻明顯壓窄分布並改變顯示 RGB 比例，不採用為 Basic 替代。
+- **補齊 AI／CPU 實驗**：RawNIND 與 NAFNet 各完成 CPU／CoreML 新 session 首次＋六筆真推論，均 1 tile／非 cache hit，顯示差最大 1 LSB。完整 247-tile 未混合 neural RGB 的 374.70 MiB f32 三次寫入／flush／讀回逐 byte 相同；不是已完成持久產品快取。RAW 1／2／4 workers 各六筆交錯 Full、場景 hash 相同，wall 中位約 5.73／2.98／1.65 s，不藉降低 workers 宣稱少做工作。
+- **真正局部亮部候選亦不採用**：獨立 alpha 加權 log-guided base 的兩尺寸×兩半徑均達不到原等亮度目標；合成控制保留更多 checker 振幅，也保留更多雜訊並有階梯 overshoot。另以原定 k=1.75 補量 apply／實際 Metal finisher，四組 fresh／reused 完整 float 與輸出 hash 相同、收尾最大 1 LSB；不把這個非等亮度控制當成品質通過。
+
+完整逐輪結果、組件／輸入 digest、命令／exit 與限制見[實測證據](evidence/performance-local-2026-10-26.md)。774 個產品來源檔及隔離輸入／來源副本／權重 digest 不變。原 probe／診斷 source、收據與重播說明保存在 gitignored `artifacts/verification/2026-10-26-performance-local.tar.gz`；不含照片、模型、點陣、執行檔或私人絕對路徑。未執行本輪原生 GUI、Windows／iOS、多相機或四產品同機比較。
 
 ## 如何新增歷史列
 
