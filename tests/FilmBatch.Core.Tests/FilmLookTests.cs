@@ -70,6 +70,6 @@ public class FilmLookTests
         var warm = HuePresets.All.First(p => p.Key == "warm-skin");
         var resolved = warm.ToSettings().Aggregate(ModuleCatalog.Defaults, (s, kv) => s.With(kv.Key, kv.Value));
         Assert.Equal("warm-skin", HuePresets.Find(resolved)?.Key);
-        Assert.Null(HuePresets.Find(resolved.With("film.hue_blue_s", ParamValue.Of(37.0))));
+        Assert.Null(HuePresets.Find(resolved.With("hsl.hue_blue_s", ParamValue.Of(37.0))));
     }
 }

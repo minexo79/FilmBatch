@@ -21,11 +21,19 @@
       </c:ModuleSection.HeaderFlyout>
       <StackPanel>
       <!-- film 模組的底片風格由 ModuleSectionViewModel.FilmLook 提供（其他模組為 null 不顯示）：
-           底片縮圖格在一般參數（效果比例／暖色／褪色）之上，色相修正與自訂色相在其下 -->
+           底片縮圖格在一般參數（效果比例／暖色／褪色）之上 -->
       <ContentControl Content="{Binding FilmLook}" IsVisible="{Binding FilmLook, Converter={x:Static ObjectConverters.IsNotNull}}">
         <ContentControl.DataTemplates>
           <DataTemplate x:DataType="vm:FilmLookViewModel">
-            <c:FilmLookControl Part="Look" />
+            <c:FilmLookControl />
+          </DataTemplate>
+        </ContentControl.DataTemplates>
+      </ContentControl>
+      <!-- hsl 模組的色相帶編輯器（預設下拉＋色相帶選取＋三滑桿），同樣在一般參數位置 -->
+      <ContentControl Content="{Binding Hsl}" IsVisible="{Binding Hsl, Converter={x:Static ObjectConverters.IsNotNull}}">
+        <ContentControl.DataTemplates>
+          <DataTemplate x:DataType="vm:HslViewModel">
+            <c:HslControl />
           </DataTemplate>
         </ContentControl.DataTemplates>
       </ContentControl>
@@ -131,13 +139,6 @@
           </DataTemplate>
         </ItemsControl.DataTemplates>
       </ItemsControl>
-      <ContentControl Content="{Binding FilmLook}" IsVisible="{Binding FilmLook, Converter={x:Static ObjectConverters.IsNotNull}}">
-        <ContentControl.DataTemplates>
-          <DataTemplate x:DataType="vm:FilmLookViewModel">
-            <c:FilmLookControl Part="Hue" />
-          </DataTemplate>
-        </ContentControl.DataTemplates>
-      </ContentControl>
       </StackPanel>
     </c:ModuleSection>
     </DataTemplate>

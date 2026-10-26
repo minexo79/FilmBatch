@@ -179,7 +179,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         _loadingTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(250), DispatcherPriority.Background,
             (_, _) => UpdateBackgroundText());
         _loadingTimer.Stop();
-        Inspector = new InspectorViewModel(this, new HashSet<ModuleGroup> { ModuleGroup.Basic, ModuleGroup.Optical });
+        Inspector = new InspectorViewModel(this, new HashSet<ModuleGroup> { ModuleGroup.Basic, ModuleGroup.Color, ModuleGroup.Optical });
         FilmEffects = new InspectorViewModel(this, new HashSet<ModuleGroup> { ModuleGroup.Geometry, ModuleGroup.Film, ModuleGroup.Surface }, showsPhotoInfo: false);
         CropTool = new CropToolViewModel(CommitCrop,
             () => Preview.Source is { } s ? (s.Width, s.Height) : (0, 0),

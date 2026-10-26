@@ -32,6 +32,7 @@ public sealed partial class ModuleSectionViewModel : ObservableObject
         foreach (var p in _allParams) p.RefreshLabels();
         FilmLook?.RefreshLabels();
         Curves?.RefreshLabels();
+        Hsl?.RefreshLabels();
     }
 
     [ObservableProperty]
@@ -63,10 +64,11 @@ public sealed partial class ModuleSectionViewModel : ObservableObject
         if (schema.Key == "basic") InsertRawWhiteBalance(host);
         FilmLook = schema.Key == "film" ? filmLook : null;
         Curves = schema.Key == "curves" ? new ToneCurvesViewModel(host, _allParams, preview) : null;
-        // film 模組：底片（look）由縮圖格選、24 個色相參數由色相帶編輯器顯示，一般參數列只留其餘欄位。
-        Params = new((FilmLook is null ? _allParams : _allParams.Where(p => p.Def.Key != "look" && !IsHueParam(p)))
-            .Where(p => p.FlatKey != "raw.mask_instance" && Curves is null));
-        FilmLook?.Attach([.. _allParams.Where(IsHueParam)]);
+        // hsl 模組：24 個色相參數由色相帶編輯器（HslViewModel）顯示，沒有一般參數列。
+        // film 模組：底片（look）由縮圖格選，一般參數列留其餘欄位。
+        Hsl = schema.Key == "hsl" ? new HslViewModel(host, [.. _allParams.Where(IsHueParam)]) : null;
+        Params = new((FilmLook is null ? _allParams : _allParams.Where(p => p.Def.Key != "look"))
+            .Where(p => p.FlatKey != "raw.mask_instance" && Curves is null && Hsl is null));
     }
 
     /// <summary>原生 smoke 與面板共用的來源中繼資料入口；null 清除上一張照片資料。</summary>
@@ -130,7 +132,7 @@ public sealed partial class ModuleSectionViewModel : ObservableObject
         }
     }
 
-    /// <summary>所有參數（含 film 模組由底片風格區塊顯示、不在 <see cref="Params"/> 中的參數）；載入與語言切換都以此為準。</summary>
+    /// <summary>所有參數（含 film 模組由底片風格區塊、hsl 模組由色相帶編輯器顯示、不在 <see cref="Params"/> 中的參數）；載入與語言切換都以此為準。</summary>
     private readonly List<ParamViewModel> _allParams;
 
     /// <summary>film 模組頂部的底片風格選擇；其他模組為 null。</summary>
@@ -139,7 +141,10 @@ public sealed partial class ModuleSectionViewModel : ObservableObject
     /// <summary>曲線共用畫布；其他模組為 null。參數仍由 _allParams 載入。</summary>
     public ToneCurvesViewModel? Curves { get; }
 
-    // HueBands.Params() 的順序是色相帶 × (h, s, l)，篩選後第 b*3+c 個即對應參數（與 FilmLookViewModel.Attach 一致）。
+    /// <summary>hsl 模組的色相帶編輯器；其他模組為 null。參數仍由 _allParams 載入、覆寫與重設。</summary>
+    public HslViewModel? Hsl { get; }
+
+    // HueBands.Params() 的順序是色相帶 × (h, s, l)，篩選後第 b*3+c 個即對應參數（與 HslViewModel 的帶索引一致）。
     private static bool IsHueParam(ParamViewModel p) => p.Def.Key.StartsWith("hue_", StringComparison.Ordinal);
 
     /// <summary>模組開關（標題列的勾選框）。開關與其他參數一樣可存進預設、可被覆寫。</summary>
@@ -175,6 +180,7 @@ public sealed partial class ModuleSectionViewModel : ObservableObject
             IsModuleEnabled = resolved.Bool(Schema.EnabledFlatKey);
             foreach (var p in _allParams)
                 p.Load(resolved.TryGetValue(p.FlatKey, out var v) ? v : p.Def.Default, overrides.ContainsKey(p.FlatKey));
+            Hsl?.Load(resolved);
             UpdateWhiteBalanceRows();
             if (Key == "raw")
             {

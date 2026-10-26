@@ -1,7 +1,7 @@
 namespace FilmBatch.Core.Params;
 
 /// <summary>模組面板的分組（同時也是處理階段的順序）。</summary>
-public enum ModuleGroup { Basic, Geometry, Optical, Film, Surface }
+public enum ModuleGroup { Basic, Geometry, Optical, Film, Surface, Color }
 
 /// <summary>選擇性貼上對話框的分類。</summary>
 public enum PasteCategory { Color, Optical, Surface, Crop }
@@ -51,6 +51,7 @@ public sealed record ModuleSchema(
 
     public static string GroupLabel(ModuleGroup g) => g switch
     {
+        ModuleGroup.Color => "色彩",
         ModuleGroup.Basic => "基本",
         ModuleGroup.Geometry => "幾何",
         ModuleGroup.Optical => "光學",

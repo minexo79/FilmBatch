@@ -6,7 +6,7 @@ using FilmBatch.App.ViewModels;
 
 namespace FilmBatch.App.Tests;
 
-/// <summary>film 模組頂部的 底片縮圖格、色相修正縮圖格與自訂色相帶編輯器。</summary>
+/// <summary>film 模組頂部的底片縮圖格；HSL 色相編輯器的消費者行為在 HslViewModelTests。</summary>
 public class FilmLookViewModelTests
 {
     [AvaloniaFact]
@@ -36,39 +36,23 @@ public class FilmLookViewModelTests
         Assert.NotEqual("fuji-velvia-50", vm.Service!.SettingsFor(files[0])["film.look"].AsText);
     }
 
-    [AvaloniaFact]
-    public async Task ApplyHuePreset_WritesAll24Values_AndCustomFlagFollowsEdits()
-    {
-        using var vm = TestEnv.CreateViewModel();
-        await TestEnv.OpenSamplesAsync(vm).WaitAsync(TestContext.Current.CancellationToken);
-        var film = vm.FilmLook;
-
-        var clearSky = film.HuePresets.Single(t => t.Key == "clear-sky");
-        film.ApplyHuePresetCommand.Execute(clearSky);
-        var s = vm.Service!.SettingsFor(vm.FocusFile!);
-        Assert.Equal(20, s["film.hue_blue_s"].Number);
-        Assert.Equal(0, s["film.hue_red_h"].Number);
-        Assert.False(film.IsCustomHue);
-        Assert.True(clearSky.IsSelected);
-
-        film.SelectedBand = film.Bands[0];
-        ((SliderParamViewModel)film.SelectedBand.Hue).Value = 12;
-        film.RefreshSelection();
-        Assert.Equal(12, vm.Service.SettingsFor(vm.FocusFile!)["film.hue_red_h"].Number);
-        Assert.True(film.IsCustomHue);
-        Assert.All(film.HuePresets, t => Assert.False(t.IsSelected));
-    }
 
     [AvaloniaFact]
-    public void FilmModule_GenericParams_ExcludeLookAndHueBands()
+    public void FilmModule_IsFilmOnly_AndHslLivesWithCurvesInInspector()
     {
         using var vm = TestEnv.CreateViewModel();
-        var section = vm.FilmEffects.Modules.Single(m => m.Key == "film");
-        Assert.Equal(["strength", "warmth", "fade"], section.Params.Select(p => p.Def.Key));
-        Assert.Same(vm.FilmLook, section.FilmLook);
-        Assert.Equal(8, section.FilmLook!.Bands.Count);
-        Assert.Equal("film.hue_blue_l", section.FilmLook.Bands[5].Lightness.FlatKey);
+        var film = vm.FilmEffects.Modules.Single(m => m.Key == "film");
+        Assert.DoesNotContain(film.Params, p => p.Def.Key == "look" || p.Def.Key.StartsWith("hue_", StringComparison.Ordinal));
+        Assert.Same(vm.FilmLook, film.FilmLook);
         Assert.All(vm.Inspector.Modules.Concat(vm.FilmEffects.Modules).Where(m => m.Key != "film"), m => Assert.Null(m.FilmLook));
+
+        // hsl 是獨立模組：與曲線同在基本參數分頁的色彩群組，色相帶編輯器顯示 hsl.* 參數。
+        var colorGroup = vm.Inspector.Groups.Single(g => g.Group == ModuleGroup.Color);
+        Assert.Equal(["curves", "hsl"], colorGroup.Modules.Select(m => m.Key).Order().ToArray());
+        var hsl = vm.Inspector.Modules.Single(m => m.Key == "hsl");
+        Assert.NotNull(hsl.Hsl);
+        Assert.All(hsl.Hsl!.Bands, b => Assert.StartsWith("hsl.hue_", b.Hue.FlatKey));
+        Assert.DoesNotContain(vm.FilmEffects.Modules, m => m.Key == "hsl");
     }
 
     [AvaloniaFact]
@@ -95,10 +79,10 @@ public class FilmLookViewModelTests
             var film = section.FilmLook!;
             // 防抖計時器 → 低優先佇列 → 實際引擎算圖 → ThumbnailReady 路由回 UI（同 PresetHoverPreviewTests 以 await 讓出 UI 執行緒）
             var deadline = DateTime.UtcNow.AddSeconds(60);
-            while (!(film.Looks.All(t => t.Thumbnail is not null) && film.HuePresets.All(t => t.Thumbnail is not null)) && DateTime.UtcNow < deadline)
+            while (!film.Looks.All(t => t.Thumbnail is not null) && DateTime.UtcNow < deadline)
                 await Task.Delay(10, TestContext.Current.CancellationToken);
             Assert.Contains(keys, k => k.StartsWith("film-look/look/", StringComparison.Ordinal));
-            Assert.Contains(keys, k => k.StartsWith("film-look/hue/", StringComparison.Ordinal));
+            Assert.DoesNotContain(keys, k => k.StartsWith("film-look/hue/", StringComparison.Ordinal));
             Assert.All(film.Looks, t => Assert.False(t.IsLoading));
             Assert.True(film.Looks[0].Thumbnail!.PixelSize.Width <= FilmLookThumbnails.LongEdge);
         }

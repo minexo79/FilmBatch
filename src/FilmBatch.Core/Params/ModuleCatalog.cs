@@ -83,7 +83,7 @@ public static class ModuleCatalog
         // （RAW 已在顯示邊界映射完成）。分段 → 主曲線 → 各通道每次算圖只合成一份查表（ToneCurveSet）。
         // 分段曲線、分界與曲線飽和度移植自 LightCraft v0.13.0（MIT OR Apache-2.0）的 curve.* 控制項與
         // crates/pipeline/src/finish.rs；預設啟用但恆等，舊照片外觀不變。
-        new("curves", "色調曲線", ModuleGroup.Basic, PasteCategory.Color,
+        new("curves", "色調曲線", ModuleGroup.Color, PasteCategory.Color,
         [
             Bool(ModuleSchema.EnabledKey, "啟用", true),
             Curve("master", "RGB 曲線"),
@@ -100,6 +100,13 @@ public static class ModuleCatalog
             Float("split_highlights", "亮部分界", 75, 30, 90, 1, "%"),
             // 100 保留曲線造成的飽和度，0 還原曲線前的飽和度（亮度維持曲線結果）。
             Float("refine_saturation", "曲線飽和度", 100, 0, 100, 1, "%"),
+        ]),
+        // 分色相修正：獨立於底片風格的八色相帶（OKLCh），底片之後、古典版材之前的線性 pass；
+        // 預設啟用但全零恆等。舊檔的 film.hue_* 讀入時由 SettingsJsonConverter／PresetFile 遷移為 hsl.*。
+        new("hsl", "HSL", ModuleGroup.Color, PasteCategory.Color,
+        [
+            Bool(ModuleSchema.EnabledKey, "啟用", true),
+            .. Film.HueBands.Params(),
         ]),
         new("skin", "局部膚色輔助", ModuleGroup.Basic, PasteCategory.Color,
         [
@@ -235,7 +242,7 @@ public static class ModuleCatalog
             Int("count", "數量", 1, 1, 3),
             Seed(),
         ]),
-        // 底片風格：底片顏色模擬（RawTherapee Film Simulation Hald CLUT）＋ 八色相帶修正（docs/film-looks.md）。
+        // 底片風格：底片顏色模擬（RawTherapee Film Simulation Hald CLUT，docs/film-looks.md）。
         new("film", "底片風格", ModuleGroup.Film, PasteCategory.Color,
         [
             Bool(ModuleSchema.EnabledKey, "啟用"),
@@ -243,7 +250,6 @@ public static class ModuleCatalog
             Float("strength", "效果比例", 100, 0, 100, 1, "%"),
             Float("warmth", "暖色", 0, -100, 100),
             Float("fade", "褪色", 0, 0, 100),
-            .. Film.HueBands.Params(),
         ]),
         new("photo_plate", "古典版材", ModuleGroup.Film, PasteCategory.Color,
         [

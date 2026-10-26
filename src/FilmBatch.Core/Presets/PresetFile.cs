@@ -23,6 +23,8 @@ public static class PresetFile
         if (!int.TryParse(Scalar(root, "pipeline_version", "1"), CultureInfo.InvariantCulture, out var version) || version != 1)
             throw new InvalidDataException("Unsupported preset pipeline version.");
         var values = new Dictionary<string, ParamValue>(StringComparer.Ordinal);
+        // 舊檔的 film.hue_* 暫存（正規名稱 → 值）：正規 hsl.* key 一律優先，與來源順序無關。
+        var legacyHue = new Dictionary<string, ParamValue>(StringComparer.Ordinal);
         if (root.Children.TryGetValue(new YamlScalarNode("modules"), out var modulesNode))
         {
             if (modulesNode is not YamlMappingNode modules) throw new InvalidDataException("Invalid modules mapping.");
@@ -36,7 +38,9 @@ public static class PresetFile
                         throw new InvalidDataException("Preset parameters must be scalar values.");
                     var flatKey = module + "." + key;
                     if (RetiredParams.IsRetired(flatKey)) continue;
-                    var definition = ModuleCatalog.Param(flatKey) ?? throw new InvalidDataException($"Unknown parameter: {flatKey}");
+                    // 舊檔的 film.hue_* 遷移為 hsl.hue_*，值用正規定義驗證。
+                    var canonical = HslMigration.CanonicalKey(flatKey);
+                    var definition = ModuleCatalog.Param(canonical) ?? throw new InvalidDataException($"Unknown parameter: {flatKey}");
                     var text = scalar.Value ?? "";
                     var value = definition.Kind switch
                     {
@@ -47,11 +51,14 @@ public static class PresetFile
                             CultureInfo.InvariantCulture, out var number) => ParamValue.Of(number),
                         _ => throw new InvalidDataException($"Invalid value: {flatKey}"),
                     };
-                    value = SettingsJsonConverter.ValidateAndNormalize(flatKey, value);
-                    values.Add(flatKey, value);
+                    var normalized = SettingsJsonConverter.ValidateAndNormalize(canonical, value);
+                    if (canonical == flatKey) values.Add(canonical, normalized);
+                    else legacyHue.Add(canonical, normalized);
                 }
             }
         }
+        foreach (var (key, value) in legacyHue) values.TryAdd(key, value);
+        HslMigration.InheritHslEnabled(values, legacyHue.Count > 0);
         var pinnedText = Scalar(root, "pinned", "false");
         if (!bool.TryParse(pinnedText, out var pinned)) throw new InvalidDataException("Invalid pinned flag.");
         var updatedText = Scalar(root, "updated_at", "");

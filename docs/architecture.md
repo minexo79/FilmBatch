@@ -31,7 +31,7 @@
 
 | 名詞 | 意思 | 程式碼 |
 |---|---|---|
-| 模組（module） | 一個來源或效果區塊。`ModuleCatalog` 目前包含 RAW 來源、裁切與 16 個效果，共 18 個，各有 `enabled` 開關 | `ModuleSchema` |
+| 模組（module） | 一個來源或效果區塊；清單以 `ModuleCatalog.Modules` 為準，各有 `enabled` 開關 | `ModuleSchema` |
 | 參數（param） | 模組內的一個欄位，例如 `amount` | `ParamDef` |
 | 扁平 key | `模組.參數` 形式的唯一名稱，例如 `vignette.amount`。整個程式都用它定位參數 | `ModuleSchema.FlatKey` |
 | 設定（Settings） | 扁平 key → 值 的**不可變**字典 | `Settings` |
@@ -39,7 +39,7 @@
 | 覆寫（overrides） | 某張照片與其預設**不同**的欄位 | `PhotoEntry.Overrides` |
 | 最終參數（resolved） | 系統預設 ⊕ 預設 ⊕ 覆寫，實際拿去算圖的值 | `ProjectService.SettingsFor` |
 | 底片（look） | `film` 模組選用的一卷底片，即一個內附 3D LUT（`film.look` 存其 key） | `FilmLook`、`FilmLut` |
-| 色相帶（hue band） | 底片風格的八個分色相修正區段，各有色相／飽和／明度 | `HueBands` |
+| 色相帶（hue band） | 獨立 `hsl` 模組的八個分色相修正區段，各有色相／飽和／明度，介面與曲線同屬「色彩」 | `HueBands` |
 | 算圖器（renderer） | 把「影像 + 設定」算成結果的物件，有 GPU 與 CPU 兩種 | `IPreviewRenderer` |
 | 世代（generation / epoch） | 遞增的編號，用來丟棄過期的算圖結果 | `PreviewService`、`RenderScheduler` |
 
@@ -254,8 +254,8 @@ Avalonia 12 桌面與共用行動版介面，採 MVVM（CommunityToolkit.Mvvm）
 | 效果演算法、CPU / GPU 一致性 | `EffectPipelineTests.cs`、`GpuSpikeTests.cs` |
 | 底片 LUT、底片清單、色相預設 | `FilmLutTests.cs`、`FilmLookTests.cs` |
 | 舊參數丟棄、film schema | `RetiredParamsTests.cs` |
-| 底片風格算圖、色相帶、CPU / GPU 一致性 | `EffectPipelineTests.cs`（`FilmLook_*`、`HueBandWeights_*`、`Gpu_MatchesCpu_OnFilmLook`） |
-| 底片縮圖格與色相帶編輯器 | `tests/FilmBatch.App.Tests/FilmLookViewModelTests.cs` |
+| 底片風格與獨立 HSL 算圖、色相帶、CPU / GPU 一致性、舊 key 遷移 | `EffectPipelineTests.cs`、`HslTests.cs` |
+| 底片縮圖格、HSL 文字預設／色相帶、選取與復原 | `tests/FilmBatch.App.Tests/FilmLookViewModelTests.cs`、`HslViewModelTests.cs` |
 | 排程與裝置重建 | `RenderSchedulerTests.cs`、`RenderSchedulerReconfigureTests.cs` |
 | Loupe 窗口的幾何與交付 | `LoupePlanTests.cs`、`RegionViewTests.cs`、`PreviewWindowServiceTests.cs`、`PreviewCanvasWindowTests.cs`、`ZoomWindowTests.cs`、`WindowRenderEquivalenceTests.cs`、`RenderSchedulerTests.cs`（`Window_*`、`Newer_window_*`、`Preview_runs_*`） |
 | 拖曳草稿與 DragScale | `DragScaleTests.cs`、`DragDraftTests.cs` |

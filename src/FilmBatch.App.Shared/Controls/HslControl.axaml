@@ -1,0 +1,53 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:FilmBatch.App.ViewModels"
+             xmlns:c="using:FilmBatch.App.Controls"
+             xmlns:l="using:FilmBatch.App.Localization"
+             x:Class="FilmBatch.App.Controls.HslControl"
+             x:DataType="vm:HslViewModel">
+  <!-- 獨立 HSL 色相編輯器：文字預設下拉（無縮圖）＋八個色相帶選取器＋選取帶的三個滑桿。 -->
+  <StackPanel Spacing="6" Margin="0,4,0,4">
+    <Grid ColumnDefinitions="*,Auto" Classes="param-line">
+      <TextBlock Classes="param-name" Text="{l:Tr Hsl.PresetLabel}" VerticalAlignment="Center" />
+      <ComboBox Grid.Column="1" Classes="flat" MinWidth="150" VerticalAlignment="Center"
+                ItemsSource="{Binding Presets}" SelectedItem="{Binding SelectedPreset}"
+                DisplayMemberBinding="{Binding Name, x:DataType=vm:HslPresetViewModel}"
+                AutomationProperties.Name="{l:Tr Hsl.PresetLabel}" />
+    </Grid>
+    <Grid ColumnDefinitions="*,Auto" Classes="param-line" IsVisible="{Binding IsCustomHue}">
+      <Border Grid.Column="1" Classes="film-badge" HorizontalAlignment="Right">
+        <TextBlock Text="{l:Tr Hsl.Custom}" />
+      </Border>
+    </Grid>
+
+    <TextBlock Classes="param-name" Text="{l:Tr Hsl.Bands}" Margin="0,4,0,0" />
+    <ListBox Classes="hue-bands" ItemsSource="{Binding Bands}" SelectedItem="{Binding SelectedBand}">
+      <ListBox.ItemsPanel>
+        <ItemsPanelTemplate><UniformGrid Columns="8" /></ItemsPanelTemplate>
+      </ListBox.ItemsPanel>
+      <ListBox.ItemTemplate>
+        <DataTemplate x:DataType="vm:HueBandViewModel">
+          <Ellipse Width="18" Height="18" Fill="{Binding Swatch}" ToolTip.Tip="{Binding Label}"
+                   AutomationProperties.Name="{Binding Label}" />
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+    <ContentControl Content="{Binding SelectedBand}">
+      <ContentControl.ContentTemplate>
+        <DataTemplate x:DataType="vm:HueBandViewModel">
+          <StackPanel>
+            <ContentControl Content="{Binding Hue}">
+              <ContentControl.ContentTemplate><DataTemplate><c:ParamRow /></DataTemplate></ContentControl.ContentTemplate>
+            </ContentControl>
+            <ContentControl Content="{Binding Saturation}">
+              <ContentControl.ContentTemplate><DataTemplate><c:ParamRow /></DataTemplate></ContentControl.ContentTemplate>
+            </ContentControl>
+            <ContentControl Content="{Binding Lightness}">
+              <ContentControl.ContentTemplate><DataTemplate><c:ParamRow /></DataTemplate></ContentControl.ContentTemplate>
+            </ContentControl>
+          </StackPanel>
+        </DataTemplate>
+      </ContentControl.ContentTemplate>
+    </ContentControl>
+  </StackPanel>
+</UserControl>

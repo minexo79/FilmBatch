@@ -2,7 +2,7 @@ using System.Numerics;
 
 namespace FilmBatch.Engine.Rendering;
 
-/// <summary>線性 sRGB ↔ OKLab（與 film/look.wgsl 的 to_oklab / from_oklab 同係數）。</summary>
+/// <summary>線性 sRGB ↔ OKLab（與 linear/hsl.wgsl 的 to_oklab / from_oklab 同係數）。</summary>
 internal static class Oklab
 {
     public static Vector3 FromLinear(Vector3 rgb)

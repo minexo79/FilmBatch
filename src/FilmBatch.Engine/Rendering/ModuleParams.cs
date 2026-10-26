@@ -93,13 +93,16 @@ public sealed class ModuleParams
     public float LeakAmount, LeakAngle, LeakSize, LeakHue, LeakIrregularity;
     public float LeakRed, LeakYellow, LeakBlue, LeakWhite;
     public int LeakCount;
-    // film（底片風格：LUT ＋ 色相帶；FilmLut 為 null 時不套用）
+    // film（底片風格：LUT＋暖色＋褪色；FilmLut 為 null 時不套用）。分色相修正是獨立的 hsl 模組。
     public bool FilmOn;
     public string FilmLookKey = "";
     public float FilmStrength, FilmWarmth, FilmFade;
-    public float[] FilmHue = new float[24];
     public FilmLut? FilmLut;
     internal FilmLookUniforms FilmLook;
+    // hsl（分色相修正：八色相帶 × h/s/l；獨立於底片，線性 pass 在底片之後、古典版材之前）
+    public bool HslOn;
+    public float[] HslBands = new float[24];
+    internal HslUniforms Hsl;
     // photo_plate
     public bool PlateOn;
     public int PlateType;
@@ -295,7 +298,9 @@ public sealed class ModuleParams
             FilmStrength = N(s, "film.strength", 100),
             FilmWarmth = N(s, "film.warmth", 0),
             FilmFade = N(s, "film.fade", 0),
-            FilmHue = [.. HueBands.FlatKeys.Select(key => N(s, key, 0))],
+            // hsl：獨立分色相修正（零值恆等）
+            HslOn = B(s, "hsl.enabled", true),
+            HslBands = [.. HueBands.FlatKeys.Select(key => N(s, key, 0))],
             // photo_plate
             PlateOn = B(s, "photo_plate.enabled", false),
             PlateType = C("photo_plate.plate_type"),
@@ -350,6 +355,8 @@ public sealed class ModuleParams
         m.ShadowRecoveryOn &= m.ShadowRecoveryExposure > 0 || m.ShadowRecoveryLuminance > 0 || m.ShadowRecoveryChroma > 0;
         m.FilmLut = m.FilmOn ? FilmLookLibrary.TryLut(m.FilmLookKey) : null;
         m.FilmLook = FilmLookUniforms.From(m);
+        m.Hsl = HslUniforms.From(m, out var hslActive);
+        m.HslOn &= hslActive;
         // 色調曲線：停用時完全不讀取；啟用但恆等時 Create 回傳 null。分段量與分界比例以 double 讀取，
         // 與介面 ToneCurveSet.BakeParametric(滑桿值, …, 分界 / 100) 的輸入逐位相同。
         m.Curves = B(s, "curves.enabled", true)

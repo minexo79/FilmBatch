@@ -20,9 +20,11 @@ dotnet run --project src/FilmBatch.App
 dotnet run --project src/FilmBatch.App -- --gallery   # 元件展示視窗
 ```
 
-## 色調曲線
+## 色彩調整
 
-位置：**照片基本參數 → 基本 → 色調曲線**，緊接「基本調整」。預設為恆等曲線，不改變原有照片外觀；不需 AI 模型或額外下載。
+### 色調曲線
+
+位置：**照片基本參數 → 色彩 → 色調曲線**，與 HSL 集中於同一區塊。預設為恆等曲線，不改變原有照片外觀；不需 AI 模型或額外下載。
 
 - **RGB／R／G／B**：選擇主曲線或個別通道，在圖上點選新增控制點、拖曳調整；雙擊內部點或拖出圖的上／下緣可刪除，端點保留。下方顯示輸入／輸出讀值。
 - **線性／中等對比／強烈對比**：套用目前通道的點曲線，套用後仍可編輯。「重設」只重設目前通道。
@@ -38,6 +40,13 @@ dotnet test FilmBatch.sln -c Release --filter 'FullyQualifiedName~ToneCurve|Full
 ```
 
 原生介面、全尺寸 PNG16 與合併後驗證紀錄另列於[本輪 pipeline／曲線驗證](superpowers/plans/2026-10-22-performance-correctness.md#pipeline-revalidation-2026-10-23)。CPU／Metal 檢查不代替 Windows／iOS 實機驗收。
+
+### HSL
+
+位置：**照片基本參數 → 色彩 → HSL**。七個內建色相預設使用文字下拉，上方不再有預覽圖；下方選紅／橙／黃／綠／青／藍／紫／洋紅，調整該帶的色相、飽和與明度。多選照片可一起套用，預設一次復原，滑桿沿用既有手勢／復原／覆寫標記。
+
+這是獨立的 `hsl` 模組，不需要啟用底片，`film.strength = 0` 也不會停用 HSL；底片風格的真實縮圖仍保留在底片效果分頁。HSL 關閉或全零時不改畫面，白平衡／膚色／Zone 取樣會暫停它。舊 `film.hue_*` 讀入轉成 `hsl.hue_*`；因處理位置改在底片混合之後，舊的底片加色相組合可能改變外觀，詳見[相容規則](film-looks.md#7-舊專案相容)。
+
 
 ## 局部暗部還原
 

@@ -441,6 +441,18 @@ App 流程（選取、按 1:1 按鈕、平移、滾輪放大 6 格、`Ctrl+0` �
 
 採用裁決為 NO-GO：host 專用 profile 不是現行 sRGB 藝術 LUT，直接置入已有亮度／色彩偏移反例；上游 MIT 不涵蓋所有 Sony／Adobe 生成資料；原版流程又缺少指定 Edit 4.0.00.10312 與原廠對照。完整實作計畫與整合仍以這些條件通過為前提，不加入產品或復活 Recipe Lab。功能清單、色彩域差異、可繼續的方案與重播證據見 [Sony Survey](research/sony-creative-looks-survey.md)；本次只提交研究文件，不含私人 RAW、截圖、第三方 profiles 或可執行檔。
 
+## 獨立 HSL 與色彩區塊（2026-10-27）
+
+接續 Sony Survey 文件提交 `2f7c4d6`，依使用者要求把底片的八色相帶移到基本參數，與曲線集中於「色彩」。HSL 改為獨立 `hsl` 模組，在底片混合後、古典版材前由 CPU／GPU 各自執行；不再由底片開關或強度控制，全零／停用跳過、alpha 不動。曲線僅換介面分組，不改演算法；底片 LUT 的真實縮圖保留，HSL 七個預設改文字下拉並移除所有色相縮圖工作。共用既有參數列、選取、覆寫、一次復原與取樣排除，不加相依或第二套編輯入口。
+
+舊專案／設定剪貼簿 JSON 與預設 YAML 的 `film.hue_*` 只在讀入時轉成 `hsl.hue_*`，正規 key 優先且不依來源順序。僅在舊色相欄位存在時繼承同層明確的 `film.enabled`，稀疏層不補開關；型別／範圍與未知 key 仍拒絕。HSL 移到完整底片混合之後，因此舊的底片加色相組合可能改變外觀，不宣稱舊組合逐位元一致；非 HSL 底片行為保留。
+
+Apple M3／Metal 原生 MainWindow 實際操作文字預設、多選一次復原、數值編輯復原／重做、曲線、完整複製貼上、中文／英文與側邊分頁，保存重開後 HSL 值仍在；HSL 控制樹沒有 Image，底片縮圖仍完成。正式匯出命令產生兩張 320×213 RGBA PNG16，獨立 ImageMagick 解碼對 CPU `Render16` 最大差各 1 LSB、alpha 完全相同，預覽與匯出皆使用 Metal；產生的來源照片 SHA-256 不變。Gallery 原生啟動與畫面已檢查。
+
+另以隔離副本把已存 HSL 改回舊 `film.hue_*`，設定 `film.enabled=true`、`film.strength=0`，經正式 CLI 載入專案並使用 Metal 匯出。兩張輸出的 resolved snapshot 只含正規 HSL key、HSL 啟用且值為 70；獨立解碼仍對 CPU 參考最大差 1 LSB、alpha 相同，CLI 沒有改寫舊專案檔，證明遷移已傳到實際匯出，不只停在 parser 測試。
+
+HSL／底片集中回歸 110 passed／0 skipped／0 failed；完整 solution 為 Raw 656 passed／293 skipped、Core 877 passed／28 skipped、App 400 passed／0 skipped，全部 0 failed。略過限外部 RAW／oracle／工具資料缺席及 Windows 專用案例，HSL 的 GPU 比對未略過；Naga 30.0.1 驗證全部 44 個嵌入 WGSL 通過。最初兩項 CPU RED、整合時遺漏測試來源宣告的編譯失敗與修正後結果分開保留。文字 driver、TRX、輸出比較與來源雜湊保存於 gitignored `artifacts/verification/2026-10-27-hsl-color.tar.gz`；不含照片、模型、點陣、第三方 profiles 或執行檔。未驗 Windows／Vulkan／iOS 原生操作，未重新封裝或公證發佈版，未 push。
+
 ## 如何新增歷史列
 
 只記對未來修改有用的決定：真實 commit／日期、可核對的理由或重現、被拒絕方案、目前契約／檢查、後續取代。沒有當時證據時明寫「只確認提交意圖」；數值必須保留平台、輸入與來源版本，不把舊測試 totals 複製成新版本的驗收結果。

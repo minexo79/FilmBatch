@@ -41,12 +41,12 @@ internal sealed class PhotoAnalyzer : IPhotoAnalyzer
 /// <summary>取樣視圖的設定變換：暫停創意幾何／效果與顯示段調整，保留裁切／方向、RAW WB、skin、zone、線性曝光。</summary>
 public static class PhotoSamplingSettings
 {
-    /// <summary>取樣前暫停的局部 tone mapping、幾何變形、光學空間效果、底片外觀與表面材質。</summary>
+    /// <summary>取樣前暫停的局部 tone mapping、幾何變形、光學空間效果、底片外觀、HSL 色相修正與表面材質。</summary>
     private static readonly string[] CreativeModules =
     [
         "lens_distortion", "multi_lens", "double_exposure", "bokeh", "zoom_rotate_blur",
         "motion_blur", "vignette", "halation", "light_leak", "film", "photo_plate",
-        "curves", "tone", "detail", "dirt_scratches", "grain",
+        "curves", "hsl", "tone", "detail", "dirt_scratches", "grain",
         "shadow_recovery",
     ];
 

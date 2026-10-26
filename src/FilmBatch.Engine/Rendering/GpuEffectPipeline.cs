@@ -63,7 +63,7 @@ internal sealed class GpuEffectPipeline : IDisposable
     }
     private readonly ComputeKernel _decode, _encode8, _encode16, _display, _spike, _blur, _blurTile, _box,
         _crop, _basicLinear, _photoAdjust, _shadowStats, _shadowBox, _shadowApply, _lens, _multi, _double, _bokeh, _zoom, _motion, _vignette,
-        _halExtract, _halAdd, _leak, _look, _plate, _foreground,
+        _halExtract, _halAdd, _leak, _look, _hsl, _plate, _foreground,
         _basicDisplay, _toneCurves, _tone, _detail, _dirt, _grain, _texture;
 
     public GpuEffectPipeline(GpuDevice gpu, ShaderLibrary shaders, EffectRendererOptions? options = null)
@@ -117,6 +117,7 @@ internal sealed class GpuEffectPipeline : IDisposable
         _halAdd = K("optical/halation_add", tex, tex, storage, uniform);
         _leak = F("optical/light_leak", tex, storage, uniform);
         _look = K("film/look", tex, tex, storage, uniform);
+        _hsl = K("linear/hsl", tex, storage, uniform);
         _plate = F("film/photo_plate", tex, storage, uniform);
         _basicDisplay = K("linear/basic_display", tex, tex, storage, uniform);
         _toneCurves = K("linear/tone_curves", tex, storage, uniform, BindingSpec.StorageRead);
@@ -425,6 +426,8 @@ internal sealed class GpuEffectPipeline : IDisposable
                 : Apply(_texture, OverlayUniforms(p, leak, true), leak);
         if (p.FilmOn && p.FilmLut is not null && p.FilmStrength > 0)
             current = Apply(_look, p.FilmLook, LutTexture(p.FilmLut));
+        if (p.HslOn)
+            current = Apply(_hsl, p.Hsl);
         if (p.PlateOn && p.PlateStrength > 0)
             current = Apply(_plate, new PlateUniforms(p.PlateType, p.PlateStrength / 100, p.PlateOrtho / 100,
                 p.PlateTintHue, p.PlateTintAmount / 100, p.PlateEdgeErosion / 100, p.PlateStains / 100,

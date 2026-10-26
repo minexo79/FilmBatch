@@ -98,9 +98,10 @@ flowchart LR
 | `FilmLut` | 3D LUT 資料（`Size`、`Data`，Hald 像素順序）；`Sample` 四面體內插、`Resample` 改邊長、`FromHald`、`ToTextureRgba` 轉成 GPU 紋理排列 |
 | `FilmLutFile` | `.fblut` 二進位格式讀寫（magic、int32 邊長、16-bit unorm） |
 | `FilmLookLibrary` | 底片清單（以 `JsonDocument` 讀嵌入的 `looks.json`）、`GroupsInOrder`、`DefaultKey`（`kodak-portra-400`）；`TryLut(key)` 第一次使用時載入並快取，未知 key 回傳 null |
-| `HueBands`／`HuePresets` | 八個色相帶的 key、中心角（`CentersDegrees`，與 `film/look.wgsl` 同值）、24 個參數 schema（`Params`、`FlatKeys`）；內建色相修正預設與 `Find`（判斷目前值是否為某預設，否則為「自訂」） |
+| `HueBands`／`HuePresets` | 獨立 `hsl` 模組的八色相帶 key、中心角（與 `linear/hsl.wgsl` 同值）、24 個參數 schema（`Params`、`FlatKeys`）；七個文字預設與 `Find`（判斷目前值是否為某預設，否則為「自訂」）。與曲線同屬 `ModuleGroup.Color` |
 | `Film/Looks/` | `looks.json`（36 卷清單，順序即介面順序）、36 個 33³ `.fblut`、`LICENSE.txt`（CC BY-SA 4.0 聲明），皆為嵌入資源 `FilmBatch.Looks/*` |
 | `Params/RetiredParams` | 舊 Recipe Lab 模組的 13 個 `film.*` key，以及改為偏好設定的 `raw.lens_database`；`SettingsJsonConverter` 與 `PresetFile` 讀檔時靜默丟棄 |
+| `Params/HslMigration` | JSON／YAML 讀入時把 `film.hue_*` 轉成 `hsl.hue_*`，新 key 優先；只在有舊色相欄位時繼承同層明確的 `film.enabled`，不為稀疏層新增開關。寫入不保留舊 key，未知欄位仍拒絕 |
 
 **陷阱**
 

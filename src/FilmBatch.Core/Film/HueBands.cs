@@ -4,8 +4,8 @@ using static FilmBatch.Core.Params.ParamDef;
 namespace FilmBatch.Core.Film;
 
 /// <summary>
-/// 分色相修正：OKLCh 色相環上的八個色相帶，各有色相／飽和／明度三個 −100–100 的參數。
-/// 中心角度與 WGSL film/look.wgsl 的 CENTERS 必須相同。
+/// 分色相修正（獨立 hsl 模組）：OKLCh 色相環上的八個色相帶，各有色相／飽和／明度三個 −100–100 的參數。
+/// 中心角度與 WGSL linear/hsl.wgsl 的 CENTERS 必須相同。
 /// </summary>
 public static class HueBands
 {
@@ -16,9 +16,9 @@ public static class HueBands
 
     public static string ParamKey(int band, char channel) => $"hue_{Keys[band]}_{channel}";
 
-    /// <summary>24 個扁平 key（film.hue_red_h …），順序：色相帶 × (h, s, l)。</summary>
+    /// <summary>24 個扁平 key（hsl.hue_red_h …），順序：色相帶 × (h, s, l)。</summary>
     public static IReadOnlyList<string> FlatKeys { get; } =
-        [.. Enumerable.Range(0, 8).SelectMany(b => Channels.Select(c => "film." + ParamKey(b, c)))];
+        [.. Enumerable.Range(0, 8).SelectMany(b => Channels.Select(c => "hsl." + ParamKey(b, c)))];
 
     public static IEnumerable<ParamDef> Params() =>
         Enumerable.Range(0, 8).SelectMany(b => new[]
@@ -39,7 +39,7 @@ public sealed record HuePreset(string Key, string Name, IReadOnlyDictionary<stri
 public static class HuePresets
 {
     private static HuePreset P(string key, string name, params (string Key, double Value)[] values) =>
-        new(key, name, values.ToDictionary(v => "film.hue_" + v.Key, v => v.Value, StringComparer.Ordinal));
+        new(key, name, values.ToDictionary(v => "hsl.hue_" + v.Key, v => v.Value, StringComparer.Ordinal));
 
     public static IReadOnlyList<HuePreset> All { get; } =
     [

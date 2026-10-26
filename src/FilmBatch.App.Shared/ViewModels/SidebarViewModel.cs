@@ -17,10 +17,10 @@ public sealed partial class SidebarViewModel : ObservableObject
 {
     public PresetLibraryViewModel Presets { get; }
 
-    /// <summary>照片資訊 + 基本調整、幾何、光學群組的模組。</summary>
+    /// <summary>照片資訊 + 基本調整、色彩（HSL、曲線）、光學群組的模組。</summary>
     public InspectorViewModel Inspector { get; }
 
-    /// <summary>底片、表面群組的模組。</summary>
+    /// <summary>幾何、底片、表面群組的模組。</summary>
     public InspectorViewModel FilmEffects { get; }
 
     public ExportViewModel Export { get; }

@@ -42,15 +42,19 @@ public sealed class EffectPipelineTests
 
     /// <summary>底片單級設定：其餘全部沿用系統預設（即關閉）。</summary>
     private static Settings FilmOnly(double strength = 100, string look = "kodak-ektar-100",
-        double warmth = 0, double fade = 0, params (string Key, double Value)[] hue)
-    {
-        var s = ModuleCatalog.Defaults
+        double warmth = 0, double fade = 0) =>
+        ModuleCatalog.Defaults
             .With("film.enabled", true)
             .With("film.look", look)
             .With("film.strength", strength)
             .With("film.warmth", warmth)
             .With("film.fade", fade);
-        foreach (var (key, value) in hue) s = s.With("film." + key, value);
+
+    /// <summary>獨立分色相修正：不啟用底片，只開 hsl 並設指定色相帶值。</summary>
+    private static Settings HslOnly(params (string Key, double Value)[] bands)
+    {
+        var s = ModuleCatalog.Defaults.With("hsl.enabled", true);
+        foreach (var (key, value) in bands) s = s.With("hsl." + key, value);
         return s;
     }
 
@@ -298,7 +302,7 @@ public sealed class EffectPipelineTests
     }
 
     [Fact]
-    public void FilmLook_HueBand_ShiftsRedButNotBlueOrGray()
+    public void Hsl_HueBand_ShiftsRedButNotBlueOrGray()
     {
         var ct = TestContext.Current.CancellationToken;
         using var cpu = new CpuFakeRenderer();
@@ -307,8 +311,8 @@ public sealed class EffectPipelineTests
             52000, 8000, 8000, 65535,
             8000, 12000, 52000, 65535,
             30000, 30000, 30000, 65535]);
-        var plain = cpu.Render16(src, FilmOnly(), ct).Rgba16;
-        var shifted = cpu.Render16(src, FilmOnly(hue: [("hue_red_h", 100), ("hue_red_s", 50)]), ct).Rgba16;
+        var plain = cpu.Render16(src, ModuleCatalog.Defaults, ct).Rgba16;
+        var shifted = cpu.Render16(src, HslOnly(("hue_red_h", 100), ("hue_red_s", 50)), ct).Rgba16;
         Assert.NotEqual(plain[..3], shifted[..3]);
         Assert.Equal(plain[4..7], shifted[4..7]);
         Assert.Equal(plain[8..11], shifted[8..11]);
@@ -319,7 +323,7 @@ public sealed class EffectPipelineTests
     public void HueBandWeights_ArePartitionOfUnity(float hue)
     {
         var sum = 0f;
-        for (var band = 0; band < 8; band++) sum += FilmLookProcessing.BandWeight(hue, band);
+        for (var band = 0; band < 8; band++) sum += HslProcessing.BandWeight(hue, band);
         Assert.Equal(1f, sum, 5);
     }
 
@@ -876,8 +880,7 @@ public sealed class EffectPipelineTests
         using var gpu = TryCreateGpu();
         Assert.SkipWhen(gpu is null, "沒有可用的 GPU 介面卡");
         var src = Flat(32, 24, 20000, path: "/tmp/parity.tif");
-        var settings = FilmOnly(strength: 80, look: look, warmth: warmth, fade: fade,
-            hue: [("hue_orange_s", 30), ("hue_blue_h", -50), ("hue_green_l", 40)]);
+        var settings = FilmOnly(strength: 80, look: look, warmth: warmth, fade: fade);
         var ct = TestContext.Current.CancellationToken;
         var g = gpu!.Render16(src, settings, ct).Rgba16;
         using var cpu = new CpuFakeRenderer();

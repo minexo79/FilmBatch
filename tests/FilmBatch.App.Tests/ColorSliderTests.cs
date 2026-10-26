@@ -33,7 +33,7 @@ public class ColorSliderTests
         [
             "basic.temperature", "basic.tint", "basic.saturation", "film.warmth", "halation.hue",
             "light_leak.red", "light_leak.yellow", "light_leak.blue", "light_leak.hue",
-            "tone.shadow_hue", "film.hue_red_h", "film.hue_red_s", "film.hue_red_l",
+            "tone.shadow_hue", "hsl.hue_red_h", "hsl.hue_red_s", "hsl.hue_red_l",
             "skin.ref_red", "skin.ref_green", "skin.ref_blue", "basic.contrast",
         ];
         var panel = new StackPanel { Spacing = 6, Margin = new(16) };

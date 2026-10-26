@@ -1,6 +1,6 @@
 # 底片風格（Film Look）
 
-`film` 模組（中文「底片風格」、英文「Film Look」）以 3D LUT 模擬底片顏色：選一卷底片（一個 3D LUT），調整效果比例、暖色與褪色，再加上簡單的分色相修正。本文件說明 LUT 來源與授權、完整演算法、色相帶定義、如何新增底片，以及舊專案的相容處理。
+`film` 模組（中文「底片風格」、英文「Film Look」）以 3D LUT 模擬底片顏色：選一卷底片（一個 3D LUT），調整效果比例、暖色與褪色。八色相帶修正已獨立成 `hsl` 模組，與曲線一起放在基本參數的「色彩」區塊，不要求啟用底片。本文件說明 LUT 來源與授權、兩個模組的演算法、色相帶定義、如何新增底片，以及舊專案的相容處理。
 
 本模組於 2026-10 取代舊的 Recipe Lab 底片配方模組（Sony 創意風格模擬、自訂配方 `.YML`、樣張校正工具已全部移除）。
 
@@ -24,17 +24,21 @@
 | 效果比例（Strength） | `film.strength` | 0–100（100） | 結果與原圖在線性光中混合的比例 |
 | 暖色（Warmth） | `film.warmth` | −100–100（0） | 正值偏暖（R↑ B↓），負值偏冷 |
 | 褪色（Fade） | `film.fade` | 0–100（0） | 抬起黑點、壓低白點，像褪色的相紙 |
-| 色相修正 | `film.hue_{色相帶}_{h\|s\|l}` | 每個 −100–100（0） | 八個色相帶 × 色相／飽和／明度，共 24 個參數 |
+| HSL 色相修正 | `hsl.hue_{色相帶}_{h\|s\|l}` | 每個 −100–100（0） | 獨立模組；八個色相帶 × 色相／飽和／明度，共 24 個參數 |
 
-另有 `film.enabled` 開關。模組 key、處理順序、選擇性貼上分類（`PasteCategory.Color`）與模組分組（`ModuleGroup.Film`）與舊模組相同。
+`film.enabled` 控制底片；`hsl.enabled` 獨立控制 HSL，預設啟用但全零恆等。兩者都屬於選擇性貼上的 `PasteCategory.Color`；介面分組分別是 `ModuleGroup.Film` 與 `ModuleGroup.Color`，不改曲線本身的設定或渲染順序。
 
-介面（`FilmLookControl`／`FilmLookViewModel`）：
+底片效果分頁（`FilmLookControl`／`FilmLookViewModel`）：
 
 - **底片**：分組下拉（柯達／富士／愛克發與 Lomo／拍立得／黑白／創意）與 3 欄縮圖格。點縮圖即對所有選取中的照片設定 `film.enabled = true`、`film.look = key`（一筆復原紀錄）。
 - **效果比例、暖色、褪色**：一般參數列。
-- **色相修正**：內建預設的縮圖格；目前值不符合任何預設時顯示「自訂」。
-- **自訂色相**：選一個色相帶，以三條滑桿調整其色相／飽和／明度。
-- 縮圖以**目前焦點照片**的代理圖縮小到長邊 128 px 算圖，只在 film 模組展開時計算，走共用的低優先縮圖佇列（`FilmLookThumbnails`，鍵前綴 `film-look/`）。
+- 縮圖以**目前焦點照片**的代理圖縮小到長邊 128 px 算圖，只在 film 模組展開時計算，走共用的低優先縮圖佇列（`FilmLookThumbnails`，鍵前綴 `film-look/look/`）。
+
+基本參數 → **色彩**（曲線與 `HslControl`／`HslViewModel`）：
+
+- **色相修正**：七個內建預設改為純文字下拉，不產生預覽圖或縮圖工作；目前值不符合任何預設時顯示「自訂」。
+- **自訂色相**：選一個色相帶，以三條滑桿調整其色相／飽和／明度。預設一次寫入全部 24 個 HSL 值，多選照片一起套用，一次復原；不開啟底片、不改底片強度。
+- 模組開關、覆寫標記、重設、複製貼上與逐張保存仍走既有 Inspector／ProjectService。白平衡／膚色／Zone 取樣暫停 HSL，避免創意調色影響取樣。
 
 ---
 
@@ -101,7 +105,7 @@
 
 ## 3. 演算法
 
-底片風格是一個逐像素 pass，位於處理順序 ③ 底片階段（線性光）的第一步，之後是古典版材。CPU 參考實作為 `src/FilmBatch.Engine/Rendering/FilmLookProcessing.cs`，GPU 實作為 `src/FilmBatch.Gpu/Shaders/v1/film/look.wgsl`，兩者數學完全相同（`Gpu_MatchesCpu_*` 測試比對）。
+底片風格是一個逐像素 pass，位於處理順序 ③ 底片階段（線性光）的第一步，之後依序執行獨立 HSL、古典版材。CPU 參考實作為 `src/FilmBatch.Engine/Rendering/FilmLookProcessing.cs`，GPU 實作為 `src/FilmBatch.Gpu/Shaders/v1/film/look.wgsl`；HSL 對應 `HslProcessing.cs` 與 `linear/hsl.wgsl`，CPU／GPU 以實際渲染比對。
 
 ### 3.1 處理順序
 
@@ -109,10 +113,10 @@
 
 1. **編碼**：`display = linear_to_srgb(clamp(linear, 0, 1))`。LUT 的輸入是 sRGB 顯示編碼。
 2. **LUT**：`look = srgb_to_linear(lut.Sample(display))`，四面體內插（見 3.3）。
-3. **色相帶**（任一色相帶參數非零時）：在 OKLCh 中依色相帶權重修正色相、色度與明度（見第 4 節）。
-4. **暖色**：`w = warmth / 100`，在線性光中 `R × (1 + 0.12w)`、`B × (1 − 0.12w)`，G 不變。
-5. **褪色**：`f = fade / 100`，在 sRGB 中 `x × (1 − 0.2f) + 0.1f`（黑點抬到 0.1f、白點壓到 1 − 0.1f），再轉回線性。
-6. **混合**：`out = lerp(linear, look, strength / 100)`，在線性光中與**未截斷的原值**混合。
+3. **暖色**：`w = warmth / 100`，在線性光中 `R × (1 + 0.12w)`、`B × (1 − 0.12w)`，G 不變。
+4. **褪色**：`f = fade / 100`，在 sRGB 中 `x × (1 − 0.2f) + 0.1f`（黑點抬到 0.1f、白點壓到 1 − 0.1f），再轉回線性。
+5. **混合**：`out = lerp(linear, look, strength / 100)`，在線性光中與**未截斷的原值**混合。
+6. **獨立 HSL**：底片混合完成後，若 `hsl.enabled` 且任一色相帶非零，在 OKLCh 中修正色相、色度與明度（見第 4 節）。底片不執行時仍可執行這一步；alpha 不動。
 
 | 常數 | 值 |
 |---|---|
@@ -123,9 +127,9 @@
 | 暖色 ±100 | R ×(1 ± 0.12)、B ×(1 ∓ 0.12)（線性光） |
 | 褪色 0–100 | sRGB `x × (1 − 0.2f) + 0.1f` |
 
-**跳過規則**：模組關閉、`film.strength == 0`，或 `film.look` 是未知 key（`FilmLookLibrary.TryLut` 回傳 null）時完全不執行，輸出與輸入逐位元相同。
+**跳過規則**：模組關閉、`film.strength == 0`，或 `film.look` 是未知 key（`FilmLookLibrary.TryLut` 回傳 null）時完全略過底片 pass；獨立 HSL 不受影響。HSL 關閉或 24 個值全零時也完全略過，不做無效色彩往返。
 
-**參數傳遞**：`ModuleParams` 讀出 `FilmOn`、`FilmLookKey`、`FilmStrength`、`FilmWarmth`、`FilmFade`、`FilmHue`（24 個）與 `FilmLut`，再以 `FilmLookUniforms.From` 組成 uniform：`Mix`（效果比例 0–1、暖色 −1–1、褪色 0–1、LUT 邊長）、`Flags`（x：色相帶是否有非零值）、`Band0`…`Band7`（色相、飽和、明度 −1–1、0），共 10 × `vec4f` = 160 bytes，欄位順序與 WGSL 的 `struct LookParams` 完全一致。OKLab 轉換集中在 `Oklab.cs`（`FromLinear`／`ToLinear`），WGSL 端為同係數的 `to_oklab`／`from_oklab`。
+**參數傳遞**：`ModuleParams` 的底片欄位以 `FilmLookUniforms.From` 組成 `Mix`（效果比例 0–1、暖色 −1–1、褪色 0–1、LUT 邊長），共 1 × `vec4f` = 16 bytes，對齊 WGSL `LookParams`。獨立 HSL 的 24 個值由 `HslUniforms` 組成 `Band0`…`Band7`（色相、飽和、明度 −1–1、0），共 8 × `vec4f` = 128 bytes，對齊 WGSL `HslParams`。OKLab 的 CPU 轉換集中於 `Oklab.cs`，HSL shader 使用相同係數。
 
 ### 3.2 `.fblut` 格式
 
@@ -146,7 +150,7 @@
 
 ## 4. 色相帶
 
-定義在 `src/FilmBatch.Core/Film/HueBands.cs`。
+定義在 `src/FilmBatch.Core/Film/HueBands.cs`，正規設定屬於獨立的 `hsl` 模組；留在 `Film` namespace 不代表仍依附底片。
 
 ### 4.1 中心角與權重
 
@@ -156,16 +160,16 @@
 |---|---|---|---|---|---|---|---|---|
 | 中心角 | 25° | 55° | 105° | 140° | 195° | 255° | 295° | 335° |
 
-`HueBands.CentersDegrees` 與 `look.wgsl` 的 `centers` 陣列必須同值。
+`HueBands.CentersDegrees` 與 `linear/hsl.wgsl` 的 `centers` 陣列必須同值。
 
-- **權重**：每個色相帶的權重從自己的中心（1）線性降到相鄰中心（0），因此任一色相恰好落在兩個相鄰色相帶之間，**權重總和恆為 1**（`HueBandWeights_ArePartitionOfUnity` 測試）。實作為 `FilmLookProcessing.BandWeight(hueDegrees, band)`，WGSL 為 `band_weight`。
+- **權重**：每個色相帶的權重從自己的中心（1）線性降到相鄰中心（0），因此任一色相恰好落在兩個相鄰色相帶之間，**權重總和恆為 1**（`HueBandWeights_ArePartitionOfUnity` 測試）。實作為 `HslProcessing.BandWeight(hueDegrees, band)`，WGSL 為 `band_weight`。
 - **修正量**：`dh、ds、dl = Σ 權重 × 該色相帶的（h, s, l）/ 100`。
   - 新色相 = 色相 + `dh × 30° × gate`
   - 新色度 = 色度 × `max(0, 1 + ds)`
   - 新 L = L + `dl × 0.12 × gate`
 - **色度閘門**：`gate = smoothstep(0.02, 0.08, C)`。接近中性的像素（灰階、黑白底片的輸出）色相角不穩定，閘門讓色相與明度修正在低色度時漸弱為 0；飽和修正是乘法，本來就不影響中性色。色度 < 1e-5 時直接跳過。
 
-參數 key：`film.hue_{red|orange|yellow|green|aqua|blue|purple|magenta}_{h|s|l}`（`HueBands.FlatKeys`，順序為色相帶 × (h, s, l)）。
+參數 key：`hsl.hue_{red|orange|yellow|green|aqua|blue|purple|magenta}_{h|s|l}`（`HueBands.FlatKeys`，順序為色相帶 × (h, s, l)）。
 
 ### 4.2 內建預設
 
@@ -209,6 +213,10 @@
 ---
 
 ## 7. 舊專案相容
+
+原底片色相帶 `film.hue_*` 不丟棄：專案／設定剪貼簿 JSON 與預設 YAML 讀入時，`HslMigration` 將它們換成正規的 `hsl.hue_*`，並沿用原本的型別／範圍驗證；寫出只存新 key。若新舊 key 同時存在，新 key 優先，與來源順序無關。
+
+出現舊色相欄位且沒有明確的 `hsl.enabled` 時，只沿用同一設定層明確提供的 `film.enabled`；稀疏覆寫不憑空補開關。原底片強度／暖色／褪色不再控制 HSL，且 HSL 改在底片混合之後執行，因此舊的「底片＋色相」組合不保證逐位元同外觀；沒有色相調整的底片不受這項拆分影響。
 
 舊 Recipe Lab 模組的參數已移除。讀取舊專案（`.filmbatch/project.json`）與舊預設（YAML）時，下列 key 會被**靜默丟棄**，不報錯（`src/FilmBatch.Core/Params/RetiredParams.cs`，於 `SettingsJsonConverter` 與 `PresetFile` 兩個讀取入口處理）：
 

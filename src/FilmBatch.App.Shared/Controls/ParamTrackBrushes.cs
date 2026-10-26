@@ -52,7 +52,7 @@ public static class ParamTrackBrushes
         ByFlatKey.GetValueOrDefault(flatKey) ?? Bands.GetValueOrDefault(flatKey);
 
     /// <summary>
-    /// 底片風格的八個色相帶：色相 −100–100 對應中心 ±30°（film/look.wgsl），
+    /// HSL 色相修正的八個色相帶：色相 −100–100 對應中心 ±30°，
     /// 飽和由灰到鮮豔，明度由暗到亮，三者都以該色相帶的示意色為中心。
     /// </summary>
     private static Dictionary<string, IBrush> BuildBands()
@@ -61,10 +61,10 @@ public static class ParamTrackBrushes
         for (var b = 0; b < HueBands.Keys.Count; b++)
         {
             var hsv = BandColors[b].ToHsv();
-            bands["film." + HueBands.ParamKey(b, 'h')] = HueRange(hsv.H - 30, hsv.H + 30, hsv.S, hsv.V);
-            bands["film." + HueBands.ParamKey(b, 's')] = Gradient(
+            bands["hsl." + HueBands.ParamKey(b, 'h')] = HueRange(hsv.H - 30, hsv.H + 30, hsv.S, hsv.V);
+            bands["hsl." + HueBands.ParamKey(b, 's')] = Gradient(
                 (0, HsvColor.ToRgb(hsv.H, 0.05, hsv.V * 0.7)), (0.5, HsvColor.ToRgb(hsv.H, hsv.S * 0.5, hsv.V * 0.85)), (1, BandColors[b]));
-            bands["film." + HueBands.ParamKey(b, 'l')] = Gradient(
+            bands["hsl." + HueBands.ParamKey(b, 'l')] = Gradient(
                 (0, HsvColor.ToRgb(hsv.H, hsv.S, hsv.V * 0.3)), (0.5, BandColors[b]), (1, HsvColor.ToRgb(hsv.H, hsv.S * 0.35, 1)));
         }
         return bands;

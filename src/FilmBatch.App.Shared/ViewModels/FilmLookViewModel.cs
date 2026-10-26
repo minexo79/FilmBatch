@@ -1,17 +1,14 @@
 using System.Collections.ObjectModel;
-using Avalonia.Media;
 using Avalonia.Media.Imaging;
-using Avalonia.Media.Immutable;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using FilmBatch.App.Controls;
 using FilmBatch.App.Localization;
 using FilmBatch.Core.Film;
 using FilmBatch.Core.Params;
 
 namespace FilmBatch.App.ViewModels;
 
-/// <summary>縮圖格中的一格（底片或色相修正預設）。</summary>
+/// <summary>底片縮圖格中的一格。</summary>
 public sealed partial class FilmTileViewModel(string key, Func<string> name) : ObservableObject
 {
     public string Key { get; } = key;
@@ -31,24 +28,9 @@ public sealed partial class FilmGroupViewModel(string key) : ObservableObject
     public void RefreshLabel() => OnPropertyChanged(nameof(Label));
 }
 
-/// <summary>自訂色相的一個色相帶：三個滑桿直接是 film 模組的 ParamViewModel（覆寫標記、復原合併照舊）。</summary>
-public sealed partial class HueBandViewModel(int index, IBrush swatch, ParamViewModel hue, ParamViewModel saturation, ParamViewModel lightness)
-    : ObservableObject
-{
-    public int Index { get; } = index;
-    public string Label => Loc.TryGet($"Film.Band.{HueBands.Keys[Index]}") ?? HueBands.Labels[Index];
-    public IBrush Swatch { get; } = swatch;
-    public ParamViewModel Hue { get; } = hue;
-    public ParamViewModel Saturation { get; } = saturation;
-    public ParamViewModel Lightness { get; } = lightness;
-    public void RefreshLabel() => OnPropertyChanged(nameof(Label));
-}
-
-/// <summary>film 模組頂部：底片縮圖格、色相修正縮圖格與自訂色相帶編輯器（docs/film-looks.md）。</summary>
+/// <summary>film 模組頂部：底片分組下拉與底片縮圖格（docs/film-looks.md）。</summary>
 public sealed partial class FilmLookViewModel : ObservableObject
 {
-    // 色塊顏色只是辨識用的示意色（各色相帶中心附近），與主題無關。
-    private static readonly IBrush[] Swatches = [.. ParamTrackBrushes.BandColors.Select(c => new ImmutableSolidColorBrush(c))];
     private readonly MainWindowViewModel _main;
     private bool _expanded;
     private string? _lastFocus;
@@ -59,8 +41,6 @@ public sealed partial class FilmLookViewModel : ObservableObject
         _main = main;
         Thumbnails = new FilmLookThumbnails(main);
         Groups = [.. FilmLookLibrary.GroupsInOrder.Select(g => new FilmGroupViewModel(g))];
-        HuePresets = new(Core.Film.HuePresets.All.Select(p =>
-            new FilmTileViewModel(p.Key, () => Loc.TryGet($"Film.Hue.{p.Key}") ?? p.Name)));
         _selectedGroup = FilmLookLibrary.GroupsInOrder[0];
         Looks = [];
         LoadGroup();
@@ -69,16 +49,11 @@ public sealed partial class FilmLookViewModel : ObservableObject
     public FilmLookThumbnails Thumbnails { get; }
     public IReadOnlyList<FilmGroupViewModel> Groups { get; }
     public ObservableCollection<FilmTileViewModel> Looks { get; }
-    public ObservableCollection<FilmTileViewModel> HuePresets { get; }
-    public IReadOnlyList<HueBandViewModel> Bands { get; private set; } = [];
 
     /// <summary>目前顯示的分組 key（<see cref="FilmLookLibrary.GroupsInOrder"/>）。</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SelectedGroupItem))]
     private string _selectedGroup;
-
-    [ObservableProperty] private HueBandViewModel? _selectedBand;
-    [ObservableProperty] private bool _isCustomHue;
 
     /// <summary>給分組下拉綁定。</summary>
     public FilmGroupViewModel? SelectedGroupItem
@@ -89,21 +64,10 @@ public sealed partial class FilmLookViewModel : ObservableObject
 
     public static string GroupLabel(string group) => Loc.TryGet($"Film.Group.{group}") ?? group;
 
-    /// <summary>ModuleSectionViewModel 建立 film 參數後呼叫：24 個色相參數（色相帶 × h,s,l）交給編輯器顯示。</summary>
-    public void Attach(IReadOnlyList<ParamViewModel> hueParams)
-    {
-        Bands = [.. Enumerable.Range(0, HueBands.Keys.Count).Select(b => new HueBandViewModel(b, Swatches[b],
-            hueParams[b * 3], hueParams[b * 3 + 1], hueParams[b * 3 + 2]))];
-        OnPropertyChanged(nameof(Bands));
-        SelectedBand = Bands[0];
-    }
-
-    /// <summary>切換語言後更新分組、色相修正與色相帶名稱。</summary>
+    /// <summary>切換語言後更新分組名稱。</summary>
     public void RefreshLabels()
     {
         foreach (var g in Groups) g.RefreshLabel();
-        foreach (var t in HuePresets) t.RefreshLabel();
-        foreach (var b in Bands) b.RefreshLabel();
     }
 
     partial void OnSelectedGroupChanged(string value)
@@ -122,15 +86,12 @@ public sealed partial class FilmLookViewModel : ObservableObject
         else Thumbnails.Pause();
     }
 
-    /// <summary>更新底片選取框、色相修正選取框與「自訂」標記。</summary>
+    /// <summary>更新底片選取框。</summary>
     public void RefreshSelection()
     {
         var resolved = Resolved();
         var look = resolved?.TryGetValue("film.look", out var v) == true ? v.AsText : FilmLookLibrary.DefaultKey;
         foreach (var tile in Looks) tile.IsSelected = resolved is not null && tile.Key == look;
-        var preset = resolved is null ? null : Core.Film.HuePresets.Find(resolved);
-        foreach (var tile in HuePresets) tile.IsSelected = tile.Key == preset?.Key;
-        IsCustomHue = resolved is not null && preset is null;
     }
 
     /// <summary>焦點或設定改變後由 Inspector 呼叫：更新選取，焦點或最終參數真的變了才讓縮圖作廢並重算。</summary>
@@ -163,10 +124,7 @@ public sealed partial class FilmLookViewModel : ObservableObject
             var resolved = Resolved();
             if (resolved is null) return [];
             var on = resolved.With("film.enabled", ParamValue.Of(true));
-            var looks = Looks.Select(t => ("look", t, on.With("film.look", ParamValue.Of(t.Key))));
-            var hues = Core.Film.HuePresets.All.Zip(HuePresets).Select(pair =>
-                ("hue", pair.Second, on.Overlay(pair.First.ToSettings())));
-            return [.. looks.Concat(hues)];
+            return [.. Looks.Select(t => ("look", t, on.With("film.look", ParamValue.Of(t.Key))))];
         });
     }
 
@@ -180,14 +138,6 @@ public sealed partial class FilmLookViewModel : ObservableObject
         ]);
         // 成功後 Project.EntriesChanged → Inspector.Refresh → OnSettingsChanged 會更新選取與縮圖
         _main.Service.SetValues(_main.Selection, values, Loc.Format("Film.LookApplied", tile.Name));
-    }
-
-    [RelayCommand]
-    private void ApplyHuePreset(FilmTileViewModel? tile)
-    {
-        var preset = Core.Film.HuePresets.All.FirstOrDefault(p => p.Key == tile?.Key);
-        if (preset is null || _main.Service is null || _main.Selection.Count == 0) return;
-        _main.Service.SetValues(_main.Selection, preset.ToSettings(), Loc.Format("Film.HueApplied", tile!.Name));
     }
 
     private void LoadGroup()

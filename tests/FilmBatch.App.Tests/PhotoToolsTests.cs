@@ -138,7 +138,7 @@ public sealed class PhotoToolsTests
         var file = main.FocusFile!;
         main.Service!.SetValues([file], Settings.Empty
             .With("crop.enabled", true).With("crop.rect_w", 0.6)
-            .With("grain.enabled", true).With("film.enabled", true).With("vignette.enabled", true)
+            .With("grain.enabled", true).With("film.enabled", true).With("hsl.enabled", true).With("vignette.enabled", true)
             .With("basic.exposure", 0.5).With("basic.saturation", 30.0), "setup");
         var tools = CreateTools(main, new FakeAnalyzer());
         tools.UpdateContext(main.Service, file, main.Preview.Source, main.Service.SettingsFor(file));
@@ -148,6 +148,7 @@ public sealed class PhotoToolsTests
         Assert.NotNull(overlay);
         Assert.False(overlay.Bool("grain.enabled"));       // 創意效果暫停
         Assert.False(overlay.Bool("film.enabled"));
+        Assert.False(overlay.Bool("hsl.enabled"));         // 獨立 HSL 一樣暫停（原 film 內嵌色相修正的遷移）
         Assert.False(overlay.Bool("vignette.enabled"));
         Assert.Equal(0.0, overlay.Number("basic.saturation"));    // 顯示段歸零
         Assert.True(overlay.Bool("crop.enabled"));         // 裁切與方向保留（顯示的是已裁切視圖）

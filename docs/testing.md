@@ -42,8 +42,21 @@ dotnet test tests/FilmBatch.App.Tests/FilmBatch.App.Tests.csproj -c Release \
 
 涵蓋 RAW／一般影像切換、隱藏未啟用模組、保留已保存的 RAW 設定、預設展開基本調整、來源選項切換後縮圖自動更新，以及 Kelvin／遮罩設定的復原、儲存、重開、過期解碼失敗與修復後快取重新解碼。永久測試使用隔離的 DNG／一般影像與實際 CPU 管線，不依賴外部相機語料。自訂 Kelvin 範圍為 2500–9900 K；舊 JSON／YAML 值正規化，但拍攝白平衡中繼資料保持原樣。
 
-Mac 桌面另以含 gain-table 的 ProRAW 及含畸變／暗角資料的 RAF 驗證：在底片分頁復原／重做 RAW 選項，即使重解碼時間超過縮圖防抖間隔，底片與色相縮圖仍自動跟上新來源，結果須等於同來源重新要求算圖的結果；切到 PNG 不顯示 RAW 控制項，再切回 RAW 恢復顯示且設定不變。驗證前後核對原始 RAW 的 SHA-256。
-以上原生 RAW 選項量測記錄的是當時的來源契約；目前長邊 ≤240 的 RAW 縮圖先用內嵌預覽，不因 `IncludeSemanticMasks` 改走完整顯影。取不到內嵌預覽才退回場景線性 RAW；選取後的大圖與匯出不使用內嵌縮圖。
+Mac 桌面另以含 gain-table 的 ProRAW 及含畸變／暗角資料的 RAF 驗證：在底片分頁復原／重做 RAW 選項，即使重解碼時間超過縮圖防抖間隔，底片縮圖仍自動跟上新來源，結果須等於同來源重新要求算圖的結果；切到 PNG 不顯示 RAW 控制項，再切回 RAW 恢復顯示且設定不變。驗證前後核對原始 RAW 的 SHA-256。
+以上原生 RAW 選項量測記錄的是當時的來源契約，含當時仍存在的色相縮圖；獨立 HSL 已移除該縮圖路徑。目前長邊 ≤240 的 RAW 縮圖先用內嵌預覽，不因 `IncludeSemanticMasks` 改走完整顯影。取不到內嵌預覽才退回場景線性 RAW；選取後的大圖與匯出不使用內嵌縮圖。
+
+### 色彩區塊：HSL 與曲線
+
+```bash
+dotnet test tests/FilmBatch.Core.Tests/FilmBatch.Core.Tests.csproj -c Release \
+  --filter "FullyQualifiedName~HslTests|FullyQualifiedName~EffectPipelineTests|FullyQualifiedName~ToneCurve"
+dotnet test tests/FilmBatch.App.Tests/FilmBatch.App.Tests.csproj -c Release \
+  --filter "FullyQualifiedName~HslViewModelTests|FullyQualifiedName~CurveEditorTests|FullyQualifiedName~FilmLookViewModelTests|FullyQualifiedName~PhotoToolsTests|FullyQualifiedName~ColorSliderTests"
+```
+
+HSL 須在關閉底片、底片強度為零時仍改變指定色相；自身關閉／全零恆等、alpha 保留。JSON／YAML 的舊 `film.hue_*` 只在讀入時遷移，新 key 優先且不依輸入順序，不為稀疏層補開關，型別／範圍／未知 key 仍拒絕。共用色彩編輯器確認文字預設、多選／一次復原、滑桿覆寫、自訂標記、曲線與取樣排除；HSL 不再排縮圖，底片縮圖保留。
+
+原生桌面另須操作實際控制項、切換中英文與側邊分頁、保存重開，並經正式匯出命令產生 PNG16，以獨立解碼器核對位深／尺寸／alpha 與 CPU 參考。Headless 或共用介面編譯不代表 Windows／iOS 原生驗收。
 
 ### 顆粒、白平衡／膚色與 Zone
 

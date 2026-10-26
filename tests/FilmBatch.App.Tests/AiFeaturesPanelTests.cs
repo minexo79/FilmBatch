@@ -31,8 +31,8 @@ public sealed class AiFeaturesPanelTests
         Assert.DoesNotContain(main.Inspector.Groups.SelectMany(group => group.Modules), module => module.Key == "denoise");
         Assert.Contains(main.Inspector.Groups.SelectMany(group => group.Modules), module => module.Key == "basic");
         Assert.Empty(main.FilmEffects.AiModules);
-        Assert.Equal([ModuleGroup.Basic], main.Inspector.LeadingGroups.Select(group => group.Group));
-        Assert.Equal(main.Inspector.Groups.Skip(1), main.Inspector.TrailingGroups);
+        Assert.Equal([ModuleGroup.Basic, ModuleGroup.Color], main.Inspector.LeadingGroups.Select(group => group.Group));
+        Assert.Equal(main.Inspector.Groups.Skip(2), main.Inspector.TrailingGroups);
         Assert.Contains(main.Inspector.TrailingGroups, group => group.Group == ModuleGroup.Optical);
         // 底片效果分頁沒有基本分組：全部分組照原順序排在後段，外觀不變。
         Assert.Empty(main.FilmEffects.LeadingGroups);

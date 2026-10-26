@@ -18,17 +18,17 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
 
     public ObservableCollection<ModuleGroupViewModel> Groups { get; }
 
-    /// <summary>排在「AI 功能」之前的分組（基本）；版面順序為照片工具 → 基本 → AI 功能 → 其餘分組。</summary>
+    /// <summary>排在「AI 功能」之前的分組（基本、色彩）；版面順序為照片工具 → 基本 → 色彩 → AI 功能 → 其餘分組。</summary>
     public IReadOnlyList<ModuleGroupViewModel> LeadingGroups { get; }
 
-    /// <summary>排在「AI 功能」之後的分組（光學等）；沒有基本分組的分頁（底片效果）全部在這裡。</summary>
+    /// <summary>排在「AI 功能」之後的分組（光學等）；沒有基本／色彩分組的分頁（底片效果）全部在這裡。</summary>
     public IReadOnlyList<ModuleGroupViewModel> TrailingGroups { get; }
 
     /// <summary>類別小地圖的按鈕，順序同版面：照片工具 → 基本 → AI 功能 → 其餘分組。</summary>
     public IReadOnlyList<CategoryNavItem> CategoryNav { get; }
     public IReadOnlyList<ModuleSectionViewModel> Modules { get; }
 
-    /// <summary>film 模組頂部的底片風格縮圖格與色相帶編輯器；只有包含 film 模組的分頁才有。</summary>
+    /// <summary>film 模組頂部的底片風格縮圖格；只有包含 film 模組的分頁才有。</summary>
     public FilmLookViewModel? FilmLook { get; }
 
     /// <summary>是否顯示照片資訊（檔名、預設、重設與預設按鈕）；只有「照片基本參數」分頁顯示。</summary>
@@ -129,8 +129,8 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
         {
             if (e.PropertyName == nameof(ModuleGroupViewModel.IsExpanded)) UpdateCurveHistogram();
         };
-        LeadingGroups = Groups.Where(g => g.Group == ModuleGroup.Basic).ToList();
-        TrailingGroups = Groups.Where(g => g.Group != ModuleGroup.Basic).ToList();
+        LeadingGroups = Groups.Where(g => g.Group is ModuleGroup.Basic or ModuleGroup.Color).ToList();
+        TrailingGroups = Groups.Where(g => g.Group is not (ModuleGroup.Basic or ModuleGroup.Color)).ToList();
         var nav = new List<CategoryNavItem>();
         if (ShowsPhotoTools) nav.Add(new CategoryNavItem("photo-tools", () => Loc.Get("PhotoTools.Title")));
         nav.AddRange(LeadingGroups.Select(g => new CategoryNavItem(g.Group, () => g.Label)));
@@ -274,6 +274,7 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
             _main.FlushEdit();
             var description = values.Keys.Any(k => k.StartsWith("curves.", StringComparison.Ordinal))
                 ? Loc.Get("Curves.Edit")
+                : values.Keys.Any(k => k.StartsWith("hsl.", StringComparison.Ordinal)) ? Loc.Get("Hsl.Edit")
                 : values.Keys.Any(RawWbParamViewModel.FlatKeys.Contains) ? Loc.Get("Raw.WbEdit") : Loc.Get("Raw.MaskEdit");
             _main.Service.SetValues(_main.Selection, new Settings(values), description);
         }

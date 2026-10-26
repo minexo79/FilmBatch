@@ -11,6 +11,8 @@ public sealed class SettingsJsonConverter : JsonConverter<Settings>
     {
         if (reader.TokenType != JsonTokenType.StartObject) throw new JsonException("Settings must be an object.");
         var values = new Dictionary<string, ParamValue>(StringComparer.Ordinal);
+        // 舊檔的 film.hue_* 暫存（正規名稱 → 值）：正規 hsl.* key 一律優先，與來源順序無關。
+        var legacyHue = new Dictionary<string, ParamValue>(StringComparer.Ordinal);
         while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
         {
             if (reader.TokenType != JsonTokenType.PropertyName) throw new JsonException("Expected a parameter key.");
@@ -25,9 +27,14 @@ public sealed class SettingsJsonConverter : JsonConverter<Settings>
                 _ => throw new JsonException($"Invalid scalar parameter: {key}"),
             };
             if (RetiredParams.IsRetired(key)) continue;
-            if (!values.TryAdd(key, ValidateAndNormalize(key, value))) throw new JsonException($"Duplicate parameter: {key}");
+            var canonical = HslMigration.CanonicalKey(key);
+            var target = canonical == key ? values : legacyHue;
+            if (!target.TryAdd(canonical, ValidateAndNormalize(canonical, value)))
+                throw new JsonException($"Duplicate parameter: {key}");
         }
+        foreach (var (key, value) in legacyHue) values.TryAdd(key, value);
         if (reader.TokenType != JsonTokenType.EndObject) throw new JsonException("Incomplete settings.");
+        HslMigration.InheritHslEnabled(values, legacyHue.Count > 0);
         return new Settings(values);
     }
 

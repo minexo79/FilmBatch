@@ -369,32 +369,59 @@ R {1:P2}　G {2:P2}　B {3:P2}　亮度 {4:P2}</value></data>
   <data name="Param.raw.camera_local_tone" xml:space="preserve"><value>相機局部色調</value></data>
   <!-- 底片風格（FilmLookControl） -->
   <data name="Film.Look" xml:space="preserve"><value>底片</value></data>
-  <data name="Film.HueCorrection" xml:space="preserve"><value>色相修正</value></data>
-  <data name="Film.HueCustom" xml:space="preserve"><value>自訂</value></data>
-  <data name="Film.HueBands" xml:space="preserve"><value>自訂色相</value></data>
   <data name="Film.LookApplied" xml:space="preserve"><value>已套用底片「{0}」</value></data>
-  <data name="Film.HueApplied" xml:space="preserve"><value>已套用色相修正「{0}」</value></data>
+  <!-- 獨立 HSL 色相修正（HslControl）：文字預設、色相帶名稱與「自訂」標記 -->
+  <data name="Hsl.PresetLabel" xml:space="preserve"><value>色相修正</value></data>
+  <data name="Hsl.Custom" xml:space="preserve"><value>自訂</value></data>
+  <data name="Hsl.Bands" xml:space="preserve"><value>自訂色相</value></data>
+  <data name="Hsl.Edit" xml:space="preserve"><value>調整 HSL</value></data>
+  <data name="Hsl.Band.red" xml:space="preserve"><value>紅</value></data>
+  <data name="Hsl.Band.orange" xml:space="preserve"><value>橙</value></data>
+  <data name="Hsl.Band.yellow" xml:space="preserve"><value>黃</value></data>
+  <data name="Hsl.Band.green" xml:space="preserve"><value>綠</value></data>
+  <data name="Hsl.Band.aqua" xml:space="preserve"><value>青</value></data>
+  <data name="Hsl.Band.blue" xml:space="preserve"><value>藍</value></data>
+  <data name="Hsl.Band.purple" xml:space="preserve"><value>紫</value></data>
+  <data name="Hsl.Band.magenta" xml:space="preserve"><value>洋紅</value></data>
+  <data name="Hsl.Preset.none" xml:space="preserve"><value>無</value></data>
+  <data name="Hsl.Preset.warm-skin" xml:space="preserve"><value>暖膚色</value></data>
+  <data name="Hsl.Preset.clear-sky" xml:space="preserve"><value>清澈藍天</value></data>
+  <data name="Hsl.Preset.lush-green" xml:space="preserve"><value>青翠綠意</value></data>
+  <data name="Hsl.Preset.golden" xml:space="preserve"><value>金黃秋色</value></data>
+  <data name="Hsl.Preset.teal-orange" xml:space="preserve"><value>冷暖對比</value></data>
+  <data name="Hsl.Preset.muted" xml:space="preserve"><value>低彩度</value></data>
+  <data name="Module.hsl" xml:space="preserve"><value>HSL</value></data>
+  <data name="Group.Color" xml:space="preserve"><value>色彩</value></data>
+  <data name="Param.hsl.hue_red_h" xml:space="preserve"><value>紅色相</value></data>
+  <data name="Param.hsl.hue_red_s" xml:space="preserve"><value>紅飽和</value></data>
+  <data name="Param.hsl.hue_red_l" xml:space="preserve"><value>紅明度</value></data>
+  <data name="Param.hsl.hue_orange_h" xml:space="preserve"><value>橙色相</value></data>
+  <data name="Param.hsl.hue_orange_s" xml:space="preserve"><value>橙飽和</value></data>
+  <data name="Param.hsl.hue_orange_l" xml:space="preserve"><value>橙明度</value></data>
+  <data name="Param.hsl.hue_yellow_h" xml:space="preserve"><value>黃色相</value></data>
+  <data name="Param.hsl.hue_yellow_s" xml:space="preserve"><value>黃飽和</value></data>
+  <data name="Param.hsl.hue_yellow_l" xml:space="preserve"><value>黃明度</value></data>
+  <data name="Param.hsl.hue_green_h" xml:space="preserve"><value>綠色相</value></data>
+  <data name="Param.hsl.hue_green_s" xml:space="preserve"><value>綠飽和</value></data>
+  <data name="Param.hsl.hue_green_l" xml:space="preserve"><value>綠明度</value></data>
+  <data name="Param.hsl.hue_aqua_h" xml:space="preserve"><value>青色相</value></data>
+  <data name="Param.hsl.hue_aqua_s" xml:space="preserve"><value>青飽和</value></data>
+  <data name="Param.hsl.hue_aqua_l" xml:space="preserve"><value>青明度</value></data>
+  <data name="Param.hsl.hue_blue_h" xml:space="preserve"><value>藍色相</value></data>
+  <data name="Param.hsl.hue_blue_s" xml:space="preserve"><value>藍飽和</value></data>
+  <data name="Param.hsl.hue_blue_l" xml:space="preserve"><value>藍明度</value></data>
+  <data name="Param.hsl.hue_purple_h" xml:space="preserve"><value>紫色相</value></data>
+  <data name="Param.hsl.hue_purple_s" xml:space="preserve"><value>紫飽和</value></data>
+  <data name="Param.hsl.hue_purple_l" xml:space="preserve"><value>紫明度</value></data>
+  <data name="Param.hsl.hue_magenta_h" xml:space="preserve"><value>洋紅色相</value></data>
+  <data name="Param.hsl.hue_magenta_s" xml:space="preserve"><value>洋紅飽和</value></data>
+  <data name="Param.hsl.hue_magenta_l" xml:space="preserve"><value>洋紅明度</value></data>
   <data name="Film.Group.kodak" xml:space="preserve"><value>柯達</value></data>
   <data name="Film.Group.fuji" xml:space="preserve"><value>富士</value></data>
   <data name="Film.Group.agfa-lomo" xml:space="preserve"><value>愛克發與 Lomo</value></data>
   <data name="Film.Group.polaroid" xml:space="preserve"><value>拍立得</value></data>
   <data name="Film.Group.bw" xml:space="preserve"><value>黑白</value></data>
   <data name="Film.Group.creative" xml:space="preserve"><value>創意</value></data>
-  <data name="Film.Band.red" xml:space="preserve"><value>紅</value></data>
-  <data name="Film.Band.orange" xml:space="preserve"><value>橙</value></data>
-  <data name="Film.Band.yellow" xml:space="preserve"><value>黃</value></data>
-  <data name="Film.Band.green" xml:space="preserve"><value>綠</value></data>
-  <data name="Film.Band.aqua" xml:space="preserve"><value>青</value></data>
-  <data name="Film.Band.blue" xml:space="preserve"><value>藍</value></data>
-  <data name="Film.Band.purple" xml:space="preserve"><value>紫</value></data>
-  <data name="Film.Band.magenta" xml:space="preserve"><value>洋紅</value></data>
-  <data name="Film.Hue.none" xml:space="preserve"><value>無</value></data>
-  <data name="Film.Hue.warm-skin" xml:space="preserve"><value>暖膚色</value></data>
-  <data name="Film.Hue.clear-sky" xml:space="preserve"><value>清澈藍天</value></data>
-  <data name="Film.Hue.lush-green" xml:space="preserve"><value>青翠綠意</value></data>
-  <data name="Film.Hue.golden" xml:space="preserve"><value>金黃秋色</value></data>
-  <data name="Film.Hue.teal-orange" xml:space="preserve"><value>冷暖對比</value></data>
-  <data name="Film.Hue.muted" xml:space="preserve"><value>低彩度</value></data>
   <data name="Param.raw.wb_mode" xml:space="preserve"><value>白平衡</value></data>
   <data name="Param.raw.temperature" xml:space="preserve"><value>色溫</value></data>
   <data name="Param.raw.tint" xml:space="preserve"><value>色偏</value></data>
