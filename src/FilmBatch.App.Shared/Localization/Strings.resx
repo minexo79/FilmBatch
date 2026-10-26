@@ -262,6 +262,7 @@ R {1:P2}　G {2:P2}　B {3:P2}　亮度 {4:P2}</value></data>
   <data name="Tip.HasOverrides" xml:space="preserve"><value>有單張覆寫</value></data>
   <data name="Inspector.RelativePath" xml:space="preserve"><value>相對路徑</value></data>
   <data name="Tip.LastRender" xml:space="preserve"><value>最近一次預覽算圖時間</value></data>
+  <data name="Tip.RamUsage" xml:space="preserve"><value>系統 RAM：{0:F2} / {1:F2} GiB&#10;FilmBatch RSS：{2:F2} GiB&#10;AI 像素保留：{3:F1} MiB&#10;神經結果 {4:F1} · 來源 {5:F1} · 預覽輸入 {6:F1} MiB&#10;不含 session tensor、ORT/native、GPU、遮罩與中繼資料。&#10;不是記憶體預算；不可與 RSS 相加。</value></data>
   <data name="Tip.Rendering" xml:space="preserve"><value>算圖中</value></data>
   <data name="Tip.Compare" xml:space="preserve"><value>原圖對比：按住空白鍵；Y 切換左右分割</value></data>
   <data name="Tip.ZoomFit" xml:space="preserve"><value>符合視窗（Ctrl+0）</value></data>

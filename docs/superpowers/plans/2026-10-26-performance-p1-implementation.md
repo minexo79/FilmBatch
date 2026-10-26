@@ -36,18 +36,18 @@
 - [x] 驗證既有四尺寸 preview 輸入 LRU：16×8 full 的原始／神經各 1536 B；依序建立 4、6、8、10、12 長邊代理後，最近四筆 preview 為 `(18+32+50+72)*24 = 4128 B`；Dispose 後快照為零。
 - [x] 執行 `dotnet test tests/FilmBatch.Core.Tests/FilmBatch.Core.Tests.csproj -c Release --filter FullyQualifiedName~DenoisingOrtTests.MemoryUsage`，記錄新增 API 缺席的失敗，再實作最小計數與去重。RED 為 CS1061；GREEN 3/3。
 - [x] 執行 DenoisingTests／DenoisingOrtTests，共 39/39。真實 RawNIND 隔離副本：CoreML＋CPU／247 tiles；neural、source 各 392,896,512 B，preview 638,400 B；強度混合命中、還原像素相同；100 次暖查詢配置 0 B；Dispose 為零且 neural 弱參考已回收。來源／模型 SHA 不變。原 smoke driver 有一則 nullable flow 警告，產品測試未警告。
-- [ ] 更新契約／實測，提交 `feat(denoise): expose retained pixel memory usage`。
+- [x] 更新契約／實測，提交 `feat(denoise): expose retained pixel memory usage`：`74e8690`。
 
 ## Task 2：沿用 RAM 區塊顯示明細
 
-**Files:** `src/FilmBatch.App.Shared/Services/SystemMonitor.cs`、`ViewModels/MainWindowViewModel.Status.cs`、`Localization/Strings.resx`、`Strings.en.resx`、`src/FilmBatch.App/Views/MainWindow.axaml`；契約更新於 `docs/architecture/app.md`、`docs/history.md`。
+**Files:** `src/FilmBatch.App.Shared/Services/SystemMonitor.cs`、`ViewModels/MainWindowViewModel.Status.cs`、`MainWindowViewModel.cs` 的既有語系刷新、`Localization/Strings.resx`、`Strings.en.resx`、`src/FilmBatch.App/Views/MainWindow.axaml`；契約更新於 `docs/architecture/app.md`、`docs/history.md`。
 
 **Interfaces:** 背景取樣擴充 `SystemMonitor.Snapshot` 的 AI pixel 快照。沿用已取樣的 AppBytes，既有 RAM StackPanel 綁定新增明細提示；系統 RAM、程序 RSS 與 AI retained pixels 分列，不相加。不得因只開監控就建立 ORT processor／session。語系資源兩份同時更新。
 
-- [ ] 用儲存庫外的實際 native acceptance driver，先確認既有 RAM 區塊沒有本段的 AI 明細，再實作；不新增文字／wiring 型永久測試。
-- [ ] 背景取得快照，沿用 `_post` 到 UI；RAM 百分比／hot 狀態／偏好開關語意不變。
-- [ ] 真實模型建立快取後，啟動隔離設定的實際 MainWindow，顯示／檢查 RAM 提示與影像；讀取實際視覺輸出。原生 macOS driver 全程維持顯示器作用，不把 Headless 當 native proof。
-- [ ] 執行受影響 App 回歸及建置；更新介面契約／歷史，提交 `feat(ui): show retained AI pixels in RAM details`。
+- [x] 儲存庫外實際 native driver 先觀察 `RAM details missing AI/RSS breakdown`，exit 2；未新增文字／wiring 型永久測試。
+- [x] 背景快照經 `_post` 更新 UI；RAM 百分比／hot／顯示偏好語意不變，空快取監控未建立 shared processor。
+- [x] 真實 RawNIND CoreML＋CPU／247 tiles、隔離 MainWindow 與 Metal 照片已顯示；兩語系提示實際擷取並檢視，切換語言立即更新。AI 892,231,104 B（850.9 MiB）與程序 RSS 分列。`caffeinate -disu` 維持顯示器作用。初輪區域截圖失敗已保留，修正僅在 driver；英文標籤縮短後末行完整。
+- [ ] 受影響 App 回歸 28/28，最後語系版本 11/11；建置及 native-final exit 0。更新介面契約／歷史後提交 `feat(ui): show retained AI pixels in RAM details`。
 
 ## Task 3：新 full 推論入場時釋放舊 full cache
 
@@ -76,6 +76,6 @@
 | Item | Status | Evidence |
 |---|---|---|
 | 研究先提交 | verified | `6c1afa1`，五份研究／實驗／導航文件 |
-| Task 1 | verified | 三個 accounting 回歸 RED／GREEN；降噪 39/39；真實 247-tile 推論、快照、零配置查詢、弱參考釋放與隔離 digest 通過；待提交 |
-| Task 2 | pending | 按 native RAM 提示及相關回歸判定 |
+| Task 1 | verified | `74e8690`；accounting RED／GREEN、降噪 39/39、真實 247-tile 與釋放 smoke |
+| Task 2 | verified | native RED／GREEN、兩語系實際點陣、Metal 照片與偏好隱藏；28/28 相關 App、11/11 最後語系回歸；待提交 |
 | Task 3 | pending | 按 cache miss 入場、取消／隔離及真實換來源判定 |

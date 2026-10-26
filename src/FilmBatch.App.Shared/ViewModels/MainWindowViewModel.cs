@@ -218,6 +218,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             vm.SelectionText = vm.Service is null ? Loc.Get("Status.NoProject") : Loc.Format("Status.Selected", vm.Selection.Count);
             vm.UpdateBackgroundText();
             vm.Preview.RefreshLocalizedText();
+            vm.OnPropertyChanged(nameof(RamDetails));
             if (vm.Renderer.DeviceName is { } device) vm.GpuName = device;
             if (vm.FocusFile is not null) vm.Preview.UpdateOverlay(vm.Selection.Count);
         });
