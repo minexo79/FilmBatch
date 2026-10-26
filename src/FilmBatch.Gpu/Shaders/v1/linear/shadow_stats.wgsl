@@ -1,5 +1,5 @@
 // 暗部還原 ①：工作線性影像 → 代理格區塊統計（ShadowRecovery.Apply 第 ①② 步同式）。
-// 每個代理像素累加 s×s 區塊（右／下緣不完整區塊只含實際像素）的 Σw、Σw·u、Σw·u²。
+// 每個代理像素累加 s×s 區塊（右／下緣不完整區塊只含實際像素）的 Σw、Σw·v、Σw·v²，v=u+4。
 // 輸出寫在工作紋理左上 proxy_w×proxy_h 範圍，不另配置紋理。
 #include "linear/shadow_common.wgsl"
 
@@ -30,7 +30,7 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
             let lum = luminance(c.rgb);
             let w = shadow_weight(c.a, lum);
             if (w > 0.0) {
-                let u = shadow_guide(lum);
+                let u = shadow_guide(lum) + SHADOW_MOMENT_SHIFT;
                 s0 += w;
                 s1 += w * u;
                 s2 += w * u * u;

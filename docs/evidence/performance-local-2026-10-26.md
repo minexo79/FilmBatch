@@ -442,3 +442,33 @@ App 首輪為 394 passed／1 failed，失敗在取消 fixture 將單張縮圖交
 
 取消策略不能直接改成「同來源每次拖曳都取消」：排程器已只保留最新待算預覽，允許同來源在途影格交付是避免飢餓；換來源／開關／取消仍有圍欄，tile 邊界也已有取消檢查。降低正式品質、把 Loupe 改成僅局部模型推論、移除所有 CPU 後備或強制 strict provider 失敗不是本批修復。既有 idle full-release 的背景 blocking GC 可能停頓 managed 執行緒，但未量出在此次卡頓中的占比，不以推測移除。
 
+
+## 12. 暗部 guided 矩抵消修復
+
+接續 AI 身分重用提交 `cb9bec4`。此修復只處理同一 CPU 解碼來源的效果數值，不混入 RAW AHD 路徑。保留 §4／§10 的原始 1600×1067 combined 3 LSB 反例與 `tone exit 2`；以下是後續新版本的實測，不回改舊 oracle。
+
+### 根因與最小修復
+
+隔離 driver 直接派送產品 stats／box／apply、RAW finish 與 BasicDisplay，重建結果與實際 `GpuSpikeRenderer.Render16` 逐 byte 相同。原 shadow 浮點最大差 `1.23381615e-5`，同一 CPU shadow 輸入的 RAW finish 最大 1 LSB；完整 combined 因前段浮點差放大而達 3 LSB。獨立 double 對照指出，暗部導引約 −4，`E[u²]−E[u]²` 以接近的矩相減，微小捨入差會改變正則化係數；不是 RAW finish 的輸入域或效果順序錯置。
+
+CPU 與 WGSL 只把統計導引平移為 `v=u+4`，重建 `B=ā·v+b̄−4`。`Var(u+4)=Var(u)`，理想基底與曝光／降噪公式不變；保留 f32、原 alpha 權重、代理格、四個 box passes、插值、反射邊界、緩衝與取消邊界。原始 u 仍用於降噪差值，不增加設定、相依或 CPU fallback。此為數值穩定化，不替換 Basic 的亮暗部算法。
+
+新增 `ShadowRecoveryTests.Recovery_SmoothDarkCoverageMatchesIndependentGuideReference`：225×145、4 像素灰階區塊、分數 alpha、14.5 像素半徑；用獨立 double 的中心差平方推導八個字面值，涵蓋左右鏡射、右／下方不完整代理格。預先固定 8 個 f32 ULP 的局部計算界線，舊實作先失敗（誤差 `3.22467049e-8` 大於 `2.98023224e-8`），修正後通過；未更改既有 32 LSB fixture 或 2 LSB 實拍研究目標。
+
+### 真實產品路徑與邊界
+
+Apple M3／Metal、.NET 10.0.13，同一隔離 Sony RAW，SHA-256 `2655aca052775ed68f737a07ad27e65653ce12853115c07624c187d23e320638`。CPU／GPU 使用相同 CPU 解碼 scene，拒絕效果 renderer 回退，核對來源浮點與原檔 digest；不是 GPU AHD 的等價證據。
+
+| 產品 `Render16` 控制 | 案例 | 最大 RGB 色碼差 | alpha 最大差 | 超過 2 LSB 分量 |
+|---|---:|---:|---:|---:|
+| 512×341：預設／Highlights −50／暗部／合併 | 4 | 1 | 0 | 0 |
+| 1600×1067：相同四組設定 | 4 | 1 | 0 | 0 |
+| 合併效果：511×341／513×342／1599×1066／1601×1067 | 4 | 1 | 0 | 0 |
+
+12 組均為 `Apple M3 · Metal`、`UsingCpu=false`；原始 scene／檔案不變。新的完整階段擷取仍與產品輸出逐 byte 相同，shadow 浮點最大差降至 `1.4603138e-6`，RAW finish 與 combined 最大皆 1 LSB。這是指定來源／參數／尺寸的數值驗收，不宣稱所有相機、GPU 或舊設定皆有相同上限。
+
+相關 shadow／RAW display／GPU window budget／window equivalence 回歸 88 passed／0 skipped／0 failed。最初 shader 檢查因 PATH 無 `naga` 而未執行；在隔離目錄安裝既定 `naga-cli 30.0.1`，以 `--naga` 指定後，產品嵌入的全部 43 個 WGSL 編譯單元通過。Windows／DX12／Vulkan、iOS 與實體 UI 手勢延遲未驗；本輪未改排程、AI 首次推論或讀回同步。
+
+### 重播與保存
+
+gitignored `artifacts/verification/2026-10-26-shadow-moments.tar.gz` 保存失敗／成功命令與 TRX、階段擷取、十二組產品 smoke、獨立 double 推導、可獨立建置的重播 driver 及來源 digest。只含文字，不含 RAW、模型、浮點點陣、圖片、執行檔、私人路徑或 macOS AppleDouble／xattrs。使用外部已持有且 digest 相同的 RAW 副本；先指定 `FilmBatchRepo` 建置，再執行 driver，重播命令以封包 `REPLAY.md` 為準。RAW AHD 第一分歧另行處理，不以本修復宣稱已解決。

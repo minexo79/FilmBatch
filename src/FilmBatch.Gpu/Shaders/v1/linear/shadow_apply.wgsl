@@ -49,7 +49,7 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
     }
     let u = shadow_guide(lum);
     let k = coefficients_at((vec2f(pos) + 0.5) / p.factor - 0.5);
-    let ev = shadow_base_ev((k.x * u + k.y) / k.z);
+    let ev = shadow_base_ev((k.x * (u + SHADOW_MOMENT_SHIFT) + k.y) / k.z - SHADOW_MOMENT_SHIFT);
     let gain = exp2(shadow_lift(p.exposure, ev));
     let dark = shadow_dark(ev);
     let lk = p.luma * dark;

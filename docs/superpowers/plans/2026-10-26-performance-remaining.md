@@ -25,7 +25,7 @@
 |---|---|---|
 | 0（原 3） | AI 命中後的來源身分重用 | 已完成最小弱重用及實拍重播：後七幀同參考、GPU 來源維持 1 筆；首次推論仍同步 |
 | 1 | RAW GPU AHD 切換帶來 scene 1.1265284／同 CPU 收尾 13,650 LSB 離群 | 執行階段定位及有證據的最小修正；不擴大卸載 |
-| 2 | 1600×1067 暗部還原＋Basic Highlights 的 3 LSB／單一分量反例 | 執行階段定位及修正，保持原 2 LSB 研究目標；不是普遍精度承諾 |
+| 2 | 1600×1067 暗部還原＋Basic Highlights 的 3 LSB／單一分量反例 | 已以平移 guided 矩修正；原八組及四組相鄰尺寸皆 RGB≤1、alpha 完全相同，原 2 LSB 研究目標不變 |
 | 4 | 跨來源／重開的 f32 AI 持久結果 | 另批完整生命周期設計及驗收，不混入數學修正 |
 | 5 | 昂貴前綴、Avalonia 原生 GPU 呈現／Mip | 須先有完整互動收益與等價證據，仍候選 |
 
@@ -52,7 +52,7 @@
 
 **Interfaces:** 消費現有 `Demosaic.AhdGpu`、`FillAhdBand` 和 `RawGpuDemosaic.BeginScope`，產出同幾何／同資料域的 camera RGB；不加診斷產品介面。
 
-- [ ] 擷取原尺寸 CPU／GPU demosaic 原始結果與高光前後，對照最差點與方向／邊界，辨別第一分歧。
+- [x] 擷取原尺寸 CPU／GPU demosaic 原始結果與高光前後，對照最差點與方向／邊界，辨別第一分歧。
 - [ ] 由已定位的不變量建立最小消費者可見回歸，在修正前觀察失敗；不將私人實拍加入永久 fixture。
 - [ ] 最小修正，執行相關 RAW／GPU 回歸、shader 檢查、同張全尺寸實拍及邊界控制，核對未 fallback 與來源不變。
 - [ ] 更新現行契約／歷史、保留失敗與成功收據、獨立提交。
@@ -63,10 +63,10 @@
 
 **Interfaces:** 沿用 production decode、shadow stats／box／apply、RAW finish、BasicDisplay 與 encoder；throwaway driver 可直接派送現有 kernels 並讀回 float。
 
-- [ ] 在同一 CPU 解碼來源擷取 decode／shadow／RAW finish／BasicDisplay，定位原 1600 combined 第一分歧；不能把全管線差硬歸因 shadow。
-- [ ] 用獨立／字面值 fixture 建立數學邊界回歸，先 RED 再作最小修正；不更改原 oracle。
-- [ ] 真實 Metal 路徑檢查原八組 512／1600×預設／亮部／暗部／合併，RGB≤2、alpha 完全相同、無 fallback、輸入 digest 不變；相關回歸與 shader 檢查。
-- [ ] 更新現行文件與歷史、保存可重播收據，獨立提交。
+- [x] 在同一 CPU 解碼來源擷取 decode／shadow／RAW finish／BasicDisplay，定位原 1600 combined 第一分歧；不能把全管線差硬歸因 shadow。
+- [x] 用獨立／字面值 fixture 建立數學邊界回歸，先 RED 再作最小修正；不更改原 oracle。
+- [x] 真實 Metal 路徑檢查原八組 512／1600×預設／亮部／暗部／合併，RGB≤2、alpha 完全相同、無 fallback、輸入 digest 不變；相關回歸與 shader 檢查。
+- [x] 更新現行文件與歷史、保存可重播收據，獨立提交。
 
 ## Consumer map
 
@@ -88,8 +88,8 @@
 | Item | Status | Evidence |
 |---|---|---|
 | 排序與範圍 | verified | 已讀現行契約與 E03/E04，P1 三段已完成；使用者要求排序並開始 |
-| RAW AHD 第一分歧／修正 | in_progress | 純 demosaic 擷取已量到 max 0.039443016，早於 highlight／colour；同圖 scene／display 原反例保留，kernel 子階段續查 |
-| 合併效果第一分歧／修正 | in_progress | 實際 kernels 重建結果與 renderer 逐 byte 相同；shadow float 已分歧、同輸入 RAW finish≤1 LSB，合併仍 3 LSB；不以擴容差收尾 |
+| RAW AHD 第一分歧／修正 | in_progress | 同輸入 tile／band 擷取：green 約 1 ULP，Lab 近等距放大為 homogeneity／方向差；最差點 H/V 10/10→11/13，camera RGB 差 0.039443016；根因修正仍未交付 |
+| 合併效果第一分歧／修正 | verified | CPU／WGSL 平移矩：獨立 double fixture 先 RED 後 GREEN；原八組及四組相鄰尺寸 RGB≤1／alpha=0／Metal；相關回歸 88／88、嵌入 WGSL 43／43；重播 driver 與收據封存，見實測 §12 |
 | AI GPU-only／CPU 盤點／卡頓排序 | verified | 49／49 與 1245／1246 ORT placement、strict 對照及完整 CPU／fallback 分層，見實測 §11 |
 | AI 身分重用修正 | verified | 先 RED 3 cases；相關 Core 67／67、完整 Core 864 passed／28 skipped；實拍來源 1 slot、像素逐 byte 保持、弱輸出可回收 |
 | App 取消 fixture 的既有時序缺口 | verified | 首輪 394 passed／1 failed；補齊初次掃描完成前提後同類 11／11、最後完整 App 395／395，產品取消邏輯與斷言不變 |

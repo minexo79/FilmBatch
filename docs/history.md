@@ -419,6 +419,14 @@ App 流程（選取、按 1:1 按鈕、平移、滾輪放大 6 格、`Ctrl+0` �
 
 尚未修復：首次全尺寸推論佔用 render worker、讀回／histogram／display fit 的同步成本，以及 RAW AHD 與 combined 3 LSB 的數值問題；不把這一筆快取修復宣稱成「全 GPU」或全部卡頓已消失。Windows／DirectML、iOS 與原生實體手勢延遲此輪未驗。
 
+## 暗部 guided 矩的數值穩定化（2026-10-26）
+
+接續 AI 命中來源重用 `cb9bec4`，先修已定位的 combined 3 LSB 反例；RAW AHD 的方向分歧仍分開處理。相同 CPU scene 的分段 Metal 擷取可逐 byte 重建產品結果，確認暗部約 −4 的 guide 直接以 `E[u²]−E[u]²` 求變異數會放大捨入差。CPU／WGSL 改累積 `v=u+4` 的矩、基底重建後減回；理想 guided 基底不變，不增 pass／緩衝／設定，不改降噪差值、HDR／alpha、效果順序或精度門檻。
+
+獨立 double 的中心差平方推導字面值，永久回歸在舊碼失敗、修正後通過，含分數 alpha、鏡射與右／下不完整代理格。Sony RAW 的 512／1600 四組控制及 511／513／1599／1601 相鄰尺寸合併控制共 12 組，實際 Metal 與 CPU `Render16` 最大差均 1 LSB、alpha 完全相同、無 fallback，來源浮點與原檔 digest 不變；原 3 LSB 收據不回改。相關算圖回歸 88 passed／0 skipped／0 failed，Naga 30.0.1 驗證全部 43 個嵌入 WGSL 通過；最初 PATH 缺 naga 的未執行收據亦保留。
+
+現行 Engine 契約、排序計畫與[追加數值證據](evidence/performance-local-2026-10-26.md#12-暗部-guided-矩抵消修復)同步更新；文字重播 driver、獨立推導、RED／GREEN 與 digest 封存於 gitignored `artifacts/verification/2026-10-26-shadow-moments.tar.gz`，不含照片／模型／點陣／執行檔或私人路徑。未驗 Windows／Vulkan／iOS、實體 UI 手勢 p95 或跨相機普遍精度；不宣稱消除首次推論與讀回卡頓。
+
 ## 如何新增歷史列
 
 只記對未來修改有用的決定：真實 commit／日期、可核對的理由或重現、被拒絕方案、目前契約／檢查、後續取代。沒有當時證據時明寫「只確認提交意圖」；數值必須保留平台、輸入與來源版本，不把舊測試 totals 複製成新版本的驗收結果。
