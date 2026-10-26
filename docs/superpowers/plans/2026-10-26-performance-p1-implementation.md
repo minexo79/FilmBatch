@@ -47,7 +47,7 @@
 - [x] 儲存庫外實際 native driver 先觀察 `RAM details missing AI/RSS breakdown`，exit 2；未新增文字／wiring 型永久測試。
 - [x] 背景快照經 `_post` 更新 UI；RAM 百分比／hot／顯示偏好語意不變，空快取監控未建立 shared processor。
 - [x] 真實 RawNIND CoreML＋CPU／247 tiles、隔離 MainWindow 與 Metal 照片已顯示；兩語系提示實際擷取並檢視，切換語言立即更新。AI 892,231,104 B（850.9 MiB）與程序 RSS 分列。`caffeinate -disu` 維持顯示器作用。初輪區域截圖失敗已保留，修正僅在 driver；英文標籤縮短後末行完整。
-- [ ] 受影響 App 回歸 28/28，最後語系版本 11/11；建置及 native-final exit 0。更新介面契約／歷史後提交 `feat(ui): show retained AI pixels in RAM details`。
+- [x] 受影響 App 回歸 28/28，最後語系版本 11/11；建置及 native-final exit 0。更新介面契約／歷史後提交 `feat(ui): show retained AI pixels in RAM details`：`d36b04e`。
 
 ## Task 3：新 full 推論入場時釋放舊 full cache
 
@@ -55,21 +55,21 @@
 
 **Interfaces:** 不新增設定／公共清除命令。延用 `InferenceGate`，第二次 cache lookup 未命中且 `fullResolution=true` 才釋放 `_cached`；thumbnail 路徑不釋放 full。等待中或預先取消的呼叫不先逐出；匹配結果不逐出。保留正在 Materialize 的呼叫者已取得的本地結果。
 
-- [ ] 先加入真實 ORT 回歸：prime full＋thumbnail；在另一來源的新 full 的 `infer` 事件觀察，只剩原 thumbnail 的 cache bytes；事件回呼只記觀察，不在被攔截例外的回呼內 assert。
-- [ ] 同來源不同強度仍 CacheHit；thumbnail 不逐出 full；進入閘門前取消仍可命中舊 full。新 full 取消／失敗後不發布半成品，重試可完成。
-- [ ] 觀察失敗後在閘門內做最小釋放；如 JIT 本地參考仍延長舊大型陣列存活，先以受控弱參考／GC smoke 確認，再隔離 cache lookup 的存活範圍，不靠無條件 GC 掩蓋保留。
-- [ ] 執行 DenoisingTests／DenoisingOrtTests 與相關排程回歸；真實 RAW 換來源 smoke 分列 retained pixels 與採樣 RSS，驗輸出／模型／tile／取消及來源不變。
-- [ ] 更新契約／實測，提交 `perf(denoise): release superseded full results before inference`。
+- [x] 真實 ORT 回歸先 prime full＋thumbnail，另一來源 infer 開始時預期僅 thumbnail；RED 實際 100 B／預期 20 B，取消與非有限輸出兩案亦保留 20 B 而失敗。事件只記值，assert 在回呼外。
+- [x] 四項准入／取消案例 GREEN；含同來源強度命中、thumbnail 隔離、預先取消與等待閘門中取消保留舊 full、新 full 取消／非有限輸出失敗後不發布半成品，有限來源重試可完成。
+- [x] 初版清欄位後的真實弱參考 smoke 仍失敗；兩次 cache lookup 移入禁止內嵌的 `FindCached`，同一 smoke 的舊 neural／source 皆回收。不在產品呼叫 GC。
+- [x] 最後相關 denoise／scheduler 64/64；完整 Core 861 passed、28 skipped、0 failed；完整 App 395 passed、0 failed。兩張真實 Sony RAW 換源及取消後重試皆 CoreML＋CPU／247 tiles；准入只剩 638,400 B thumbnail。來源與模型 SHA 不變；RSS 採樣與診斷 GC 分列，不宣稱硬預算或無干預峰值比較。
+- [x] 更新契約／實測並完成本段提交內容；主題 `perf(denoise): release superseded full results before inference`。
 
 ## Acceptance / consumer map
 
-| Consumer | 覆蓋要求 |
+| Consumer | 覆蓋狀態與證據 |
 |---|---|
-| Engine 直接呼叫、CPU／GPU renderer、CLI 匯出 | 既有像素、模型、tile、CacheHit 及縮圖隔離不變；主要陣列計數與生命周期回歸 |
-| Shared processor 與資源取樣 | 沒有使用 AI 時不建立處理器；監控不製造顯示陣列，dispose 不保留像素 |
-| MainWindow RAM 區塊與語系 | 實際 native 提示；兩語系資源；既有百分比與顯示偏好不變 |
-| 原始照片、專案、既有預設 | 不寫入，真實 smoke 隔離且前後 hash 相同 |
-| 持久磁碟／GPU 純 kernel／Windows／iOS native | 本批不建立磁碟快取、不改 shader；本機驗證不推廣為其他平台已驗收 |
+| Engine 直接呼叫、CPU／GPU renderer、CLI 匯出 | covered：四項新生命周期案例、完整 Core 與既有 renderer／匯出回歸、真實 RAW swap；未另跑 CLI 真實 AI 批次 |
+| Shared processor 與資源取樣 | covered：空快取 native 監控未建立 processor、延遲顯示與去重回歸、零配置查詢及弱參考釋放 |
+| MainWindow RAM 區塊與語系 | covered：真實 native 兩語系 ToolTip／影像、立即切換與原有顯示偏好；完整 App 395/395 |
+| 原始照片、專案、既有預設 | covered：所有 App profile／專案寫入均在隔離目錄；兩張原始 RAW／副本與模型固定 SHA 相同，產品不改保存路徑 |
+| 持久磁碟／GPU 純 kernel／Windows／iOS native | not applicable／untested：不建立磁碟快取、不改 shader；不將本機證據推廣為其他平台已驗收 |
 
 ## State ledger
 
@@ -77,5 +77,12 @@
 |---|---|---|
 | 研究先提交 | verified | `6c1afa1`，五份研究／實驗／導航文件 |
 | Task 1 | verified | `74e8690`；accounting RED／GREEN、降噪 39/39、真實 247-tile 與釋放 smoke |
-| Task 2 | verified | native RED／GREEN、兩語系實際點陣、Metal 照片與偏好隱藏；28/28 相關 App、11/11 最後語系回歸；待提交 |
-| Task 3 | pending | 按 cache miss 入場、取消／隔離及真實換來源判定 |
+| Task 2 | verified | `d36b04e`；native RED／GREEN、兩語系實際點陣、Metal 照片與偏好隱藏；28/28 相關 App、11/11 最後語系回歸 |
+| Task 3 | verified | 准入 RED／GREEN、JIT 根存活反例與修正後真實 swap、取消／重試／像素 hash；最後 Core 861 passed／28 skipped、App 395 passed |
+
+## Final review / evidence
+
+- 程式審查：沿用既有快取、入場閘門、來源所有權、RAM 區塊與語系事件；無新相依／偏好／快取框架。`FindCached` 的非內嵌邊界有真實弱參考失敗／成功反證，不是無證據抽象。
+- `VERIFY.md`：分列測試 totals／skips、原生與 Engine smoke、來源／權重完整性；未宣稱 Windows／iOS、多相機或新 RSS 上限。Core 跳過為 RAW corpus 21、Windows-only 5、RAW oracle 1、既有臨時 probe 1。
+- TWINS: searched `candidate = fullResolution ? _cached : _thumbnailCached` - found 0 other sites: none。唯一剩餘位置為 `FindCached` 本體，兩個呼叫端已遷移。
+- 重播收據：`artifacts/verification/2026-10-26-performance-p1.tar.gz`（gitignored）；保留 native RED、截圖驗收器失敗、初版 JIT 保留失敗及成功結果。點陣只在本機檢視，不隨收據散布照片；不含模型／執行檔／私人絕對路徑。

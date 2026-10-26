@@ -438,6 +438,151 @@ public class DenoisingOrtTests : IDisposable
         Assert.False(retry.Denoise!.CacheHit);
         Assert.Equal(new ushort[] { 5000, 10000, 15000, 65535 }, retry.Rgba16);
     }
+
+    [Fact]
+    public void FullCacheMiss_ReleasesOldPixelsAtInferenceButKeepsThumbnail()
+    {
+        var onnx = MakeNegOnnx(TinyTile);
+        var dir = Dir("full-admission");
+        File.WriteAllBytes(Path.Combine(dir, "tiny.onnx"), onnx);
+        var spec = TinySpec("full-admission", "tiny.onnx", onnx, matchGain: false);
+        var source = new SourceImage(2, 2,
+            Enumerable.Range(0, 4).SelectMany(_ => new ushort[] { 10000, 20000, 30000, 65535 }).ToArray());
+        var thumbnail = new SourceImage(1, 1, [20000, 40000, 60000, 32768]);
+        using var processor = new DenoiseProcessor(dir, "CPU");
+        var mix = new DenoiseSettings(true, 25, 100, 100);
+        var previous = processor.Prepare(source, spec, mix, TestContext.Current.CancellationToken);
+        processor.Prepare(thumbnail, spec, mix, TestContext.Current.CancellationToken, fullResolution: false);
+        Assert.True(processor.Prepare(source, spec, new(true, 50, 100, 100),
+            TestContext.Current.CancellationToken).Denoise!.CacheHit);
+        DenoiseMemoryUsage? atInference = null;
+        void Observe(DenoiseProgress progress)
+        {
+            if (progress.ModelId == spec.Id && progress.Stage == "infer" && progress.Completed == 0)
+                atInference = processor.MemoryUsage;
+        }
+        DenoiseProcessor.ProgressChanged += Observe;
+        try
+        {
+            processor.Prepare(new SourceImage(1, 1, [30000, 20000, 10000, 65535]),
+                spec, mix, TestContext.Current.CancellationToken);
+        }
+        finally { DenoiseProcessor.ProgressChanged -= Observe; }
+
+        Assert.Equal(new DenoiseMemoryUsage(12, 8, 0), atInference);
+        var retainedThumbnail = processor.Prepare(thumbnail, spec, mix,
+            TestContext.Current.CancellationToken, fullResolution: false);
+        Assert.True(retainedThumbnail.Denoise!.CacheHit);
+        Assert.Equal(new ushort[] { 10000, 20000, 30000, 32768 }, retainedThumbnail.Rgba16);
+        Assert.Equal(new ushort[] { 5000, 10000, 15000, 65535 }, previous.Rgba16.AsSpan(0, 4).ToArray());
+    }
+
+    [Fact]
+    public async Task FullCacheMiss_CancelledWhileWaitingKeepsExistingFull()
+    {
+        var onnx = MakeNegOnnx(TinyTile);
+        var dir = Dir("full-wait-cancel");
+        File.WriteAllBytes(Path.Combine(dir, "tiny.onnx"), onnx);
+        var spec = TinySpec("full-wait-cancel", "tiny.onnx", onnx, matchGain: false);
+        var blockerSpec = spec with { Id = "full-wait-blocker" };
+        var source = new SourceImage(1, 1, [10000, 20000, 30000, 65535]);
+        var replacement = new SourceImage(1, 1, [60000, 40000, 20000, 65535]);
+        using var processor = new DenoiseProcessor(dir, "CPU");
+        using var blocker = new DenoiseProcessor(dir, "CPU");
+        var mix = new DenoiseSettings(true, 25, 100, 100);
+        processor.Prepare(source, spec, mix, TestContext.Current.CancellationToken);
+        var before = processor.MemoryUsage;
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        cancellation.Cancel();
+        Assert.Throws<OperationCanceledException>(() => processor.Prepare(replacement, spec, mix, cancellation.Token));
+        Assert.Equal(before, processor.MemoryUsage);
+
+        using var waitingCancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        using var release = new ManualResetEventSlim();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var queued = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void Observe(DenoiseProgress progress)
+        {
+            if (progress.ModelId == blockerSpec.Id && progress.Stage == "infer" && progress.Completed == 0)
+            {
+                entered.TrySetResult();
+                release.Wait(TestContext.Current.CancellationToken);
+            }
+            if (progress.ModelId == spec.Id && progress.Stage == "loading") queued.TrySetResult();
+        }
+        DenoiseProcessor.ProgressChanged += Observe;
+        var occupying = Task.Run(() => blocker.Prepare(replacement, blockerSpec, mix,
+            TestContext.Current.CancellationToken), TestContext.Current.CancellationToken);
+        Task<SourceImage>? waiting = null;
+        try
+        {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            waiting = Task.Run(() => processor.Prepare(replacement, spec, mix, waitingCancellation.Token),
+                TestContext.Current.CancellationToken);
+            await queued.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+            Assert.Equal(before, processor.MemoryUsage);
+            waitingCancellation.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await waiting);
+            Assert.Equal(before, processor.MemoryUsage);
+            Assert.True(processor.Prepare(source, spec, mix, TestContext.Current.CancellationToken).Denoise!.CacheHit);
+        }
+        finally
+        {
+            waitingCancellation.Cancel();
+            release.Set();
+            try
+            {
+                await occupying;
+                if (waiting is not null)
+                    try { await waiting; } catch (OperationCanceledException) { }
+            }
+            finally { DenoiseProcessor.ProgressChanged -= Observe; }
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void FullCacheMiss_InterruptedReplacementPublishesNoPartialCache(bool nonFiniteOutput)
+    {
+        var onnx = MakeNegOnnx(TinyTile);
+        var dir = Dir("full-interrupted");
+        File.WriteAllBytes(Path.Combine(dir, "tiny.onnx"), onnx);
+        var spec = TinySpec("full-interrupted", "tiny.onnx", onnx, matchGain: false)
+            with { SceneLinear = true };
+        using var processor = new DenoiseProcessor(dir, "CPU");
+        var mix = new DenoiseSettings(true, 25, 100, 100);
+        processor.Prepare(new SourceImage(1, 1, [10000, 20000, 30000, 65535]),
+            spec, mix, TestContext.Current.CancellationToken);
+        var replacement = new SourceImage(new RawSceneData(
+            new FilmBatch.Raw.Raster.RgbImage(1, 1, [nonFiniteOutput ? float.NaN : .2f, .4f, .6f]),
+            null, null, DenoiseTestScene.Geometry(1, 1)));
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        void Cancel(DenoiseProgress progress)
+        {
+            if (!nonFiniteOutput && progress.ModelId == spec.Id && progress.Stage == "infer"
+                && progress.Completed == progress.Total) cancellation.Cancel();
+        }
+        DenoiseProcessor.ProgressChanged += Cancel;
+        try
+        {
+            if (nonFiniteOutput)
+                Assert.Throws<InvalidDataException>(() => processor.Prepare(replacement, spec, mix, cancellation.Token));
+            else
+                Assert.Throws<OperationCanceledException>(() => processor.Prepare(replacement, spec, mix, cancellation.Token));
+        }
+        finally { DenoiseProcessor.ProgressChanged -= Cancel; }
+        Assert.Equal(0, processor.MemoryUsage.TotalBytes);
+        var valid = new SourceImage(new RawSceneData(
+            new FilmBatch.Raw.Raster.RgbImage(1, 1, [.2f, .4f, .6f]),
+            null, null, DenoiseTestScene.Geometry(1, 1)));
+        var retry = processor.Prepare(valid, spec, mix, TestContext.Current.CancellationToken);
+        Assert.False(retry.Denoise!.CacheHit);
+        Assert.Equal(.1f, retry.Scene!.Image.Data[0], 6);
+        Assert.Equal(.2f, retry.Scene.Image.Data[1], 6);
+        Assert.Equal(.3f, retry.Scene.Image.Data[2], 6);
+    }
+
     // ---- 預覽代理混合（快取命中後的重複強度變更） --------------------------------
     // FilePath 一律指向實際存在的檔案（tiny ONNX 本身）：全尺寸來源先跑推論，
     // 代理呼叫才走「來源戳記相同」的快取命中路徑，不會真的去解碼該檔案。

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using FilmBatch.Core;
 using FilmBatch.Core.Params;
@@ -189,8 +190,7 @@ public sealed class DenoiseProcessor : IDisposable
         lock (_sync)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            var candidate = fullResolution ? _cached : _thumbnailCached;
-            cached = candidate is { } hit && hit.Key == key ? hit : null;
+            cached = FindCached(key, fullResolution);
         }
         if (cached is not null)
         {
@@ -213,8 +213,10 @@ public sealed class DenoiseProcessor : IDisposable
         {
             lock (_sync)
             {
-                var candidate = fullResolution ? _cached : _thumbnailCached;
-                cached = candidate is { } completed && completed.Key == key ? completed : null;
+                cancellationToken.ThrowIfCancellationRequested();
+                cached = FindCached(key, fullResolution);
+                // 新 full 工作已入場才放掉舊結果；等待、命中及縮圖都不能逐出 full。
+                if (cached is null && fullResolution) _cached = null;
             }
             if (cached is not null)
                 return Materialize(source, cached, spec, cacheHit: true, ds, cancellationToken);
@@ -244,6 +246,14 @@ public sealed class DenoiseProcessor : IDisposable
         {
             InferenceGate.Release();
         }
+    }
+
+    // 未命中的舊結果不得留在長時間推論的 stack frame；禁止 JIT 把查找內嵌回呼叫端。
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private NeuralResult? FindCached(CacheKey key, bool fullResolution)
+    {
+        var candidate = fullResolution ? _cached : _thumbnailCached;
+        return candidate is not null && candidate.Key == key ? candidate : null;
     }
 
     private static int TilesFor(DenoiseModelSpec spec, int w, int h) =>

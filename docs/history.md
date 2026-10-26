@@ -401,6 +401,14 @@ App 流程（選取、按 1:1 按鈕、平移、滾輪放大 6 格、`Ctrl+0` �
 
 原生 macOS MainWindow 先以缺少 AI／RSS 明細失敗，再以真實 RawNIND 247-tile CoreML＋CPU、實際照片與 Metal 畫面完成驗收：提示顯示約 850.9 MiB AI pixels，與 1.26–1.31 GiB 程序 RSS 分列；空快取監控未建立 shared processor。兩語系 ToolTip 實際點陣已檢視，英文縮短欄位標籤以保留完整末行；原有顯示偏好可隱藏區塊。相關 App 回歸 28/28；最後資源版本語系回歸 11/11。首輪螢幕區域擷取失敗屬驗收器問題，改為擷取已開啟的原生 ToolTip／視窗，失敗收據保留，產品未為驗收器加後門。
 
+## P1：新 full 推論入場釋放舊結果（2026-10-26）
+
+接續 RAM 提示提交 `d36b04e`，全品質 miss 只在取得既有推論閘門、確認未取消且二次查找仍 miss 後清除舊 full。縮圖、同來源強度混合與等待中取消仍保留原快取；已交付的畫面不失效。新工作失敗或取消後不發布半成品、不回復舊快取，回到前張可能重推論；沒有新增品質降級、公共清除設定或產品端強制 GC。
+
+四項准入／取消案例先有三個失敗，再通過。初版只清 `_cached` 雖通過單元測試，真實兩張 Sony RAW 的弱參考 smoke 仍見舊 neural／source 存活；把兩次查找集中到禁止內嵌的 `FindCached` 後，同一 smoke 的兩份舊陣列均已回收。新推論開始時可達快取由 787,069,824 B 降至僅縮圖的 638,400 B；兩張照片與取消後重試皆保持 RawNIND／CoreML＋CPU、247 tiles，混合命中、縮圖隔離、先前畫面及重試像素 hash 均保持。GC 僅在外部 smoke 中辨識根存活；10 ms 採樣 RSS 峰值 2,584,559,616 B 不是未干預的比較實驗或新的硬上限。
+
+最後 Core：861 passed／28 skipped／0 failed；跳過為 21 項未提供的 CC0 RAW corpus、5 項 Windows-only、1 項 RAW oracle 無資料及 1 項未配置的既有臨時 probe。App：395 passed／0 skipped／0 failed。兩張原始 RAW、隔離副本與已安裝 RawNIND digest 皆與固定基準相同。重播 driver、失敗／成功收據及 TRX 保存於 gitignored `artifacts/verification/2026-10-26-performance-p1.tar.gz`，不含照片、權重、點陣圖、執行檔或私人絕對路徑。Windows／iOS 原生及多相機完整驗收不在此批證據內。
+
 ## 如何新增歷史列
 
 只記對未來修改有用的決定：真實 commit／日期、可核對的理由或重現、被拒絕方案、目前契約／檢查、後續取代。沒有當時證據時明寫「只確認提交意圖」；數值必須保留平台、輸入與來源版本，不把舊測試 totals 複製成新版本的驗收結果。

@@ -36,6 +36,8 @@ flowchart LR
 
 **AI 像素保留量**：`DenoiseProcessor.MemoryUsage` 分列未混合神經結果、來源與既有縮放／顯示陣列，以及預覽尺寸混合輸入。full／thumbnail 共用的陣列依參考去重；查詢不建立 RAW 的延遲 `Rgba16`，重用的去重集合在查詢後清空，不成為保留者。`SharedMemoryUsage` 在未使用 AI 時回傳零，不建立處理器或 session。這只是 AI 快取可達的主要 managed 像素陣列，不含遮罩、中繼資料、session tensor、ORT/native 或 GPU 記憶體；不是 heap、RSS 或入場預算，不能與程序 RSS 相加。
 
+全品質 cache miss 取得行程級 `InferenceGate` 後，先檢查取消並再次查找；仍未命中才釋放舊 full 結果，再載入／推論新來源。等待中或預先取消的呼叫、同來源混合命中與縮圖工作都不逐出 full。查找集中於禁止內嵌的 `FindCached`，避免未命中的舊結果被長時間推論的 JIT stack frame 保留；不在產品路徑加入強制 GC。新 full 取消／失敗不發布半成品，也不恢復舊快取；返回舊照片可能重推論，既有呼叫者持有的結果與設定不變。
+
 **處理順序**（`CpuPipeline.Process` 與 `GpuEffectPipeline.Process` 相同）
 
 RAW 來源保持未夾取的浮點線性 Rec.2020，`Rgba16` 只在原圖比較／直方圖等顯示用途首次取用時編碼。兩套算圖管線先轉到未夾取的線性 sRGB 工作域，在裁切後套用相機白平衡與語意遮罩，再執行既有效果；顯示段前轉回 Rec.2020，依原順序完成相機色調、高光去飽和與壓縮，再轉顯示 sRGB。高光壓縮的通道最大值不能與色域轉換交換順序。一般影像維持原有 sRGB 路徑；藝術 LUT 仍有自身的有界輸入限制。
