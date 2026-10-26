@@ -345,6 +345,26 @@
     <Setter Property="Foreground" Value="{DynamicResource FB.TextBrush}" />
     <Setter Property="BoxShadow" Value="0 1 2 0 #50000000" />
   </Style>
+  <!-- 純按鈕的分段項目（例如類別小地圖）：外觀同 ToggleButton.segment，沒有勾選狀態 -->
+  <Style Selector="Button.segment">
+    <Setter Property="MinHeight" Value="26" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <!-- 上內距略大於下內距：中文字形偏上，視覺才會置中 -->
+    <Setter Property="Padding" Value="8,4,8,2" />
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="CornerRadius" Value="5" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Background" Value="{DynamicResource FB.HoverOverlayBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource FB.SecondaryTextBrush}" />
+  </Style>
+  <Style Selector="Button.segment:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource FB.ButtonHoverBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource FB.TextBrush}" />
+  </Style>
+  <Style Selector="Button.segment:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource FB.ButtonPressedBrush}" />
+  </Style>
 
   <!-- 工具按鈕：只有圖示、透明背景、圓角滑過底色 -->
   <Style Selector="Button.tool, ToggleButton.tool">
@@ -700,6 +720,10 @@
     <!-- 按鈕撐滿整列高度；內容需置中，否則標題文字會貼齊頂端而與右側圖示錯位 -->
     <Setter Property="VerticalContentAlignment" Value="Center" />
   </Style>
+  <!-- 模組標題文字與參數列同一條左緣（不留箭頭用的左右內距） -->
+  <Style Selector="ToggleButton.module-title">
+    <Setter Property="Padding" Value="0" />
+  </Style>
   <Style Selector="ToggleButton.chevron PathIcon">
     <Setter Property="Width" Value="12" />
     <Setter Property="Height" Value="12" />
@@ -718,9 +742,17 @@
   <Style Selector="ToggleButton.chevron:checked PathIcon.collapsed">
     <Setter Property="IsVisible" Value="False" />
   </Style>
-  <!-- 模組分組標題（整組折疊） -->
+  <!-- 模組分組（整組折疊）：外框包住標題與內容，展開或收合都保留外框；分組之間留間距 -->
+  <Style Selector="Border.group-box">
+    <Setter Property="BorderBrush" Value="{DynamicResource FB.BorderLightBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="6" />
+    <Setter Property="Margin" Value="12,12,12,4" />
+    <Setter Property="ClipToBounds" Value="True" />
+  </Style>
+  <!-- 標題左緣與右側箭頭對齊模組標題列（16px 縮排、右側 8px＋箭頭內距） -->
   <Style Selector="ToggleButton.group-header">
-    <Setter Property="Padding" Value="16,16,16,6" />
+    <Setter Property="Padding" Value="16,10,8,6" />
   </Style>
   <Style Selector="ToggleButton.group-header PathIcon">
     <Setter Property="Width" Value="10" />
