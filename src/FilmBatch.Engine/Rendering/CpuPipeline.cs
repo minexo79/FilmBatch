@@ -824,6 +824,7 @@ public static class CpuPipeline
         var red = p.LeakRed / 100f;
         var yellow = p.LeakYellow / 100f;
         var blue = p.LeakBlue / 100f;
+        var white = p.LeakWhite / 100f;
         var blend = p.LeakBlend;
         var frame = new FrameWindow(p, w, h);
 
@@ -871,6 +872,8 @@ public static class CpuPipeline
                     var hsv = RgbToHsv(lr, lg, lb);
                     (lr, lg, lb) = HsvToRgb(hsv.H + hue, hsv.S, hsv.V);
                 }
+                // 白光：中性加光，不受色相旋轉影響（原版漏光的白色基底）
+                lr += white; lg += white; lb += white;
                 lr *= leak; lg *= leak; lb *= leak;
                 var i = (y * w + x) * 4;
                 buf[i] = BlendLeak(buf[i], lr, amount, blend);

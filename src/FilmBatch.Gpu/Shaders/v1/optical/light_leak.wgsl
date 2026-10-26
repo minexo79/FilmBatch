@@ -21,8 +21,8 @@ struct Params {
     red: f32,           // 0..1
     yellow: f32,        // 0..1
     blue: f32,          // 0..1
+    white: f32,         // 0..1，中性白光
     _pad0: u32,
-    _pad1: u32,
 }
 
 @group(0) @binding(0) var src: texture_2d<f32>;
@@ -81,6 +81,7 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
         let hsv = rgb_to_hsv(col);
         col = hsv_to_rgb(hsv.x + p.hue, hsv.y, hsv.z);
     }
+    col += vec3f(p.white);
     let l = col * leak;
     let k = p.amount;
     var rgb: vec3f;

@@ -229,6 +229,7 @@ public static class ModuleCatalog
             Float("red", "紅", 100, 0, 100),
             Float("yellow", "黃", 100, 0, 100),
             Float("blue", "藍", 30, 0, 100),
+            Float("white", "白", 0, 0, 100),
             Float("hue", "色相", 0, 0, 360, 1, "°"),
             Float("irregularity", "不規則度", 50, 0, 100),
             Int("count", "數量", 1, 1, 3),

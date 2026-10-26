@@ -674,6 +674,20 @@ public sealed class EffectPipelineTests
     }
 
     [Fact]
+    public void LightLeak_White_AddsNeutralLight()
+    {
+        // 白光只加中性增量：紅黃藍為 0 時，R／G／B 增量應相同且為正。
+        const ushort gray = 20000;
+        var src = Flat(32, 32, gray);
+        using var cpu = new CpuFakeRenderer();
+        var settings = PlasmaLeak(0, 0, 0).With("light_leak.white", 100.0);
+        var gain = ChannelGains(cpu.Render16(src, settings, TestContext.Current.CancellationToken).Rgba16, gray);
+        Assert.True(gain.R > 0.01, $"白光幾乎無增亮（R={gain.R:F4}）");
+        Assert.True(Math.Abs(gain.R - gain.G) < 0.005 && Math.Abs(gain.G - gain.B) < 0.005,
+            $"白光應為中性（R={gain.R:F4} G={gain.G:F4} B={gain.B:F4}）");
+    }
+
+    [Fact]
     public void LightLeak_ZeroColors_LeaveImageUnchanged()
     {
         var src = Flat(32, 32, 20000);

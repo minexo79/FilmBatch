@@ -421,7 +421,7 @@ internal sealed class GpuEffectPipeline : IDisposable
                 ? Apply(_leak, new LeakUniforms(0, p.LeakAmount / 100, p.LeakAngle * MathF.PI / 180,
                     p.LeakSize / 100, p.LeakHue, p.LeakIrregularity / 100, p.LeakCount, p.SeedLightLeak,
                     aspect, shortSide, p.LeakBlend, p.LeakRed / 100, p.LeakYellow / 100,
-                    p.LeakBlue / 100, 0, 0))
+                    p.LeakBlue / 100, p.LeakWhite / 100, 0))
                 : Apply(_texture, OverlayUniforms(p, leak, true), leak);
         if (p.FilmOn && p.FilmLut is not null && p.FilmStrength > 0)
             current = Apply(_look, p.FilmLook, LutTexture(p.FilmLut));
@@ -836,7 +836,7 @@ internal sealed class GpuEffectPipeline : IDisposable
     [StructLayout(LayoutKind.Sequential)] private readonly record struct MotionUniforms(float Angle, float Length, float Protect, float X, float Y, float Size, float ShortSide, float Pad);
     [StructLayout(LayoutKind.Sequential)] private readonly record struct VignetteUniforms(float Amount, float Size, float Roundness, float Feather, float X, float Y, float Aspect, float Pad);
     [StructLayout(LayoutKind.Sequential)] private readonly record struct HalationUniforms(float Amount, float Threshold, float Radius, float Hue, float ShortSide, float Pad0, float Pad1, float Pad2);
-    [StructLayout(LayoutKind.Sequential)] private readonly record struct LeakUniforms(int Mode, float Amount, float Angle, float Size, float Hue, float Irregularity, int Count, uint Seed, float Aspect, float ShortSide, int Blend, float Red, float Yellow, float Blue, uint Pad0, uint Pad1);
+    [StructLayout(LayoutKind.Sequential)] private readonly record struct LeakUniforms(int Mode, float Amount, float Angle, float Size, float Hue, float Irregularity, int Count, uint Seed, float Aspect, float ShortSide, int Blend, float Red, float Yellow, float Blue, float White, uint Pad0);
     [StructLayout(LayoutKind.Sequential)] private readonly record struct PlateUniforms(int Type, float Strength, float Ortho, float Hue, float Tint, float Erosion, float Stains, float Uneven, uint Seed, float Aspect, uint Pad0, uint Pad1);
     [StructLayout(LayoutKind.Sequential)] private readonly record struct BasicUniforms(float Brightness, float Contrast, float Highlights, float ShadowToe, float Saturation, float Structure, float ShortSide, float Pad);
     [StructLayout(LayoutKind.Sequential)] private readonly record struct ToneUniforms(float ShadowHue, float ShadowAmount, float HighlightHue, float HighlightAmount, float Balance, float Pad0, float Pad1, float Pad2);

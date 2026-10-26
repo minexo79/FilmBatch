@@ -108,6 +108,7 @@ public class GpuSpikeTests
             .With("light_leak.amount", 80.0)
             .With("light_leak.size", 70.0)
             .With("light_leak.blue", 60.0)
+            .With("light_leak.white", 40.0)
             .With("light_leak.hue", hue)
             .With("light_leak.count", 2.0)
             .With("light_leak.seed", seed);

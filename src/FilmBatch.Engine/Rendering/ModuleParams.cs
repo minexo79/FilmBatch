@@ -91,7 +91,7 @@ public sealed class ModuleParams
     public string LeakTexture = "";
     public int LeakBlend; // 0 screen / 1 add / 2 lighten
     public float LeakAmount, LeakAngle, LeakSize, LeakHue, LeakIrregularity;
-    public float LeakRed, LeakYellow, LeakBlue;
+    public float LeakRed, LeakYellow, LeakBlue, LeakWhite;
     public int LeakCount;
     // film（底片風格：LUT ＋ 色相帶；FilmLut 為 null 時不套用）
     public bool FilmOn;
@@ -286,6 +286,7 @@ public sealed class ModuleParams
             LeakRed = N(s, "light_leak.red", 100),
             LeakYellow = N(s, "light_leak.yellow", 100),
             LeakBlue = N(s, "light_leak.blue", 30),
+            LeakWhite = N(s, "light_leak.white", 0),
             LeakIrregularity = N(s, "light_leak.irregularity", 50),
             LeakCount = I(s, "light_leak.count", 1),
             // film：底片風格（docs/film-looks.md）

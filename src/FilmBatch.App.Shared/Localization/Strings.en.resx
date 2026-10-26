@@ -508,6 +508,7 @@ Clear overrides: use the new preset entirely.</value></data>
   <data name="Param.light_leak.red" xml:space="preserve"><value>Red</value></data>
   <data name="Param.light_leak.yellow" xml:space="preserve"><value>Yellow</value></data>
   <data name="Param.light_leak.blue" xml:space="preserve"><value>Blue</value></data>
+  <data name="Param.light_leak.white" xml:space="preserve"><value>White</value></data>
   <data name="Param.film.strength" xml:space="preserve"><value>Effect Mix</value></data>
   <data name="Param.photo_plate.plate_type" xml:space="preserve"><value>Plate</value></data>
   <data name="Choice.photo_plate.plate_type.tintype" xml:space="preserve"><value>Tintype</value></data>
