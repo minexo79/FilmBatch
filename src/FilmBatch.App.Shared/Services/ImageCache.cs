@@ -1,7 +1,5 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.ComponentModel;
-using System.Runtime.InteropServices;
 using FilmBatch.App.Services.Loupe;
 using FilmBatch.Engine.Imaging;
 using FilmBatch.Engine.Imaging.Raw;
@@ -63,7 +61,7 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
     private (bool Enabled, GpuBackend Backend, long MemoryBudgetBytes) _gpuDecode;
     private TaskCompletionSource<object?> _pacingWake = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private long _lastPaceTimestamp = Stopwatch.GetTimestamp();
-    private TimeSpan _lastPaceCpu = GetProcessCpuTime();
+    private TimeSpan _lastPaceCpu = SystemMonitor.GetProcessCpuTime();
     private bool _disposed;
 
     /// <summary>背景入場的預覽解碼（前後張預取）狀態：<see cref="Started"/> 只在 <c>_stateLock</c> 內讀寫。</summary>
@@ -413,7 +411,7 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         var paceTimestamp = Stopwatch.GetTimestamp();
-        var paceCpu = GetProcessCpuTime();
+        var paceCpu = SystemMonitor.GetProcessCpuTime();
         CancellationTokenSource oldForeground, oldBackground;
         long generation;
         lock (_stateLock)
@@ -639,12 +637,12 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
                 lock (_stateLock)
                 {
                     _lastPaceTimestamp = Stopwatch.GetTimestamp();
-                    _lastPaceCpu = GetProcessCpuTime();
+                    _lastPaceCpu = SystemMonitor.GetProcessCpuTime();
                 }
                 return;
             }
             var nowTimestamp = Stopwatch.GetTimestamp();
-            var nowCpu = GetProcessCpuTime();
+            var nowCpu = SystemMonitor.GetProcessCpuTime();
             var wallSeconds = (nowTimestamp - lastTimestamp) / (double)Stopwatch.Frequency;
             var cpuDelta = nowCpu - lastCpu;
             if (cpuDelta < TimeSpan.Zero) cpuDelta = TimeSpan.Zero;
@@ -683,29 +681,6 @@ public sealed class ImageCache(int previewLongEdge = ImageLoader.PreviewLongEdge
             await delayTask.ConfigureAwait(false);
         }
     }
-
-    private static TimeSpan GetProcessCpuTime()
-    {
-        // .NET for iOS does not implement Process.TotalProcessorTime.
-        if (OperatingSystem.IsIOS() || OperatingSystem.IsMacOS())
-        {
-            if (ReadProcessClock(12, out var time) != 0) // Darwin CLOCK_PROCESS_CPUTIME_ID
-                throw new Win32Exception(Marshal.GetLastPInvokeError(), "Could not read the process CPU clock.");
-            return TimeSpan.FromTicks(checked(time.Seconds * TimeSpan.TicksPerSecond + time.Nanoseconds / 100));
-        }
-        using var process = Process.GetCurrentProcess();
-        return process.TotalProcessorTime;
-    }
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct ProcessClock
-    {
-        internal long Seconds;
-        internal long Nanoseconds;
-    }
-
-    [DllImport("/usr/lib/libSystem.B.dylib", EntryPoint = "clock_gettime", SetLastError = true)]
-    private static extern int ReadProcessClock(int clockId, out ProcessClock time);
 
     /// <summary>16-bit RGBA → 8-bit BGRA（原圖對比用，不經過任何效果）。</summary>
     public static byte[] ToBgra8(SourceImage src)

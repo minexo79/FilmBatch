@@ -123,6 +123,8 @@ dotnet test tests/FilmBatch.Core.Tests/FilmBatch.Core.Tests.csproj -c Release \
 
 CPU 目標是程序相對全機邏輯核心的合作式背景目標，不是硬性上限，也不保證將輕量工作拉高至 70%。單張不可中斷解碼可短暫超標；計時、CPU 比例與延遲只屬當次機器／輸入的觀察，不當成跨機效能門檻。
 
+資源使用率顯示與背景 CPU 配速共用程序時鐘：macOS／iOS 使用 Darwin `CLOCK_PROCESS_CPUTIME_ID`，其他平台使用 `Process.TotalProcessorTime`。iOS 的 .NET API 不支援後者，不能因為桌面可用就直接沿用。平台檢查以 iOS 目標重新編譯並將 `CA1416` 視為錯誤；通過編譯不代表模擬器或實機已完成資源取樣。實際介面須確認關閉除錯記錄後仍可開啟資源顯示，CPU／RAM／磁碟不因取樣例外全數停留在「—」。
+
 ### RAW GPU 與載入隔離回歸
 
 ```bash

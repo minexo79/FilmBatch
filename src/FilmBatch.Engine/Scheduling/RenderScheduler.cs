@@ -434,7 +434,7 @@ public sealed class RenderScheduler : IDisposable
             else if (thumb is { } t)
             {
                 if (t.Epoch != epoch) return true;
-                if (TryRender(t.Key, t.Source, t.Settings, t.Epoch, cancellation!.Token) is { } completedRender)
+                if (TryRender(t.Key, t.Source, t.Settings, t.Epoch, cancellation!.Token, thumbnail: true) is { } completedRender)
                 {
                     Action<ThumbnailRendered>? completed = null;
                     lock (_lock)
@@ -496,7 +496,7 @@ public sealed class RenderScheduler : IDisposable
 
     private (RenderResult Result, RenderBackend Backend)? TryRender(string key, SourceImage source, Settings settings, long epoch,
         CancellationToken cancellationToken, long? previewGeneration = null, RenderView? view = null, FrameStats? stats = null,
-        long? windowGeneration = null)
+        long? windowGeneration = null, bool thumbnail = false)
     {
         if (_renderer is null)
         {
@@ -520,6 +520,9 @@ public sealed class RenderScheduler : IDisposable
             try
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                // 低優先縮圖不升級為全解析度神經工作；正式 renderer 看到降噪報告後直接套用效果。
+                if (thumbnail && source.Denoise is null && DenoiseSettings.From(settings).IsActive)
+                    source = DenoiseProcessor.Shared.PrepareThumbnail(source, settings, cancellationToken);
                 var renderer = _renderer!;
                 var result = view is { } v
                     ? renderer.RenderWindow(source, settings, v, stats!, cancellationToken)

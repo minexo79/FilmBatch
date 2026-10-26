@@ -624,6 +624,120 @@ public class DenoisingOrtTests : IDisposable
         Assert.Equal(expected, retry.Rgba16);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ThumbnailInference_UsesProxyPixelsWithoutReopeningTheOriginal(bool sceneLinear)
+    {
+        var onnx = MakeNegOnnx(TinyTile);
+        var dir = Dir("thumbnail-bounded");
+        File.WriteAllBytes(Path.Combine(dir, "tiny.onnx"), onnx);
+        var spec = TinySpec("thumbnail-bounded", "tiny.onnx", onnx, matchGain: false)
+            with { SceneLinear = sceneLinear };
+        var original = Path.Combine(dir, "unreadable-original.arw");
+        File.WriteAllText(original, "The already decoded thumbnail must not reopen this file.");
+        var source = sceneLinear
+            ? new SourceImage(new RawSceneData(
+                new FilmBatch.Raw.Raster.RgbImage(3, 2,
+                    Enumerable.Range(0, 6).SelectMany(_ => new[] { 1.5f, .2f, -.1f }).ToArray()),
+                null, null, DenoiseTestScene.Geometry(3, 2)))
+            { FilePath = original, ReferenceWidth = 9000, ReferenceHeight = 6000 }
+            : new SourceImage(3, 2,
+                Enumerable.Range(0, 6).SelectMany(_ => new ushort[] { 10000, 20000, 30000, 40000 }).ToArray())
+            { FilePath = original, ReferenceWidth = 9000, ReferenceHeight = 6000 };
+        using var processor = new DenoiseProcessor(dir, "CPU");
+        var actual = processor.Prepare(source, spec, new(true, 25, 100, 100),
+            TestContext.Current.CancellationToken, fullResolution: false);
+
+        Assert.Equal((3, 2), (actual.Width, actual.Height));
+        Assert.Equal((9000, 6000), (actual.ReferenceWidth, actual.ReferenceHeight));
+        Assert.Equal(1, actual.Denoise!.TileCount);
+        if (sceneLinear)
+        {
+            var pixels = actual.Scene!.Image.Data;
+            Assert.Equal(.75f, pixels[0], 5);
+            Assert.Equal(.1f, pixels[1], 5);
+            Assert.Equal(-.05f, pixels[2], 5);
+        }
+        else
+            Assert.Equal(new ushort[] { 5000, 10000, 15000, 40000 }, actual.Rgba16.AsSpan(0, 4).ToArray());
+    }
+
+    [Fact]
+    public void ThumbnailInference_DoesNotPoisonFullCacheOrReuseOtherProxyDimensions()
+    {
+        var onnx = MakeNegOnnx(TinyTile);
+        var dir = Dir("thumbnail-cache-isolation");
+        File.WriteAllBytes(Path.Combine(dir, "tiny.onnx"), onnx);
+        var spec = TinySpec("thumbnail-cache-isolation", "tiny.onnx", onnx, matchGain: false);
+        var original = Path.Combine(dir, "source.ppm");
+        WritePpm(original, 24, 16, .6f, .2f, .9f);
+        var proxy = new SourceImage(4, 4,
+            Enumerable.Range(0, 16).SelectMany(_ => new ushort[] { 10000, 20000, 30000, 65535 }).ToArray())
+        {
+            FilePath = original, ReferenceWidth = 24, ReferenceHeight = 16,
+        };
+        using var processor = new DenoiseProcessor(dir, "CPU");
+        var mix = new DenoiseSettings(true, 25, 100, 100);
+        var thumbnail = processor.Prepare(proxy, spec, mix,
+            TestContext.Current.CancellationToken, fullResolution: false);
+        Assert.Equal(1, thumbnail.Denoise!.TileCount);
+        Assert.Equal(new ushort[] { 5000, 10000, 15000, 65535 }, thumbnail.Rgba16.AsSpan(0, 4).ToArray());
+
+        var full = processor.Prepare(proxy, spec, new(true, 100, 100, 100),
+            TestContext.Current.CancellationToken);
+        Assert.False(full.Denoise!.CacheHit);
+        Assert.Equal(6, full.Denoise.TileCount);
+        Assert.Equal(new ushort[] { 0, 0, 0, 65535 }, full.Rgba16.AsSpan(0, 4).ToArray());
+        var thumbnailAgain = processor.Prepare(proxy, spec, mix,
+            TestContext.Current.CancellationToken, fullResolution: false);
+        Assert.True(thumbnailAgain.Denoise!.CacheHit);
+        Assert.Equal(thumbnail.Rgba16, thumbnailAgain.Rgba16);
+
+        var smaller = new SourceImage(2, 2,
+            Enumerable.Range(0, 4).SelectMany(_ => new ushort[] { 60000, 40000, 20000, 65535 }).ToArray())
+        {
+            FilePath = original, ReferenceWidth = 24, ReferenceHeight = 16,
+        };
+        var otherSize = processor.Prepare(smaller, spec, mix,
+            TestContext.Current.CancellationToken, fullResolution: false);
+        Assert.False(otherSize.Denoise!.CacheHit);
+        Assert.Equal(new ushort[] { 30000, 20000, 10000, 65535 }, otherSize.Rgba16.AsSpan(0, 4).ToArray());
+        var fullAgain = processor.Prepare(proxy, spec, new(true, 100, 100, 100),
+            TestContext.Current.CancellationToken);
+        Assert.True(fullAgain.Denoise!.CacheHit);
+        Assert.Equal(6, fullAgain.Denoise.TileCount);
+        Assert.Equal(full.Rgba16, fullAgain.Rgba16);
+    }
+
+    [Fact]
+    public void ThumbnailInference_CancellationAfterLastTileDoesNotPublishCache()
+    {
+        var onnx = MakeNegOnnx(TinyTile);
+        var dir = Dir("thumbnail-cancel");
+        File.WriteAllBytes(Path.Combine(dir, "tiny.onnx"), onnx);
+        var spec = TinySpec("thumbnail-cancel", "tiny.onnx", onnx, matchGain: false);
+        var source = new SourceImage(1, 1, [10000, 20000, 30000, 65535]);
+        using var processor = new DenoiseProcessor(dir, "CPU");
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        void Cancel(DenoiseProgress progress)
+        {
+            if (progress.ModelId == spec.Id && progress.Stage == "infer" && progress.Completed == progress.Total)
+                cancellation.Cancel();
+        }
+        DenoiseProcessor.ProgressChanged += Cancel;
+        try
+        {
+            Assert.Throws<OperationCanceledException>(() => processor.Prepare(source, spec,
+                new(true, 25, 100, 100), cancellation.Token, fullResolution: false));
+        }
+        finally { DenoiseProcessor.ProgressChanged -= Cancel; }
+        var retry = processor.Prepare(source, spec, new(true, 25, 100, 100),
+            TestContext.Current.CancellationToken, fullResolution: false);
+        Assert.False(retry.Denoise!.CacheHit);
+        Assert.Equal(new ushort[] { 5000, 10000, 15000, 65535 }, retry.Rgba16);
+    }
+
 
     // ---- 輔助 --------------------------------------------------------------------
 
