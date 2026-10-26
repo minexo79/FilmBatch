@@ -1,6 +1,6 @@
 // AHD 去馬賽克 ①：水平／垂直綠色通道內插（FilmBatch.Raw Demosaic.AhdTile 的第一步）。
 // 輸入是已含 6 像素反射邊界的帶狀馬賽克；只處理內縮 3 像素的範圍。
-struct Params { bw: i32, bh: i32, w: i32, rows: i32 }
+#include "raw/ahd_math.wgsl"
 
 @group(0) @binding(0) var<storage, read> mos: array<f32>;
 @group(0) @binding(1) var<storage, read> col: array<u32>;
@@ -28,8 +28,12 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
     }
     let l = mos[i - 1];
     let r = mos[i + 1];
-    gh[i] = clamp_between((l + r) * 0.5 + (2.0 * c - mos[i - 2] - mos[i + 2]) * 0.25, l, r);
+    let avg_h = rounded(rounded(l + r) * 0.5);
+    let grad_h = rounded(rounded(rounded(rounded(2.0 * c) - mos[i - 2]) - mos[i + 2]) * 0.25);
+    gh[i] = clamp_between(rounded(avg_h + grad_h), l, r);
     let u = mos[i - p.bw];
     let d = mos[i + p.bw];
-    gv[i] = clamp_between((u + d) * 0.5 + (2.0 * c - mos[i - 2 * p.bw] - mos[i + 2 * p.bw]) * 0.25, u, d);
+    let avg_v = rounded(rounded(u + d) * 0.5);
+    let grad_v = rounded(rounded(rounded(rounded(2.0 * c) - mos[i - 2 * p.bw]) - mos[i + 2 * p.bw]) * 0.25);
+    gv[i] = clamp_between(rounded(avg_v + grad_v), u, d);
 }

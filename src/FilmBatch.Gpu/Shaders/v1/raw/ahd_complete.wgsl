@@ -1,6 +1,6 @@
 // AHD 去馬賽克 ②：以一個方向的綠色平面補齊 R/B，並轉成 CIELab 供同質性比較。
 // 水平與垂直各派送一次（輸入的 g 不同）；只處理內縮 4 像素的範圍。
-struct Params { bw: i32, bh: i32, w: i32, rows: i32 }
+#include "raw/ahd_math.wgsl"
 
 @group(0) @binding(0) var<storage, read> mos: array<f32>;
 @group(0) @binding(1) var<storage, read> col: array<u32>;
@@ -15,20 +15,21 @@ fn with_channel(v: vec3f, c: u32, value: f32) -> vec3f {
     return q;
 }
 
-// 與 CPU Ahd.cs 的 F 同分支；未選取的 pow 分支以 max 保持有效底數
-//（common/color.wgsl 同一做法，避免 D3D12/WARP 裝置遺失），已選取分支結果不變。
+// 每一步與 CPU Lab 同序；立方根保留餘差，避免 pow 的誤差翻轉同質性比較。
 fn lab_f(t: f32) -> f32 {
-    return select(7.787 * t + 16.0 / 116.0, pow(max(t, 0.008856), 1.0 / 3.0), t > 0.008856);
+    if (t > 0.008856) { return cbrt_stable(t); }
+    return rounded(rounded(7.787 * t) + 16.0 / 116.0);
 }
 
 fn to_lab(c: vec3f) -> vec3f {
-    let x = (0.4124 * c.x + 0.3576 * c.y + 0.1805 * c.z) / 0.95047;
-    let y = 0.2126 * c.x + 0.7152 * c.y + 0.0722 * c.z;
-    let z = (0.0193 * c.x + 0.1192 * c.y + 0.9505 * c.z) / 1.08883;
+    let x = divide_rounded(rounded(rounded(rounded(0.4124 * c.x) + rounded(0.3576 * c.y)) + rounded(0.1805 * c.z)), 0.95047);
+    let y = rounded(rounded(rounded(0.2126 * c.x) + rounded(0.7152 * c.y)) + rounded(0.0722 * c.z));
+    let z = divide_rounded(rounded(rounded(rounded(0.0193 * c.x) + rounded(0.1192 * c.y)) + rounded(0.9505 * c.z)), 1.08883);
     let fx = lab_f(x);
     let fy = lab_f(y);
     let fz = lab_f(z);
-    return vec3f(116.0 * fy - 16.0, 500.0 * (fx - fy), 200.0 * (fy - fz));
+    return vec3f(rounded(rounded(116.0 * fy) - 16.0),
+        rounded(500.0 * rounded(fx - fy)), rounded(200.0 * rounded(fy - fz)));
 }
 
 @compute @workgroup_size(16, 16)
@@ -42,12 +43,18 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
     let gg = g[i];
     var c = vec3f(0.0, gg, 0.0);
     if (own == 1u) {
-        c = with_channel(c, col[i + 1], gg + ((mos[i - 1] - g[i - 1]) + (mos[i + 1] - g[i + 1])) * 0.5);
-        c = with_channel(c, col[i + bw], gg + ((mos[i - bw] - g[i - bw]) + (mos[i + bw] - g[i + bw])) * 0.5);
+        let horizontal = rounded(rounded(mos[i - 1] - g[i - 1]) + rounded(mos[i + 1] - g[i + 1]));
+        c = with_channel(c, col[i + 1], rounded(gg + rounded(horizontal * 0.5)));
+        let vertical = rounded(rounded(mos[i - bw] - g[i - bw]) + rounded(mos[i + bw] - g[i + bw]));
+        c = with_channel(c, col[i + bw], rounded(gg + rounded(vertical * 0.5)));
     } else {
         c = with_channel(c, own, mos[i]);
-        c = with_channel(c, 2u - own, gg + ((mos[i - bw - 1] - g[i - bw - 1]) + (mos[i - bw + 1] - g[i - bw + 1]) +
-            (mos[i + bw - 1] - g[i + bw - 1]) + (mos[i + bw + 1] - g[i + bw + 1])) * 0.25);
+        let d1 = rounded(mos[i - bw - 1] - g[i - bw - 1]);
+        let d2 = rounded(mos[i - bw + 1] - g[i - bw + 1]);
+        let d3 = rounded(mos[i + bw - 1] - g[i + bw - 1]);
+        let d4 = rounded(mos[i + bw + 1] - g[i + bw + 1]);
+        let diagonal = rounded(rounded(rounded(d1 + d2) + d3) + d4);
+        c = with_channel(c, 2u - own, rounded(gg + rounded(diagonal * 0.25)));
     }
     rgb[i] = vec4f(c, 0.0);
     lab[i] = vec4f(to_lab(c), 0.0);

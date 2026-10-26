@@ -1,5 +1,5 @@
 // AHD 去馬賽克 ③：以 CIELab 距離計算每個方向候選的同質性計數；只處理內縮 5 像素的範圍。
-struct Params { bw: i32, bh: i32, w: i32, rows: i32 }
+#include "raw/ahd_math.wgsl"
 
 @group(0) @binding(0) var<storage, read> lh: array<vec4f>;
 @group(0) @binding(1) var<storage, read> lv: array<vec4f>;
@@ -24,10 +24,14 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
     for (var k = 0; k < 4; k++) {
         let nh = lh[nb[k]];
         let nv = lv[nb[k]];
-        dlh[k] = abs(a.x - nh.x);
-        dch[k] = (a.y - nh.y) * (a.y - nh.y) + (a.z - nh.z) * (a.z - nh.z);
-        dlv[k] = abs(b.x - nv.x);
-        dcv[k] = (b.y - nv.y) * (b.y - nv.y) + (b.z - nv.z) * (b.z - nv.z);
+        dlh[k] = abs(rounded(a.x - nh.x));
+        let dy_h = rounded(a.y - nh.y);
+        let dz_h = rounded(a.z - nh.z);
+        dch[k] = rounded(rounded(dy_h * dy_h) + rounded(dz_h * dz_h));
+        dlv[k] = abs(rounded(b.x - nv.x));
+        let dy_v = rounded(b.y - nv.y);
+        let dz_v = rounded(b.z - nv.z);
+        dcv[k] = rounded(rounded(dy_v * dy_v) + rounded(dz_v * dz_v));
     }
     let el = min(max(dlh[0], dlh[1]), max(dlv[2], dlv[3]));
     let ec = min(max(dch[0], dch[1]), max(dcv[2], dcv[3]));
