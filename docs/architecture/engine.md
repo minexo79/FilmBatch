@@ -159,7 +159,7 @@ RAW 中繼資料的標頭辨識與感光解碼一致：RW2 的 `0x0055`、ORF �
 **匯出的安全規則**（改匯出程式碼前務必知道）
 
 - 匯出開始時先建立參數快照，匯出期間使用者繼續編輯不會影響已排入的照片。
-- 拒絕覆寫來源檔與既有輸出；先寫暫存檔，完成才搬到正式檔名，取消或失敗不留下半成品。
+- 永遠拒絕覆寫來源檔；既有輸出預設也不覆寫（同名自動加編號）。`ExportOptions.OverwriteExisting`（介面勾選框、CLI `--overwrite`）明確開啟後才取代同名舊輸出，介面會先顯示將取代的檔案數並要求確認；覆蓋模式另拒絕取代照片資料夾內的檔案。無論是否覆蓋，皆先寫暫存檔，完成才搬到正式檔名，取消或失敗不留下半成品，舊檔保持原狀。
 - EXIF 解析失敗不會讓整張匯出失敗；JPEG EXIF 超過 APP1 上限（65,533 位元組）時先移除 MakerNote，仍超限才只保留方向、尺寸與 sRGB 宣告。這些縮減逐張記錄在 `export_log.json` 的 `MetadataWarning`。
 - 輸出皆已轉正：重建尺寸、方向與色彩宣告；僅 sRGB 寫入 Interop `R98`／`0100`，ProPhoto 不寫此目錄。不要沿用來源 Adobe RGB 的 `R03` 或失效指標。Photoshop `ImageSourceData`（37724）等原圖圖層不屬於新算出的影像，不能一併搬入。
 - iOS 的 JPEG／PNG16／TIFF16 由 ImageIO 編碼；`ImageBackend` 於編譯時依 iOS RID 選用，桌面仍使用 Magick.NET。TIFF metadata append 支援大小端序，不重寫或重壓縮影像條帶；來源 EXIF／GPS 重新正規化後取代編碼器自行產生的 EXIF 指標。DNG 仍走共用 managed 寫入器。

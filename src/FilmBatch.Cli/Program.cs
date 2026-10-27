@@ -62,9 +62,11 @@ var cameraLocalToneOption = new Option<bool>("--camera-local-tone") { Descriptio
 var denoiseOption = new Option<double?>("--denoise") { Description = "本次匯出的 AI 降噪強度 0–100（省略則沿用專案；須先安裝模型）" };
 var lensDatabaseOption = new Option<string?>("--lens-database") { Description = "外部 Lensfun 鏡頭資料庫資料夾（RAW 無內嵌校正時使用；預設讀 FILMBATCH_LENSFUN_DIR，再其次為 lens-database download 下載的版本）" };
 
+var overwriteOption = new Option<bool>("--overwrite") { Description = "同名的既有輸出檔直接取代（預設自動加編號；不會覆寫來源照片）" };
+
 var export = new Command("export", "批次匯出（與 GUI 共用匯出器）")
 {
-    exportFolder, outOption, formatOption, colorSpaceOption, qualityOption, longEdgeOption,
+    exportFolder, outOption, overwriteOption, formatOption, colorSpaceOption, qualityOption, longEdgeOption,
     presetOption, onlyUnassignedOption, presetsFolderOption,
     backendOption, softwareOption, lowPowerOption,
     embeddedLensOption, cameraLocalToneOption, denoiseOption, lensDatabaseOption,
@@ -117,6 +119,7 @@ export.SetAction(async (r, ct) =>
     {
         Destination = r.GetValue(outOption) ?? Path.Combine(folder, "export"),
         FileNameTemplate = "{name}_{preset}",
+        OverwriteExisting = r.GetValue(overwriteOption),
         Format = format,
         ColorSpace = colorSpace,
         Quality = quality,

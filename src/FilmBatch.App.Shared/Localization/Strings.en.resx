@@ -220,6 +220,11 @@ R {1:P2}  G {2:P2}  B {3:P2}  Luma {4:P2}</value></data>
   <data name="Export.Size.LongEdge" xml:space="preserve"><value>Long edge</value></data>
   <data name="Export.Status.Ready" xml:space="preserve"><value>Ready</value></data>
   <data name="Export.Summary" xml:space="preserve"><value>Will export {0} photo(s) to {1}</value></data>
+  <data name="Export.Overwrite" xml:space="preserve"><value>Overwrite existing output files</value></data>
+  <data name="Export.Overwrite.Note" xml:space="preserve"><value>When off, same-named files get a numeric suffix. Only previous outputs are replaced; source photos are never touched.</value></data>
+  <data name="Export.Overwrite.Title" xml:space="preserve"><value>Overwrite existing files</value></data>
+  <data name="Export.Overwrite.Message" xml:space="preserve"><value>{0} file(s) with the same name already exist in the destination and will be replaced. This cannot be undone. Continue?</value></data>
+  <data name="Export.Overwrite.Confirm" xml:space="preserve"><value>Overwrite and export</value></data>
   <data name="Export.Error.NoPreset" xml:space="preserve"><value>Choose a preset first.</value></data>
   <data name="Export.Error.NoPhotos" xml:space="preserve"><value>No matching photos.</value></data>
   <data name="Export.Error.NoFolder" xml:space="preserve"><value>No photo folder is open.</value></data>

@@ -15,6 +15,8 @@ public sealed record ExportOptions
 {
     public required string Destination { get; init; }
     public string FileNameTemplate { get; init; } = "{name}_{preset}";
+    /// <summary>true 時同名的既有輸出檔直接取代（仍先寫暫存檔再改名）；預設 false，同名時自動加編號。來源檔永遠不會被覆寫。</summary>
+    public bool OverwriteExisting { get; init; }
     public ExportFormat Format { get; init; } = ExportFormat.Jpeg;
     /// <summary>輸出色彩空間（預設 sRGB；ProPhoto 僅限 TIFF16／PNG16，由呼叫端驗證）。</summary>
     public RgbEncoding ColorSpace { get; init; } = RgbEncoding.Srgb;

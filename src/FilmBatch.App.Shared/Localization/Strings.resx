@@ -220,6 +220,11 @@ R {1:P2}　G {2:P2}　B {3:P2}　亮度 {4:P2}</value></data>
   <data name="Export.Size.LongEdge" xml:space="preserve"><value>指定長邊</value></data>
   <data name="Export.Status.Ready" xml:space="preserve"><value>就緒</value></data>
   <data name="Export.Summary" xml:space="preserve"><value>將匯出 {0} 張到 {1}</value></data>
+  <data name="Export.Overwrite" xml:space="preserve"><value>覆蓋同名的舊輸出檔</value></data>
+  <data name="Export.Overwrite.Note" xml:space="preserve"><value>關閉時同名檔會自動加編號。只取代舊的輸出檔，不會動到來源照片。</value></data>
+  <data name="Export.Overwrite.Title" xml:space="preserve"><value>覆蓋既有檔案</value></data>
+  <data name="Export.Overwrite.Message" xml:space="preserve"><value>目的地已有 {0} 個同名檔案，匯出後將被取代，無法復原。要繼續嗎？</value></data>
+  <data name="Export.Overwrite.Confirm" xml:space="preserve"><value>覆蓋並匯出</value></data>
   <data name="Export.Error.NoPreset" xml:space="preserve"><value>請先選擇預設。</value></data>
   <data name="Export.Error.NoPhotos" xml:space="preserve"><value>沒有符合的照片。</value></data>
   <data name="Export.Error.NoFolder" xml:space="preserve"><value>尚未開啟照片資料夾。</value></data>

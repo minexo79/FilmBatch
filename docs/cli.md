@@ -7,6 +7,7 @@ CLI 用法，以及本機 AI 降噪、AI 去背的操作。
 ```bash
 filmbatch-cli export "/path/to/photos" --out "/path/to/output" --format png
 filmbatch-cli export "/path/to/photos" --out "/path/to/prophoto" --format tiff --color-space prophoto
+filmbatch-cli export "/path/to/photos" --out "/path/to/output" --overwrite   # 取代同名舊輸出；不加則自動編號
 filmbatch-cli export "/path/to/photos" --format jpg --quality 95 --long-edge 3000
 filmbatch-cli gpu-info
 filmbatch-cli raw convert "/path/input.CR2" "/path/output.dng" --compression lj92

@@ -85,6 +85,10 @@ public sealed partial class ExportViewModel : ObservableObject
     [ObservableProperty]
     private string _fileNameTemplate = "{name}_{preset}";
 
+    /// <summary>覆蓋同名的既有輸出檔（不影響來源照片）；每次開啟程式預設關閉。</summary>
+    [ObservableProperty]
+    private bool _overwriteExisting;
+
     // ── 即時狀態（MacRelease 的背景工作 flyout 繫結 StatusText；SmokeTest 檢查 StatusText/ProgressValue/IsExporting）──
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanExport))]
@@ -221,6 +225,7 @@ public sealed partial class ExportViewModel : ObservableObject
     {
         Destination = destination,
         FileNameTemplate = FileNameTemplate,
+        OverwriteExisting = OverwriteExisting,
         Format = Format,
         Quality = Quality,
         ColorSpace = ColorSpace,
@@ -257,10 +262,30 @@ public sealed partial class ExportViewModel : ObservableObject
         return BatchExporter.RunAsync(request, _main.RendererFactory, progress, ct);
     }
 
+    /// <summary>覆蓋模式且確有既有輸出會被取代時，先請使用者確認；其餘情況直接放行。</summary>
+    private async Task<bool> ConfirmOverwriteAsync()
+    {
+        if (!OverwriteExisting || _main.Service is not { } svc) return true;
+        int count;
+        try
+        {
+            var options = ToOptions(Destination);
+            count = BatchExporter.CountOverwrites(BatchExporter.BuildJobs(svc, PlannedFiles(), options), options);
+        }
+        catch (Exception ex)
+        {
+            SetRunError(ex.Message);
+            return false;
+        }
+        return count == 0 || await _main.Dialogs.ConfirmAsync(
+            Loc.Get("Export.Overwrite.Title"), Loc.Format("Export.Overwrite.Message", count), Loc.Get("Export.Overwrite.Confirm"));
+    }
+
     [RelayCommand(CanExecute = nameof(CanExport))]
     private async Task StartExport()
     {
         if (IsExporting) return;
+        if (await ConfirmOverwriteAsync() is false) return;
         var run = ++_runId;
         _cts = new CancellationTokenSource();
         IsExporting = true;
