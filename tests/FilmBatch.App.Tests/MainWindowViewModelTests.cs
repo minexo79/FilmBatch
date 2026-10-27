@@ -164,6 +164,34 @@ public class MainWindowViewModelTests
     }
 
     [AvaloniaFact]
+    public async Task CreatePreset_SavesOnlyCheckedModules_AndRemembersTheChoice()
+    {
+        using var vm = TestEnv.CreateViewModel();
+        var dialogs = (FakeDialogs)vm.Dialogs;
+        await TestEnv.OpenSamplesAsync(vm);
+        var file = vm.FocusFile!;
+        vm.Inspector.SetValue("basic.exposure", 0.4, null);
+        vm.Inspector.SetValue("grain.amount", 77.0, null);
+        vm.Inspector.EndEdit();
+
+        dialogs.OnNewPreset = d => d.SelectNoneCommand.Execute(null);
+        await vm.CreatePresetCommand.ExecuteAsync(null);
+        Assert.DoesNotContain(vm.Library.Presets, p => p.Name == "測試預設"); // 一個都沒勾：不建立
+
+        dialogs.OnNewPreset = d =>
+        {
+            d.SelectNoneCommand.Execute(null);
+            d.Groups.SelectMany(g => g.Modules).Single(m => m.Schema.Key == "basic").IsChecked = true;
+        };
+        await vm.CreatePresetCommand.ExecuteAsync(null);
+        var created = vm.Library.Presets.Single(p => p.Name == "測試預設");
+        Assert.Equal(0.4, created.Resolved.Number("basic.exposure"));
+        Assert.DoesNotContain(created.Settings.Keys, k => k.StartsWith("grain.", StringComparison.Ordinal));
+        Assert.Equal(77.0, vm.Service!.SettingsFor(file).Number("grain.amount")); // 沒勾選的仍留在照片上
+        Assert.Equal(["basic"], vm.Settings.NewPresetModules); // 記住上次勾選
+    }
+
+    [AvaloniaFact]
     public async Task PresetFilter_KeepsSelectionAndListsNewPreset_AfterLibraryChanges()
     {
         using var vm = TestEnv.CreateViewModel();

@@ -133,6 +133,8 @@ R {1:P2}  G {2:P2}  B {3:P2}  Luma {4:P2}</value></data>
   <data name="Dialog.IncludeSeeds" xml:space="preserve"><value>Include random seeds</value></data>
   <data name="Dialog.MirrorPositions" xml:space="preserve"><value>Mirror positions</value></data>
   <data name="Dialog.Paste" xml:space="preserve"><value>Paste</value></data>
+  <data name="Dialog.Create" xml:space="preserve"><value>Create</value></data>
+  <data name="Dialog.NewPresetHint" xml:space="preserve"><value>Choose which effects to save in the preset; unchecked effects stay on this photo.</value></data>
   <data name="Dialog.SelectivePaste" xml:space="preserve"><value>Paste Special</value></data>
   <data name="Dialog.Export" xml:space="preserve"><value>Export</value></data>
   <data name="Dialog.PresetManager" xml:space="preserve"><value>Preset Manager</value></data>

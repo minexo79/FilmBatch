@@ -148,19 +148,28 @@ public sealed class ProjectService
         return Apply(label, fileNames, e => PhotoOperations.Paste(clip, e, options, BaseFor));
     }
 
-    /// <summary>以此張建立新預設：目前最終參數存成新預設，並讓這張改指定為新預設（覆寫清空）。</summary>
-    public Preset CreatePresetFromPhoto(string fileName, string name, string category, string colorLabel)
+    /// <summary>
+    /// 以此張建立新預設：目前最終參數存成新預設，並讓這張改指定為新預設。
+    /// <paramref name="modules"/> 只存勾選的模組（null = 全部）；沒存進預設的模組留在這張的覆寫，最終參數不變。
+    /// </summary>
+    public Preset CreatePresetFromPhoto(string fileName, string name, string category, string colorLabel,
+        IReadOnlySet<string>? modules = null)
     {
         var resolved = SettingsFor(fileName);
+        var saved = modules is null ? resolved : resolved.Where((k, _) => modules.Contains(ModuleSchema.ModuleOf(k)));
         var preset = new Preset
         {
             Id = Guid.NewGuid(),
             Name = name,
             Category = category,
             ColorLabel = colorLabel,
-            Settings = PhotoOperations.Clean(resolved, ModuleCatalog.Defaults),
+            Settings = PhotoOperations.Clean(saved, ModuleCatalog.Defaults),
         };
-        var after = project[fileName] with { PresetId = preset.Id, Overrides = Settings.Empty };
+        var after = project[fileName] with
+        {
+            PresetId = preset.Id,
+            Overrides = modules is null ? Settings.Empty : PhotoOperations.Clean(resolved, preset.Resolved),
+        };
         stack.Execute(new CompositeCommand($"建立預設「{name}」",
         [
             new DelegateCommand("新增預設", () => library.Save(preset), () => library.Delete(preset.Id)),

@@ -49,6 +49,9 @@ public sealed class DialogService(Func<Window?> owner) : IDialogService
     public async Task<bool> ShowSelectivePasteAsync(SelectivePasteViewModel vm) =>
         await new SelectivePasteDialog { DataContext = vm }.ShowDialog<bool>(Owner);
 
+    public async Task<bool> ShowNewPresetAsync(NewPresetViewModel vm) =>
+        await new NewPresetDialog { DataContext = vm }.ShowDialog<bool>(Owner);
+
     public async Task ShowPresetManagerAsync(PresetManagerViewModel vm)
     {
         await new PresetManagerDialog { DataContext = vm }.ShowDialog(Owner);

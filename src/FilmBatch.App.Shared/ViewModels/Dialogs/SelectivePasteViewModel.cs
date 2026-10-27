@@ -22,35 +22,29 @@ public sealed class ModuleCheckGroupViewModel(string label, IEnumerable<ModuleCh
     public ObservableCollection<ModuleCheckViewModel> Modules { get; } = new(modules);
 }
 
-/// <summary>選擇性貼上（計畫書 2.8）：以模組為單位勾選；記住上次的勾選。</summary>
-public sealed partial class SelectivePasteViewModel : ObservableObject
+/// <summary>依模組分組的勾選清單（選擇性貼上、建立預設共用）；第一次開啟時全選，但單張照片專屬的模組（裁切）不勾。</summary>
+public abstract partial class ModuleChecklistViewModel : ObservableObject
 {
     public ObservableCollection<ModuleCheckGroupViewModel> Groups { get; }
-    private IEnumerable<ModuleCheckViewModel> All => Groups.SelectMany(g => g.Modules);
+    protected IEnumerable<ModuleCheckViewModel> All => Groups.SelectMany(g => g.Modules);
 
-    [ObservableProperty]
-    private bool _includeSeeds;
-
-    [ObservableProperty]
-    private bool _mirrorPositions;
-
-    public SelectivePasteViewModel(AppSettings settings)
+    protected ModuleChecklistViewModel(IReadOnlyCollection<string> last)
     {
-        var last = settings.SelectivePasteModules.ToHashSet();
         var firstTime = last.Count == 0;
         Groups = new(ModuleCatalog.Modules
             .GroupBy(m => m.PasteCategory)
             .OrderBy(g => g.Key)
             .Select(g => new ModuleCheckGroupViewModel(Localization.Loc.PasteCategoryLabel(g.Key),
-                // 第一次開啟時全選，但裁切 / 細部調整只屬於單張照片，預設不勾選
                 g.Select(m => new ModuleCheckViewModel(m,
                     (firstTime && !PhotoOperations.IsPerPhoto(m.PasteCategory)) || last.Contains(m.Key))))));
-        IncludeSeeds = settings.SelectivePasteIncludeSeeds;
-        MirrorPositions = settings.SelectivePasteMirror;
-        foreach (var m in All) m.PropertyChanged += (_, _) => OnPropertyChanged(nameof(CheckedCount));
+        foreach (var m in All) m.PropertyChanged += (_, _) => OnChecklistChanged();
     }
 
     public int CheckedCount => All.Count(m => m.IsChecked);
+
+    protected virtual void OnChecklistChanged() => OnPropertyChanged(nameof(CheckedCount));
+
+    public HashSet<string> CheckedKeys() => All.Where(m => m.IsChecked).Select(m => m.Schema.Key).ToHashSet();
 
     [RelayCommand]
     private void SelectAll() => Set(_ => true);
@@ -65,19 +59,58 @@ public sealed partial class SelectivePasteViewModel : ObservableObject
     {
         foreach (var m in All) m.IsChecked = f(m);
     }
+}
+
+/// <summary>選擇性貼上（計畫書 2.8）：以模組為單位勾選；記住上次的勾選。</summary>
+public sealed partial class SelectivePasteViewModel : ModuleChecklistViewModel
+{
+    [ObservableProperty]
+    private bool _includeSeeds;
+
+    [ObservableProperty]
+    private bool _mirrorPositions;
+
+    public SelectivePasteViewModel(AppSettings settings) : base(settings.SelectivePasteModules)
+    {
+        IncludeSeeds = settings.SelectivePasteIncludeSeeds;
+        MirrorPositions = settings.SelectivePasteMirror;
+    }
 
     public PasteOptions ToOptions() => new()
     {
         Mode = PasteMode.Selective,
-        Modules = All.Where(m => m.IsChecked).Select(m => m.Schema.Key).ToHashSet(),
+        Modules = CheckedKeys(),
         IncludeSeeds = IncludeSeeds,
         MirrorPositions = MirrorPositions,
     };
 
     public void SaveTo(AppSettings settings)
     {
-        settings.SelectivePasteModules = All.Where(m => m.IsChecked).Select(m => m.Schema.Key).ToList();
+        settings.SelectivePasteModules = [.. CheckedKeys()];
         settings.SelectivePasteIncludeSeeds = IncludeSeeds;
         settings.SelectivePasteMirror = MirrorPositions;
     }
+}
+
+/// <summary>以此張建立預設：輸入名稱並勾選要存進預設的模組（像 Lightroom 的「建立預設」）；記住上次的勾選。</summary>
+public sealed partial class NewPresetViewModel : ModuleChecklistViewModel
+{
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanCreate))]
+    private string _name;
+
+    public NewPresetViewModel(AppSettings settings, string defaultName) : base(settings.NewPresetModules)
+    {
+        _name = defaultName;
+    }
+
+    public bool CanCreate => !string.IsNullOrWhiteSpace(Name) && CheckedCount > 0;
+
+    protected override void OnChecklistChanged()
+    {
+        base.OnChecklistChanged();
+        OnPropertyChanged(nameof(CanCreate));
+    }
+
+    public void SaveTo(AppSettings settings) => settings.NewPresetModules = [.. CheckedKeys()];
 }

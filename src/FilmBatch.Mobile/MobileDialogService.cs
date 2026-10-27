@@ -117,6 +117,30 @@ internal sealed class MobileDialogService(Func<TopLevel?> topLevel, Border overl
         return await ShowAsync(Loc.Get("Cmd.PasteSpecial"), body, [Loc.Get("Cmd.Paste"), Loc.Get("Dialog.Cancel")]) == 0;
     }
 
+    public async Task<bool> ShowNewPresetAsync(NewPresetViewModel vm)
+    {
+        var body = new StackPanel { Spacing = 10, DataContext = vm };
+        var name = new TextBox { PlaceholderText = Loc.Get("Presets.Col.Name") };
+        MobileText.Bind(name, TextBox.TextProperty, (NewPresetViewModel m) => m.Name);
+        body.Children.Add(name);
+        var actions = new WrapPanel { Orientation = Orientation.Horizontal };
+        actions.Children.Add(CommandButton(Loc.Get("Dialog.SelectAll"), "Mobile.NewPresetAll", vm.SelectAllCommand));
+        actions.Children.Add(CommandButton(MobileText.T("全不選", "Select none"), "Mobile.NewPresetNone", vm.SelectNoneCommand));
+        actions.Children.Add(CommandButton(MobileText.T("僅色彩", "Color only"), "Mobile.NewPresetColor", vm.ColorOnlyCommand));
+        body.Children.Add(actions);
+        foreach (var group in vm.Groups)
+        {
+            body.Children.Add(MobileText.Label(group.Label));
+            foreach (var module in group.Modules)
+            {
+                var check = new CheckBox { Content = module.Label, MinHeight = 44, DataContext = module };
+                MobileText.Bind(check, ToggleButton.IsCheckedProperty, (ModuleCheckViewModel m) => m.IsChecked);
+                body.Children.Add(check);
+            }
+        }
+        return await ShowAsync(Loc.Get("Cmd.CreatePreset"), body, [Loc.Get("Dialog.Create"), Loc.Get("Dialog.Cancel")]) == 0 && vm.CanCreate;
+    }
+
     public async Task ShowPresetManagerAsync(PresetManagerViewModel vm)
     {
         var body = new StackPanel { Spacing = 12, DataContext = vm };

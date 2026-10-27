@@ -1403,11 +1403,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     {
         if (Service is null || FocusFile is null) return;
         FlushEdit();
-        var name = await Dialogs.PromptAsync(Loc.Get("Cmd.CreatePreset"), Loc.Get("Presets.Col.Name"), Path.GetFileNameWithoutExtension(FocusFile));
-        if (string.IsNullOrWhiteSpace(name)) return;
+        var vm = new NewPresetViewModel(Settings, Path.GetFileNameWithoutExtension(FocusFile));
+        if (!await Dialogs.ShowNewPresetAsync(vm) || !vm.CanCreate) return;
+        vm.SaveTo(Settings);
+        var name = vm.Name.Trim();
         var current = Service.PresetFor(Service.Project[FocusFile].PresetId);
-        Service.CreatePresetFromPhoto(FocusFile, name.Trim(), current?.Category ?? "Uncategorized", current?.ColorLabel ?? "#7A7A7A");
-        Toast.Show(Loc.Format("Toast.PresetCreated", name.Trim()), canUndo: true);
+        Service.CreatePresetFromPhoto(FocusFile, name, current?.Category ?? "Uncategorized", current?.ColorLabel ?? "#7A7A7A", vm.CheckedKeys());
+        Toast.Show(Loc.Format("Toast.PresetCreated", name), canUndo: true);
     }
 
     [RelayCommand(CanExecute = nameof(CanEditSelection))]
