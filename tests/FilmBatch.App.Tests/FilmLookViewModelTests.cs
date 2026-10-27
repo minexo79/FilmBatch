@@ -48,7 +48,7 @@ public class FilmLookViewModelTests
 
         // hsl 是獨立模組：與曲線同在基本參數分頁的色彩群組，色相帶編輯器顯示 hsl.* 參數。
         var colorGroup = vm.Inspector.Groups.Single(g => g.Group == ModuleGroup.Color);
-        Assert.Equal(["curves", "hsl"], colorGroup.Modules.Select(m => m.Key).Order().ToArray());
+        Assert.Equal(["curves", "hsl", "tone"], colorGroup.Modules.Select(m => m.Key).Order().ToArray());
         var hsl = vm.Inspector.Modules.Single(m => m.Key == "hsl");
         Assert.NotNull(hsl.Hsl);
         Assert.All(hsl.Hsl!.Bands, b => Assert.StartsWith("hsl.hue_", b.Hue.FlatKey));

@@ -275,7 +275,7 @@ public static class ModuleCatalog
             Float("uneven", "塗佈不均", 20, 0, 100),
             Seed(),
         ]),
-        new("tone", "色調分離", ModuleGroup.Film, PasteCategory.Color,
+        new("tone", "色調分離", ModuleGroup.Color, PasteCategory.Color,
         [
             Bool(ModuleSchema.EnabledKey, "啟用"),
             Float("shadow_hue", "暗部色相", 200, 0, 360, 1, "°"),
@@ -284,7 +284,7 @@ public static class ModuleCatalog
             Float("highlight_amount", "亮部強度", 0, 0, 100),
             Float("balance", "平衡", 0, -100, 100),
         ]),
-        new("detail", "清晰與銳化", ModuleGroup.Film, PasteCategory.Color,
+        new("detail", "清晰與銳化", ModuleGroup.Basic, PasteCategory.Color,
         [
             Bool(ModuleSchema.EnabledKey, "啟用"),
             Float("clarity", "清晰度", 0, -100, 100),
