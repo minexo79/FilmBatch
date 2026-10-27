@@ -465,6 +465,35 @@ public sealed class EffectPipelineTests
         Assert.Equal(px[center + 2], focused[center + 2]);
     }
 
+    [Fact]
+    public void Halation_HueAndSaturation_TintTheGlow()
+    {
+        const int w = 160, h = 100;   // 短邊 100 → 光暈半徑 8 px
+        var px = new ushort[w * h * 4];
+        for (var i = 0; i < px.Length; i += 4)
+        {
+            var bright = (i / 4 % w) < 80;
+            px[i] = px[i + 1] = px[i + 2] = (ushort)(bright ? 60000 : 12000);
+            px[i + 3] = ushort.MaxValue;
+        }
+        var src = new SourceImage(w, h, px);
+        Settings Hal(double hue, double saturation) => ModuleCatalog.Defaults
+            .With("halation.enabled", true).With("halation.amount", 100.0)
+            .With("halation.threshold", 50.0).With("halation.radius", 100.0)
+            .With("halation.hue", hue).With("halation.saturation", saturation);
+
+        using var cpu = new CpuFakeRenderer();
+        var ct = TestContext.Current.CancellationToken;
+        var probe = (h / 2 * w + 82) * 4;   // 亮區右緣外的暗區，只有光暈能影響
+        var blue = cpu.Render16(src, Hal(240, 100), ct).Rgba16;
+        Assert.True(blue[probe + 2] > blue[probe] + 400, "色相 240° 的光暈應偏藍");
+        var red = cpu.Render16(src, Hal(0, 100), ct).Rgba16;
+        Assert.True(red[probe] > red[probe + 2] + 400, "色相 0° 的光暈應偏紅");
+        var neutral = cpu.Render16(src, Hal(240, 0), ct).Rgba16;
+        Assert.Equal(neutral[probe], neutral[probe + 2]);
+        Assert.True(neutral[probe] > px[probe], "飽和度 0 仍應加上白色光暈");
+    }
+
     private static Settings LeakSettings(double angle, double size = 40, double amount = 100, double irregularity = 0, int count = 1, double seed = 7) =>
         ModuleCatalog.Defaults
             .With("light_leak.enabled", true)

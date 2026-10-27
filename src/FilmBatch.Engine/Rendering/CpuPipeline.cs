@@ -788,7 +788,7 @@ public static class CpuPipeline
         SeparableBlur(high, tmp, w, h, radius, MathF.Max(0.5f, radius / 3f), horizontal: true);
         SeparableBlur(tmp, high, w, h, radius, MathF.Max(0.5f, radius / 3f), horizontal: false);
 
-        var (tr, tg, tb) = HsvToRgb(hue, 0.75f, 1f);
+        var (tr, tg, tb) = HsvToRgb(hue, p.HalSaturation / 100f, 1f);
         Parallel.For(0, n, i =>
         {
             var s = i * 4;

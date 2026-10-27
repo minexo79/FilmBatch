@@ -84,7 +84,7 @@ public sealed class ModuleParams
     public float VigAmount, VigSize, VigRoundness, VigFeather, VigCx, VigCy;
     // halation
     public bool HalationOn;
-    public float HalAmount, HalThreshold, HalRadius, HalHue;
+    public float HalAmount, HalThreshold, HalRadius, HalHue, HalSaturation;
     // light_leak
     public bool LeakOn;
     public int LeakMode;
@@ -277,6 +277,7 @@ public sealed class ModuleParams
             HalThreshold = N(s, "halation.threshold", 70),
             HalRadius = N(s, "halation.radius", 30),
             HalHue = N(s, "halation.hue", 10),
+            HalSaturation = N(s, "halation.saturation", 75),
             // light_leak
             LeakOn = B(s, "light_leak.enabled", false),
             LeakMode = C("light_leak.mode"),

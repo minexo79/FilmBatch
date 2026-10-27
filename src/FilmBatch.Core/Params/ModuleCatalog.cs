@@ -221,7 +221,8 @@ public static class ModuleCatalog
             Float("amount", "強度", 20, 0, 100),
             Float("threshold", "閾值", 70, 0, 100),
             Float("radius", "半徑", 30, 1, 100),
-            Float("hue", "色相", 10, 0, 60, 1, "°"),
+            Float("hue", "色相", 10, 0, 360, 1, "°"),
+            Float("saturation", "飽和度", 75, 0, 100),
         ]),
         new("light_leak", "漏光", ModuleGroup.Film, PasteCategory.Optical,
         [
