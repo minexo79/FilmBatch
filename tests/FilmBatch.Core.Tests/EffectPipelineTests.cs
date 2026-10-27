@@ -465,6 +465,78 @@ public sealed class EffectPipelineTests
         Assert.Equal(px[center + 2], focused[center + 2]);
     }
 
+    /// <summary>有細節的漸層影像，讓保護區內外的模糊差異清楚。</summary>
+    private static SourceImage Textured(int w, int h)
+    {
+        var px = new ushort[w * h * 4];
+        for (var y = 0; y < h; y++)
+            for (var x = 0; x < w; x++)
+            {
+                var i = (y * w + x) * 4;
+                var stripe = ((x / 3) + (y / 3)) % 2 == 0 ? 52000 : 9000;
+                px[i] = (ushort)stripe;
+                px[i + 1] = (ushort)(x * 65535 / (w - 1));
+                px[i + 2] = (ushort)(y * 65535 / (h - 1));
+                px[i + 3] = ushort.MaxValue;
+            }
+        return new SourceImage(w, h, px);
+    }
+
+    [Theory]
+    [InlineData("motion_blur", "circle", 0.0, 0.0)]
+    [InlineData("motion_blur", "ellipse", 50.0, 30.0)]
+    [InlineData("motion_blur", "hband", 0.0, 20.0)]
+    [InlineData("motion_blur", "vband", 0.0, -15.0)]
+    [InlineData("zoom_rotate_blur", "circle", 0.0, 0.0)]
+    [InlineData("zoom_rotate_blur", "ellipse", -40.0, 60.0)]
+    [InlineData("zoom_rotate_blur", "hband", 0.0, 20.0)]
+    [InlineData("zoom_rotate_blur", "vband", 0.0, -15.0)]
+    public void BlurProtectShape_ChangesTheMask_AndGpuMatchesCpu(string module, string shape, double aspect, double angle)
+    {
+        const int w = 96, h = 64;
+        var source = Textured(w, h);
+        Settings Blur(string protectShape, double protectAspect, double protectAngle)
+        {
+            var s = ModuleCatalog.Defaults.With(module + ".enabled", true);
+            return module == "motion_blur"
+                ? s.With("motion_blur.length", 60.0).With("motion_blur.angle", 25.0).With("motion_blur.protect_enabled", true)
+                    .With("motion_blur.protect_x", .4).With("motion_blur.protect_y", .5).With("motion_blur.protect_size", 15.0)
+                    .With("motion_blur.protect_shape", protectShape).With("motion_blur.protect_aspect", protectAspect)
+                    .With("motion_blur.protect_angle", protectAngle)
+                : s.With("zoom_rotate_blur.zoom", 60.0).With("zoom_rotate_blur.rotate", 30.0).With("zoom_rotate_blur.center_x", .4)
+                    .With("zoom_rotate_blur.protect_radius", 15.0).With("zoom_rotate_blur.transition", 10.0)
+                    .With("zoom_rotate_blur.protect_shape", protectShape).With("zoom_rotate_blur.protect_aspect", protectAspect)
+                    .With("zoom_rotate_blur.protect_angle", protectAngle);
+        }
+
+        using var cpu = new CpuFakeRenderer();
+        var ct = TestContext.Current.CancellationToken;
+        var shaped = cpu.Render16(source, Blur(shape, aspect, angle), ct).Rgba16;
+        if (shape != "circle")
+            Assert.True(MaxAbsDiff(shaped, cpu.Render16(source, Blur("circle", 0, 0), ct).Rgba16) > 256, "形狀未改變保護區");
+
+        using var gpu = TryCreateGpu();
+        Assert.SkipWhen(gpu is null, "No GPU");
+        var actual = gpu!.Render16(source, Blur(shape, aspect, angle), ct).Rgba16;
+        Assert.False(gpu.UsingCpu);
+        Assert.True(MaxAbsDiff(shaped, actual) <= 400, $"GPU 與 CPU 差 {MaxAbsDiff(shaped, actual)}");
+    }
+
+    [Fact]
+    public void BlurProtectShape_DefaultsKeepTheOriginalCircle()
+    {
+        // 預設（圓形、長寬比 0、角度 0）的保護區不受角度旋轉影響：圓形旋轉後仍相同。
+        const int w = 96, h = 64;
+        var source = Textured(w, h);
+        Settings Motion(double angle) => ModuleCatalog.Defaults.With("motion_blur.enabled", true)
+            .With("motion_blur.length", 60.0).With("motion_blur.protect_enabled", true)
+            .With("motion_blur.protect_x", .4).With("motion_blur.protect_size", 20.0)
+            .With("motion_blur.protect_angle", angle);
+        using var cpu = new CpuFakeRenderer();
+        var ct = TestContext.Current.CancellationToken;
+        Assert.True(MaxAbsDiff(cpu.Render16(source, Motion(0), ct).Rgba16, cpu.Render16(source, Motion(40), ct).Rgba16) <= 2);
+    }
+
     [Fact]
     public void Halation_HueAndSaturation_TintTheGlow()
     {

@@ -17,15 +17,7 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
     let input = textureLoad(src, id.xy, 0);
     let fp = vec2f(frame_pixel(view, id.xy));
     let uv = (fp + .5 - vec2f(p.cx, p.cy) * view.frame_size) / p.short_side;
-    let ru = uv.x * p.cosine - uv.y * p.sine;
-    let rv = uv.x * p.sine + uv.y * p.cosine;
-    var distance = sqrt(ru * ru + rv * rv);
-    switch p.focus_shape {
-        case 1: { distance = sqrt(ru * ru / (p.aspect * p.aspect) + rv * rv * p.aspect * p.aspect); }
-        case 2: { distance = abs(rv); }
-        case 3: { distance = abs(ru); }
-        default: {}
-    }
+    let distance = shape_distance(p.focus_shape, uv, p.aspect, p.cosine, p.sine);
     let amount = clamp((distance - p.focus_size) / p.transition, 0.0, 1.0);
     var squeeze = 1.0;
     if (p.shape == 3) { squeeze = max(.25, 1.0 - length(uv)); }

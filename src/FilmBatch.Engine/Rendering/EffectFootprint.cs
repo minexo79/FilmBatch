@@ -57,32 +57,42 @@ public static class EffectFootprint
         };
     }
 
-    // ───────────── 散景：以短邊為單位的旋轉座標（CpuPipeline.Bokeh） ─────────────
+    // ───────────── 區域形狀：散景清晰區與兩種模糊的保護區共用（ShapeMask） ─────────────
 
-    private static List<FootprintPath> Bokeh(Settings s, float w, float h)
+    /// <summary>某個模組的區域形狀由哪幾個參數決定。</summary>
+    private sealed record ShapeKeys(string CenterX, string CenterY, string Shape, string Aspect, string Angle);
+
+    private static readonly ShapeKeys BokehShape = new("bokeh.center_x", "bokeh.center_y", "bokeh.focus_shape", "bokeh.aspect", "bokeh.angle");
+    private static readonly ShapeKeys ZoomShape = new("zoom_rotate_blur.center_x", "zoom_rotate_blur.center_y",
+        "zoom_rotate_blur.protect_shape", "zoom_rotate_blur.protect_aspect", "zoom_rotate_blur.protect_angle");
+    private static readonly ShapeKeys MotionShape = new("motion_blur.protect_x", "motion_blur.protect_y",
+        "motion_blur.protect_shape", "motion_blur.protect_aspect", "motion_blur.protect_angle");
+
+    /// <summary>
+    /// 形狀的內外圈輪廓（距離以短邊為單位）：以短邊為單位的旋轉座標，與 <see cref="ShapeMask.Distance"/> 相同。
+    /// 圓／橢圓是封閉曲線，帶狀是兩側的直線（長度涵蓋整張影像，畫布會裁到影像內）。
+    /// </summary>
+    private static List<FootprintPath> ShapePaths(Settings s, ShapeKeys k, float w, float h,
+        float inner, float outer, string? innerKey, string? outerKey)
     {
         var shortSide = MathF.Min(w, h);
-        var center = new Vector2(Num(s, "bokeh.center_x"), Num(s, "bokeh.center_y"));
-        var focusSize = Num(s, "bokeh.focus_size") / 200f;
-        var transition = MathF.Max(.001f, Num(s, "bokeh.transition") / 100f);
-        var aspect = MathF.Max(.01f, 1 + Num(s, "bokeh.aspect") / 100f);
-        var angle = Num(s, "bokeh.angle") * MathF.PI / 180;
-        var shape = Text(s, "bokeh.focus_shape");
+        var center = new Vector2(Num(s, k.CenterX), Num(s, k.CenterY));
+        var aspect = ShapeMask.Aspect(Num(s, k.Aspect));
+        var angle = Num(s, k.Angle) * MathF.PI / 180;
+        var shape = Text(s, k.Shape);
         var cos = MathF.Cos(angle);
         var sin = MathF.Sin(angle);
-        // 旋轉座標 (ru, rv) → 影像正規化座標：u = ru·cos + rv·sin、v = −ru·sin + rv·cos（Bokeh 旋轉的反向）
+        // 旋轉座標 (ru, rv) → 影像正規化座標：u = ru·cos + rv·sin、v = −ru·sin + rv·cos（旋轉的反向）
         Vector2 ToImage(float ru, float rv) =>
             center + new Vector2((ru * cos + rv * sin) * shortSide / w, (-ru * sin + rv * cos) * shortSide / h);
 
         var paths = new List<FootprintPath>();
-        foreach (var (stroke, d) in new[] { (FootprintStroke.Inner, focusSize), (FootprintStroke.Outer, focusSize + transition) })
+        foreach (var (stroke, d, key) in new[] { (FootprintStroke.Inner, inner, innerKey), (FootprintStroke.Outer, outer, outerKey) })
         {
             if (d <= 0) continue;
-            var key = stroke == FootprintStroke.Inner ? "bokeh.focus_size" : "bokeh.transition";
             switch (shape)
             {
                 case "hband" or "vband":
-                    // 帶狀：|rv| = d（水平帶）或 |ru| = d（垂直帶）的兩條直線，長度涵蓋整張影像（畫布會裁到影像內）
                     var reach = MathF.Sqrt(w * w + h * h) / shortSide * 2;
                     foreach (var side in new[] { -d, d })
                         paths.Add(new FootprintPath(stroke, shape == "hband"
@@ -99,15 +109,22 @@ public static class EffectFootprint
         return paths;
     }
 
-    // ───────────── 放射旋轉：像素距離的圓（CpuPipeline.ZoomRotate） ─────────────
+    // ───────────── 散景：以短邊為單位的旋轉座標（CpuPipeline.Bokeh） ─────────────
+
+    private static List<FootprintPath> Bokeh(Settings s, float w, float h)
+    {
+        var focusSize = Num(s, "bokeh.focus_size") / 200f;
+        var transition = MathF.Max(.001f, Num(s, "bokeh.transition") / 100f);
+        return ShapePaths(s, BokehShape, w, h, focusSize, focusSize + transition, "bokeh.focus_size", "bokeh.transition");
+    }
+
+    // ───────────── 放射旋轉：保護區形狀（CpuPipeline.ZoomRotate） ─────────────
 
     private static List<FootprintPath> ZoomRotate(Settings s, float w, float h)
     {
-        var shortSide = MathF.Min(w, h);
-        var center = new Vector2(Num(s, "zoom_rotate_blur.center_x"), Num(s, "zoom_rotate_blur.center_y"));
-        var protect = Num(s, "zoom_rotate_blur.protect_radius") / 100f * shortSide;
-        var transition = MathF.Max(1e-3f, Num(s, "zoom_rotate_blur.transition") / 100f * shortSide);
-        return PixelRings(center, protect, protect + transition, w, h, "zoom_rotate_blur.protect_radius", "zoom_rotate_blur.transition");
+        var protect = Num(s, "zoom_rotate_blur.protect_radius") / 100f;
+        var transition = MathF.Max(1e-3f, Num(s, "zoom_rotate_blur.transition") / 100f);
+        return ShapePaths(s, ZoomShape, w, h, protect, protect + transition, "zoom_rotate_blur.protect_radius", "zoom_rotate_blur.transition");
     }
 
     // ───────────── 動態模糊：保護區圓 ＋ 方向導引（CpuPipeline.MotionBlur） ─────────────
@@ -117,10 +134,8 @@ public static class EffectFootprint
         var shortSide = MathF.Min(w, h);
         var protectOn = Bool(s, "motion_blur.protect_enabled");
         var center = protectOn ? new Vector2(Num(s, "motion_blur.protect_x"), Num(s, "motion_blur.protect_y")) : new Vector2(.5f, .5f);
-        var paths = protectOn
-            ? PixelRings(center, Num(s, "motion_blur.protect_size") / 100f * shortSide,
-                Num(s, "motion_blur.protect_size") / 100f * shortSide + .15f * shortSide, w, h, "motion_blur.protect_size", null)
-            : [];
+        var protect = Num(s, "motion_blur.protect_size") / 100f;
+        var paths = protectOn ? ShapePaths(s, MotionShape, w, h, protect, protect + .15f, "motion_blur.protect_size", null) : [];
 
         // 導引：模糊取樣線段（長度 = 實際取樣長度，至少短邊 25%，不被控制點蓋住），兩端加短垂直刻線
         var length = Num(s, "motion_blur.length") / 100f * .2f * shortSide;
@@ -296,15 +311,14 @@ public static class EffectFootprint
         if (width <= 0 || height <= 0 || ModuleCatalog.Param(dragKey) is null) return null;
         var w = (float)width;
         var h = (float)height;
-        var shortSide = MathF.Min(w, h);
         double? raw = dragKey switch
         {
-            "bokeh.focus_size" => BokehDistance(settings, w, h, point) * 200,
-            "bokeh.transition" => (BokehDistance(settings, w, h, point) - Num(settings, "bokeh.focus_size") / 200f) * 100,
-            "zoom_rotate_blur.protect_radius" => PixelDistance(settings, "zoom_rotate_blur.center", w, h, point) / shortSide * 100,
-            "zoom_rotate_blur.transition" => (PixelDistance(settings, "zoom_rotate_blur.center", w, h, point) / shortSide
+            "bokeh.focus_size" => ShapeDistance(settings, BokehShape, w, h, point) * 200,
+            "bokeh.transition" => (ShapeDistance(settings, BokehShape, w, h, point) - Num(settings, "bokeh.focus_size") / 200f) * 100,
+            "zoom_rotate_blur.protect_radius" => ShapeDistance(settings, ZoomShape, w, h, point) * 100,
+            "zoom_rotate_blur.transition" => (ShapeDistance(settings, ZoomShape, w, h, point)
                 - Num(settings, "zoom_rotate_blur.protect_radius") / 100f) * 100,
-            "motion_blur.protect_size" => PixelDistance(settings, "motion_blur.protect", w, h, point) / shortSide * 100,
+            "motion_blur.protect_size" => ShapeDistance(settings, MotionShape, w, h, point) * 100,
             "vignette.size" => VignetteDistance(settings, w, h, point) / .7f * 100,
             "vignette.feather" => (VignetteDistance(settings, w, h, point) - Num(settings, "vignette.size") / 100f * .7f) / .5f * 100,
             _ => null,
@@ -312,31 +326,15 @@ public static class EffectFootprint
         return raw is { } value ? Snapped(dragKey, value).Value : null;
     }
 
-    /// <summary>散景遮罩的距離（短邊單位、旋轉加長寬比），與 CpuPipeline.Bokeh 相同。</summary>
-    private static float BokehDistance(Settings s, float w, float h, Vector2 point)
+    /// <summary>形狀遮罩的距離（短邊單位、旋轉加長寬比），與 <see cref="ShapeMask.Distance"/> 相同。</summary>
+    private static float ShapeDistance(Settings s, ShapeKeys k, float w, float h, Vector2 point)
     {
         var shortSide = MathF.Min(w, h);
-        var u = (point.X - Num(s, "bokeh.center_x")) * w / shortSide;
-        var v = (point.Y - Num(s, "bokeh.center_y")) * h / shortSide;
-        var aspect = MathF.Max(.01f, 1 + Num(s, "bokeh.aspect") / 100f);
-        var angle = Num(s, "bokeh.angle") * MathF.PI / 180;
-        var ru = u * MathF.Cos(angle) - v * MathF.Sin(angle);
-        var rv = u * MathF.Sin(angle) + v * MathF.Cos(angle);
-        return Text(s, "bokeh.focus_shape") switch
-        {
-            "ellipse" => MathF.Sqrt(ru * ru / (aspect * aspect) + rv * rv * aspect * aspect),
-            "hband" => MathF.Abs(rv),
-            "vband" => MathF.Abs(ru),
-            _ => MathF.Sqrt(ru * ru + rv * rv),
-        };
-    }
-
-    /// <summary>到中心（prefix_x / prefix_y）的像素距離。</summary>
-    private static float PixelDistance(Settings s, string prefix, float w, float h, Vector2 point)
-    {
-        var dx = (point.X - Num(s, prefix + "_x")) * w;
-        var dy = (point.Y - Num(s, prefix + "_y")) * h;
-        return MathF.Sqrt(dx * dx + dy * dy);
+        var u = (point.X - Num(s, k.CenterX)) * w / shortSide;
+        var v = (point.Y - Num(s, k.CenterY)) * h / shortSide;
+        var angle = Num(s, k.Angle) * MathF.PI / 180;
+        var shape = Text(s, k.Shape) switch { "ellipse" => ShapeMask.Ellipse, "hband" => ShapeMask.HBand, "vband" => ShapeMask.VBand, _ => ShapeMask.Circle };
+        return ShapeMask.Distance(shape, u, v, ShapeMask.Aspect(Num(s, k.Aspect)), MathF.Cos(angle), MathF.Sin(angle));
     }
 
     /// <summary>暗角的超橢圓距離（影像高為單位），與 CpuPipeline.Vignette 相同。</summary>
@@ -350,15 +348,6 @@ public static class EffectFootprint
     }
 
     // ───────────── 共用 ─────────────
-
-    private static List<FootprintPath> PixelRings(Vector2 center, float inner, float outer, float w, float h, string? innerKey, string? outerKey)
-    {
-        var paths = new List<FootprintPath>();
-        foreach (var (stroke, r, key) in new[] { (FootprintStroke.Inner, inner, innerKey), (FootprintStroke.Outer, outer, outerKey) })
-            if (r > 0)
-                paths.Add(new FootprintPath(stroke, Ring(t => center + new Vector2(r * MathF.Cos(t) / w, r * MathF.Sin(t) / h)), true, key));
-        return paths;
-    }
 
     private static Vector2[] Ring(Func<float, Vector2> at)
     {

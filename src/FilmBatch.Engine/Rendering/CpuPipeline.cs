@@ -578,7 +578,7 @@ public static class CpuPipeline
         var radius = p.BokehBlur / 100f * shortSide * .03f;
         var transition = MathF.Max(.001f, p.BokehTransition / 100f);
         var focusSize = p.FocusSize / 200f;
-        var aspect = MathF.Max(.01f, 1 + p.FocusAspect / 100f);
+        var aspect = ShapeMask.Aspect(p.FocusAspect);
         var angle = p.FocusAngle * MathF.PI / 180;
         var cos = MathF.Cos(angle);
         var sin = MathF.Sin(angle);
@@ -590,15 +590,7 @@ public static class CpuPipeline
             {
                 var u = (x + frame.X + .5f - p.BokehCx * frame.Width) / shortSide;
                 var v = (y + frame.Y + .5f - p.BokehCy * frame.Height) / shortSide;
-                var ru = u * cos - v * sin;
-                var rv = u * sin + v * cos;
-                var distance = p.FocusShape switch
-                {
-                    1 => MathF.Sqrt(ru * ru / (aspect * aspect) + rv * rv * aspect * aspect),
-                    2 => MathF.Abs(rv),
-                    3 => MathF.Abs(ru),
-                    _ => MathF.Sqrt(ru * ru + rv * rv),
-                };
+                var distance = ShapeMask.Distance(p.FocusShape, u, v, aspect, cos, sin);
                 var mix = Math.Clamp((distance - focusSize) / transition, 0, 1);
                 var i = (y * w + x) * 4;
                 var squeeze = p.BokehShape == 3 ? MathF.Max(.25f, 1 - MathF.Sqrt(u * u + v * v)) : 1;
@@ -634,6 +626,10 @@ public static class CpuPipeline
         var protect = p.ZrProtect / 100f * shortSide;
         var trans = MathF.Max(1e-3f, p.ZrTransition / 100f * shortSide);
         var rotSign = p.Rotate >= 0 ? 1f : -1f;
+        var shapeAspect = ShapeMask.Aspect(p.ZrProtectAspect);
+        var shapeAngle = p.ZrProtectAngle * MathF.PI / 180;
+        var shapeCos = MathF.Cos(shapeAngle);
+        var shapeSin = MathF.Sin(shapeAngle);
 
         Parallel.For(0, h, y =>
         {
@@ -645,7 +641,8 @@ public static class CpuPipeline
                 var dcx = u * frame.Width;
                 var dcy = v * frame.Height;
                 var dist = MathF.Sqrt(dcx * dcx + dcy * dcy);
-                var protectT = SmoothStep(protect, protect + trans, dist);
+                var protectT = SmoothStep(protect, protect + trans,
+                    ShapeMask.Distance(p.ZrProtectShape, dcx, dcy, shapeAspect, shapeCos, shapeSin));
                 if (protectT <= 0)
                 {
                     dst[i] = src[i]; dst[i + 1] = src[i + 1]; dst[i + 2] = src[i + 2]; dst[i + 3] = src[i + 3];
@@ -694,6 +691,10 @@ public static class CpuPipeline
         var px = p.MotionPx;
         var py = p.MotionPy;
         var psize = p.MotionSize / 100f * shortSide;
+        var shapeAspect = ShapeMask.Aspect(p.MotionProtectAspect);
+        var shapeAngle = p.MotionProtectAngle * MathF.PI / 180;
+        var shapeCos = MathF.Cos(shapeAngle);
+        var shapeSin = MathF.Sin(shapeAngle);
 
         Parallel.For(0, h, y =>
         {
@@ -705,7 +706,7 @@ public static class CpuPipeline
                 {
                     var du = (x + frame.X + 0.5f) / frame.Width - px;
                     var dv = (y + frame.Y + 0.5f) / frame.Height - py;
-                    var d = MathF.Sqrt(du * du * frame.Width * frame.Width + dv * dv * frame.Height * frame.Height);
+                    var d = ShapeMask.Distance(p.MotionProtectShape, du * frame.Width, dv * frame.Height, shapeAspect, shapeCos, shapeSin);
                     pmask = SmoothStep(psize, psize + 0.15f * shortSide, d);
                 }
                 float r = 0, g = 0, b = 0, a = 0;

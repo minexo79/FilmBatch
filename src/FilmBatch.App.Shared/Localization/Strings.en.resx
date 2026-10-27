@@ -501,6 +501,13 @@ Clear overrides: use the new preset entirely.</value></data>
   <data name="Param.motion_blur.protect_x" xml:space="preserve"><value>Protected Area X</value></data>
   <data name="Param.motion_blur.protect_y" xml:space="preserve"><value>Protected Area Y</value></data>
   <data name="Param.motion_blur.protect_size" xml:space="preserve"><value>Protected Area Size</value></data>
+  <data name="Param.protect_shape" xml:space="preserve"><value>Protected Area Shape</value></data>
+  <data name="Param.protect_aspect" xml:space="preserve"><value>Protected Area Aspect</value></data>
+  <data name="Param.protect_angle" xml:space="preserve"><value>Protected Area Angle</value></data>
+  <data name="Choice.protect_shape.circle" xml:space="preserve"><value>Circle</value></data>
+  <data name="Choice.protect_shape.ellipse" xml:space="preserve"><value>Ellipse</value></data>
+  <data name="Choice.protect_shape.hband" xml:space="preserve"><value>Horizontal band</value></data>
+  <data name="Choice.protect_shape.vband" xml:space="preserve"><value>Vertical band</value></data>
   <data name="Param.vignette.roundness" xml:space="preserve"><value>Roundness</value></data>
   <data name="Param.vignette.feather" xml:space="preserve"><value>Feather</value></data>
   <data name="Param.halation.threshold" xml:space="preserve"><value>Threshold</value></data>

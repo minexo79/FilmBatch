@@ -11,6 +11,10 @@ public static class ModuleCatalog
 {
     private static ChoiceOption O(string key, string label) => new(key, label);
 
+    /// <summary>模糊保護區的形狀（動態模糊、放射旋轉模糊共用）；選項順序即 <c>ShapeMask</c> 的形狀編號，與散景清晰區一致。</summary>
+    private static ParamDef ProtectShape() =>
+        Choice("protect_shape", "保護區形狀", O("circle", "圓形"), O("ellipse", "橢圓"), O("hband", "水平帶"), O("vband", "垂直帶"));
+
     public static IReadOnlyList<ModuleSchema> Modules { get; } =
     [
         // RAW：來源現像（效果處理之前的來源開發），排在管線最前面。
@@ -194,6 +198,9 @@ public static class ModuleCatalog
             Float("rotate", "旋轉", 0, -100, 100),
             Float("protect_radius", "保護區半徑", 20, 0, 100),
             Float("transition", "過渡", 30, 0, 100),
+            ProtectShape(),
+            Float("protect_aspect", "保護區長寬比", 0, -100, 100),
+            Float("protect_angle", "保護區角度", 0, -90, 90, 1, "°"),
         ]),
         new("motion_blur", "動態模糊", ModuleGroup.Optical, PasteCategory.Optical,
         [
@@ -204,6 +211,9 @@ public static class ModuleCatalog
             Position("protect_x", "保護區 X", 0.5, PositionAxis.X),
             Position("protect_y", "保護區 Y", 0.5, PositionAxis.Y),
             Float("protect_size", "保護區大小", 30, 0, 100),
+            ProtectShape(),
+            Float("protect_aspect", "保護區長寬比", 0, -100, 100),
+            Float("protect_angle", "保護區角度", 0, -90, 90, 1, "°"),
         ]),
         new("vignette", "暗角", ModuleGroup.Optical, PasteCategory.Optical,
         [

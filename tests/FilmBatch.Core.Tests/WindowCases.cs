@@ -39,6 +39,14 @@ internal static class WindowCases
         ("motion", D.With("motion_blur.enabled", true).With("motion_blur.length", 45.0).With("motion_blur.angle", 32.0)
             .With("motion_blur.protect_enabled", true).With("motion_blur.protect_x", .6).With("motion_blur.protect_y", .35)
             .With("motion_blur.protect_size", 15.0)),
+        ("zoom-rotate-shaped", D.With("zoom_rotate_blur.enabled", true).With("zoom_rotate_blur.zoom", 45.0)
+            .With("zoom_rotate_blur.rotate", 30.0).With("zoom_rotate_blur.center_x", .55)
+            .With("zoom_rotate_blur.protect_radius", 12.0).With("zoom_rotate_blur.protect_shape", "ellipse")
+            .With("zoom_rotate_blur.protect_aspect", 55.0).With("zoom_rotate_blur.protect_angle", 28.0)),
+        ("motion-band", D.With("motion_blur.enabled", true).With("motion_blur.length", 45.0).With("motion_blur.angle", 20.0)
+            .With("motion_blur.protect_enabled", true).With("motion_blur.protect_x", .45).With("motion_blur.protect_y", .5)
+            .With("motion_blur.protect_size", 10.0).With("motion_blur.protect_shape", "hband")
+            .With("motion_blur.protect_angle", -12.0)),
         ("vignette", D.With("vignette.enabled", true).With("vignette.amount", 70.0).With("vignette.size", 35.0)
             .With("vignette.roundness", 40.0).With("vignette.center_x", .4).With("vignette.center_y", .55)),
         ("halation", D.With("halation.enabled", true).With("halation.amount", 70.0).With("halation.threshold", 35.0)

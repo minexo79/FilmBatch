@@ -10,6 +10,9 @@ struct Params {
     transition: f32,       // 0..1（短邊比例）
     aspect: f32,
     short_side: f32,
+    shape: i32,            // 保護區形狀：0 圓 1 橢圓 2 水平帶 3 垂直帶
+    shape_aspect: f32,
+    shape_cos: f32, shape_sin: f32,
 }
 
 @group(0) @binding(0) var src: texture_2d<f32>;
@@ -43,7 +46,8 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
     let dist = sqrt(dcx * dcx + dcy * dcy);
     let protectPx = p.protect * p.short_side;
     let transPx = max(1e-3, p.transition * p.short_side);
-    let protectT = smoothstep_f(protectPx, protectPx + transPx, dist);
+    let shapeDist = shape_distance(p.shape, vec2f(dcx, dcy), p.shape_aspect, p.shape_cos, p.shape_sin);
+    let protectT = smoothstep_f(protectPx, protectPx + transPx, shapeDist);
     let orig = textureLoad(src, pos, 0);
     if (protectT <= 0.0) { textureStore(dst, pos, orig); return; }
 
