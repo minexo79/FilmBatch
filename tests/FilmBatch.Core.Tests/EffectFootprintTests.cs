@@ -86,24 +86,37 @@ public sealed class EffectFootprintTests
         AssertContours(paths, new Vector2(.45f, .55f), Run(CpuPipeline.Bokeh, s), full);
     }
 
-    [Fact]
-    public void Zoom_rotate_contours_match_the_cpu_mask()
+    [Theory]
+    [InlineData("circle", 0, 0)]
+    [InlineData("ellipse", 60, 30)]
+    [InlineData("ellipse", -40, -70)]
+    [InlineData("hband", 0, 20)]
+    [InlineData("vband", 0, -15)]
+    public void Zoom_rotate_contours_match_the_cpu_mask(string shape, double aspect, double angle)
     {
         var s = ModuleCatalog.Defaults.With("zoom_rotate_blur.enabled", true)
             .With("zoom_rotate_blur.center_x", .6).With("zoom_rotate_blur.center_y", .4)
             .With("zoom_rotate_blur.zoom", 60).With("zoom_rotate_blur.rotate", 40)
-            .With("zoom_rotate_blur.protect_radius", 25).With("zoom_rotate_blur.transition", 20);
+            .With("zoom_rotate_blur.protect_radius", 25).With("zoom_rotate_blur.transition", 20)
+            .With("zoom_rotate_blur.protect_shape", shape).With("zoom_rotate_blur.protect_aspect", aspect)
+            .With("zoom_rotate_blur.protect_angle", angle);
         var full = Run(CpuPipeline.ZoomRotate, s.With("zoom_rotate_blur.protect_radius", 0).With("zoom_rotate_blur.transition", 0));
         var paths = EffectFootprint.For("zoom_rotate_blur", s, W, H);
         AssertContours(paths, new Vector2(.6f, .4f), Run(CpuPipeline.ZoomRotate, s), full);
     }
 
-    [Fact]
-    public void Motion_contours_match_the_cpu_mask()
+    [Theory]
+    [InlineData("circle", 0, 0)]
+    [InlineData("ellipse", 60, 30)]
+    [InlineData("ellipse", -40, -70)]
+    [InlineData("hband", 0, 20)]
+    [InlineData("vband", 0, -15)]
+    public void Motion_contours_match_the_cpu_mask(string shape, double aspect, double angle)
     {
         var s = ModuleCatalog.Defaults.With("motion_blur.enabled", true).With("motion_blur.length", 50).With("motion_blur.angle", 30)
             .With("motion_blur.protect_enabled", true).With("motion_blur.protect_x", .4).With("motion_blur.protect_y", .5)
-            .With("motion_blur.protect_size", 20);
+            .With("motion_blur.protect_size", 20).With("motion_blur.protect_shape", shape)
+            .With("motion_blur.protect_aspect", aspect).With("motion_blur.protect_angle", angle);
         var full = Run(CpuPipeline.MotionBlur, s.With("motion_blur.protect_enabled", false));
         var paths = EffectFootprint.For("motion_blur", s, W, H);
         AssertContours(paths, new Vector2(.4f, .5f), Run(CpuPipeline.MotionBlur, s), full);

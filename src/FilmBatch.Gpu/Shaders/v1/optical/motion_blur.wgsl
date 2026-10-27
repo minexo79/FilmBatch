@@ -9,7 +9,9 @@ struct Params {
     px: f32, py: f32,  // 保護區中心（0..1）
     psize: f32,        // 0..1（短邊比例）
     short_side: f32,
-    _pad: f32,
+    shape: i32,        // 保護區形狀：0 圓 1 橢圓 2 水平帶 3 垂直帶
+    shape_aspect: f32,
+    shape_cos: f32, shape_sin: f32,
 }
 
 @group(0) @binding(0) var src: texture_2d<f32>;
@@ -40,7 +42,7 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
     if (p.protect_on > 0.5) {
         let du = (f32(fp.x) + 0.5) / fs.x - p.px;
         let dv = (f32(fp.y) + 0.5) / fs.y - p.py;
-        let d = sqrt(du * du * fs.x * fs.x + dv * dv * fs.y * fs.y);
+        let d = shape_distance(p.shape, vec2f(du * fs.x, dv * fs.y), p.shape_aspect, p.shape_cos, p.shape_sin);
         pmask = smoothstep_f(p.psize * p.short_side, p.psize * p.short_side + 0.15 * p.short_side, d);
     }
     let orig = textureLoad(src, pos, 0);

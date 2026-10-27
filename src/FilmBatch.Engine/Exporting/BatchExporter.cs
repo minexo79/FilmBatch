@@ -16,7 +16,8 @@ namespace FilmBatch.Engine.Exporting;
 /// GUI 與 CLI 共用的批次匯出器（計畫書第 10、11.5 章）。
 /// 單一背景執行緒依序處理（算圖器具執行緒親和性）：
 /// 每張照片「解碼 → 算圖 → 編碼寫檔」使用開始前建立的設定快照。
-/// 來源檔與任何既有輸出檔永不覆寫；取消/失敗不留假完成輸出；錯誤誠實回報。
+/// 來源檔永不覆寫；既有輸出檔預設不覆寫，只有 ExportOptions.OverwriteExisting 明確開啟才取代；
+/// 取消/失敗不留假完成輸出（取代時舊檔保持原狀）；錯誤誠實回報。
 /// </summary>
 public static class BatchExporter
 {
@@ -113,6 +114,32 @@ public static class BatchExporter
         return Task.Run(() => RunJobs(jobs, request.Options, rendererFactory, folder, progress, cancellationToken));
     }
 
+    private static StringComparison PathComparison =>
+        OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+
+    /// <summary>依範本與選項為每張 job 配置輸出路徑；RunJobs 與匯出前的「將取代 N 個檔案」預覽共用。</summary>
+    public static string[] PlanOutputs(IReadOnlyList<ExportJob> jobs, ExportOptions options)
+    {
+        var destination = Path.GetFullPath(options.Destination);
+        var taken = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var outputs = new string[jobs.Count];
+        var ext = ExportFileNames.ExtensionFor(options.Format);
+        for (var i = 0; i < jobs.Count; i++)
+        {
+            var stem = ExportFileNames.RenderTemplate(
+                options.FileNameTemplate,
+                Path.GetFileNameWithoutExtension(jobs[i].FileName),
+                jobs[i].PresetName,
+                jobs[i].Index);
+            outputs[i] = ExportFileNames.ResolveOutputPath(destination, stem, ext, taken, options.OverwriteExisting);
+        }
+        return outputs;
+    }
+
+    /// <summary>覆蓋模式下，這批匯出會取代幾個磁碟上已存在的檔案（未開啟覆蓋時恆為 0）。</summary>
+    public static int CountOverwrites(IReadOnlyList<ExportJob> jobs, ExportOptions options) =>
+        options.OverwriteExisting ? PlanOutputs(jobs, options).Count(File.Exists) : 0;
+
     internal static BatchExportSummary RunJobs(
         IReadOnlyList<ExportJob> jobs,
         ExportOptions options,
@@ -129,18 +156,18 @@ public static class BatchExporter
             throw new InvalidDataException(CoreText.T("目的地不可是 .filmbatch 專案資料夾。", "The destination cannot be the .filmbatch project folder."));
         Directory.CreateDirectory(destination);
 
-        // 預先配置輸出路徑（同批不碰撞、既有不覆寫）
-        var taken = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var outputs = new string[jobs.Count];
-        var ext = ExportFileNames.ExtensionFor(options.Format);
-        for (var i = 0; i < jobs.Count; i++)
+        // 預先配置輸出路徑（同批不碰撞；既有輸出預設不覆寫）
+        var outputs = PlanOutputs(jobs, options);
+        // 安全：覆蓋模式下，專案資料夾本身不可成為被取代的目標（那裡可能有同名的其他照片）
+        if (options.OverwriteExisting)
         {
-            var stem = ExportFileNames.RenderTemplate(
-                options.FileNameTemplate,
-                Path.GetFileNameWithoutExtension(jobs[i].FileName),
-                jobs[i].PresetName,
-                jobs[i].Index);
-            outputs[i] = ExportFileNames.ResolveOutputPath(destination, stem, ext, taken);
+            var project = Path.TrimEndingDirectorySeparator(Path.GetFullPath(projectFolder));
+            foreach (var o in outputs)
+                if (File.Exists(o)
+                    && string.Equals(Path.TrimEndingDirectorySeparator(Path.GetDirectoryName(Path.GetFullPath(o))!), project, PathComparison))
+                    throw new InvalidDataException(CoreText.T(
+                        $"覆蓋模式不可取代照片資料夾內的檔案：{o}",
+                        $"Overwrite mode cannot replace files inside the photo folder: {o}"));
         }
         // 安全：輸出路徑不可等於任一來源檔（大小寫依平台；不覆寫由 ResolveOutputPath 保證）
         var comparer = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()
@@ -342,7 +369,7 @@ public static class BatchExporter
             throw new InvalidDataException(CoreText.T(
                 $"像素色彩空間（{ColorSpaceName(image.Encoding)}）與匯出選項（{ColorSpaceName(options.ColorSpace)}）不一致，拒絕編碼。",
                 $"Pixel color space ({ColorSpaceName(image.Encoding)}) does not match export options ({ColorSpaceName(options.ColorSpace)}); refusing to encode."));
-        if (File.Exists(outputPath))
+        if (!options.OverwriteExisting && File.Exists(outputPath))
             throw new IOException(CoreText.T($"輸出檔已存在，拒絕覆寫：{outputPath}", $"Output file already exists; refusing to overwrite: {outputPath}"));
         // JPEG／DNG 不支援透明度：套過遮罩的透明輸出必須明確失敗，不靜默寫成不透明檔。
         if (job.ForegroundMask is not null && options.Format is ExportFormat.Jpeg or ExportFormat.Dng)
@@ -393,13 +420,13 @@ public static class BatchExporter
                 TiffMetadata.Append(tmp, exif, replaceExif: options.Format == ExportFormat.Dng, encoding: options.ColorSpace);
 #endif
             ct.ThrowIfCancellationRequested();
-            File.Move(tmp, outputPath, overwrite: false);
+            File.Move(tmp, outputPath, overwrite: options.OverwriteExisting);
             return metadataWarning;
         }
         catch
         {
             try { if (File.Exists(tmp)) File.Delete(tmp); } catch (IOException) { }
-            if (File.Exists(outputPath))
+            if (!options.OverwriteExisting && File.Exists(outputPath))
                 throw new IOException(CoreText.T($"輸出檔已存在，拒絕覆寫：{outputPath}", $"Output file already exists; refusing to overwrite: {outputPath}"));
             throw;
         }

@@ -153,6 +153,33 @@ public sealed class GpuGaussianTests
         AssertParity(actual, expected);
     }
 
+    [Theory]
+    [InlineData(200.0, 100.0)]
+    [InlineData(300.0, 40.0)]
+    [InlineData(10.0, 0.0)]
+    public void Halation_FullHueAndSaturation_MatchesCpu(double hue, double saturation)
+    {
+        using var gpu = new GpuSpikeRenderer(DeviceOrSkip());
+        using var cpu = new CpuFakeRenderer();
+        const int width = 37, height = 19;
+        var pixels = new ushort[width * height * 4];
+        for (var i = 0; i < pixels.Length; i += 4)
+        {
+            var bright = (i / 4 % width) >= 18;
+            pixels[i] = pixels[i + 1] = pixels[i + 2] = (ushort)(bright ? 60000 : 8000);
+            pixels[i + 3] = ushort.MaxValue;
+        }
+        var source = new SourceImage(width, height, pixels);
+        var settings = ModuleCatalog.Defaults
+            .With("halation.enabled", true).With("halation.amount", 100.0)
+            .With("halation.threshold", 50.0).With("halation.radius", 100.0)
+            .With("halation.hue", hue).With("halation.saturation", saturation);
+        var expected = cpu.Render16(source, settings, TestContext.Current.CancellationToken).Rgba16;
+        var actual = gpu.Render16(source, settings, TestContext.Current.CancellationToken).Rgba16;
+        Assert.False(gpu.UsingCpu);
+        AssertParity(actual, expected);
+    }
+
     [Fact]
     public void HalationAndClarity_SmallOddSize_MatchesCpuWithTransparentEdges()
     {

@@ -325,6 +325,55 @@ public class BatchExporterTests
     }
 
     [Fact]
+    public async Task Export_OverwriteExisting_ReplacesOldOutput_WithoutSuffix_AndKeepsSources()
+    {
+        var folder = PhotoFolder();
+        var svc = CreateService(folder, "DSC_0012.tif");
+        var source = Path.Combine(folder, "DSC_0012.tif");
+        var before = File.ReadAllBytes(source);
+        var dest = Path.Combine(folder, "export");
+        Directory.CreateDirectory(dest);
+        var old = Path.Combine(dest, "DSC_0012_Portra Warm + Light Leak.jpg");
+        File.WriteAllText(old, "old");
+        var options = Jpeg(dest) with { OverwriteExisting = true };
+        Assert.Equal(1, BatchExporter.CountOverwrites(BatchExporter.BuildJobs(svc, ["DSC_0012.tif"]), options));
+        var summary = await Run(svc, ["DSC_0012.tif"], options, TestContext.Current.CancellationToken);
+        Assert.Equal(0, summary.Failed);
+        Assert.Equal(old, summary.OutputFiles[0]);
+        using (var image = new MagickImage(old)) Assert.Equal(MagickFormat.Jpeg, image.Format);
+        Assert.Empty(Directory.GetFiles(dest, "*.tmp"));
+        Assert.Equal(before, File.ReadAllBytes(source));
+    }
+
+    [Fact]
+    public async Task Export_OverwriteExisting_RefusesToReplaceFilesInPhotoFolder()
+    {
+        var folder = PhotoFolder();
+        var svc = CreateService(folder, "DSC_0012.tif");
+        var other = Path.Combine(folder, "DSC_0012.jpg");
+        File.WriteAllText(other, "someone's photo");
+        var options = new ExportOptions
+        {
+            Destination = folder, FileNameTemplate = "{name}", Format = ExportFormat.Jpeg, Quality = 90, OverwriteExisting = true,
+        };
+        await Assert.ThrowsAsync<InvalidDataException>(() =>
+            Run(svc, ["DSC_0012.tif"], options, TestContext.Current.CancellationToken));
+        Assert.Equal("someone's photo", File.ReadAllText(other));
+    }
+
+    [Fact]
+    public async Task Export_OverwriteOff_CountsNoOverwrites()
+    {
+        var folder = PhotoFolder();
+        var svc = CreateService(folder, "DSC_0012.tif");
+        var dest = Path.Combine(folder, "export");
+        Directory.CreateDirectory(dest);
+        File.WriteAllText(Path.Combine(dest, "DSC_0012_Portra Warm + Light Leak.jpg"), "old");
+        Assert.Equal(0, BatchExporter.CountOverwrites(BatchExporter.BuildJobs(svc, ["DSC_0012.tif"]), Jpeg(dest)));
+        await Task.CompletedTask;
+    }
+
+    [Fact]
     public async Task Export_SameNameDifferentExtension_DoesNotClobberSource()
     {
         // 來源 DSC_0012.tif；輸出同名不同副檔名 DSC_0012.jpg：路徑不同，允許匯出，且來源 untouched。

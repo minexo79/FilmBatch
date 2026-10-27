@@ -51,6 +51,16 @@ public sealed class FakeDialogs : IDialogService
         return Task.FromResult(OnSelectivePaste is not null);
     }
 
+    /// <summary>名稱預設取 <see cref="PromptAnswer"/>（null 代表取消）；測試可用 <see cref="OnNewPreset"/> 調整勾選。</summary>
+    public Action<NewPresetViewModel>? OnNewPreset { get; set; }
+    public Task<bool> ShowNewPresetAsync(NewPresetViewModel vm)
+    {
+        if (PromptAnswer is null) return Task.FromResult(false);
+        vm.Name = PromptAnswer;
+        OnNewPreset?.Invoke(vm);
+        return Task.FromResult(true);
+    }
+
     public Task ShowPresetManagerAsync(PresetManagerViewModel vm) => Task.CompletedTask;
     public Task ShowPreferencesAsync(PreferencesViewModel vm) => Task.CompletedTask;
     public Task<bool> ConfirmAsync(string title, string message, string confirmText) => Task.FromResult(ConfirmAnswer);

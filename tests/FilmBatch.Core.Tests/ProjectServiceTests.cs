@@ -122,6 +122,29 @@ public class ProjectServiceTests
     }
 
     [Fact]
+    public void CreatePresetFromPhoto_OnlySavesCheckedModules_AndKeepsTheRestAsOverrides()
+    {
+        var svc = Create("a.tif");
+        svc.SetValue(["a.tif"], "basic.exposure", 1.0);
+        svc.SetValue(["a.tif"], "grain.amount", 66.0);
+        var before = svc.SettingsFor("a.tif");
+
+        var preset = svc.CreatePresetFromPhoto("a.tif", "只存曝光", "測試", "#D98E2B", new HashSet<string> { "basic" });
+
+        Assert.Equal(1.0, preset.Resolved.Number("basic.exposure"));
+        Assert.Equal(ModuleCatalog.Defaults.Number("grain.amount"), preset.Resolved.Number("grain.amount"));
+        Assert.DoesNotContain(preset.Settings.Keys, k => ModuleSchema.ModuleOf(k) == "grain");
+        Assert.Equal(preset.Id, svc.Project["a.tif"].PresetId);
+        Assert.Equal(before, svc.SettingsFor("a.tif")); // 這張的最終參數不變
+        Assert.Equal(66.0, svc.Project["a.tif"].Overrides.Number("grain.amount")); // 未勾選的留在覆寫
+        Assert.False(svc.Project["a.tif"].Overrides.ContainsKey("basic.exposure"));
+
+        svc.Stack.Undo();
+        Assert.Null(svc.Library.Get(preset.Id));
+        Assert.Equal(before, svc.SettingsFor("a.tif"));
+    }
+
+    [Fact]
     public void UpdatePresetFromPhoto_CleansEqualOverridesOnOtherPhotos()
     {
         var svc = Create("a.tif", "b.tif");

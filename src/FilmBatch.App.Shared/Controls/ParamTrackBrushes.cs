@@ -28,8 +28,9 @@ public static class ParamTrackBrushes
     {
         ["basic.saturation"] = Saturation,
         ["raw.mask_saturation"] = Saturation,
-        // 光暈色相 0–60°：shader 以 hsv(hue, 0.75, 1) 上色，紅 → 黃
-        ["halation.hue"] = HueRange(0, 60, 0.75, 0.9),
+        // 光暈色相 0–360°；飽和度由白到最飽和的光暈色（預設色相 10° 的暖紅）
+        ["halation.hue"] = HueWheel,
+        ["halation.saturation"] = Gradient((0, Color.Parse("#F2F2F2")), (1, HsvColor.ToRgb(10, 1, 0.9))),
         // 漏光：紅／黃／藍三色電漿各自的貢獻量，色相為整體旋轉
         ["light_leak.red"] = Gradient((0, Off), (1, Color.Parse("#E04848"))),
         ["light_leak.yellow"] = Gradient((0, Off), (1, Color.Parse("#F0D58A"))),

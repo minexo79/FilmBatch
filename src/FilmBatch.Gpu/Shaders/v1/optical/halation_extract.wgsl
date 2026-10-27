@@ -7,7 +7,7 @@ struct Params {
     radius: f32,      // 0..1（短邊比例；僅供後續 pass 使用）
     hue: f32,
     short_side: f32,
-    _pad0: f32,
+    saturation: f32,  // 僅供合成 pass 使用
     _pad1: f32,
     _pad2: f32,
 }

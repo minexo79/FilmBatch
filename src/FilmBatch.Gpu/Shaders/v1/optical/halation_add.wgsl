@@ -7,7 +7,7 @@ struct Params {
     radius: f32,
     hue: f32,
     short_side: f32,
-    _pad0: f32,
+    saturation: f32,  // 0..1
     _pad1: f32,
     _pad2: f32,
 }
@@ -23,6 +23,6 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
     if (id.x >= size.x || id.y >= size.y) { return; }
     let c = textureLoad(src, id.xy, 0);
     let g = textureLoad(glow, id.xy, 0).rgb;
-    let tint = hsv_to_rgb(p.hue, 0.75, 1.0);
+    let tint = hsv_to_rgb(p.hue, p.saturation, 1.0);
     textureStore(dst, id.xy, vec4f(c.rgb + g * tint * p.amount, c.a));
 }

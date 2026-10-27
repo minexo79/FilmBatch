@@ -5,7 +5,7 @@ namespace FilmBatch.Engine.Exporting;
 
 /// <summary>
 /// 安全檔名：範本展開 + 非法字元清理 + 碰撞編號（計畫書第 10 章）。
-/// 保證：絕不覆寫任何既有檔案（來源或舊輸出）；不產生路徑分隔字元（不逃出目的地）。
+/// 保證：絕不覆寫來源檔；預設也不覆寫舊輸出（明確開啟 OverwriteExisting 才取代）；不產生路徑分隔字元（不逃出目的地）。
 /// 支援的 token：{name} {preset} {index} {index:000} {ext}；未知 token 報錯（不靜默吞掉）。
 /// </summary>
 public static class ExportFileNames
@@ -87,13 +87,14 @@ public static class ExportFileNames
 
     /// <summary>
     /// 在目的地內決定不碰撞的輸出路徑。taken 為同批已配置的檔名（OrdinalIgnoreCase）。
-    /// 碰撞時加 _001、_002……；既有檔案一律保留（不覆寫、不刪除）。
+    /// 碰撞時加 _001、_002……；既有檔案預設保留（不覆寫、不刪除）。
+    /// <paramref name="overwriteExisting"/> 為 true 時，磁碟上的既有檔直接沿用同名（由匯出器取代），只有同批互撞才加編號。
     /// </summary>
-    public static string ResolveOutputPath(string destination, string stem, string extension, ISet<string> taken)
+    public static string ResolveOutputPath(string destination, string stem, string extension, ISet<string> taken, bool overwriteExisting = false)
     {
         var candidate = stem + extension;
         var n = 0;
-        while (taken.Contains(candidate) || File.Exists(Path.Combine(destination, candidate)))
+        while (taken.Contains(candidate) || (!overwriteExisting && File.Exists(Path.Combine(destination, candidate))))
         {
             n++;
             if (n > 9999) throw new IOException(CoreText.T("輸出檔名碰撞過多，無法配置安全檔名。", "Too many output file name collisions; cannot allocate a safe name."));

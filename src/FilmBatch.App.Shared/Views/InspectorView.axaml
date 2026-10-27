@@ -144,7 +144,7 @@
     </DataTemplate>
     <!-- 模組分組（標題可整組折疊＋其中的模組）；基本分組與其餘分組分在「AI 功能」前後，共用這個樣板 -->
     <DataTemplate x:Key="ModuleGroupTemplate" x:DataType="vm:ModuleGroupViewModel">
-      <Border Classes="group-box" Tag="{Binding Group}">
+      <Border Classes="group-box">
         <StackPanel>
         <!-- 分組標題可整組折疊 -->
         <ToggleButton Classes="chevron group-header" IsChecked="{Binding IsExpanded}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left">
@@ -233,25 +233,6 @@
         </StackPanel>
       </Panel>
     </Border>
-    <!-- 類別小地圖：點按鈕捲動到該類別的外框（與分組標題順序相同） -->
-    <Border DockPanel.Dock="Top" BorderBrush="{DynamicResource FB.DividerBrush}" BorderThickness="0,0,0,1" Padding="12,8">
-      <Border Classes="segmented">
-        <!-- 等寬格子（UniformGrid 自動排成接近正方形的列數）：每顆按鈕平分寬度 -->
-        <ItemsControl ItemsSource="{Binding CategoryNav}">
-          <ItemsControl.ItemsPanel>
-            <ItemsPanelTemplate>
-              <UniformGrid />
-            </ItemsPanelTemplate>
-          </ItemsControl.ItemsPanel>
-          <ItemsControl.ItemTemplate>
-            <DataTemplate x:DataType="vm:CategoryNavItem">
-              <Button Classes="segment" Margin="2" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
-                      Content="{Binding Label}" Tag="{Binding Tag}" Click="OnCategoryNavClick" />
-            </DataTemplate>
-          </ItemsControl.ItemTemplate>
-        </ItemsControl>
-      </Border>
-    </Border>
     <Border DockPanel.Dock="Bottom" BorderBrush="{DynamicResource FB.DividerBrush}" BorderThickness="0,1,0,0" Padding="16,6">
       <CheckBox Classes="small" Content="{l:Tr Inspector.HideDisabled}" IsChecked="{Binding HideDisabledModules}" />
     </Border>
@@ -262,7 +243,7 @@
       <ContentControl Content="{Binding Main.PhotoTools}" IsVisible="{Binding ShowsPhotoTools}">
         <ContentControl.DataTemplates>
           <DataTemplate x:DataType="vt:PhotoToolsViewModel">
-            <Border Classes="group-box" Tag="photo-tools">
+            <Border Classes="group-box">
             <StackPanel>
               <ToggleButton Classes="chevron group-header" AutomationProperties.AutomationId="PhotoTools.Panel" IsChecked="{Binding IsPanelExpanded}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left">
                 <StackPanel Orientation="Horizontal" Spacing="6">
@@ -397,7 +378,7 @@
       </ContentControl>
       <ItemsControl ItemsSource="{Binding LeadingGroups}" ItemTemplate="{StaticResource ModuleGroupTemplate}" />
       <!-- AI 功能：降噪模組、模型狀態、去背。只在照片基本參數；收合取消單張草稿，不中斷批次或模型下載。 -->
-      <Border Classes="group-box" Tag="ai-features" IsVisible="{Binding ShowsPhotoTools}">
+      <Border Classes="group-box" IsVisible="{Binding ShowsPhotoTools}">
       <StackPanel>
         <ToggleButton Classes="chevron group-header" AutomationProperties.AutomationId="AiFeatures.Panel"
                       IsChecked="{Binding IsAiFeaturesExpanded}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left">

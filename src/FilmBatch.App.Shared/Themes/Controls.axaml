@@ -345,26 +345,6 @@
     <Setter Property="Foreground" Value="{DynamicResource FB.TextBrush}" />
     <Setter Property="BoxShadow" Value="0 1 2 0 #50000000" />
   </Style>
-  <!-- 純按鈕的分段項目（例如類別小地圖）：外觀同 ToggleButton.segment，沒有勾選狀態 -->
-  <Style Selector="Button.segment">
-    <Setter Property="MinHeight" Value="26" />
-    <Setter Property="VerticalContentAlignment" Value="Center" />
-    <!-- 上內距略大於下內距：中文字形偏上，視覺才會置中 -->
-    <Setter Property="Padding" Value="8,4,8,2" />
-    <Setter Property="FontSize" Value="12" />
-    <Setter Property="FontWeight" Value="SemiBold" />
-    <Setter Property="CornerRadius" Value="5" />
-    <Setter Property="BorderThickness" Value="0" />
-    <Setter Property="Background" Value="{DynamicResource FB.HoverOverlayBrush}" />
-    <Setter Property="Foreground" Value="{DynamicResource FB.SecondaryTextBrush}" />
-  </Style>
-  <Style Selector="Button.segment:pointerover /template/ ContentPresenter">
-    <Setter Property="Background" Value="{DynamicResource FB.ButtonHoverBrush}" />
-    <Setter Property="Foreground" Value="{DynamicResource FB.TextBrush}" />
-  </Style>
-  <Style Selector="Button.segment:pressed /template/ ContentPresenter">
-    <Setter Property="Background" Value="{DynamicResource FB.ButtonPressedBrush}" />
-  </Style>
 
   <!-- 工具按鈕：只有圖示、透明背景、圓角滑過底色 -->
   <Style Selector="Button.tool, ToggleButton.tool">

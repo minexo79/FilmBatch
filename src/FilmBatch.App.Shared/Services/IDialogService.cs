@@ -18,6 +18,7 @@ public interface IDialogService
     Task<(bool Keep, bool Remember)?> AskKeepOverridesAsync(int photoCount);
 
     Task<bool> ShowSelectivePasteAsync(SelectivePasteViewModel vm);
+    Task<bool> ShowNewPresetAsync(NewPresetViewModel vm);
     Task ShowPresetManagerAsync(PresetManagerViewModel vm);
     Task ShowPreferencesAsync(PreferencesViewModel vm);
     Task<bool> ConfirmAsync(string title, string message, string confirmText);

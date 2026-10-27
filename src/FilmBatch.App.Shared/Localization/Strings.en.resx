@@ -133,6 +133,8 @@ R {1:P2}  G {2:P2}  B {3:P2}  Luma {4:P2}</value></data>
   <data name="Dialog.IncludeSeeds" xml:space="preserve"><value>Include random seeds</value></data>
   <data name="Dialog.MirrorPositions" xml:space="preserve"><value>Mirror positions</value></data>
   <data name="Dialog.Paste" xml:space="preserve"><value>Paste</value></data>
+  <data name="Dialog.Create" xml:space="preserve"><value>Create</value></data>
+  <data name="Dialog.NewPresetHint" xml:space="preserve"><value>Choose which effects to save in the preset; unchecked effects stay on this photo.</value></data>
   <data name="Dialog.SelectivePaste" xml:space="preserve"><value>Paste Special</value></data>
   <data name="Dialog.Export" xml:space="preserve"><value>Export</value></data>
   <data name="Dialog.PresetManager" xml:space="preserve"><value>Preset Manager</value></data>
@@ -220,6 +222,11 @@ R {1:P2}  G {2:P2}  B {3:P2}  Luma {4:P2}</value></data>
   <data name="Export.Size.LongEdge" xml:space="preserve"><value>Long edge</value></data>
   <data name="Export.Status.Ready" xml:space="preserve"><value>Ready</value></data>
   <data name="Export.Summary" xml:space="preserve"><value>Will export {0} photo(s) to {1}</value></data>
+  <data name="Export.Overwrite" xml:space="preserve"><value>Overwrite existing output files</value></data>
+  <data name="Export.Overwrite.Note" xml:space="preserve"><value>When off, same-named files get a numeric suffix. Only previous outputs are replaced; source photos are never touched.</value></data>
+  <data name="Export.Overwrite.Title" xml:space="preserve"><value>Overwrite existing files</value></data>
+  <data name="Export.Overwrite.Message" xml:space="preserve"><value>{0} file(s) with the same name already exist in the destination and will be replaced. This cannot be undone. Continue?</value></data>
+  <data name="Export.Overwrite.Confirm" xml:space="preserve"><value>Overwrite and export</value></data>
   <data name="Export.Error.NoPreset" xml:space="preserve"><value>Choose a preset first.</value></data>
   <data name="Export.Error.NoPhotos" xml:space="preserve"><value>No matching photos.</value></data>
   <data name="Export.Error.NoFolder" xml:space="preserve"><value>No photo folder is open.</value></data>
@@ -494,6 +501,13 @@ Clear overrides: use the new preset entirely.</value></data>
   <data name="Param.motion_blur.protect_x" xml:space="preserve"><value>Protected Area X</value></data>
   <data name="Param.motion_blur.protect_y" xml:space="preserve"><value>Protected Area Y</value></data>
   <data name="Param.motion_blur.protect_size" xml:space="preserve"><value>Protected Area Size</value></data>
+  <data name="Param.protect_shape" xml:space="preserve"><value>Protected Area Shape</value></data>
+  <data name="Param.protect_aspect" xml:space="preserve"><value>Protected Area Aspect</value></data>
+  <data name="Param.protect_angle" xml:space="preserve"><value>Protected Area Angle</value></data>
+  <data name="Choice.protect_shape.circle" xml:space="preserve"><value>Circle</value></data>
+  <data name="Choice.protect_shape.ellipse" xml:space="preserve"><value>Ellipse</value></data>
+  <data name="Choice.protect_shape.hband" xml:space="preserve"><value>Horizontal band</value></data>
+  <data name="Choice.protect_shape.vband" xml:space="preserve"><value>Vertical band</value></data>
   <data name="Param.vignette.roundness" xml:space="preserve"><value>Roundness</value></data>
   <data name="Param.vignette.feather" xml:space="preserve"><value>Feather</value></data>
   <data name="Param.halation.threshold" xml:space="preserve"><value>Threshold</value></data>

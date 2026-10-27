@@ -75,16 +75,18 @@ public sealed class ModuleParams
     public int FocusShape, BokehShape;
     // zoom_rotate_blur
     public bool ZoomRotateOn;
-    public float ZrCx, ZrCy, Zoom, Rotate, ZrProtect, ZrTransition;
+    public float ZrCx, ZrCy, Zoom, Rotate, ZrProtect, ZrTransition, ZrProtectAspect, ZrProtectAngle;
+    public int ZrProtectShape;
     // motion_blur
     public bool MotionOn, MotionProtectOn;
-    public float MotionAngle, MotionLength, MotionPx, MotionPy, MotionSize;
+    public float MotionAngle, MotionLength, MotionPx, MotionPy, MotionSize, MotionProtectAspect, MotionProtectAngle;
+    public int MotionProtectShape;
     // vignette
     public bool VignetteOn;
     public float VigAmount, VigSize, VigRoundness, VigFeather, VigCx, VigCy;
     // halation
     public bool HalationOn;
-    public float HalAmount, HalThreshold, HalRadius, HalHue;
+    public float HalAmount, HalThreshold, HalRadius, HalHue, HalSaturation;
     // light_leak
     public bool LeakOn;
     public int LeakMode;
@@ -255,6 +257,9 @@ public sealed class ModuleParams
             Rotate = N(s, "zoom_rotate_blur.rotate", 0),
             ZrProtect = N(s, "zoom_rotate_blur.protect_radius", 20),
             ZrTransition = N(s, "zoom_rotate_blur.transition", 30),
+            ZrProtectShape = C("zoom_rotate_blur.protect_shape"),
+            ZrProtectAspect = N(s, "zoom_rotate_blur.protect_aspect", 0),
+            ZrProtectAngle = N(s, "zoom_rotate_blur.protect_angle", 0),
             // motion_blur
             MotionOn = B(s, "motion_blur.enabled", false),
             MotionAngle = N(s, "motion_blur.angle", 0),
@@ -263,6 +268,9 @@ public sealed class ModuleParams
             MotionPx = N(s, "motion_blur.protect_x", 0.5f),
             MotionPy = N(s, "motion_blur.protect_y", 0.5f),
             MotionSize = N(s, "motion_blur.protect_size", 30),
+            MotionProtectShape = C("motion_blur.protect_shape"),
+            MotionProtectAspect = N(s, "motion_blur.protect_aspect", 0),
+            MotionProtectAngle = N(s, "motion_blur.protect_angle", 0),
             // vignette
             VignetteOn = B(s, "vignette.enabled", false),
             VigAmount = N(s, "vignette.amount", 0),
@@ -277,6 +285,7 @@ public sealed class ModuleParams
             HalThreshold = N(s, "halation.threshold", 70),
             HalRadius = N(s, "halation.radius", 30),
             HalHue = N(s, "halation.hue", 10),
+            HalSaturation = N(s, "halation.saturation", 75),
             // light_leak
             LeakOn = B(s, "light_leak.enabled", false),
             LeakMode = C("light_leak.mode"),

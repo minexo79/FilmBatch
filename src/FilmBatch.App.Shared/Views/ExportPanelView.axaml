@@ -81,6 +81,8 @@
           <TextBlock Classes="field-label" Text="{l:Tr Export.Field.FileName}" />
           <TextBox Text="{Binding FileNameTemplate}" PlaceholderText="{}{name}_{preset}" />
           <TextBlock Classes="secondary small" Text="{l:Tr Export.FileNameHint}" TextWrapping="Wrap" />
+          <CheckBox IsChecked="{Binding OverwriteExisting}" Content="{l:Tr Export.Overwrite}" AutomationProperties.AutomationId="Export.Overwrite" />
+          <TextBlock Classes="secondary small" Text="{l:Tr Export.Overwrite.Note}" TextWrapping="Wrap" />
         </StackPanel>
 
         <StackPanel Classes="field">

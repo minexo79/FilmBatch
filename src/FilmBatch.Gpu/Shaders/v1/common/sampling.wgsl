@@ -26,6 +26,18 @@ fn sample_bilinear(t: texture_2d<f32>, point: vec2f) -> vec4f {
         + (textureLoad(t, vec2i(a.x, b.y), 0) * (1.0 - f.x) + textureLoad(t, b, 0) * f.x) * f.y;
 }
 
+// 區域形狀的距離（散景清晰區、模糊保護區共用；須與 ShapeMask.Distance 逐式一致）：
+// shape 0 圓形、1 橢圓、2 水平帶、3 垂直帶；uv 為相對中心的位移，先旋轉（cosine／sine）再量距離。
+fn shape_distance(shape: i32, uv: vec2f, aspect: f32, cosine: f32, sine: f32) -> f32 {
+    let ru = uv.x * cosine - uv.y * sine;
+    let rv = uv.x * sine + uv.y * cosine;
+    var d = sqrt(ru * ru + rv * rv);
+    if (shape == 1) { d = sqrt(ru * ru / (aspect * aspect) + rv * rv * aspect * aspect); }
+    else if (shape == 2) { d = abs(rv); }
+    else if (shape == 3) { d = abs(ru); }
+    return d;
+}
+
 fn rgb_to_hsv(c: vec3f) -> vec3f {
     let hi = max(c.r, max(c.g, c.b));
     let lo = min(c.r, min(c.g, c.b));

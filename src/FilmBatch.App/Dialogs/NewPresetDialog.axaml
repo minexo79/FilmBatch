@@ -1,0 +1,49 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="using:FilmBatch.App.ViewModels.Dialogs"
+        xmlns:l="using:FilmBatch.App.Localization"
+        x:Class="FilmBatch.App.Dialogs.NewPresetDialog"
+        x:DataType="d:NewPresetViewModel"
+        Title="{l:Tr Cmd.CreatePreset}" Width="520" SizeToContent="Height" CanResize="False"
+        ShowInTaskbar="False" WindowStartupLocation="CenterOwner">
+  <!-- 以此張建立預設：名稱＋依模組分組勾選要存進預設的效果（沒勾選的效果留在這張照片的覆寫） -->
+  <DockPanel Margin="16">
+    <StackPanel DockPanel.Dock="Top" Spacing="6" Margin="0,0,0,12">
+      <TextBlock Classes="field-label" Text="{l:Tr Presets.Col.Name}" />
+      <TextBox Name="NameBox" Text="{Binding Name}" />
+      <TextBlock Classes="secondary small" Text="{l:Tr Dialog.NewPresetHint}" TextWrapping="Wrap" />
+    </StackPanel>
+    <Grid DockPanel.Dock="Bottom" ColumnDefinitions="*,Auto" Margin="0,12,0,0">
+      <StackPanel Orientation="Horizontal" Spacing="6">
+        <Button Content="{l:Tr Dialog.SelectAll}" Command="{Binding SelectAllCommand}" />
+        <Button Content="{l:Tr Dialog.SelectNone}" Command="{Binding SelectNoneCommand}" />
+        <Button Content="{l:Tr Dialog.ColorOnly}" Command="{Binding ColorOnlyCommand}" />
+      </StackPanel>
+      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+        <Button Name="CreateButton" Classes="accent" Content="{l:Tr Dialog.Create}" IsDefault="True" IsEnabled="{Binding CanCreate}" />
+        <Button Name="CancelButton" Content="{l:Tr Dialog.Cancel}" IsCancel="True" />
+      </StackPanel>
+    </Grid>
+    <ItemsControl ItemsSource="{Binding Groups}">
+      <ItemsControl.ItemsPanel>
+        <ItemsPanelTemplate>
+          <UniformGrid Columns="3" />
+        </ItemsPanelTemplate>
+      </ItemsControl.ItemsPanel>
+      <ItemsControl.ItemTemplate>
+        <DataTemplate x:DataType="d:ModuleCheckGroupViewModel">
+          <StackPanel Margin="0,0,12,0">
+            <TextBlock Classes="group-title" Text="{Binding Label}" Margin="0,0,0,4" />
+            <ItemsControl ItemsSource="{Binding Modules}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="d:ModuleCheckViewModel">
+                  <CheckBox Content="{Binding Label}" IsChecked="{Binding IsChecked}" />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </DataTemplate>
+      </ItemsControl.ItemTemplate>
+    </ItemsControl>
+  </DockPanel>
+</Window>

@@ -65,6 +65,8 @@ public sealed class AppSettings
     public List<string> SelectivePasteModules { get; set; } = [];
     public bool SelectivePasteIncludeSeeds { get; set; }
     public bool SelectivePasteMirror { get; set; }
+    /// <summary>「以此張建立預設」上次勾選的模組；空表示第一次（全選，裁切除外）。</summary>
+    public List<string> NewPresetModules { get; set; } = [];
 
     // 視窗位置與大小
     public int? WindowX { get; set; }

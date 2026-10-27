@@ -169,7 +169,7 @@ CPU 參考實作用同一份數學（dab 展開共用 `BrushDabs.Expand`），�
 | 1 | 預設庫 | `Presets` | 維持原樣 | — |
 | 2 | 照片基本參數 | `Inspector` | 照片資訊（EXIF）＋ `ModuleGroup.Basic`（基本調整、曲線）、`Geometry`（鏡頭變形、多格分鏡）、`Optical` | — |
 | 3 | **裁切**（新增） | `Crop` | 裁切工具面板：比例、直式 / 橫式、拉直、旋轉 90°、翻轉、重設、套用 / 取消 | `R` |
-| 4 | **底片效果**（新增） | `FilmEffects` | `ModuleGroup.Film`（底片、古典版材、色調分離、清晰與銳化）、`Surface`（灰塵與刮痕、顆粒） | — |
+| 4 | **底片效果**（新增） | `FilmEffects` | `ModuleGroup.Film`（底片、古典版材；色調分離後改歸 `ModuleGroup.Color`、清晰與銳化改歸 `ModuleGroup.Basic`）、`Surface`（灰塵與刮痕、顆粒） | — |
 | 5 | **細部調整**（新增） | `Masks` | 遮罩圖層與局部調整（Task 2.8） | `M` |
 | 6 | 照片匯出 | `Export` | 維持原樣 | — |
 
