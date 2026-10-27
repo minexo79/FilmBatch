@@ -1,5 +1,7 @@
 using FilmBatch.Core.Curves;
 
+using FilmBatch.Core.Film;
+
 namespace FilmBatch.Core.Params;
 
 /// <summary>參數型別。<see cref="Curve"/> 的值是正規化的文字（見 <see cref="ToneCurve.Serialize"/>）。</summary>
@@ -69,6 +71,7 @@ public sealed record ParamDef
     public ParamValue Coerce(ParamValue v) => Kind switch
     {
         ParamKind.Bool => ParamValue.Of(v.AsBool),
+        ParamKind.Choice when Key == "look" && UserLutLibrary.IsUserKey(v.AsText) => ParamValue.Of(v.AsText),
         ParamKind.Choice => Choices.Any(c => c.Key == v.AsText) ? ParamValue.Of(v.AsText) : Default,
         ParamKind.Path or ParamKind.Text => ParamValue.Of(v.AsText),
         ParamKind.Curve => ToneCurve.TryParse(v.AsText, out var curve) ? ParamValue.Of(curve.Serialize()) : Default,

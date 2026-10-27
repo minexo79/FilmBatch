@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.Input;
 using FilmBatch.App.Localization;
 using FilmBatch.Core.Film;
 using FilmBatch.Core.Params;
+using FilmBatch.Engine.Film;
 
 namespace FilmBatch.App.ViewModels;
 
@@ -43,12 +44,15 @@ public sealed partial class FilmLookViewModel : ObservableObject
         Groups = [.. FilmLookLibrary.GroupsInOrder.Select(g => new FilmGroupViewModel(g))];
         _selectedGroup = FilmLookLibrary.GroupsInOrder[0];
         Looks = [];
+        Imported = [];
         LoadGroup();
+        ReloadImported();
     }
 
     public FilmLookThumbnails Thumbnails { get; }
     public IReadOnlyList<FilmGroupViewModel> Groups { get; }
     public ObservableCollection<FilmTileViewModel> Looks { get; }
+    public ObservableCollection<FilmTileViewModel> Imported { get; }
 
     /// <summary>目前顯示的分組 key（<see cref="FilmLookLibrary.GroupsInOrder"/>）。</summary>
     [ObservableProperty]
@@ -92,6 +96,7 @@ public sealed partial class FilmLookViewModel : ObservableObject
         var resolved = Resolved();
         var look = resolved?.TryGetValue("film.look", out var v) == true ? v.AsText : FilmLookLibrary.DefaultKey;
         foreach (var tile in Looks) tile.IsSelected = resolved is not null && tile.Key == look;
+        foreach (var tile in Imported) tile.IsSelected = resolved is not null && tile.Key == look;
     }
 
     /// <summary>焦點或設定改變後由 Inspector 呼叫：更新選取，焦點或最終參數真的變了才讓縮圖作廢並重算。</summary>
@@ -124,8 +129,35 @@ public sealed partial class FilmLookViewModel : ObservableObject
             var resolved = Resolved();
             if (resolved is null) return [];
             var on = resolved.With("film.enabled", ParamValue.Of(true));
-            return [.. Looks.Select(t => ("look", t, on.With("film.look", ParamValue.Of(t.Key))))];
+            return [.. Looks.Concat(Imported).Select(t => ("look", t, on.With("film.look", ParamValue.Of(t.Key))))];
         });
+    }
+
+    [RelayCommand]
+    private async Task ImportLut()
+    {
+        var path = await _main.Dialogs.PickFileAsync(Loc.Get("Film.ImportTitle"), ["*.cube", "*.png"]);
+        if (path is null) return;
+        try
+        {
+            var lut = LutFileImport.Open(path);
+            var key = UserLutLibrary.Import(lut, Path.GetFileNameWithoutExtension(path));
+            ReloadImported();
+            var tile = Imported.First(t => t.Key == key);
+            ApplyLook(tile);
+        }
+        catch (Exception ex) when (ex is InvalidDataException or IOException)
+        {
+            await _main.Dialogs.ConfirmAsync(Loc.Get("Film.ImportTitle"), ex.Message, Loc.Get("Dialog.OK"));
+        }
+    }
+
+    private void ReloadImported()
+    {
+        Imported.Clear();
+        foreach (var (key, name) in UserLutLibrary.All)
+            Imported.Add(new FilmTileViewModel(key, () => name));
+        RefreshSelection();
     }
 
     [RelayCommand]

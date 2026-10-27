@@ -226,3 +226,13 @@
 - 舊檔沒有 `film.look`，因此原本 `film.enabled = true` 的照片會改套用預設底片 **Kodak Portra 400**（外觀會改變，需要時請重新挑選底片）。
 - 其他未知的 key 仍會被拒絕（`RetiredParamsTests` 會檢查），避免打錯字的 key 被默默忽略。
 - 內建範例預設已改用新 key：Portra Warm + Light Leak → `kodak-portra-400`、Ektar Vivid → `kodak-ektar-100`、Tri-X High Contrast → `kodak-tri-x-400`、Portra 800 Night（原 CineStill Night）→ `kodak-portra-800`、Dreamy Bokeh → `fuji-pro-400h`。已存在於使用者預設庫的範例預設不會被覆寫，其中舊的 film 欄位一樣在讀取時丟棄。
+
+
+## 使用者匯入的 LUT
+
+底片面板的「匯入 LUT」接受：
+
+- `.cube`：必須是 3D 表，`DOMAIN_MIN/MAX` 與 `LUT_3D_INPUT_RANGE`（若有）為 0–1。含 `LUT_1D` 的檔會拒絕，避免丟掉 shaper。邊長大於 65 時縮成 65³。
+- Hald CLUT PNG：寬高都是 L³。iOS 上不讀 PNG。
+
+匯入的表存在 `AppPaths.UserLuts`（`user-` 加內容雜湊），`film.look` 可存這個 key。它們不是內建 36 卷，檔名只當顯示名稱，不代表廠商授權。

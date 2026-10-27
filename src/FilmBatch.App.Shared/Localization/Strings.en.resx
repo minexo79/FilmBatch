@@ -545,6 +545,8 @@ Clear overrides: use the new preset entirely.</value></data>
   <data name="Param.grain.softness" xml:space="preserve"><value>Softness</value></data>
   <!-- Film look (FilmLookControl) -->
   <data name="Film.Look" xml:space="preserve"><value>Film</value></data>
+  <data name="Film.Import" xml:space="preserve"><value>Import LUT</value></data>
+  <data name="Film.ImportTitle" xml:space="preserve"><value>Import a cube or Hald PNG</value></data>
   <data name="Film.LookApplied" xml:space="preserve"><value>Applied film "{0}"</value></data>
   <!-- Independent HSL hue correction (HslControl): text presets, band names and the custom badge -->
   <data name="Hsl.PresetLabel" xml:space="preserve"><value>Hue Correction</value></data>

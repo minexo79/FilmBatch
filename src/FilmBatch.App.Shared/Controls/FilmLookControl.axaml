@@ -28,6 +28,23 @@
                 DisplayMemberBinding="{Binding Label, x:DataType=vm:FilmGroupViewModel}"
                 AutomationProperties.Name="{l:Tr Film.Look}" />
     </Grid>
+    <Button Classes="flat" HorizontalAlignment="Left"
+            Content="{l:Tr Film.Import}"
+            Command="{Binding ImportLutCommand}"
+            AutomationProperties.Name="{l:Tr Film.Import}" />
+    <ItemsControl ItemsSource="{Binding Imported}">
+      <ItemsControl.ItemsPanel>
+        <ItemsPanelTemplate><UniformGrid Columns="3" /></ItemsPanelTemplate>
+      </ItemsControl.ItemsPanel>
+      <ItemsControl.ItemTemplate>
+        <DataTemplate x:DataType="vm:FilmTileViewModel">
+          <Button Classes="film-tile" Classes.selected="{Binding IsSelected}"
+                  Command="{Binding $parent[ItemsControl].((vm:FilmLookViewModel)DataContext).ApplyLookCommand}"
+                  CommandParameter="{Binding}" Content="{Binding}" ToolTip.Tip="{Binding Name}"
+                  AutomationProperties.Name="{Binding Name}" />
+        </DataTemplate>
+      </ItemsControl.ItemTemplate>
+    </ItemsControl>
     <ItemsControl ItemsSource="{Binding Looks}">
       <ItemsControl.ItemsPanel>
         <ItemsPanelTemplate><UniformGrid Columns="3" /></ItemsPanelTemplate>

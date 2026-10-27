@@ -369,6 +369,8 @@ R {1:P2}　G {2:P2}　B {3:P2}　亮度 {4:P2}</value></data>
   <data name="Param.raw.camera_local_tone" xml:space="preserve"><value>相機局部色調</value></data>
   <!-- 底片風格（FilmLookControl） -->
   <data name="Film.Look" xml:space="preserve"><value>底片</value></data>
+  <data name="Film.Import" xml:space="preserve"><value>匯入 LUT</value></data>
+  <data name="Film.ImportTitle" xml:space="preserve"><value>匯入 .cube 或 Hald PNG</value></data>
   <data name="Film.LookApplied" xml:space="preserve"><value>已套用底片「{0}」</value></data>
   <!-- 獨立 HSL 色相修正（HslControl）：文字預設、色相帶名稱與「自訂」標記 -->
   <data name="Hsl.PresetLabel" xml:space="preserve"><value>色相修正</value></data>

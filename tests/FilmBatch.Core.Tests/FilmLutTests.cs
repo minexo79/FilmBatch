@@ -1,5 +1,6 @@
 using System.Numerics;
 using FilmBatch.Core.Film;
+using FilmBatch.Engine.Rendering;
 
 namespace FilmBatch.Core.Tests;
 
@@ -97,5 +98,26 @@ public class FilmLutTests
     {
         using var stream = new MemoryStream(new byte[64]);
         Assert.Throws<InvalidDataException>(() => FilmLutFile.Read(stream));
+    }
+
+    [Fact]
+    public void FilmSlot_FullStrength_RoundTripsLutSample()
+    {
+        var data = new float[2 * 2 * 2 * 3];
+        var i = ((1 * 2 + 0) * 2 + 1) * 3; // r=1, g=0, b=1
+        data[i] = .2f; data[i + 1] = .4f; data[i + 2] = .6f;
+        var lut = new FilmLut(2, data);
+        var full = new FilmLookUniforms { Mix = new Vector4(1, 0, 0, lut.Size) };
+        var linear = new Vector3(CpuPipeline.SrgbToLinear(1), 0, CpuPipeline.SrgbToLinear(1));
+        var encoded = FilmLookProcessing.Pixel(linear, full, lut);
+        Assert.Equal(.2f, CpuPipeline.LinearToSrgb(encoded.X), 5);
+        Assert.Equal(.4f, CpuPipeline.LinearToSrgb(encoded.Y), 5);
+        Assert.Equal(.6f, CpuPipeline.LinearToSrgb(encoded.Z), 5);
+
+        var off = new FilmLookUniforms { Mix = new Vector4(0, 0, 0, lut.Size) };
+        var unchanged = FilmLookProcessing.Pixel(linear, off, lut);
+        Assert.Equal(linear.X, unchanged.X, 5);
+        Assert.Equal(linear.Y, unchanged.Y, 5);
+        Assert.Equal(linear.Z, unchanged.Z, 5);
     }
 }

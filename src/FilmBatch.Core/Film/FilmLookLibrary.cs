@@ -31,11 +31,15 @@ public static class FilmLookLibrary
     public static bool TryGet(string key, out FilmLook look) => ByKey.TryGetValue(key, out look!);
 
     /// <summary>未知 key 回傳 null（算圖端視為「不套用底片」）。</summary>
-    public static FilmLut? TryLut(string key) => !ByKey.ContainsKey(key) ? null : Luts.GetOrAdd(key, static k =>
+    public static FilmLut? TryLut(string key)
     {
-        using var stream = Open(k + ".fblut");
-        return stream is null ? null : FilmLutFile.Read(stream);
-    });
+        if (UserLutLibrary.TryGet(key, out var imported)) return imported;
+        return !ByKey.ContainsKey(key) ? null : Luts.GetOrAdd(key, static k =>
+        {
+            using var stream = Open(k + ".fblut");
+            return stream is null ? null : FilmLutFile.Read(stream);
+        });
+    }
 
     private static Stream? Open(string name) =>
         typeof(FilmLookLibrary).Assembly.GetManifestResourceStream("FilmBatch.Looks/" + name);

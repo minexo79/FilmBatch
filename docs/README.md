@@ -10,6 +10,7 @@
 | 確認改動沒有破壞功能 | [VERIFY.md](../VERIFY.md) | [測試](testing.md) |
 | 調整參數、存檔或 undo | [Core 模組](architecture/core.md) | [測試對照](architecture.md#6-測試對照) |
 | 排查算圖、RAW、白平衡、鏡頭或匯出 | [Engine 模組](architecture/engine.md) | [RAW 參考輸出](../tools/raw-oracle/README.md)、[RAW parity 計畫](superpowers/plans/2026-10-18-raw-pipeline-parity.md) |
+| 評估 macOS 27 Apple RAW 9／神經降噪 | [主張查證與採用評估](research/apple-raw9-survey.md) | [隔離可行性 Plans](superpowers/plans/2026-10-27-apple-raw9-feasibility.md)；推薦研究、尚未加入產品，本機僅驗 RAW 8 邊界 |
 | 排查 GPU 精度或效能 | [GPU 與 Shader](architecture/gpu.md) | [ADR 0003](adr/0003-gpu-stack-decision.md)、[Shader 驗證](testing.md#shader-驗證) |
 | 排查介面、裁切、切換照片或大量載入 | [介面層](architecture/app.md) | [生命週期回歸](testing.md#編輯生命週期回歸)、[載入回歸](testing.md#大量照片載入與即時預覽回歸) |
 | 調整底片色彩或新增 LUT | [底片風格](film-looks.md) | [LUT 轉換工具](../tools/film-luts/README.md)、[授權聲明](../THIRD-PARTY-NOTICES.txt) |
