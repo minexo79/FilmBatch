@@ -23,9 +23,6 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
 
     /// <summary>排在「AI 功能」之後的分組（光學等）；沒有基本／色彩分組的分頁（底片效果）全部在這裡。</summary>
     public IReadOnlyList<ModuleGroupViewModel> TrailingGroups { get; }
-
-    /// <summary>類別小地圖的按鈕，順序同版面：照片工具 → 基本 → AI 功能 → 其餘分組。</summary>
-    public IReadOnlyList<CategoryNavItem> CategoryNav { get; }
     public IReadOnlyList<ModuleSectionViewModel> Modules { get; }
 
     /// <summary>film 模組頂部的底片風格縮圖格；只有包含 film 模組的分頁才有。</summary>
@@ -117,7 +114,6 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
         Loc.OnCultureChanged(this, static vm =>
         {
             foreach (var g in vm.Groups) g.RefreshLabel();
-            foreach (var n in vm.CategoryNav) n.RefreshLabel();
             foreach (var m in vm.Modules) m.RefreshLabels();
             vm.Refresh();
         });
@@ -131,12 +127,6 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
         };
         LeadingGroups = Groups.Where(g => g.Group is ModuleGroup.Basic or ModuleGroup.Color).ToList();
         TrailingGroups = Groups.Where(g => g.Group is not (ModuleGroup.Basic or ModuleGroup.Color)).ToList();
-        var nav = new List<CategoryNavItem>();
-        if (ShowsPhotoTools) nav.Add(new CategoryNavItem("photo-tools", () => Loc.Get("PhotoTools.Title")));
-        nav.AddRange(LeadingGroups.Select(g => new CategoryNavItem(g.Group, () => g.Label)));
-        if (ShowsPhotoTools) nav.Add(new CategoryNavItem("ai-features", () => Loc.Get("AiFeatures.Title")));
-        nav.AddRange(TrailingGroups.Select(g => new CategoryNavItem(g.Group, () => g.Label)));
-        CategoryNav = nav;
         RefreshPresetOptions();
     }
 
@@ -335,16 +325,6 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
         _main.Preview.SetCurveHistogramVisible(IsActive && Groups?.Any(g => g.IsExpanded
             && g.Modules.Any(m => m.Curves is not null && m.IsExpanded && m.IsVisible)) == true);
     }
-}
-
-/// <summary>類別小地圖的一顆按鈕：Tag 對應分組外框（<see cref="FilmBatch.Core.Params.ModuleGroup"/> 或固定的 photo-tools／ai-features 鍵），Label 隨語言更新。</summary>
-public sealed class CategoryNavItem(object tag, Func<string> label) : ObservableObject
-{
-    public object Tag { get; } = tag;
-
-    public string Label => label();
-
-    public void RefreshLabel() => OnPropertyChanged(nameof(Label));
 }
 
 /// <summary>評分列中的一顆星。</summary>
