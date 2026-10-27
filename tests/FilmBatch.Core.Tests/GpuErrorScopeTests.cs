@@ -48,4 +48,14 @@ public sealed class GpuErrorScopeTests
         var descriptor = new BufferDescriptor { Size = 16, Usage = BufferUsage.MapRead | BufferUsage.Storage };
         _ = device.Device.CreateBuffer(ref descriptor);
     }
+
+    [Fact]
+    public void DescriptorHeapFailure_IsAnAllocationFailure()
+    {
+        var error = new GpuException("ID3D12Device::CreateDescriptorHeap at CheckOutOfMemoryHRESULTImpl");
+        Assert.True(GpuDevice.IsAllocationFailure(error));
+        Assert.False(GpuDevice.IsAllocationFailure(new OperationCanceledException("CreateDescriptorHeap")));
+        Assert.False(GpuDevice.IsAllocationFailure(new GpuException("validation: bind group")));
+    }
 }
+

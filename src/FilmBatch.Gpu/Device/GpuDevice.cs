@@ -356,10 +356,33 @@ public sealed class GpuDevice : IDisposable
         Device.PushErrorScope(ErrorFilter.OutOfMemory);
         try { allocate(); }
         catch (Exception ex) { failure = ex; }
-        finally { (_, message) = Device.PopErrorScopeSync(RequestTimeoutNs); }
-        if (failure is not null) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
+        finally
+        {
+            try { (_, message) = Device.PopErrorScopeSync(RequestTimeoutNs); }
+            catch (Exception ex) when (failure is null) { failure = ex; }
+        }
+        // Dawn 的 D3D12 CreateDescriptorHeap 會直接丟例外，不一定留在 OutOfMemory scope。
+        if (failure is not null)
+        {
+            if (IsAllocationFailure(failure))
+                return string.IsNullOrEmpty(message) ? failure.Message : message;
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(failure).Throw();
+        }
         if (!string.IsNullOrEmpty(message)) return message;
         return null;
+    }
+
+    /// <summary>Dawn／D3D12 把 descriptor heap 配置失敗報成例外，匯出應改走 CPU，而不是整張失敗。</summary>
+    public static bool IsAllocationFailure(Exception error)
+    {
+        for (var current = error; current is not null; current = current.InnerException)
+        {
+            if (current is OperationCanceledException) return false;
+            if (current.Message.Contains("CreateDescriptorHeap", StringComparison.Ordinal)
+                || current.Message.Contains("out of memory", StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
     }
 
     /// <summary>等待佇列中的工作全部完成。</summary>
