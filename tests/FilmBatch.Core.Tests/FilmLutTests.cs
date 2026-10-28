@@ -120,4 +120,31 @@ public class FilmLutTests
         Assert.Equal(linear.Y, unchanged.Y, 5);
         Assert.Equal(linear.Z, unchanged.Z, 5);
     }
+
+    [Fact]
+    public void FilmSlot_ProPhotoFile_ConvertsD50Gamma18ToWorkingRgb()
+    {
+        // A constant ProPhoto LUT: [0.5, 0.25, 0.5]. Expected working RGB uses
+        // the published ProPhoto/D50 primaries, Bradford adaptation and gamma 1.8.
+        using var stream = new MemoryStream();
+        using (var writer = new BinaryWriter(stream, System.Text.Encoding.UTF8, leaveOpen: true))
+        {
+            writer.Write("FBLUT2\0\0"u8);
+            writer.Write(2);
+            writer.Write((byte)1);
+            for (var i = 0; i < 8; i++)
+            {
+                writer.Write((ushort)32768);
+                writer.Write((ushort)16384);
+                writer.Write((ushort)32768);
+            }
+        }
+        stream.Position = 0;
+        var lut = FilmLutFile.Read(stream);
+        var full = new FilmLookUniforms { Mix = new Vector4(1, 0, 0, 2) };
+        var result = FilmLookProcessing.Pixel(new Vector3(.2f, .1f, .3f), full, lut);
+        Assert.InRange(result.X, .4355f, .4367f);
+        Assert.InRange(result.Y, .0344f, .0357f);
+        Assert.InRange(result.Z, .3180f, .3192f);
+    }
 }

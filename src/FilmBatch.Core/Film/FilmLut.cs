@@ -2,21 +2,33 @@ using System.Numerics;
 
 namespace FilmBatch.Core.Film;
 
+/// <summary>LUT 節點編碼。既有 FBLUT1 與內建表為 <see cref="FilmLutColorSpace.Srgb"/>。</summary>
+public enum FilmLutColorSpace
+{
+    Srgb = 0,
+    ProPhoto = 1,
+}
+
 /// <summary>
-/// 3D 色彩查找表（sRGB 編碼輸入 → sRGB 編碼輸出）。資料順序與 Hald CLUT 像素相同：
+/// 3D 色彩查找表。編碼由 <see cref="ColorSpace"/> 決定：sRGB，或 ProPhoto RGB（D50、純 gamma 1.8）。
+/// 資料順序與 Hald CLUT 像素相同：
 /// <c>((b*N + g)*N + r)*3 + 通道</c>。取樣用四面體內插（中性灰沿對角線不會偏色，與 Resolve／darktable 相同）。
 /// </summary>
 public sealed class FilmLut
 {
     public int Size { get; }
     public float[] Data { get; }
+    public FilmLutColorSpace ColorSpace { get; }
 
-    public FilmLut(int size, float[] data)
+    public FilmLut(int size, float[] data, FilmLutColorSpace colorSpace = FilmLutColorSpace.Srgb)
     {
         if (size < 2) throw new ArgumentOutOfRangeException(nameof(size));
         if (data.Length != size * size * size * 3) throw new ArgumentException("LUT 資料長度必須為 size³×3。", nameof(data));
+        if (colorSpace is not (FilmLutColorSpace.Srgb or FilmLutColorSpace.ProPhoto))
+            throw new ArgumentOutOfRangeException(nameof(colorSpace));
         Size = size;
         Data = data;
+        ColorSpace = colorSpace;
     }
 
     public static FilmLut Identity(int size)
@@ -88,7 +100,7 @@ public sealed class FilmLut
                 data[i] = v.X; data[i + 1] = v.Y; data[i + 2] = v.Z;
             }
         });
-        return new FilmLut(size, data);
+        return new FilmLut(size, data, ColorSpace);
     }
 
     /// <summary>GPU 紋理排列：寬 N²（x = r + b*N）、高 N（y = g），RGBA32F。</summary>

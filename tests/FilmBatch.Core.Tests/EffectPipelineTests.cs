@@ -1,8 +1,10 @@
 using System.Runtime.InteropServices;
+using FilmBatch.Core.Film;
 using FilmBatch.Core.Params;
 using FilmBatch.Engine.Imaging;
 using FilmBatch.Engine.Rendering;
 using FilmBatch.Gpu.Device;
+using FilmBatch.Gpu.ShaderSystem;
 using ImageMagick;
 
 namespace FilmBatch.Core.Tests;
@@ -988,6 +990,57 @@ public sealed class EffectPipelineTests
         var c = cpu.Render16(src, settings, ct).Rgba16;
         var max = MaxAbsDiff(g, c);
         Assert.True(max <= 64, $"GPU 與 CPU 16-bit 差異 {max}/65535");
+    }
+
+    /// <summary>
+    /// ProPhoto LUT 的 CPU/GPU 一致性：直接注入 ModuleParams（不經全域使用者 LUT 庫，
+    /// 避免與 CubeLutTests 的 Reset 競態）。LUT 為非恆等的通道混合，驗證編碼、取樣與解碼三段都一致。
+    /// </summary>
+    [Fact]
+    public void Gpu_MatchesCpu_OnProPhotoLut()
+    {
+        GpuDevice? device;
+        try { device = GpuDevice.Create(); }
+        catch (GpuException) { Assert.Skip("沒有可用的 GPU 介面卡"); return; }
+        using (device)
+        using (var pipeline = new GpuEffectPipeline(device, new ShaderLibrary()))
+        {
+            var src = Gradient(64, 48, "/tmp/parity-prophoto.tif");
+            var lut = ProPhotoLut();
+            var ct = TestContext.Current.CancellationToken;
+            ModuleParams Params()
+            {
+                var q = ModuleParams.From(src, FilmOnly(strength: 90));
+                q.FilmLut = lut;
+                q.FilmLook = FilmLookUniforms.From(q);
+                return q;
+            }
+
+            var gpuOut = new ushort[src.Width * src.Height * 4];
+            Assert.Null(pipeline.RenderForExport(src, Params(), gpuOut, ct));
+            var cpuOut = CpuPipeline.Process(src, Params(), null, ct).Rgba16;
+            var max = MaxAbsDiff(gpuOut, cpuOut);
+            Assert.True(max <= 64, $"GPU 與 CPU 16-bit 差異 {max}/65535");
+        }
+    }
+
+    /// <summary>非恆等的 ProPhoto LUT：節點輸出做通道混合與非線性彎曲，讓四面體內插真的被用到。</summary>
+    private static FilmLut ProPhotoLut()
+    {
+        const int n = 9;
+        var data = new float[n * n * n * 3];
+        var max = n - 1f;
+        for (var b = 0; b < n; b++)
+        for (var g = 0; g < n; g++)
+        for (var r = 0; r < n; r++)
+        {
+            var i = ((b * n + g) * n + r) * 3;
+            float fr = r / max, fg = g / max, fb = b / max;
+            data[i] = 0.7f * fg + 0.2f;
+            data[i + 1] = 0.5f * fr + 0.3f * fb;
+            data[i + 2] = fb * fb;
+        }
+        return new FilmLut(n, data, FilmLutColorSpace.ProPhoto);
     }
 
     /// <summary>每列不同的漸層：用來檢查列帶讀回沒有錯位或漏列。</summary>

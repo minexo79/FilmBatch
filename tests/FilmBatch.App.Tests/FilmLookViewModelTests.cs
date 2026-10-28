@@ -1,5 +1,9 @@
 using Avalonia.Media.Imaging;
 using FilmBatch.Core.Params;
+using System.Buffers.Binary;
+using System.Security.Cryptography;
+using FilmBatch.Core;
+using FilmBatch.Core.Film;
 using FilmBatch.Engine.Imaging;
 using Avalonia.Headless.XUnit;
 using FilmBatch.App.ViewModels;
@@ -127,4 +131,157 @@ public class FilmLookViewModelTests
         }
         finally { FilmLookThumbnails.Debounce = oldDebounce; }
     }
+
+    /// <summary>
+    /// 同一個合成 .cube 經檔案對話假實作，分別以 sRGB 與 ProPhoto 匯入：寫入的 LUT 元資料、使用者鍵、清單標示與選取的底片都跟著當下選擇走。
+    /// </summary>
+    [AvaloniaFact]
+    public async Task ImportCube_SavesSelectedColorSpace_AndSelectsThatLook()
+    {
+        var dialogs = new FakeDialogs();
+        using var vm = TestEnv.CreateViewModel(dialogs);
+        await TestEnv.OpenSamplesAsync(vm).WaitAsync(TestContext.Current.CancellationToken);
+        var file = vm.Filmstrip.Items[0].FileName;
+        vm.OnSelectionChanged([file], file);
+        var film = vm.FilmLook;
+        var before = vm.Service!.SettingsFor(file)["film.look"].AsText;
+
+        Directory.CreateDirectory(AppPaths.Root);
+        var cube = Path.Combine(AppPaths.Root, "synthetic-identity.cube");
+        File.WriteAllText(cube, IdentityCube);
+        dialogs.PickFileAnswer = cube;
+
+        Assert.Same(film.ImportSpaces[0], film.ImportColorSpace);
+        Assert.Equal(FilmLutColorSpace.Srgb, film.ImportColorSpace.Space);
+        await film.ImportLutCommand.ExecuteAsync(null);
+        Assert.Equal(FilmLutColorSpace.Srgb, film.ImportColorSpace.Space);
+
+        var srgb = film.Imported.Single();
+        AssertSavedLut(srgb.Key, FilmLutColorSpace.Srgb, "FBLUT1\0\0"u8, proPhotoHeader: false);
+        Assert.Equal("synthetic-identity", srgb.Name);
+        Assert.False(srgb.HasDetail);
+        Assert.Equal(srgb.Name, srgb.AccessibleName);
+        AssertSelected(vm, file, srgb);
+        vm.UndoCommand.Execute(null);
+        Assert.Equal(before, vm.Service.SettingsFor(file)["film.look"].AsText);
+        Assert.False(srgb.IsSelected);
+        Assert.Contains(film.Imported, t => t.Key == srgb.Key);
+
+        film.ImportColorSpace = film.ImportSpaces.Single(s => s.Space == FilmLutColorSpace.ProPhoto);
+        await film.ImportLutCommand.ExecuteAsync(null);
+        Assert.Same(film.ImportSpaces[1], film.ImportColorSpace);
+        Assert.Equal(FilmLutColorSpace.ProPhoto, film.ImportColorSpace.Space);
+
+        var srgbKey = srgb.Key;
+        srgb = film.Imported.Single(t => t.Key == srgbKey);
+        var pro = film.Imported.Single(t => t.Key != srgbKey);
+        AssertSavedLut(pro.Key, FilmLutColorSpace.ProPhoto, "FBLUT2\0\0"u8, proPhotoHeader: true);
+        Assert.NotEqual(srgb.Key, pro.Key);
+        Assert.Equal("synthetic-identity", pro.Name);
+        Assert.Equal("synthetic-identity", StoredName(pro.Key));
+        Assert.DoesNotContain("ProPhoto", StoredName(pro.Key));
+        Assert.True(pro.HasDetail);
+        Assert.Contains("ProPhoto RGB", pro.Detail);
+        Assert.Contains("gamma 1.8", pro.Detail);
+        Assert.Contains(pro.Name, pro.AccessibleName);
+        Assert.Contains(pro.Detail, pro.AccessibleName);
+        Assert.False(srgb.HasDetail);
+        Assert.Equal(FilmLutColorSpace.Srgb, ReadBack(srgb.Key).ColorSpace);
+        var srgbBytes = File.ReadAllBytes(LutPath(srgb.Key));
+        var proBytes = File.ReadAllBytes(LutPath(pro.Key));
+        Assert.Equal(srgbBytes.AsSpan(12).ToArray(), proBytes.AsSpan(13).ToArray());
+        AssertSelected(vm, file, pro);
+        Assert.False(srgb.IsSelected);
+        vm.UndoCommand.Execute(null);
+        Assert.Equal(before, vm.Service.SettingsFor(file)["film.look"].AsText);
+        Assert.False(pro.IsSelected);
+    }
+
+    /// <summary>
+    /// 直接匯入 .fblut：色彩空間由檔案本身決定（無論下拉選什麼），重新存檔的位元組與 key 都跟原檔一致。
+    /// </summary>
+    [AvaloniaFact]
+    public async Task ImportFblut_PreservesBytesAndColorSpace()
+    {
+        var dialogs = new FakeDialogs();
+        using var vm = TestEnv.CreateViewModel(dialogs);
+        await TestEnv.OpenSamplesAsync(vm).WaitAsync(TestContext.Current.CancellationToken);
+        var file = vm.Filmstrip.Items[0].FileName;
+        vm.OnSelectionChanged([file], file);
+        var film = vm.FilmLook;
+
+        Directory.CreateDirectory(AppPaths.Root);
+        var path = Path.Combine(AppPaths.Root, "reverse-prophoto.fblut");
+        var source = new FilmLut(2, Enumerable.Range(0, 24).Select(i => i / 24f).ToArray(), FilmLutColorSpace.ProPhoto);
+        using (var stream = File.Create(path)) FilmLutFile.Write(stream, source);
+        var bytes = File.ReadAllBytes(path);
+        dialogs.PickFileAnswer = path;
+
+        // 色彩空間下拉停在 sRGB：.fblut 不應被重新標記。
+        Assert.Equal(FilmLutColorSpace.Srgb, film.ImportColorSpace.Space);
+        await film.ImportLutCommand.ExecuteAsync(null);
+
+        var tile = film.Imported.Single();
+        Assert.Equal(FilmLutColorSpace.ProPhoto, ReadBack(tile.Key).ColorSpace);
+        Assert.Equal("user-" + Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant()[..16], tile.Key);
+        Assert.Equal(bytes, File.ReadAllBytes(LutPath(tile.Key)));
+        Assert.Equal("reverse-prophoto", tile.Name);
+        Assert.True(tile.HasDetail);
+        AssertSelected(vm, file, tile);
+    }
+
+    private const string IdentityCube =
+        """
+        LUT_3D_SIZE 2
+        0 0 0
+        1 0 0
+        0 1 0
+        1 1 0
+        0 0 1
+        1 0 1
+        0 1 1
+        1 1 1
+        """;
+
+    private static void AssertSelected(MainWindowViewModel vm, string file, FilmTileViewModel tile)
+    {
+        var settings = vm.Service!.SettingsFor(file);
+        Assert.True(settings.Bool("film.enabled"));
+        Assert.Equal(tile.Key, settings["film.look"].AsText);
+        Assert.True(tile.IsSelected);
+    }
+
+    private static void AssertSavedLut(string key, FilmLutColorSpace space, ReadOnlySpan<byte> magic, bool proPhotoHeader)
+    {
+        var lut = ReadBack(key);
+        Assert.Equal(space, lut.ColorSpace);
+        Assert.Equal(2, lut.Size);
+        Assert.Equal(0f, lut.Data[0]);
+        Assert.Equal(1f, lut.Data[3]);
+        Assert.Equal(0f, lut.Data[4]);
+        Assert.Equal(0f, lut.Data[5]);
+        Assert.Equal(1f, lut.Data[21]);
+        Assert.Equal(1f, lut.Data[22]);
+        Assert.Equal(1f, lut.Data[23]);
+        var bytes = File.ReadAllBytes(LutPath(key));
+        Assert.True(bytes.AsSpan(0, magic.Length).SequenceEqual(magic));
+        Assert.Equal(2, BinaryPrimitives.ReadInt32LittleEndian(bytes.AsSpan(8)));
+        var header = proPhotoHeader ? 13 : 12;
+        Assert.Equal(header + 8 * 3 * 2, bytes.Length);
+        if (proPhotoHeader) Assert.Equal((byte)1, bytes[12]);
+        var hash = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant()[..16];
+        Assert.Equal("user-" + hash, key);
+        Assert.Equal("synthetic-identity", StoredName(key));
+    }
+
+    private static FilmLut ReadBack(string key)
+    {
+        if (UserLutLibrary.TryGet(key, out var lut) && lut is not null)
+            return lut;
+        throw new InvalidOperationException($"LUT {key} was not saved.");
+    }
+
+    private static string LutPath(string key) => Path.Combine(AppPaths.UserLuts, key + ".fblut");
+
+    private static string StoredName(string key) => File.ReadAllText(Path.Combine(AppPaths.UserLuts, key + ".name"));
 }

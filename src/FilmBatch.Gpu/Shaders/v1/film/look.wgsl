@@ -4,6 +4,8 @@
 
 struct LookParams {
     mix: vec4f,   // 效果比例、暖色、褪色、LUT 邊長
+    to0: vec4f, to1: vec4f, to2: vec4f,       // sRGB → ProPhoto；to0.w 為 ProPhoto 旗標
+    from0: vec4f, from1: vec4f, from2: vec4f, // ProPhoto → sRGB
 }
 
 @group(0) @binding(0) var src: texture_2d<f32>;
@@ -53,7 +55,15 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
     if (any(id.xy >= textureDimensions(src))) { return; }
     let px = textureLoad(src, id.xy, 0);
     let original = px.rgb;
-    var look = srgb_to_linear(lut_sample(linear_to_srgb(clamp(original, vec3f(0.0), vec3f(1.0)))));
+    var look: vec3f;
+    if (p.to0.w != 0.0) {
+        let prophoto = clamp(vec3f(dot(p.to0.xyz, original), dot(p.to1.xyz, original), dot(p.to2.xyz, original)), vec3f(0.0), vec3f(1.0));
+        let encoded = pow(prophoto, vec3f(1.0 / 1.8));
+        let sample = pow(max(lut_sample(encoded), vec3f(0.0)), vec3f(1.8));
+        look = vec3f(dot(p.from0.xyz, sample), dot(p.from1.xyz, sample), dot(p.from2.xyz, sample));
+    } else {
+        look = srgb_to_linear(lut_sample(linear_to_srgb(clamp(original, vec3f(0.0), vec3f(1.0)))));
+    }
     let warmth = p.mix.y;
     if (warmth != 0.0) { look *= vec3f(1.0 + 0.12 * warmth, 1.0, 1.0 - 0.12 * warmth); }
     let fade = p.mix.z;

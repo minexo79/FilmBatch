@@ -560,8 +560,12 @@ Clear overrides: use the new preset entirely.</value></data>
   <!-- Film look (FilmLookControl) -->
   <data name="Film.Look" xml:space="preserve"><value>Film</value></data>
   <data name="Film.Import" xml:space="preserve"><value>Import LUT</value></data>
-  <data name="Film.ImportTitle" xml:space="preserve"><value>Import a cube or Hald PNG</value></data>
+  <data name="Film.ImportTitle" xml:space="preserve"><value>Import a cube, fblut, or Hald PNG</value></data>
   <data name="Film.LookApplied" xml:space="preserve"><value>Applied film "{0}"</value></data>
+  <data name="Film.LutSpace" xml:space="preserve"><value>LUT color space</value></data>
+  <data name="Film.LutSpace.Srgb" xml:space="preserve"><value>sRGB</value></data>
+  <data name="Film.LutSpace.ProPhoto" xml:space="preserve"><value>ProPhoto RGB (gamma 1.8)</value></data>
+  <data name="Film.LutSpaceHint" xml:space="preserve"><value>This selection applies to .cube files. Hald PNG remains sRGB.</value></data>
   <!-- Independent HSL hue correction (HslControl): text presets, band names and the custom badge -->
   <data name="Hsl.PresetLabel" xml:space="preserve"><value>Hue Correction</value></data>
   <data name="Hsl.Custom" xml:space="preserve"><value>CUSTOM</value></data>

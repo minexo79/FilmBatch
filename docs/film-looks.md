@@ -111,8 +111,9 @@
 
 對每個像素（輸入為線性光 `linear`）：
 
-1. **編碼**：`display = linear_to_srgb(clamp(linear, 0, 1))`。LUT 的輸入是 sRGB 顯示編碼。
-2. **LUT**：`look = srgb_to_linear(lut.Sample(display))`，四面體內插（見 3.3）。
+1. **編碼**：sRGB LUT（內建 36 卷與以 sRGB 匯入的表）：`display = linear_to_srgb(clamp(linear, 0, 1))`，LUT 的輸入是 sRGB 顯示編碼。
+   ProPhoto LUT（以 ProPhoto 匯入的 `.cube`）：`p = clamp(srgb_to_prophoto(linear), 0, 1)`，`encoded = p^(1/1.8)`（D50、純 gamma 1.8，非 ROMM 分段曲線）。
+2. **LUT**：sRGB 為 `look = srgb_to_linear(lut.Sample(display))`；ProPhoto 為 `look = prophoto_to_srgb(lut.Sample(encoded)^1.8)`，取樣值先 decode gamma 再乘回線性 sRGB 矩陣。皆為四面體內插（見 3.3）。
 3. **暖色**：`w = warmth / 100`，在線性光中 `R × (1 + 0.12w)`、`B × (1 − 0.12w)`，G 不變。
 4. **褪色**：`f = fade / 100`，在 sRGB 中 `x × (1 − 0.2f) + 0.1f`（黑點抬到 0.1f、白點壓到 1 − 0.1f），再轉回線性。
 5. **混合**：`out = lerp(linear, look, strength / 100)`，在線性光中與**未截斷的原值**混合。
@@ -129,17 +130,18 @@
 
 **跳過規則**：模組關閉、`film.strength == 0`，或 `film.look` 是未知 key（`FilmLookLibrary.TryLut` 回傳 null）時完全略過底片 pass；獨立 HSL 不受影響。HSL 關閉或 24 個值全零時也完全略過，不做無效色彩往返。
 
-**參數傳遞**：`ModuleParams` 的底片欄位以 `FilmLookUniforms.From` 組成 `Mix`（效果比例 0–1、暖色 −1–1、褪色 0–1、LUT 邊長），共 1 × `vec4f` = 16 bytes，對齊 WGSL `LookParams`。獨立 HSL 的 24 個值由 `HslUniforms` 組成 `Band0`…`Band7`（色相、飽和、明度 −1–1、0），共 8 × `vec4f` = 128 bytes，對齊 WGSL `HslParams`。OKLab 的 CPU 轉換集中於 `Oklab.cs`，HSL shader 使用相同係數。
+**參數傳遞**：`ModuleParams` 的底片欄位以 `FilmLookUniforms.From` 組成 `Mix`（效果比例 0–1、暖色 −1–1、褪色 0–1、LUT 邊長）、`To0`…`To2`（線性 sRGB → ProPhoto 矩陣，`To0.w` 為 ProPhoto 旗標，sRGB LUT 時為 0）與 `From0`…`From2`（ProPhoto → sRGB），共 7 × `vec4f` = 112 bytes，對齊 WGSL `LookParams`。獨立 HSL 的 24 個值由 `HslUniforms` 組成 `Band0`…`Band7`（色相、飽和、明度 −1–1、0），共 8 × `vec4f` = 128 bytes，對齊 WGSL `HslParams`。OKLab 的 CPU 轉換集中於 `Oklab.cs`，HSL shader 使用相同係數。
 
 ### 3.2 `.fblut` 格式
 
 | 位移 | 大小 | 內容 |
 |---|---|---|
-| 0 | 8 | magic `FBLUT1\0\0` |
+| 0 | 8 | magic `FBLUT1\0\0`（sRGB）或 `FBLUT2\0\0` |
 | 8 | 4 | int32（little-endian）邊長 N（2–65；內附檔固定 33） |
-| 12 | N³ × 3 × 2 | `ushort`（little-endian），0–65535 對應 0–1 |
+| 12 | 0 或 1 | 僅 FBLUT2：`FilmLutColorSpace` 位元組（目前只有 1 = ProPhoto） |
+| 12 或 13 | N³ × 3 × 2 | `ushort`（little-endian），0–65535 對應 0–1 |
 
-資料順序為 `((b*N + g)*N + r)*3 + 通道`，也就是 r 變化最快，與 Hald CLUT 的像素順序相同（level L 的 Hald 影像為 L³ × L³ 像素，第 k 個像素 `k = r + g·L² + b·L⁴`）。33³ 檔案大小為 215,634 bytes。讀寫實作在 `FilmLutFile`，記憶體表示為 `FilmLut`（`float[]`，0–1）。
+資料順序為 `((b*N + g)*N + r)*3 + 通道`，也就是 r 變化最快，與 Hald CLUT 的像素順序相同（level L 的 Hald 影像為 L³ × L³ 像素，第 k 個像素 `k = r + g·L² + b·L⁴`）。33³ 檔案大小為 215,634 bytes（FBLUT2 多 1 位元組）。讀寫實作在 `FilmLutFile`：sRGB 永遠寫 FBLUT1，位元組與既有檔案完全相同，使用者 key（內容雜湊）不變；同一張表以 ProPhoto 匯入會得到 FBLUT2 與另一個 key。FBLUT2 的色彩空間位元組只接受 0／1，未知值或缺漏視為損毀而拒絕。記憶體表示為 `FilmLut`（`float[]`，0–1，`ColorSpace` 記錄節點編碼）。
 
 ### 3.3 四面體內插與 GPU 紋理排列
 
@@ -230,9 +232,12 @@
 
 ## 使用者匯入的 LUT
 
-底片面板的「匯入 LUT」接受：
+底片面板的「匯入 LUT」旁邊可選 `.cube` 的色彩空間（預設 sRGB）：
 
-- `.cube`：必須是 3D 表，`DOMAIN_MIN/MAX` 與 `LUT_3D_INPUT_RANGE`（若有）為 0–1。含 `LUT_1D` 的檔會拒絕，避免丟掉 shaper。邊長大於 65 時縮成 65³。
+- `.cube`：必須是 3D 表，`DOMAIN_MIN/MAX` 與 `LUT_3D_INPUT_RANGE`（若有）為 0–1。含 `LUT_1D` 的檔會拒絕，避免丟掉 shaper。邊長大於 65 時縮成 65³。選 **ProPhoto RGB（gamma 1.8）** 時把節點值當成 ProPhoto D50／gamma 1.8 編碼（DxO、ACR 風格表的慣用編碼），檔案本身不標示色彩空間，用錯選項會得到錯誤顏色。
 - Hald CLUT PNG：寬高都是 L³。iOS 上不讀 PNG。
+- `.fblut`：直接用 `FilmLutFile` 讀取，色彩空間與邊長取決於檔案本身；放進使用者庫時 key 由內容雜湊決定，不沿用原檔名。
 
 匯入的表存在 `AppPaths.UserLuts`（`user-` 加內容雜湊），`film.look` 可存這個 key。它們不是內建 36 卷，檔名只當顯示名稱，不代表廠商授權。
+
+ProPhoto 匯入的表在清單格中多一行色彩空間標記（`ProPhoto RGB (gamma 1.8)`），sRGB 匯入與內建底片不標。顯示名稱一律是來源檔名，色彩空間不寫進名稱檔。

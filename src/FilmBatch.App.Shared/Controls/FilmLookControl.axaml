@@ -4,10 +4,10 @@
              xmlns:l="using:FilmBatch.App.Localization"
              x:Class="FilmBatch.App.Controls.FilmLookControl"
              x:DataType="vm:FilmLookViewModel">
-  <!-- 底片顏色模擬：底片分組下拉＋縮圖格（docs/film-looks.md）。
-       縮圖以焦點照片算出，只在 film 模組展開時算（FilmLookThumbnails）。 -->
+  <!-- 底片顏色模擬：底片分組下拉、.cube 色彩空間、縮圖格（docs/film-looks.md）。
+       色彩空間只套在 .cube；Hald PNG 維持 sRGB。縮圖以焦點照片算出，只在 film 模組展開時算。 -->
   <UserControl.DataTemplates>
-    <!-- 縮圖格內容：96×64 縮圖＋名稱 -->
+    <!-- 縮圖格內容：96×64 縮圖＋來源名稱；ProPhoto 匯入另標工作色彩空間 -->
     <DataTemplate DataType="vm:FilmTileViewModel">
       <StackPanel Spacing="2">
         <Border Classes="film-thumb" Height="64">
@@ -17,6 +17,8 @@
           </Panel>
         </Border>
         <TextBlock Classes="small" Text="{Binding Name}" TextTrimming="CharacterEllipsis" HorizontalAlignment="Center" />
+        <TextBlock Classes="secondary small" Text="{Binding Detail}" TextTrimming="CharacterEllipsis" HorizontalAlignment="Center"
+                   IsVisible="{Binding HasDetail}" />
       </StackPanel>
     </DataTemplate>
   </UserControl.DataTemplates>
@@ -28,10 +30,18 @@
                 DisplayMemberBinding="{Binding Label, x:DataType=vm:FilmGroupViewModel}"
                 AutomationProperties.Name="{l:Tr Film.Look}" />
     </Grid>
-    <Button Classes="flat" HorizontalAlignment="Left"
-            Content="{l:Tr Film.Import}"
-            Command="{Binding ImportLutCommand}"
-            AutomationProperties.Name="{l:Tr Film.Import}" />
+    <Grid ColumnDefinitions="Auto,*">
+      <Button Classes="flat" VerticalAlignment="Center"
+              Content="{l:Tr Film.Import}"
+              Command="{Binding ImportLutCommand}"
+              AutomationProperties.Name="{l:Tr Film.Import}" />
+      <ComboBox Grid.Column="1" Classes="flat" MinWidth="150" Margin="8,0,0,0"
+                HorizontalAlignment="Stretch" VerticalAlignment="Center"
+                ItemsSource="{Binding ImportSpaces}" SelectedItem="{Binding ImportColorSpace}"
+                DisplayMemberBinding="{Binding Label, x:DataType=vm:LutImportSpaceViewModel}"
+                AutomationProperties.Name="{l:Tr Film.LutSpace}" />
+    </Grid>
+    <TextBlock Classes="secondary small" Text="{l:Tr Film.LutSpaceHint}" TextWrapping="Wrap" />
     <ItemsControl ItemsSource="{Binding Imported}">
       <ItemsControl.ItemsPanel>
         <ItemsPanelTemplate><UniformGrid Columns="3" /></ItemsPanelTemplate>
@@ -40,8 +50,8 @@
         <DataTemplate x:DataType="vm:FilmTileViewModel">
           <Button Classes="film-tile" Classes.selected="{Binding IsSelected}"
                   Command="{Binding $parent[ItemsControl].((vm:FilmLookViewModel)DataContext).ApplyLookCommand}"
-                  CommandParameter="{Binding}" Content="{Binding}" ToolTip.Tip="{Binding Name}"
-                  AutomationProperties.Name="{Binding Name}" />
+                  CommandParameter="{Binding}" Content="{Binding}" ToolTip.Tip="{Binding AccessibleName}"
+                  AutomationProperties.Name="{Binding AccessibleName}" />
         </DataTemplate>
       </ItemsControl.ItemTemplate>
     </ItemsControl>
@@ -53,8 +63,8 @@
         <DataTemplate x:DataType="vm:FilmTileViewModel">
           <Button Classes="film-tile" Classes.selected="{Binding IsSelected}"
                   Command="{Binding $parent[ItemsControl].((vm:FilmLookViewModel)DataContext).ApplyLookCommand}"
-                  CommandParameter="{Binding}" Content="{Binding}" ToolTip.Tip="{Binding Name}"
-                  AutomationProperties.Name="{Binding Name}" />
+                  CommandParameter="{Binding}" Content="{Binding}" ToolTip.Tip="{Binding AccessibleName}"
+                  AutomationProperties.Name="{Binding AccessibleName}" />
         </DataTemplate>
       </ItemsControl.ItemTemplate>
     </ItemsControl>

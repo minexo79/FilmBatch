@@ -10,15 +10,26 @@ using FilmBatch.Engine.Film;
 namespace FilmBatch.App.ViewModels;
 
 /// <summary>底片縮圖格中的一格。</summary>
-public sealed partial class FilmTileViewModel(string key, Func<string> name) : ObservableObject
+public sealed partial class FilmTileViewModel(string key, Func<string> name, Func<string>? detail = null) : ObservableObject
 {
     public string Key { get; } = key;
     public string Name => name();
+    /// <summary>清單上的色彩空間標記。空字串表示不另標（內建底片與既有 sRGB 匯入）。</summary>
+    public string Detail => detail?.Invoke() ?? "";
+    public bool HasDetail => Detail.Length > 0;
+    /// <summary>清單項目的無障礙名稱：來源檔名，ProPhoto 再附工作色彩空間。</summary>
+    public string AccessibleName => HasDetail ? $"{Name} · {Detail}" : Name;
     [ObservableProperty] private bool _isSelected;
     [ObservableProperty] private Bitmap? _thumbnail;
     [ObservableProperty] private bool _isLoading;
 
-    public void RefreshLabel() => OnPropertyChanged(nameof(Name));
+    public void RefreshLabel()
+    {
+        OnPropertyChanged(nameof(Name));
+        OnPropertyChanged(nameof(Detail));
+        OnPropertyChanged(nameof(HasDetail));
+        OnPropertyChanged(nameof(AccessibleName));
+    }
 }
 
 /// <summary>底片分組下拉的一項（切換語言時更新名稱）。</summary>
@@ -29,13 +40,22 @@ public sealed partial class FilmGroupViewModel(string key) : ObservableObject
     public void RefreshLabel() => OnPropertyChanged(nameof(Label));
 }
 
-/// <summary>film 模組頂部：底片分組下拉與底片縮圖格（docs/film-looks.md）。</summary>
+/// <summary>匯入 .cube 時可選的色彩空間。顯示文字隨介面語言更新。</summary>
+public sealed partial class LutImportSpaceViewModel(FilmLutColorSpace space, string labelKey) : ObservableObject
+{
+    public FilmLutColorSpace Space { get; } = space;
+    public string Label => Loc.Get(labelKey);
+    public void RefreshLabel() => OnPropertyChanged(nameof(Label));
+}
+
+/// <summary>film 模組頂部：底片分組、.cube 色彩空間與底片縮圖格（docs/film-looks.md）。</summary>
 public sealed partial class FilmLookViewModel : ObservableObject
 {
     private readonly MainWindowViewModel _main;
     private bool _expanded;
     private string? _lastFocus;
     private Settings? _lastResolved;
+    private LutImportSpaceViewModel _importColorSpace;
 
     public FilmLookViewModel(MainWindowViewModel main)
     {
@@ -43,6 +63,7 @@ public sealed partial class FilmLookViewModel : ObservableObject
         Thumbnails = new FilmLookThumbnails(main);
         Groups = [.. FilmLookLibrary.GroupsInOrder.Select(g => new FilmGroupViewModel(g))];
         _selectedGroup = FilmLookLibrary.GroupsInOrder[0];
+        _importColorSpace = ImportSpaces[0];
         Looks = [];
         Imported = [];
         LoadGroup();
@@ -53,6 +74,25 @@ public sealed partial class FilmLookViewModel : ObservableObject
     public IReadOnlyList<FilmGroupViewModel> Groups { get; }
     public ObservableCollection<FilmTileViewModel> Looks { get; }
     public ObservableCollection<FilmTileViewModel> Imported { get; }
+
+    /// <summary>.cube 匯入可選的色彩空間。預設第一項是 sRGB。</summary>
+    public IReadOnlyList<LutImportSpaceViewModel> ImportSpaces { get; } =
+    [
+        new(FilmLutColorSpace.Srgb, "Film.LutSpace.Srgb"),
+        new(FilmLutColorSpace.ProPhoto, "Film.LutSpace.ProPhoto"),
+    ];
+
+    /// <summary>目前套在 .cube 上的色彩空間。匯入後留到使用者改選；空選取忽略。</summary>
+    public LutImportSpaceViewModel ImportColorSpace
+    {
+        get => _importColorSpace;
+        set
+        {
+            if (value is null || ReferenceEquals(value, _importColorSpace)) return;
+            _importColorSpace = value;
+            OnPropertyChanged();
+        }
+    }
 
     /// <summary>目前顯示的分組 key（<see cref="FilmLookLibrary.GroupsInOrder"/>）。</summary>
     [ObservableProperty]
@@ -72,6 +112,8 @@ public sealed partial class FilmLookViewModel : ObservableObject
     public void RefreshLabels()
     {
         foreach (var g in Groups) g.RefreshLabel();
+        foreach (var space in ImportSpaces) space.RefreshLabel();
+        foreach (var tile in Imported) tile.RefreshLabel();
     }
 
     partial void OnSelectedGroupChanged(string value)
@@ -136,11 +178,11 @@ public sealed partial class FilmLookViewModel : ObservableObject
     [RelayCommand]
     private async Task ImportLut()
     {
-        var path = await _main.Dialogs.PickFileAsync(Loc.Get("Film.ImportTitle"), ["*.cube", "*.png"]);
+        var path = await _main.Dialogs.PickFileAsync(Loc.Get("Film.ImportTitle"), ["*.cube", "*.fblut", "*.png"]);
         if (path is null) return;
         try
         {
-            var lut = LutFileImport.Open(path);
+            var lut = LutFileImport.Open(path, ImportColorSpace.Space);
             var key = UserLutLibrary.Import(lut, Path.GetFileNameWithoutExtension(path));
             ReloadImported();
             var tile = Imported.First(t => t.Key == key);
@@ -156,9 +198,18 @@ public sealed partial class FilmLookViewModel : ObservableObject
     {
         Imported.Clear();
         foreach (var (key, name) in UserLutLibrary.All)
-            Imported.Add(new FilmTileViewModel(key, () => name));
+            Imported.Add(new FilmTileViewModel(key, () => name, () => ImportDetail(key)));
         RefreshSelection();
     }
+
+    /// <summary>
+    /// ProPhoto 匯入在清單另標工作色彩空間。儲存的名稱仍是來源檔名，不表示檔案出自特定軟體或相機。
+    /// sRGB 不另標，與既有匯入相同。
+    /// </summary>
+    private static string ImportDetail(string key) =>
+        UserLutLibrary.TryGet(key, out var lut) && lut is { ColorSpace: FilmLutColorSpace.ProPhoto }
+            ? Loc.Get("Film.LutSpace.ProPhoto")
+            : "";
 
     [RelayCommand]
     private void ApplyLook(FilmTileViewModel? tile)

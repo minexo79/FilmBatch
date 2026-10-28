@@ -12,6 +12,7 @@ public enum RgbEncoding { Srgb, ProPhoto }
 internal static class RgbEncodingInfo
 {
     internal static float[] SrgbToProPhoto => ProPhotoData.ToProPhoto;
+    internal static float[] ProPhotoToSrgb => ProPhotoData.ToSrgb;
     internal static (float R, float G, float B) ProPhotoLuma => ProPhotoData.Luma;
     private static class ProPhotoData
     {

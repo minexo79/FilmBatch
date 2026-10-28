@@ -1,12 +1,13 @@
 using System.Numerics;
 using FilmBatch.Core.Film;
+using FilmBatch.Engine.Imaging;
 
 namespace FilmBatch.Engine.Rendering;
 
 /// <summary>
-/// 底片風格的 CPU 參考實作（與 film/look.wgsl 同演算法）：
-/// 線性 → sRGB → LUT → 線性 → 暖色 → 褪色（sRGB）→ 與原圖依效果比例混合（線性）。
-/// 八色相帶修正已獨立成 hsl 模組（<see cref="HslProcessing"/>），不在這裡執行。
+/// 底片風格的 CPU 參考實作（與 film/look.wgsl 同演算法）。
+/// LUT 使用 sRGB 或 ProPhoto D50／gamma 1.8 編碼；取樣後回到線性 sRGB，
+/// 再做暖色、褪色與比例混合。HSL 為獨立模組。
 /// </summary>
 internal static class FilmLookProcessing
 {
@@ -20,8 +21,24 @@ internal static class FilmLookProcessing
 
     public static Vector3 Pixel(Vector3 linear, in FilmLookUniforms u, FilmLut lut)
     {
-        var display = Srgb(Vector3.Clamp(linear, Vector3.Zero, Vector3.One));
-        var look = Linear(lut.Sample(display));
+        Vector3 look;
+        if (lut.ColorSpace == FilmLutColorSpace.ProPhoto)
+        {
+            var m = RgbEncodingInfo.SrgbToProPhoto;
+            var p = Vector3.Clamp(new Vector3(
+                m[0] * linear.X + m[1] * linear.Y + m[2] * linear.Z,
+                m[3] * linear.X + m[4] * linear.Y + m[5] * linear.Z,
+                m[6] * linear.X + m[7] * linear.Y + m[8] * linear.Z), Vector3.Zero, Vector3.One);
+            var encoded = new Vector3(MathF.Pow(p.X, 1f / 1.8f), MathF.Pow(p.Y, 1f / 1.8f), MathF.Pow(p.Z, 1f / 1.8f));
+            var sample = lut.Sample(encoded);
+            var (r, g, b) = RgbEncodingInfo.DecodeProPhoto(sample.X, sample.Y, sample.Z);
+            look = new Vector3(r, g, b);
+        }
+        else
+        {
+            var display = Srgb(Vector3.Clamp(linear, Vector3.Zero, Vector3.One));
+            look = Linear(lut.Sample(display));
+        }
         var warmth = u.Mix.Y;
         if (warmth != 0) look *= new Vector3(1 + .12f * warmth, 1, 1 - .12f * warmth);
         var fade = u.Mix.Z;

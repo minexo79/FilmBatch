@@ -377,8 +377,12 @@ R {1:P2}　G {2:P2}　B {3:P2}　亮度 {4:P2}</value></data>
   <!-- 底片風格（FilmLookControl） -->
   <data name="Film.Look" xml:space="preserve"><value>底片</value></data>
   <data name="Film.Import" xml:space="preserve"><value>匯入 LUT</value></data>
-  <data name="Film.ImportTitle" xml:space="preserve"><value>匯入 .cube 或 Hald PNG</value></data>
+  <data name="Film.ImportTitle" xml:space="preserve"><value>匯入 .cube、.fblut 或 Hald PNG</value></data>
   <data name="Film.LookApplied" xml:space="preserve"><value>已套用底片「{0}」</value></data>
+  <data name="Film.LutSpace" xml:space="preserve"><value>LUT 色彩空間</value></data>
+  <data name="Film.LutSpace.Srgb" xml:space="preserve"><value>sRGB</value></data>
+  <data name="Film.LutSpace.ProPhoto" xml:space="preserve"><value>ProPhoto RGB（gamma 1.8）</value></data>
+  <data name="Film.LutSpaceHint" xml:space="preserve"><value>此選擇只套用在 .cube。Hald PNG 維持 sRGB。</value></data>
   <!-- 獨立 HSL 色相修正（HslControl）：文字預設、色相帶名稱與「自訂」標記 -->
   <data name="Hsl.PresetLabel" xml:space="preserve"><value>色相修正</value></data>
   <data name="Hsl.Custom" xml:space="preserve"><value>自訂</value></data>

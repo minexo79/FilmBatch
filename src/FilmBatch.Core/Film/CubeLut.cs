@@ -2,10 +2,10 @@ using System.Globalization;
 
 namespace FilmBatch.Core.Film;
 
-/// <summary>讀取 Resolve／Adobe 風格的 .cube 3D LUT，重採樣成底片槽的 sRGB 立方體。</summary>
+/// <summary>讀取 Resolve／Adobe 風格的 .cube 3D LUT。節點沿用檔案數值，色彩空間由呼叫端指定（預設 sRGB）。</summary>
 public static class CubeLut
 {
-    public static FilmLut Parse(string text)
+    public static FilmLut Parse(string text, FilmLutColorSpace colorSpace = FilmLutColorSpace.Srgb)
     {
         int? size = null;
         var domainMin = new[] { 0d, 0d, 0d };
@@ -54,7 +54,7 @@ public static class CubeLut
         for (var i = 0; i < 3; i++)
             if (!Near01(domainMin[i], 0) || !Near01(domainMax[i], 1))
                 throw new InvalidDataException("DOMAIN 不是 0–1，此檔不是 sRGB 全範圍 LUT。");
-        var lut = new FilmLut(size.Value, samples.ToArray());
+        var lut = new FilmLut(size.Value, samples.ToArray(), colorSpace);
         return size.Value > FilmLutFile.MaxSize ? lut.Resample(FilmLutFile.MaxSize) : lut;
     }
 

@@ -5,17 +5,22 @@ using ImageMagick;
 
 namespace FilmBatch.Engine.Film;
 
-/// <summary>把使用者的 .cube 或 Hald PNG 轉成底片槽 LUT。不接受非 0–1 範圍。</summary>
+/// <summary>把使用者的 .cube、.fblut 或 Hald PNG 轉成底片槽 LUT。.cube 使用呼叫端指定的色彩空間；.fblut 與 Hald PNG 的色彩空間記錄在檔案本身，不看 <paramref name="colorSpace"/>。</summary>
 public static class LutFileImport
 {
-    public static FilmLut Open(string path)
+    public static FilmLut Open(string path, FilmLutColorSpace colorSpace = FilmLutColorSpace.Srgb)
     {
         var ext = Path.GetExtension(path);
         if (ext.Equals(".cube", StringComparison.OrdinalIgnoreCase))
-            return CubeLut.Parse(File.ReadAllText(path));
+            return CubeLut.Parse(File.ReadAllText(path), colorSpace);
+        if (ext.Equals(".fblut", StringComparison.OrdinalIgnoreCase))
+        {
+            using var stream = File.OpenRead(path);
+            return FilmLutFile.Read(stream);
+        }
         if (ext.Equals(".png", StringComparison.OrdinalIgnoreCase))
-            return OpenHaldPng(path);
-        throw new InvalidDataException("只支援 .cube 與 Hald PNG。");
+            return OpenHaldPng(path); // Hald PNG 固定是 sRGB，不看 colorSpace。
+        throw new InvalidDataException("只支援 .cube、.fblut 與 Hald PNG。");
     }
 
     private static FilmLut OpenHaldPng(string path)
