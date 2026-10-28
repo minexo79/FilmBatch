@@ -57,6 +57,9 @@ public sealed class ModuleParams
     // 場景線性暗部還原；半徑為裁切後短邊百分比，降噪為 0..1 混合量。
     public bool ShadowRecoveryOn;
     public float ShadowRecoveryExposure, ShadowRecoveryRadius, ShadowRecoveryLuminance, ShadowRecoveryChroma;
+    /// <summary>相機曲線前的場景線性肩部。僅 RAW 場景、啟用且強度 &gt; 0 時為 true。</summary>
+    public bool HighlightRolloffOn;
+    public float HighlightRolloffSlope;
     // lens_distortion
     public bool LensOn, AutoCrop;
     public float LensAmount, Chromatic, EdgeSoften;
@@ -211,6 +214,8 @@ public sealed class ModuleParams
             ShadowRecoveryRadius = Math.Clamp(N(s, "shadow_recovery.radius", 2), 0.25f, 10),
             ShadowRecoveryLuminance = Math.Clamp(N(s, "shadow_recovery.luminance", 35), 0, 100) / 100f,
             ShadowRecoveryChroma = Math.Clamp(N(s, "shadow_recovery.chroma", 80), 0, 100) / 100f,
+            HighlightRolloffOn = source.Scene is not null && B(s, "highlight_rolloff.enabled", false),
+            HighlightRolloffSlope = HighlightRolloff.Slope((float)(N(s, "highlight_rolloff.strength", 100) / 100.0)),
             // lens_distortion
             LensOn = B(s, "lens_distortion.enabled", false),
             LensAmount = N(s, "lens_distortion.amount", 0),
@@ -362,6 +367,7 @@ public sealed class ModuleParams
         m.CropT = CropGeometry.Compute(source.Width, source.Height, m.Crop);
         m.View = RenderView.Whole(m.FrameWidth, m.FrameHeight);
         m.ShadowRecoveryOn &= m.ShadowRecoveryExposure > 0 || m.ShadowRecoveryLuminance > 0 || m.ShadowRecoveryChroma > 0;
+        m.HighlightRolloffOn &= m.HighlightRolloffSlope < 1f;
         m.FilmLut = m.FilmOn ? FilmLookLibrary.TryLut(m.FilmLookKey) : null;
         m.FilmLook = FilmLookUniforms.From(m);
         m.Hsl = HslUniforms.From(m, out var hslActive);

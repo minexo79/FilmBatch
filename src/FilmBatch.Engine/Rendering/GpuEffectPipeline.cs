@@ -62,7 +62,7 @@ internal sealed class GpuEffectPipeline : IDisposable
         return texture;
     }
     private readonly ComputeKernel _decode, _encode8, _encode16, _display, _spike, _blur, _blurTile, _box,
-        _crop, _basicLinear, _photoAdjust, _shadowStats, _shadowBox, _shadowApply, _lens, _multi, _double, _bokeh, _zoom, _motion, _vignette,
+        _crop, _basicLinear, _photoAdjust, _shadowStats, _shadowBox, _shadowApply, _highlightRolloff, _lens, _multi, _double, _bokeh, _zoom, _motion, _vignette,
         _halExtract, _halAdd, _leak, _look, _hsl, _plate, _foreground,
         _basicDisplay, _toneCurves, _tone, _detail, _dirt, _grain, _texture;
 
@@ -106,6 +106,7 @@ internal sealed class GpuEffectPipeline : IDisposable
         _shadowStats = K("linear/shadow_stats", tex, storage, uniform);
         _shadowBox = K("linear/shadow_box", tex, storage, uniform);
         _shadowApply = K("linear/shadow_apply", tex, tex, storage, uniform);
+        _highlightRolloff = K("linear/highlight_rolloff", tex, storage, uniform);
         _lens = F("geometry/lens_distortion", tex, tex, storage, uniform);
         _multi = F("geometry/multi_lens", tex, storage, uniform);
         _double = F("optical/double_exposure", tex, tex, storage, uniform);
@@ -436,6 +437,8 @@ internal sealed class GpuEffectPipeline : IDisposable
                 p.PlateTintHue, p.PlateTintAmount / 100, p.PlateEdgeErosion / 100, p.PlateStains / 100,
                 p.PlateUneven / 100, p.SeedPhotoPlate, aspect, 0, 0));
         token.ThrowIfCancellationRequested();
+        if (p.HighlightRolloffOn)
+            current = Apply(_highlightRolloff, HighlightRolloff.Uniforms(p.HighlightRolloffSlope));
         var display = Next(current);
         var proPhoto = p.OutputEncoding == RgbEncoding.ProPhoto;
         if (source.Scene is { } scene) _rawDisplay.Dispatch(commands, current, display, scene.Tone, proPhoto);

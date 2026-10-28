@@ -47,7 +47,7 @@ public static class PhotoSamplingSettings
         "lens_distortion", "multi_lens", "double_exposure", "bokeh", "zoom_rotate_blur",
         "motion_blur", "vignette", "halation", "light_leak", "film", "photo_plate",
         "curves", "hsl", "tone", "detail", "dirt_scratches", "grain",
-        "shadow_recovery",
+        "shadow_recovery", "highlight_rolloff",
     ];
 
     /// <summary>BasicLinear（曝光、色溫、色偏）保留；顯示段 basic 調整在取樣視圖一律歸零。</summary>

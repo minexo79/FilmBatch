@@ -646,6 +646,8 @@ Clear overrides: use the new preset entirely.</value></data>
   <data name="Param.shadow_recovery.radius" xml:space="preserve"><value>Local Range</value></data>
   <data name="Param.shadow_recovery.luminance" xml:space="preserve"><value>Luminance Denoise</value></data>
   <data name="Param.shadow_recovery.chroma" xml:space="preserve"><value>Chroma Denoise</value></data>
+  <data name="Module.highlight_rolloff" xml:space="preserve"><value>Highlight Rolloff</value></data>
+  <data name="Param.highlight_rolloff.strength" xml:space="preserve"><value>Strength</value></data>
   <data name="Param.skin.region_cx" xml:space="preserve"><value>Region Center X</value></data>
   <data name="Param.skin.region_cy" xml:space="preserve"><value>Region Center Y</value></data>
   <data name="Param.skin.radius_x" xml:space="preserve"><value>Region Radius X</value></data>

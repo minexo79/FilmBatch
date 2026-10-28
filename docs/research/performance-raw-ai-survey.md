@@ -130,7 +130,7 @@ RAW＋AI 的縮圖來源已修正為現像線性來源再縮小，避免內嵌 J
 | LightCraft | 去馬賽克相機 RGB；可靠鄰域色度、多尺度金字塔、邊界／中性 fallback | log 亮度基底；V2 先中值再 guided filter，EV 增益共同乘 RGB | 相機擬合曲線或延伸 Reinhard，高光去色／色域處理 |
 | RapidRAW | 相機 RGB，自動剪裁位階、opposed-root 重建與空間補償 | guided base/detail；有理亮部壓縮、感知暗部曲線、細節重注／雜訊保護 | 可選 AgX 等 |
 | darktable | 早期 RAW 模組，inpaint opposed、guided laplacians、segmentation 等 | tone equalizer 的 guided／EIGF 曝光區增益；另保留舊 Lab shadows/highlights | Filmic RGB、sigmoid、AgX 等 |
-| FilmBatch | 已移植 LightCraft 系多尺度高光重建，主要 CPU | 顯示域 Basic；另有場景線性 `shadow_recovery` | 相機曲線／延伸 Reinhard，晚期 RAW 收尾 |
+| FilmBatch | 已移植 LightCraft 系多尺度高光重建，主要 CPU | 顯示域 Basic；場景線性 `shadow_recovery`；2026-10-28 起另有預設關閉的 `highlight_rolloff`，不取代 Basic | 相機曲線／延伸 Reinhard，晚期 RAW 收尾 |
 
 ### 6.1 Basic Highlights 的落差
 
@@ -140,7 +140,7 @@ RAW＋AI 的縮圖來源已修正為現像線性來源再縮小，避免內嵌 J
 
 ### 6.2 不再新增第二套 guided 暗部模組
 
-既有 `shadow_recovery` 已有帶暗偏移的 log 亮度、alpha 加權 guided base、增益前亮度／色度降噪、共同 RGB gain、黑點／HDR 保護。合理下一步是量測其基底重用及場景線性亮部壓縮候選，不是再造同一功能。
+既有 `shadow_recovery` 已有帶暗偏移的 log 亮度、alpha 加權 guided base、增益前亮度／色度降噪、共同 RGB gain、黑點／HDR 保護。寫下這段時的下一步是量測基底重用及場景線性亮部壓縮，不是再造同一套暗部。2026-10-28 的五張實拍沒有採用局部亮部基底；採用的是預設關閉、只壓膝點以上的全域肩部，見[亮部實驗](highlight-rolloff.md)。
 
 guided／中值和共同增益不保證無光暈／色偏；半徑、正則化、遮罩邊界、雜訊、極端設定及後續 gamut／tone 都影響結果。darktable 官方亦列 halo、曝光曲線振盪等取捨。segmentation 高光模式沒有 OpenCL，不能把所有高光重建都概括成 GPU。
 
@@ -175,7 +175,7 @@ guided／中值和共同增益不保證無光暈／色偏；半徑、正則化�
 | P1：互動重播與分段計時 | 首次 AI／來源建立與命中成本差異大 | Engine microbench 不涵蓋 Avalonia／使用者操作 p95 | 固定來源／設定與冷暖，保存逐輪樣本；原生完整互動仍需獨立驗收 |
 | P2：少數昂貴前綴快取 | darktable 逐階段 invalidation；FilmBatch 已有來源／工作區重用 | 多留 float 紋理可能更耗 RAM，只有末端參數變更才有利 | 先量同物件／等像素新物件、昂貴基底成本；只在收益支持時另提實作，不重寫通用 graph |
 | P2：AI 持久化結果與獨立工作 | 現行 RAM 單筆 full 命中快，跨處理器／重開會失效 | 磁碟容量、模型／來源失效、取消圍欄、寫入完整性 | 先驗證首次／命中／重建成本和可保留量；保持 f32，不靜默降低正式品質 |
-| P2：場景線性亮部壓縮 | Basic additive 與局部 gain 資料域不同 | 自動匹配參數、halo、色域、舊照片外觀未定 | 只做隔離候選和數值／視覺記錄；畫質勝出需等亮度／紋理／邊界證據，不能直接替換 Basic |
+| P2：場景線性亮部壓縮 | Basic additive 與局部 gain 資料域不同 | 自動匹配參數、halo、色域、舊照片外觀未定 | 2026-10-26 的 mean-match 原型與局部 guided 仍不採用、不替換 Basic。2026-10-28 另落地預設關閉的全域肩部，見[亮部實驗](highlight-rolloff.md) |
 | P3：原生 GPU 呈現／Full 紋理縮放與 Mip | RapidRAW 有可省整幅顯示讀回的實作 | Avalonia／Dawn interop、色彩／alpha／生命週期及窗口等價尚未知 | 先量資料交付與來源重建；沒有端到端收益及等價證據就不 cutover |
 | P3：Bayer 聯合降噪 | LightCraft／darktable 模型介入較早 | WB、感光 normalization、高光重建、remosaic、相機品質都變 | 先驗證資料契約；不能只換模型檔或用 RGB tile 數宣稱更快 |
 

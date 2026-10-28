@@ -66,6 +66,16 @@ dotnet test FilmBatch.sln -c Release --filter 'FullyQualifiedName~ToneCurve|Full
 
 演算法在未夾取的工作線性 sRGB 上，以覆蓋率加權 guided filter 求局部基底，先降噪再乘共同 RGB 增益；不加黑位偏移、不改 alpha，全透明隱藏色不污染鄰近像素。高光仍交原有顯示映射處理，不能恢復拍攝時已完全裁切的資訊。局部半徑按影像比例縮放，降噪按原始來源像素足跡縮放；很小的預覽可能減弱或跳過次像素降噪，並非和全圖逐像素相同。兩種有效降噪與提亮都為零時直接略過 CPU／GPU pass。
 
+## 亮部保護
+
+這是獨立的 `highlight_rolloff` 模組，**預設關閉**；與「亮部」／`basic.highlights` 的顯示域調整分開。只作用於 RAW 場景。最終 JPEG／PNG／TIFF 仍是既有的顯示輸出。
+
+1. 在基本參數的「亮部保護」展開並啟用；若找不到，先取消「隱藏已停用的模組」。
+2. 強度 100% 是實測過的肩部；往下調只把壓縮減弱，不是另一條曲線。暗部繼續用「暗部還原」。
+3. 拖曳一次可整段復原／重做；設定沿用預設、複製貼上、逐張保存與批次匯出。白平衡／Zone 取樣會暫停這段肩部。
+
+它在相機曲線之前，只壓 Rec.2020 亮度高於 0.35 的像素，三通道同一個比值。膝點以下、一般 RGB、以及模組關閉時都不改畫面。場景裡已經沒有亮度差的死白不會長出紋理。比較過的曲線和五張實拍數字見[亮部實驗](research/highlight-rolloff.md)。
+
 ## 資料位置
 
 | 內容 | 位置 |
@@ -82,3 +92,4 @@ macOS 的快捷鍵使用 ⌘（例如 ⌘O、⌘Z、⌘⇧Z），並使用原生
 - [release.md](release.md)：Windows／macOS 發佈、簽章與公證、iOS 行動版
 - [cli.md](cli.md)：命令列工具、本機 AI 降噪與 AI 去背
 - [evidence/](evidence/)：帶日期的驗證記錄（iOS、去背、暗部還原、效能修正）
+- [research/highlight-rolloff.md](research/highlight-rolloff.md)：亮部保護的候選比較與不採用項

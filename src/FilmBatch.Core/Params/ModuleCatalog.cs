@@ -142,6 +142,12 @@ public static class ModuleCatalog
             Float("luminance", "亮度降噪", 35, 0, 100, 1, "%"),
             Float("chroma", "色度降噪", 80, 0, 100, 1, "%"),
         ]),
+        // 相機曲線之前的場景線性肩部。預設關閉，舊照片外觀不變。只作用於 RAW 場景。
+        new("highlight_rolloff", "亮部保護", ModuleGroup.Basic, PasteCategory.Color,
+        [
+            Bool(ModuleSchema.EnabledKey, "啟用"),
+            Float("strength", "強度", 100, 0, 100, 1, "%"),
+        ]),
         new("lens_distortion", "鏡頭變形", ModuleGroup.Geometry, PasteCategory.Optical,
         [
             Bool(ModuleSchema.EnabledKey, "啟用"),

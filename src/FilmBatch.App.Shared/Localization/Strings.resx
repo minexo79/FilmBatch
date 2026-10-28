@@ -462,6 +462,8 @@ R {1:P2}　G {2:P2}　B {3:P2}　亮度 {4:P2}</value></data>
   <data name="Param.shadow_recovery.radius" xml:space="preserve"><value>局部範圍</value></data>
   <data name="Param.shadow_recovery.luminance" xml:space="preserve"><value>亮度降噪</value></data>
   <data name="Param.shadow_recovery.chroma" xml:space="preserve"><value>色度降噪</value></data>
+  <data name="Module.highlight_rolloff" xml:space="preserve"><value>亮部保護</value></data>
+  <data name="Param.highlight_rolloff.strength" xml:space="preserve"><value>強度</value></data>
   <data name="Param.skin.region_cx" xml:space="preserve"><value>區域中心 X</value></data>
   <data name="Param.skin.region_cy" xml:space="preserve"><value>區域中心 Y</value></data>
   <data name="Param.skin.radius_x" xml:space="preserve"><value>區域半寬</value></data>

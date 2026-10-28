@@ -16,6 +16,7 @@
 | 調整底片色彩或新增 LUT | [底片風格](film-looks.md) | [LUT 轉換工具](../tools/film-luts/README.md)、[授權聲明](../THIRD-PARTY-NOTICES.txt) |
 | 評估 Sony Creative Look 移植 | [Sony A7M5 Survey 與效果實驗](research/sony-creative-looks-survey.md) | 目前 NO-GO：資料域、第三方資料權利與原版驗收前提尚未通過；未加入產品 |
 | 使用局部暗部還原或色調曲線 | [building.md](building.md#局部暗部還原) | [暗部研究](research/shadow-recovery-survey.md) |
+| 使用亮部保護 | [building.md](building.md#亮部保護) | [亮部實驗](research/highlight-rolloff.md)；預設關閉，不取代基本調整的亮部 |
 | 使用 AI 降噪或去背、CLI | [CLI 與本機 AI](cli.md) | [ADR 0002](adr/0002-ai-denoise.md)、[去背驗證](evidence/cutout-2026-10-22.md) |
 | 評估物件移除 | [物件移除結論與 Survey](research/object-removal-survey.md) | [ADR 0005](research/0005-ai-object-removal.md)、[設計](research/object-removal-design.md)；通用移除 T1 仍 NO-GO |
 | 評估顆粒、白平衡或 Zone | [Survey](research/grain-white-balance-survey.md) | 候選不等於已採用功能 |

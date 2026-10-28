@@ -95,6 +95,9 @@ public static class CpuPipeline
         ct.ThrowIfCancellationRequested();
         if (p.PlateOn && p.PlateStrength > 0) PhotoPlate(cur, w, h, p);
         ct.ThrowIfCancellationRequested();
+        // 相機曲線之前的肩部。膝點以下不改，所以暗部還原的結果留在曲線上。
+        if (p.HighlightRolloffOn) HighlightRolloff.Apply(cur, n, p.HighlightRolloffSlope);
+        ct.ThrowIfCancellationRequested();
 
         // ③→④ 顯示空間
         if (source.Scene is { } scene) RawDisplay.FinishLinear(cur, scene.Tone, proPhoto);
