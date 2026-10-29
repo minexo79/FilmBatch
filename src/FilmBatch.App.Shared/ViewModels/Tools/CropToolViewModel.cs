@@ -68,7 +68,7 @@ public sealed partial class CropToolViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(SelectedAspect), nameof(CanSwapOrientation))]
     private string _aspect = "free";
 
-    /// <summary>固定比例時採用直式。</summary>
+    /// <summary>固定比例時採用與影像相反的方向（預設跟隨影像：橫幅照片給橫式框、直幅照片給直式框）。</summary>
     [ObservableProperty]
     private bool _portrait;
 
@@ -256,8 +256,8 @@ public sealed partial class CropToolViewModel : ObservableObject
         var c = Working;
         var step = clockwise ^ (c.FlipH ^ c.FlipV) ? 1 : 3;
         var (cx, cy) = clockwise ? (1 - c.Cy, c.Cx) : (c.Cy, 1 - c.Cx);
+        // 比例方向跟隨影像方向，旋轉 90° 後自然互換，Portrait（與影像相反）旗標維持不變
         SetWorking(c with { Cx = cx, Cy = cy, W = c.H, H = c.W, Quarter = (c.Quarter + step) % 4 });
-        if (CanSwapOrientation) SetQuietly(() => Portrait = !Portrait);
     }
 
     [RelayCommand]

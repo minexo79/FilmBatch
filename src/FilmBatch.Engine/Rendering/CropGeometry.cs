@@ -149,8 +149,8 @@ public static class CropGeometry
             _ => double.NaN,
         };
         if (double.IsNaN(r)) return r;
-        // original 依影像本身方向；其他比例以 portrait 決定橫直
-        var landscape = key == "original" ? orientedW >= orientedH : !portrait;
+        // 預設跟隨影像本身方向（直式照片自動給直式框）；portrait 旗標表示「與影像方向相反」
+        var landscape = key == "original" ? orientedW >= orientedH : (orientedW >= orientedH) != portrait;
         return landscape ? r : 1 / r;
     }
 }

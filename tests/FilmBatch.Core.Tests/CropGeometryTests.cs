@@ -80,6 +80,12 @@ public sealed class CropGeometryTests
     public void AspectRatio_IsPixelRatio(string key, bool portrait, int w, int h, double expected) =>
         Assert.Equal(expected, CropGeometry.AspectRatio(key, portrait, w, h), 6);
 
+    [Theory]
+    [InlineData("3x2", false, 300, 400, 2.0 / 3.0)]
+    [InlineData("3x2", true, 300, 400, 1.5)]
+    public void AspectRatio_FollowsImageOrientation(string key, bool portrait, int w, int h, double expected) =>
+        Assert.Equal(expected, CropGeometry.AspectRatio(key, portrait, w, h), 6);
+
     [Fact]
     public void AspectRatio_Free_IsNaN() => Assert.True(double.IsNaN(CropGeometry.AspectRatio("free", false, 400, 300)));
 }
