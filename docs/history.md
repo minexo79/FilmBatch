@@ -461,6 +461,8 @@ HSL／底片集中回歸 110 passed／0 skipped／0 failed；完整 solution 為
 
 同一隔離來源與工具鏈改用標準 simulator build（不指定 `--artifacts-path`）：0 warnings／0 errors，未合併或手動重簽的原始 app 含 arm64 主執行檔，通過本機簽章檢查及 simulator 安裝／啟動。以合成 256×160 PNG 的專案啟動，實際畫面顯示預覽與 1/1 縮圖，沒有殘留「Working…」；截圖只代表此 simulator 與 CPU 路徑，不代表真機或正式發佈簽章。
 
+兩次 iOS 建置使用 `ade108c` 加上當時工作區的 CLF／DCP 與行動狀態修改的隔離快照，並非僅本次提交的乾淨來源；上述 simulator 證據不能直接視為這兩個提交的獨立 iOS build。
+
 相同工具鏈另用來源與 `--artifacts-path` 同為實體 `/private/var/...` 的隔離 Release build，0 warnings／0 errors；原始 bin app 有 arm64 主執行檔，通過本機簽章檢查並可安裝、啟動到編輯器。重新安裝後此 simulator 的資料容器路徑改變：合成專案檔仍在新容器，但已存 `last_folder` 仍指向舊容器，畫面未自動重開專案；這是另一項待處理問題，不等於資料遺失，亦不推論實機升級。此比較不驗證真機 IPA 或正式簽章。
 
 行動狀態修正以 `61d7c5a` 獨立提交。以原 HEAD 加該修正的隔離候選驗證：五項行動 View 回歸通過；首次完整 App suite 在 iOS 建置並行、另含測試用 `InternalsVisibleTo` 時為 407 passed／1 個 renderer-idle 逾時。移除該無關組件可見性設定、停止並行建置後重跑為 408 passed／0 skipped／0 failed；沒有納入工作區 CLF／DCP 實作。並行負載是可能因素，未證實為逾時原因；不隱藏首次失敗。
