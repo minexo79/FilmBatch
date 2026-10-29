@@ -89,6 +89,17 @@ public sealed class TiffTests
     }
 
     [Fact]
+    public void MissingStripByteCountsUseNextDistinctOffsetAndFileEnd()
+    {
+        var info = new ImageInfo
+        {
+            Width = 1, Height = 5, Layout = new ImageLayout.Strips(1),
+            SamplesPerPixel = 1, Offsets = [50, 10, 30, 10, 150], ByteCounts = [0, 0, 5],
+        };
+        Assert.Equal(new long[] { 50, 20, 5, 20, 0 }, info.Chunks(100).Select(c => c.Length));
+    }
+
+    [Fact]
     public void TilesKeepNominalDimensionsAndPlanarIndex()
     {
         var b = new IfdBuilder().With(Tags.ImageWidth, new TiffValue.Short([20])).With(Tags.ImageLength, new TiffValue.Short([13]))

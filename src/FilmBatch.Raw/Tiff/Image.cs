@@ -87,6 +87,16 @@ public sealed class ImageInfo
     };
     public ImageInfo Clone() => (ImageInfo)MemberwiseClone();
 
+    /// <summary>Returns the only declared chunk, or <see langword="null"/> for other layouts.</summary>
+    internal TiffChunk? SingleChunk(long dataLength)
+    {
+        var (across, down) = Grid();
+        long perPlane = (long)Math.Max(across, 1u) * down;
+        int planes = Planar == 2 ? SamplesPerPixel : 1;
+        long count = Math.Min((long)Offsets.Length, Math.Min(perPlane * planes, int.MaxValue));
+        return count == 1 ? Chunks(dataLength)[0] : null;
+    }
+
     /// All chunks that have an offset. Missing byte counts are inferred as "to the next offset / end of data"
     /// using `dataLength`.
     public IReadOnlyList<TiffChunk> Chunks(long dataLength)
@@ -97,6 +107,14 @@ public sealed class ImageInfo
         int planes = Planar == 2 ? SamplesPerPixel : 1;
         var (cw, ch) = ChunkSize();
         int n = (int)Math.Min((long)Offsets.Length, Math.Min(perPlane * planes, int.MaxValue));
+        ulong[]? sortedOffsets = null;
+        for (int i = 0; i < n && n > 1; i++)
+            if (i >= ByteCounts.Length || ByteCounts[i] == 0)
+            {
+                sortedOffsets = (ulong[])Offsets.Clone();
+                Array.Sort(sortedOffsets);
+                break;
+            }
         var output = new List<TiffChunk>(Math.Max(0, n));
         for (int i = 0; i < n; i++)
         {
@@ -111,7 +129,19 @@ public sealed class ImageInfo
             else
             {
                 ulong next = dataLength < 0 ? 0UL : (ulong)dataLength;
-                foreach (ulong o in Offsets) if (o > Offsets[i] && o < next) next = o;
+                if (sortedOffsets is not null)
+                {
+                    int lo = 0, hi = sortedOffsets.Length;
+                    while (lo < hi)
+                    {
+                        int mid = lo + (hi - lo) / 2;
+                        if (sortedOffsets[mid] <= Offsets[i]) lo = mid + 1;
+                        else hi = mid;
+                    }
+                    if (lo < sortedOffsets.Length) next = Math.Min(next, sortedOffsets[lo]);
+                }
+                else if (n == 1)
+                    foreach (ulong o in Offsets) if (o > Offsets[i] && o < next) next = o;
                 length = (long)Math.Min(next - Math.Min(Offsets[i], next), long.MaxValue);
             }
             output.Add(new TiffChunk(i, x, y, cw, height, (ushort)plane, offset, length));

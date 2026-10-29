@@ -113,6 +113,8 @@ internal static class Mef
         var chunks = info.Chunks(bytes.Length);
         var src = chunks.Count > 0 ? TiffImage.ChunkBytes(bytes, chunks[0]) : null;
         if (src is null) throw RawException.Corrupt("Mef strip outside file");
+        if (src.Value.Length < ((long)n + 1) / 2 * 3)
+            throw RawException.Corrupt("Mef strip does not contain the declared samples");
         var d = new ushort[n];
         Unpack.UnpackMsb(src.Value.Span, 12, d);
         float white = VendorUtils.WhiteFromData(d, 12);

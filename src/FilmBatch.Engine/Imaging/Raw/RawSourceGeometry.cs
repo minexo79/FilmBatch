@@ -62,6 +62,7 @@ internal sealed class RawSourceGeometry
     /// </summary>
     internal static RgbImage Develop(RawImage raw, DemosaicMethod method)
     {
+        if (raw.Opcodes.List3.Count == 0) return raw.Develop(method);
         var image = Demosaic.Run(raw.Normalized(), method);
         image = ApplyList3(raw.Opcodes.List3, image);
         var c = raw.DevelopCrop(image.Width, image.Height);
@@ -73,6 +74,7 @@ internal sealed class RawSourceGeometry
 
     internal static RgbImage ApplyList3(IReadOnlyList<Opcode> list, RgbImage image)
     {
+        OpcodeOps.ValidateList3(list);
         var pending = new List<Opcode>();
         foreach (var op in OpcodeOps.AppliedOps(list))
         {
@@ -112,6 +114,7 @@ internal sealed class RawSourceGeometry
     internal static RgbImage ApplyLensChainBinned(IReadOnlyList<Opcode> list, RgbImage image,
         PixelRect region, int k, int activeWidth, int activeHeight)
     {
+        OpcodeOps.ValidateList3(list);
         var chain = Chain(OpcodeOps.AppliedOps(list));
         if (chain.Length == 0) return image;
         var w = image.Width; var h = image.Height;

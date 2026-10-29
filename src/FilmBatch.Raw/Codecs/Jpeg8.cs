@@ -15,7 +15,7 @@ internal static partial class Jpeg8
     /// 解 JPEG 串流。requestedChannels 為 1 時回傳灰階（Luma），否則回傳 RGB（3 通道），
     /// 與 <c>lossy_jpeg(src, cpp)</c> 的 <c>if cpp == 1 { Luma } else { RGB }</c> 一致。
     /// </summary>
-    internal static (byte[] Samples, int Width, int Height, int Channels) Decode(ReadOnlySpan<byte> source, int requestedChannels)
+    internal static (byte[] Samples, int Width, int Height, int Channels) Decode(ReadOnlySpan<byte> source, int requestedChannels, int maxSamples = RawLimits.MaxSamples)
     {
         try
         {
@@ -23,7 +23,7 @@ internal static partial class Jpeg8
                 throw RawException.Corrupt("lossy JPEG tile: invalid channel count");
             int outCh = requestedChannels == 1 ? 1 : 3;
             var d = new Decoder(source, outCh);
-            return d.Run();
+            return d.Run(maxSamples);
         }
         catch (RawException)
         {
@@ -144,11 +144,11 @@ internal static partial class Jpeg8
             Tmp = new int[64];
         }
 
-        public (byte[] Samples, int Width, int Height, int Channels) Run()
+        public (byte[] Samples, int Width, int Height, int Channels) Run(int maxSamples)
         {
             DecodeHeaders();
             long total = (long)Width * Height * OutCh;
-            if (total > RawLimits.MaxSamples)
+            if (total > maxSamples)
                 throw RawException.Limit("image too large");
             var px = new byte[(int)total];
             if (IsProgressive)

@@ -1,6 +1,7 @@
 using FilmBatch.Engine.Imaging.Raw;
 using FilmBatch.Gpu.Device;
 using FilmBatch.Raw.Develop;
+using FilmBatch.Raw.Raster;
 using Xunit;
 
 namespace FilmBatch.Raw.Tests.Develop;
@@ -39,6 +40,30 @@ public class GpuAhdTests
         for (var i = 0; i < cpu.Length; i++)
             if (Math.Abs(cpu[i] - gpu[i]) > 1e-4f * Math.Max(1e-3f, Math.Abs(cpu[i]))) different++;
         Assert.True(different < cpu.Length / 1000, $"{different} of {cpu.Length} samples differ beyond 1e-4");
+    }
+
+    [Fact]
+    public void GpuDevelopWithCropMatchesTheFullAcceleratedImage()
+    {
+        const int w = 2049, h = 2049;
+        var cfa = Cfa.Bayer("RGGB")!;
+        var data = new float[w * h];
+        for (var y = 0; y < h; y++) for (var x = 0; x < w; x++)
+            data[y * w + x] = 0.1f + ((x * 13 + y * 31) % 3000) / 4096f;
+        var raw = DevelopTests.Raw(new Normalized { Width = w, Height = h, Cpp = 1, Data = data, Cfa = cfa });
+        raw.Crop = new(117, 153, 1283, 1001);
+        if (RawGpuDemosaic.ProbeUnavailableReason(GpuBackend.Auto) is { } reason)
+            Assert.Skip("No hardware GPU: " + reason);
+        using var scope = RawGpuDemosaic.BeginScope(true, GpuBackend.Auto, 0);
+        var normalized = raw.Normalized();
+        var accelerated = RawGpuDemosaic.TryRun(normalized.Data, w, h, cfa);
+        var errors = RawGpuDemosaic.LastErrors;
+        Assert.SkipWhen(accelerated is null && errors.Ahd is null, "GPU AHD declined due to budget or device limits.");
+        Assert.True(accelerated is not null, "GPU AHD failed on available hardware: " + errors.Ahd);
+        var expected = raw.FinishDemosaiced(new RgbImage(w, h, accelerated));
+        var actual = RawSourceGeometry.Develop(raw, DemosaicMethod.Ahd);
+        Assert.Equal((1283, 1001), (actual.Width, actual.Height));
+        Assert.Equal(expected.Data, actual.Data);
     }
 
     [Theory]

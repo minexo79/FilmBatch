@@ -25,6 +25,7 @@ public static class RawDngConversion
     {
         if (CameraColor.HasMatrix(raw.Color))
             return;
+        OpcodeOps.ValidateList3(raw.Opcodes.List3);
         var list3 = new List<Opcode>(raw.Opcodes.List3);
         var lens = CameraPreviewLens.LensGeometryOf(list3);
         var vignette = EmbeddedVignette.FromList3(list3, raw.ActiveArea, raw.Crop, raw.Orientation);

@@ -161,8 +161,9 @@ public static partial class OpcodeOps
                 if (r.GetArea() is not { } area || r.U32() is not { } pv || r.U32() is not { } ph) return null;
                 if (Fin(ref r) is not { } sv || Fin(ref r) is not { } sh || Fin(ref r) is not { } ov || Fin(ref r) is not { } oh) return null;
                 if (r.U32() is not { } mp) return null;
-                ulong count = checked((ulong)pv * ph * mp);
-                if (count == 0 || count * 4 > (ulong)r.Remaining) return null;
+                var points = (ulong)pv * ph;
+                if (points == 0 || mp == 0 || points > (ulong)r.Remaining / 4 / mp) return null;
+                ulong count = points * mp;
                 var gains = new float[count];
                 for (ulong i = 0; i < count; i++) { if (r.F32() is not { } v) return null; gains[i] = v; }
                 return new GainMap(area, pv, ph, [sv, sh], [ov, oh], mp, gains);

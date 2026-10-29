@@ -148,6 +148,11 @@ public sealed class SparseReadTests
         cut.Insert(15, 32);
         Assert.Equal([(10L, 15L), (32L, 40L)], r.Minus(cut).Spans);
         Assert.Equal(20L, r.Total());
+
+        var batch = new RawRanges();
+        batch.Insert(20, 30);
+        batch.Extend([(45, 50), (-4, 10), (5, 22), (40, 45), (60, 60)]);
+        Assert.Equal([(0L, 30L), (40L, 50L)], batch.Spans);
     }
 
     [Fact]
@@ -168,6 +173,26 @@ public sealed class SparseReadTests
         tiff.AddRange([8, 0, 0, 0]);
         var (plan, _, _) = RunPlan(tiff.ToArray(), 4, preview: false);
         Assert.IsType<RawHeaderPlan.Whole>(plan);
+    }
+
+    [Fact]
+    public void ExcessDistinctChildDirectoriesForceWholeFileButDuplicatesDoNot()
+    {
+        var root = new IfdBuilder().Set(Tags.DngVersion, new TiffValue.Byte([1, 4, 0, 0]));
+        for (var i = 0; i < 1025; i++)
+            root.AddSubIfd(new IfdBuilder().Set(Tags.ImageWidth, new TiffValue.Long([1])));
+        var bytes = new TiffWriter().Write([root]);
+        var loaded = new RawRanges();
+        loaded.Insert(0, bytes.Length);
+        Assert.Equal(RawFormat.Dng, RawDecoder.Probe(bytes));
+        Assert.IsType<RawHeaderPlan.Whole>(RawSparse.HeaderPlan(bytes, loaded));
+
+        var rootOnly = TiffFile.ParseWith(bytes, new ParseOptions { FollowChildren = false }).Ifds[0];
+        int at = checked((int)rootOnly.Get(Tags.SubIfds)!.Offset);
+        uint first = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(at));
+        for (var i = 1; i < 1025; i++)
+            System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(at + i * 4), first);
+        Assert.IsType<RawHeaderPlan.Ready>(RawSparse.HeaderPlan(bytes, loaded));
     }
 
     [Fact]

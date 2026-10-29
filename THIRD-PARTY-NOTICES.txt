@@ -33,9 +33,13 @@ LightCraft（RAW 解碼、相機色彩、色調及分段曲線） MIT OR Apache-
   Copyright (c) 2026 ArtCraft Team and the LightCraft contributors。src/FilmBatch.Raw 與 src/FilmBatch.Engine/Imaging/Raw
   為釘選 commit f34c7a8a89e0d1bade0a6889185f40acecc84a9f 的 C# 移植（已修改；各檔檔頭標示上游路徑）。
   src/FilmBatch.Engine/Imaging/Raw/Profiles/*.json 搬移自上游 assets/camera-profiles/ 與 assets/camera-tone/：
-  相機描述檔由 Harald Hoyer（ILCE-7M4）、Michael Anderson（@endthestart；NIKON Z 6II、Z 8、D5300）與
-  LightCraft contributors（ILCA-99M2 樣張 @PiMinusMax、ILCE-7CR 樣張 @AlexChambers、X-H2S／X-T4 樣張
-  Sebastian Pfluegelmeier）擬合；sony-dro-off.json 由 LightCraft contributors 以 raw.pixls.us CC0 樣張擬合。
+  相機描述檔由 Harald Hoyer（ILCE-7M4）、Michael Anderson（@endthestart；NIKON Z 6II、Z 8、D5300）、
+  Yule (Brian) Wang（@peaperfish；ILCE-7RM5）與 LightCraft contributors（ILCA-99M2 樣張 @PiMinusMax、
+  ILCE-7CR 樣張 @AlexChambers、X-H2S／X-T4 樣張 Sebastian Pfluegelmeier）擬合；ILCE-7RM5 描述檔取自
+  LightCraft commit 77c0a6adfa7db6e4f79b80843c0c578e5f16dee1。sony-dro-off.json 由 LightCraft contributors
+  以 raw.pixls.us CC0 樣張擬合。
+  RAW TIFF、稀疏讀取、CR3 預覽、Mamiya strip、OpcodeList3、有損 JPEG 與 AHD 裁切的部分修正另參考
+  LightCraft commit 77c0a6adfa7db6e4f79b80843c0c578e5f16dee1；既有 RAW oracle pin 未變。
   部分修正另移植自 v0.13.0（23e181283cb448205d865e8cd288b56afe987986）：Canon CRX coded width、
   Fujifilm plain-radius 鏡頭插值；不是整體升版。Core/Curves/ToneCurveSet.cs 與 GPU tone_curves.wgsl 的
   分段曲線、單調化及飽和度修正改寫自 crates/pipeline/src/finish.rs；控制點沿用 FilmBatch 的 ToneCurve。

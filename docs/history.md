@@ -453,7 +453,7 @@ Apple M3／Metal 原生 MainWindow 實際操作文字預設、多選一次復原
 
 HSL／底片集中回歸 110 passed／0 skipped／0 failed；完整 solution 為 Raw 656 passed／293 skipped、Core 877 passed／28 skipped、App 400 passed／0 skipped，全部 0 failed。略過限外部 RAW／oracle／工具資料缺席及 Windows 專用案例，HSL 的 GPU 比對未略過；Naga 30.0.1 驗證全部 44 個嵌入 WGSL 通過。最初兩項 CPU RED、整合時遺漏測試來源宣告的編譯失敗與修正後結果分開保留。文字 driver、TRX、輸出比較與來源雜湊保存於 gitignored `artifacts/verification/2026-10-27-hsl-color.tar.gz`；不含照片、模型、點陣、第三方 profiles 或執行檔。未驗 Windows／Vulkan／iOS 原生操作，未重新封裝或公證發佈版，未 push。
 
-## CLF 序列與 DCP 相機描述檔（工作區實作，2026-10-29）
+## CLF 序列與 DCP 相機描述檔（2026-10-29）
 
 依 [CT-2／DCP-1 計畫](superpowers/plans/2026-10-28-composable-color-transforms.md) 在既有底片與 RAW 流程實作受限 CLF 序列、原檔內容定址、CPU／GPU 算圖及外部 DCP 顯影；未加入通用效果 graph、OCIO 產品相依或第三方 profile。新選擇的缺檔、損壞、機型／policy 不符會回報失敗，舊 LUT 的相容行為保留。白平衡候選使用選定 profile 重顯影；缺檔或來源被更換時顯示警告並丟棄舊提案，不建立 undo。
 
@@ -471,7 +471,9 @@ iOS 27.0 Simulator／CPU：原生 Files 匯入相同合成 DNG、CLF 與 DCP；�
 
 同日後續修正行動 I/O 狀態：成功回傳且狀態仍是原本的「Working…」才清除，保留操作結果、錯誤、取消及期間改寫的狀態。實際行動 View 回歸 5 passed；App suite 433 passed／0 skipped。隔離 iOS 27.0 Simulator 以合成 256×160 PNG 與預存專案重新啟動後，預覽及 1/1 縮圖完成，未再顯示「Working…」；以座標開啟原生 Photos 選取器並未選取即取消，畫面同樣清除該狀態、未建立新專案。原圖 SHA-256 不變，畫面保存在 gitignored `artifacts/verification/2026-10-29-mobile-status/`。本次 `--artifacts-path` 建置回報成功，卻將 app 中繼資料與連結輸出拆至不同路徑；bin bundle 安裝失敗，測試時合併同次輸出並逐一 ad-hoc 簽署 runtime dylib 後才可啟動。此畫面證據不驗證原始封裝、實機或正式簽章；Xcode 版本檢查仍以實驗性參數覆寫。
 
-Windows DX12、實體 iOS、合法相機 RAW／profile 的端到端比較、維護者／法律審查與其他計畫 gates 仍待完成；這些實作和合成證據**不是發佈驗收**。沒有授權 commit、push、發佈或公證。
+Windows DX12、實體 iOS、合法相機 RAW／profile 的端到端比較、維護者／法律審查與其他計畫 gates 仍待完成；這些實作和合成證據**不是發佈驗收**。上述驗證當時沒有授權 commit、push、發佈或公證。
+
+後續依使用者要求將既有 CLF／DCP 索引快照以 `ea36f2e` 提交並推送至 `dev-ai-denoising`。該快照另在隔離來源執行完整 solution：App 433 passed／0 skipped、Core 1296 passed／28 skipped、RAW 782 passed／293 skipped，皆 0 failed；提交不代表上述發佈 gates 已完成。
 
 ## iOS Simulator 產物路徑調查（2026-10-29）
 
@@ -486,6 +488,53 @@ Windows DX12、實體 iOS、合法相機 RAW／profile 的端到端比較、維�
 相同工具鏈另用來源與 `--artifacts-path` 同為實體 `/private/var/...` 的隔離 Release build，0 warnings／0 errors；原始 bin app 有 arm64 主執行檔，通過本機簽章檢查並可安裝、啟動到編輯器。重新安裝後此 simulator 的資料容器路徑改變：合成專案檔仍在新容器，但已存 `last_folder` 仍指向舊容器，畫面未自動重開專案；這是另一項待處理問題，不等於資料遺失，亦不推論實機升級。此比較不驗證真機 IPA 或正式簽章。
 
 行動狀態修正以 `61d7c5a` 獨立提交。以原 HEAD 加該修正的隔離候選驗證：五項行動 View 回歸通過；首次完整 App suite 在 iOS 建置並行、另含測試用 `InternalsVisibleTo` 時為 407 passed／1 個 renderer-idle 逾時。移除該無關組件可見性設定、停止並行建置後重跑為 408 passed／0 skipped／0 failed；沒有納入工作區 CLF／DCP 實作。並行負載是可能因素，未證實為逾時原因；不隱藏首次失敗。
+
+## DCP 機型與失敗復原（2026-10-29）
+
+使用者回報手動載入 DCP 無法使用，實際失敗階段、素材與平台未確認，未讀取使用者照片或 profile。合成非 DNG 重現 `Make=NIKON CORPORATION`、`Model=NIKON D5300` 與 DCP 機型 `NIKON D5300` 的誤拒；非 DNG 比對改接受 Make 全名或第一詞，仍核對完整型號並保留 policy 限制。DNG 仍比對 `UniqueCameraModel`。
+
+合成 DNG／不符機型 DCP 另重現來源失敗後 RAW 控制項隱藏及 Undo 無法重載；修正為在畫布顯示錯誤，保留 RAW 候選檔的 profile 控制項，選 `auto`／其他 profile 或 Undo 改變來源選項時重新載入，不自動替換選定 profile。六個合成機型案例及三個失敗復原案例通過；修正前原有四個機型案例中兩個及三個復原案例失敗。
+
+macOS 原生桌面以隔離合成 DNG 和程式建立的 DCP 驗證：畫面顯示機型錯誤與選擇器；驅動程式設定實際 ComboBox 的 `SelectedItem` 為 `auto`、另呼叫 Undo 命令，兩者均恢復預覽，合成原檔 SHA-256 不變。未以原生滑鼠操作選單或 picker，也未讀取使用者素材。完整 solution：App 436 passed／0 skipped、Core 1302 passed／28 skipped、RAW 782 passed／293 skipped；0 failed。這些結果不證明使用者實際檔案的失敗原因、真實相機相容性、Windows DX12 或 iOS 實機行為。
+
+從當前工作區（含既有未提交的 CLF／DCP 等修改）複製隔離來源，以專案 macOS 封裝腳本建立 `dist/osx-arm64-dcp-fix.oqupqrfq/` 測試版，不覆寫既有 `dist/osx-arm64`。複製後的 app 通過 deep/strict 簽章檢查及實際 `--smoke`，目視預覽、直方圖、縮圖與匯出；CLI `gpu-info` 顯示 Apple M3／Metal。app 為本機 ad-hoc 簽章、最低 macOS 14.0，未公證，不是正式發佈驗收。封裝 smoke 使用合成範例，不是 DCP picker／真實相機驗收。
+
+後續檢查以解碼入場閘門重現另一競態：DCP A 已失敗，切到 B 後在 B 完成前 Undo 回 A；B 失敗因選項不符被丟棄，畫面卻一直忙碌。修正前回歸等待逾時；修正後目前照片／世代的過期失敗會按目前 RAW 選項重新載入，並恢復 A 的錯誤而不自動退回 `auto`。上述 `osx-arm64-dcp-fix.oqupqrfq` 先於此修正建立，不能視為包含競態修復。
+
+競態修正後第一次完整 solution：App 436 passed／1 failed（`ZoomWindowTests.Pan_across_cell_requests_new_window` 等待窗口更新 30 秒逾時）、Core 1302 passed／28 skipped、RAW 782 passed／293 skipped。該平移測試單獨執行通過；它使用一般 TIFF，未進入本次修改的 DCP 過期失敗分支，但首次逾時原因未確認，不將首次結果視為通過。
+
+不並行其他建置時 App suite 重跑為 437 passed／0 skipped／0 failed；之後為競態測試補強「B 真的開始載入」的前提並再次單獨通過。macOS 原生桌面使用隔離合成 DNG 和兩個不同的合成 DCP，以實際 ComboBox 設定選項、以解碼閘門延後 B、呼叫 Undo；畫面恢復 A 的機型錯誤與選擇器，選 `auto` 後顯示預覽，原圖 SHA-256 不變。未使用原生 picker、使用者檔案或實機 iOS。
+
+後續以同一閘門確認縮圖也會短暫顯示已撤銷 B 的錯誤：修正前回歸擷取到過期錯誤；修正後縮圖載入失敗若 RAW 選項已改變，不發布舊錯誤並重新排入目前設定。聚焦 preview／thumbnail 回歸 13 passed；原生 macOS CPU 桌面以合成 DNG、機型不符 A 與被刪除的隔離 B profile 驗證 Undo 後未出現 B 的縮圖錯誤、恢復 A 錯誤，再選 `auto` 顯示預覽，原圖 SHA-256 不變。驅動程式操作 ComboBox／Undo，不等同原生 picker 或使用者素材驗收。先前 `dist/osx-arm64-dcp-race-fix.9u4Xv9BI` 測試版不含這項縮圖修正。
+
+縮圖修正後完整 solution 在不並行建置下通過：App 437 passed／0 skipped、Core 1302 passed／28 skipped、RAW 782 passed／293 skipped，皆 0 failed；不抹去前述較早的平移測試逾時。
+
+以包含本次縮圖修正的工作區快照重新封裝 `dist/osx-arm64-dcp-recovery.6OpgyYG5/`，未覆寫既有版本。複製後 app 通過 deep／strict 簽章檢查與 `--smoke`，包含 Metal 預覽、縮圖、復原與 16-bit 匯出；CLI `gpu-info` 顯示 Apple M3／Metal。此包為最低 macOS 14.0 的 ad-hoc 本機測試版，未公證，且包含工作區原有未提交的 CLF／DCP 修改；通用 smoke 不代表真實 DCP／picker 或正式發佈驗收。
+
+後續以 `7929e20` 獨立提交並推送此 DCP 修復；該索引快照的聚焦回歸為 App 15 passed／0 skipped、Core 29 passed／0 skipped，均 0 failed。
+
+## LightCraft v0.15 與 main 差異移植（2026-10-29）
+
+比較 v0.14.0 `03c88c166c054c009db2a47187d59991f6232b85`、前次調查 main `bb08a697a41b2561a54f1b740245119503b24758`、v0.15.0 `e381c1ae6b2006ce627b243fe41697ce0d9608e0` 與 main `77c0a6adfa7db6e4f79b80843c0c578e5f16dee1`；RAW 比對 oracle 仍釘選 `f34c7a8a89e0d1bade0a6889185f40acecc84a9f`。上游 Sony ILCE-7RM5 聚合相機 profile 已依獨立授權與署名加入；只在既有相機 JPEG 擬合條件成立時使用，非原廠外觀等價。
+
+採用可移植的 RAW 防護與 CPU AHD 裁切：含 gain-map 大數計算、Deflate tile 上限及可見樣本檢查、TIFF tile padding 與分組解碼、缺失 strip byte counts 的排序推算、稀疏 IFD 待訪上限、有損 JPEG 樣本上限與單區塊預覽檢查。CPU AHD 在無 List3 與無 GPU 加速器時只計算裁切區；其餘路徑保留原順序。檢查曾重現不完整 Deflate 靜默填零、過大 tile 配置與稀疏佇列超限；後續針對 AHD 快路徑漏掉原有全圖尺寸限制的合成邊界先失敗，再補回檢查。
+
+LightCraft 的 HEIF `heic-rs` 防護、Rust JPEG encoder 和 wgpu 傳輸優化針對其自身相依與 API；FilmBatch 使用既有 Magick.NET／ImageIO 與 WebGPUSharp，不宣稱直接移植或驗證相同防護。上游 WiX 安裝預設不適用 FilmBatch ZIP。上游 opt-in 啟動更新檢查及自動更新尚未移植：公開 FilmBatch release API 當日回傳空清單，且沒有已確認的簽章驗證、安裝與回滾契約；不能指向 LightCraft 發佈來源代替。
+
+Apple M3／Metal 使用隔離合成 Bayer DNG 檢查 CPU 裁切與全圖像素一致、實際 GPU 裁切一致；CLI 實際轉存 Deflate／有損 DNG，輸出 800×600 JPEG 與 16-bit ProPhoto PNG，ICC 與原始檔 SHA-256 符合預期。200,000 條反向排列的合成 strip 缺長度案例一次推算全部正確；單次時間不代表正式效能。未使用使用者照片或第三方相機 profile；完整外部語料／oracle、Windows DX12、iOS 與正式發佈未驗證。
+
+另以先失敗的合成案例補齊 Mamiya 短 strip、CR3 重疊預覽掃描與 List3 重複全圖運算限制。List3 超限改為回報錯誤而不是照上游靜默略過；PRVW／THMB 候選大於剩餘掃描預算則略過。聚焦 RAW 34 passed／1 外部語料 skipped，Core 幾何與相機統計 37 passed。實際 CLI 對八個 List3 運算輸出 64×48 PNG；九個運算以 exit 3 報錯、不產生 PNG，兩個合成來源 SHA-256 不變。首次聚焦建置因缺少命名空間引用失敗，補上後通過。
+
+同一限制另套用於無自有矩陣、必須擬合起始色彩的 RAW 轉 DNG 路徑；修正前合成九項鏡頭鏈未報錯，修正後先拒絕且保留原始色彩與運算碼。擁有自有矩陣、只保留而不執行運算碼的轉存路徑不因此套用限制。轉存／幾何／相機色彩聚焦回歸 54 passed。
+
+最終來源 solution：App 437 passed／0 skipped、Core 1305 passed／28 skipped、RAW 805 passed／293 skipped，皆 0 failed；該執行未設定 `FILMBATCH_RAW_SAMPLES`／`FILMBATCH_RAW_ORACLE`，Windows 專屬案例亦未在 Mac 執行。
+
+本次分批提交前另以隔離索引快照執行相關回歸：RAW 156 passed／3 外部語料 skipped、Core 70 passed／0 skipped，皆 0 failed。
+
+另下載 [raw.pixls.us 的 CC0 樣本 6239](https://raw.pixls.us/getfile.php/6239/nice/Sony%20-%20ILCE-7RM5%20-%2014bit%2014bit%20compressed%20%283%3A2%29.ARW)，SHA-256 `aacaf9ad3f63c3e3b9fe2d3dd9759894e4f374254b7c1a081c26463936892c14` 與來源目錄相符。此 ILCE-7RM5 影像解碼為 6304×4180、預設裁切 6240×4160；內嵌 JPEG 擬合接受 220 張相片／790553 樣本所建的相機統計，實際選用 hue/saturation 表。Mac CPU CLI 輸出 1000×667 的 sRGB PNG，目視可讀且來源雜湊不變；此單張不代表其他拍攝條件或原廠外觀一致。
+
+以當前工作區的隔離來源建立 `dist/osx-arm64-lightcraft.CfnoXf0Y/`，未覆寫舊版；複製後通過 `codesign --verify --deep --strict`，最低 macOS 14.0，本機 ad-hoc 簽章、未公證。封裝 CLI 用 CPU 及 Apple M3／Metal 加 RAW GPU 分別匯出上述 CC0 樣本，皆為可讀的 1000×667 sRGB PNG；CPU 對八／九項 List3 匯出分別成功及以 exit 3 拒絕，後者不留 PNG，來源雜湊不變。封裝腳本的原生 `--smoke` 及加入 `caffeinate` 的直接重試先以 Avalonia RenderTimer `-6661` 中止；事後 CoreGraphics 檢查回報螢幕鎖定。解鎖後，對交付的 app 重跑原生 `--smoke`，exit 0 且 `SMOKE PASS`；已目視預覽、直方圖、縮圖、匯出控制及右鍵選單，並實測 Metal 算圖、參數復原、16-bit 匯出、ICC 與來源不改寫。此合成資料 smoke 不代表其他平台、真實相機相容性或正式發佈驗收。
+
 
 ## 如何新增歷史列
 

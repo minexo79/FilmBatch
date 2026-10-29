@@ -142,6 +142,49 @@ public sealed class RawPreviewTests
             _ = RawPreview.EmbeddedPreview(cr3.ToArray()[..n]);
     }
 
+    [Fact]
+    public void Cr3OversizedMarkerWalkDoesNotPreventSmallerPreview()
+    {
+        const int segments = 129;
+        var ending = FakeJpeg(10);
+        var large = new byte[2 + segments * 65537 + ending.Length - 2];
+        large[0] = 0xff; large[1] = 0xd8;
+        for (int i = 0; i < segments; i++)
+        {
+            int at = 2 + i * 65537;
+            large[at] = 0xff; large[at + 1] = 0xe1;
+            large[at + 2] = 0xff; large[at + 3] = 0xff;
+        }
+        ending.AsSpan(2).CopyTo(large.AsSpan(2 + segments * 65537));
+        var small = FakeJpeg(300);
+        var file = new List<byte>([0, 0, 0, 0x18, .. "ftypcrx "u8, 0, 0, 0, 1, .. "crx isom"u8]);
+        static void AddBox(List<byte> file, string tag, byte[] jpeg)
+        {
+            var size = (uint)(24 + jpeg.Length);
+            file.AddRange([(byte)(size >> 24), (byte)(size >> 16), (byte)(size >> 8), (byte)size]);
+            file.AddRange(System.Text.Encoding.ASCII.GetBytes(tag));
+            file.AddRange(new byte[12]);
+            var length = (uint)jpeg.Length;
+            file.AddRange([(byte)(length >> 24), (byte)(length >> 16), (byte)(length >> 8), (byte)length]);
+            file.AddRange(jpeg);
+        }
+        AddBox(file, "PRVW", large);
+        AddBox(file, "THMB", small);
+        Assert.Equal(small, RawPreview.EmbeddedPreview(file.ToArray()));
+    }
+
+    [Fact]
+    public void MultiStripJpegIsNotUsedAsAStandalonePreview()
+    {
+        var jpeg = FakeJpeg(300);
+        var ifd = new IfdBuilder()
+            .Set(Tags.Compression, new TiffValue.Short([6]))
+            .Set(Tags.ImageWidth, new TiffValue.Long([1]))
+            .Set(Tags.ImageLength, new TiffValue.Long([2]))
+            .SetImage(new ImageData.Strips(1, [jpeg, jpeg]));
+        Assert.Null(RawPreview.EmbeddedPreview(new TiffWriter().Write([ifd])));
+    }
+
     /// <summary>像 FakeJpeg，框頭宣告 w×h、nc 分量的 JPEG。</summary>
     private static byte[] SizedJpeg(ushort w, ushort h, byte nc, int n)
     {

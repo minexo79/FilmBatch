@@ -127,6 +127,18 @@ public sealed class RawGeometryParityTests
         foreach (var pixel in result.Data) Near(.4, pixel);
         foreach (var pixel in input.Data) Near(.2, pixel);
     }
+
+    [Fact]
+    public void ExcessiveList3LensChainIsRejectedOnFullAndBinnedPaths()
+    {
+        var image = new RgbImage(2, 2, Enumerable.Repeat(.2f, 12).ToArray());
+        var lens = new FixVignetteRadial([0, 0, 0, 0, 0], [.5, .5]);
+        var ops = Enumerable.Repeat<Opcode>(lens, 9).ToArray();
+        Assert.Equal(RawErrorKind.Limit, Assert.Throws<RawException>(() => RawSourceGeometry.ApplyList3(ops, image)).Kind);
+        Assert.Equal(RawErrorKind.Limit, Assert.Throws<RawException>(() =>
+            RawSourceGeometry.ApplyLensChainBinned(ops, image, new PixelRect(0, 0, 4, 4), 2, 4, 4)).Kind);
+    }
+
     [Fact]
     public void CameraFitUsesFullWr2ChainWithoutRetainingMutableCoefficients()
     {

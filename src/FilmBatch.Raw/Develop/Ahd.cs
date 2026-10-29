@@ -14,6 +14,22 @@ public static partial class Demosaic
         var (w, h) = (m.W, m.H);
         if (w > 0 && h > 0 && AhdGpu is { } accelerator && accelerator(m.Data, w, h, m.Cfa) is { } accelerated)
             return new RgbImage(w, h, accelerated);
+        return AhdCpu(m, new PixelRect(0, 0, w, h));
+    }
+
+    // Only the CPU path can crop before demosaicing; an installed accelerator must retain
+    // the existing full-image admission and fallback behavior.
+    internal static RgbImage? AhdWindow(Normalized n, PixelRect window)
+    {
+        if (AhdGpu is not null || n.Cpp != 1 || n.Cfa is not { Valid: true, IsBayer: true } cfa || n.Width < 4 || n.Height < 4)
+            return null;
+        CheckSize(n.Width, n.Height, 3);
+        return AhdCpu(new Mosaic(n.Width, n.Height, n.Data, cfa), window);
+    }
+
+    private static RgbImage AhdCpu(Mosaic m, PixelRect window)
+    {
+        var (w, h) = (window.Width, window.Height);
         var outp = new RgbImage(w, h);
         if (w == 0 || h == 0) return outp;
         // Flattened tile grid with per-worker scratch: rented once per worker, reused
@@ -29,7 +45,7 @@ public static partial class Demosaic
                 var x0 = tx * Tile; var y0 = ty * Tile;
                 var tw = Math.Min(Tile, w - x0); var th = Math.Min(Tile, h - y0);
                 scratch.Ensure(tw, th);
-                var pixels = AhdTile(m, x0, y0, tw, th, scratch);
+                var pixels = AhdTile(m, window.X + x0, window.Y + y0, tw, th, scratch);
                 try
                 {
                     for (var y = 0; y < th; y++) for (var x = 0; x < tw; x++)

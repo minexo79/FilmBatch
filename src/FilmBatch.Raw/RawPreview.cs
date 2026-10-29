@@ -172,8 +172,7 @@ internal static class RawPreview
         }
         if (ifd.U16(Tags.Compression) is 6 or 7 or 34892 && TryImage(ifd, out var jpeg))
         {
-            var chunks = jpeg.Chunks(data.Length);
-            if (chunks.Count == 1 && TiffImage.ChunkBytes(data, chunks[0]) is { } s)
+            if (jpeg.SingleChunk(data.Length) is { } chunk && TiffImage.ChunkBytes(data, chunk) is { } s)
                 found.Add(s);
         }
         // 已渲染（RGB 或灰階，非 CFA/LinearRaw/mask）的單磚/單條 JPEG XL 預覽。
@@ -181,8 +180,7 @@ internal static class RawPreview
             && ifd.U16(Tags.Photometric) is TiffPhotometric.BlackIsZero or TiffPhotometric.Rgb
             && TryImage(ifd, out var xinfo))
         {
-            var chunks = xinfo.Chunks(data.Length);
-            if (chunks.Count == 1 && TiffImage.ChunkBytes(data, chunks[0]) is { } js && IsJxl(js.Span))
+            if (xinfo.SingleChunk(data.Length) is { } chunk && TiffImage.ChunkBytes(data, chunk) is { } js && IsJxl(js.Span))
                 found.Add(js);
         }
 
@@ -385,6 +383,8 @@ internal static class RawPreview
     {
         var b = bytes.Span;
         ReadOnlyMemory<byte>? best = null;
+        const long maxWalk = 8L << 20;
+        long walked = 0;
         foreach (var tag in (byte[][])["PRVW"u8.ToArray(), "THMB"u8.ToArray()])
         {
             var from = 0;
@@ -401,6 +401,9 @@ internal static class RawPreview
                 if (size < 0 || len < 4) continue;
                 var j = (long)start + 24;
                 if (j + len > Math.Max(start + size, j) || j + len > b.Length) continue;
+                // Candidates can overlap; bound their combined marker-walk work.
+                if (len > maxWalk - walked) continue;
+                walked += len;
                 var jpeg = bytes.Slice((int)j, (int)len);
                 if (IsDctJpeg(jpeg.Span))
                 {

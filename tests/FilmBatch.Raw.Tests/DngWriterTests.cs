@@ -134,6 +134,28 @@ public sealed class DngWriterTests
         Assert.Equal(((RawData.U16)raw.Data).Samples, ((RawData.U16)back.Data).Samples);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void OversizedDeflateTileIsClampedAndPreservesSamples(bool floatingPoint)
+    {
+        const int w = 8, h = 6;
+        var raw = CfaRaw(w, h, Ramp(w, h));
+        if (floatingPoint)
+        {
+            raw.Data = new RawData.F32(Enumerable.Range(0, w * h).Select(i => i / 64f).ToArray());
+            raw.White = [1f];
+        }
+        var oversized = DngWriter.WriteDng(raw, new DngWriteOptions { Compression = new DngCompression.Deflate(uint.MaxValue, false) });
+        var bounded = DngWriter.WriteDng(raw, new DngWriteOptions { Compression = new DngCompression.Deflate(2048, false) });
+        Assert.Equal(bounded, oversized);
+        var decoded = Decoded(oversized);
+        if (floatingPoint)
+            Assert.Equal(((RawData.F32)raw.Data).Samples, Assert.IsType<RawData.F32>(decoded.Data).Samples);
+        else
+            Assert.Equal(((RawData.U16)raw.Data).Samples, Assert.IsType<RawData.U16>(decoded.Data).Samples);
+    }
+
     [Fact]
     public void DeflateHalf_RoundtripPreservesHalfPrecision()
     {

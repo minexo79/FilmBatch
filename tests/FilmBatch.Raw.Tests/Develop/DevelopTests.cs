@@ -65,6 +65,24 @@ public sealed class DevelopTests
         Assert.False(raw.CanBin(2));
     }
 
+    [Theory]
+    [InlineData("RGGB", 3, 7, 201, 155, 1f, 155)]
+    [InlineData("GRBG", 127, 63, 133, 131, 1f, 131)]
+    [InlineData("BGGR", 0, 0, 260, 194, 1f, 194)]
+    [InlineData("GBRG", 1, 3, 100, 75, 2f, 150)]
+    public void AhdCropMatchesFullDemosaicExactly(string pattern, int x, int y, int width, int height, float pixelAspect, int outputHeight)
+    {
+        var scene = Scene(260, 194, (sx, sy) =>
+            ((sx % 43 + sy % 17) / 90f, (sx % 31 + sy % 23) / 85f, (sx % 19 + sy % 37) / 88f));
+        var raw = Raw(Demosaic.MosaicFromRgb(scene, Cfa.Bayer(pattern)!));
+        raw.Crop = new(x, y, width, height);
+        raw.PixelAspect = pixelAspect;
+        var expected = raw.FinishDemosaiced(Demosaic.Run(raw.Normalized(), DemosaicMethod.Ahd));
+        var actual = raw.Develop(DemosaicMethod.Ahd);
+        Assert.Equal((width, outputHeight), (actual.Width, actual.Height));
+        Assert.Equal(expected.Data, actual.Data);
+    }
+
     [Fact]
     public void InvalidActiveAreaIsRawExceptionBeforeIndexing()
     {

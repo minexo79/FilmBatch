@@ -101,47 +101,71 @@ internal static class TiffRaw
         var chunks = info.Chunks(data.Length);
         bool planar = info.Planar == 2 && cpp > 1;
         int ccpp = planar ? 1 : cpp;
+        // Cap total nominal tile padding before allocating any decoded chunks.
+        long remaining = (long)total * 4 + (1 << 24);
+        foreach (var c in chunks)
+        {
+            ulong area = (ulong)c.Width * c.Height;
+            if (area > (ulong)remaining / (uint)ccpp)
+                throw RawException.Corrupt("the tile grid is much larger than the image");
+            remaining -= (long)(area * (uint)ccpp);
+        }
         ushort[] outU16 = isFloat ? [] : new ushort[total];
         float[] outF32 = isFloat ? new float[total] : [];
-        // 平行解碼各區塊（結果與排程無關），再依名目位置合併
-        var decoded = new (TiffChunk Chunk, ushort[]? U16, float[]? F32, bool IsFloat, RawException? Error)[chunks.Count];
-        Parallel.For(0, chunks.Count, RawProcessingScope.Options, i =>
+        long groupSamples = Math.Max(total / 4L, 1 << 20);
+        for (int start = 0; start < chunks.Count;)
         {
-            try
+            int end = start;
+            long taken = 0;
+            while (end < chunks.Count)
             {
-                var px = DecodeChunk(data, info, chunks[i], order, packing, ccpp, bits, isFloat);
-                decoded[i] = px.IsFloat
-                    ? (chunks[i], null, px.F32, true, null)
-                    : (chunks[i], px.U16, null, false, null);
+                var c = chunks[end];
+                long size = (long)c.Width * c.Height * ccpp;
+                if (taken > 0 && size > groupSamples - taken) break;
+                taken += size;
+                end++;
             }
-            catch (RawException e) { decoded[i] = (chunks[i], null, null, isFloat, e); }
-        });
-        foreach (var (c, u16, f32, chunkFloat, error) in decoded)
-        {
-            // 無法解碼的區塊不是部分影像：整個檔案只剩預覽
-            if (error is not null) throw error;
-            long cw = c.Width, ch = c.Height, x0 = c.X, y0 = c.Y;
-            if (x0 >= w || y0 >= h) continue;
-            long copyW = Math.Min(cw, w - x0), copyH = Math.Min(ch, h - y0);
-            for (long y = 0; y < copyH; y++)
-                for (long x = 0; x < copyW; x++)
-                    for (var s = 0; s < ccpp; s++)
-                    {
-                        long src = (y * cw + x) * ccpp + s;
-                        int dstS = planar ? c.Plane : s;
-                        if (dstS >= cpp) continue;
-                        long dst = ((y0 + y) * w + x0 + x) * cpp + dstS;
-                        if (chunkFloat)
+            // Decode one bounded group in parallel, then copy it in grid order.
+            var decoded = new (TiffChunk Chunk, ushort[]? U16, float[]? F32, bool IsFloat, RawException? Error)[end - start];
+            Parallel.For(start, end, RawProcessingScope.Options, i =>
+            {
+                try
+                {
+                    var px = DecodeChunk(data, info, chunks[i], order, packing, ccpp, bits, isFloat);
+                    decoded[i - start] = px.IsFloat
+                        ? (chunks[i], null, px.F32, true, null)
+                        : (chunks[i], px.U16, null, false, null);
+                }
+                catch (RawException e) { decoded[i - start] = (chunks[i], null, null, isFloat, e); }
+            });
+            foreach (var (c, u16, f32, chunkFloat, error) in decoded)
+            {
+                // 無法解碼的區塊不是部分影像：整個檔案只剩預覽
+                if (error is not null) throw error;
+                long cw = c.Width, ch = c.Height, x0 = c.X, y0 = c.Y;
+                if (x0 >= w || y0 >= h) continue;
+                long copyW = Math.Min(cw, w - x0), copyH = Math.Min(ch, h - y0);
+                for (long y = 0; y < copyH; y++)
+                    for (long x = 0; x < copyW; x++)
+                        for (var s = 0; s < ccpp; s++)
                         {
-                            if ((ulong)dst < (ulong)outF32.Length && (ulong)src < (ulong)f32!.Length)
-                                outF32[(int)dst] = f32[(int)src];
+                            long src = (y * cw + x) * ccpp + s;
+                            int dstS = planar ? c.Plane : s;
+                            if (dstS >= cpp) continue;
+                            long dst = ((y0 + y) * w + x0 + x) * cpp + dstS;
+                            if (chunkFloat)
+                            {
+                                if ((ulong)dst < (ulong)outF32.Length && (ulong)src < (ulong)f32!.Length)
+                                    outF32[(int)dst] = f32[(int)src];
+                            }
+                            else
+                            {
+                                if ((ulong)dst < (ulong)outU16.Length && (ulong)src < (ulong)u16!.Length)
+                                    outU16[(int)dst] = u16[(int)src];
+                            }
                         }
-                        else
-                        {
-                            if ((ulong)dst < (ulong)outU16.Length && (ulong)src < (ulong)u16!.Length)
-                                outU16[(int)dst] = u16[(int)src];
-                        }
-                    }
+            }
+            start = end;
         }
         return isFloat ? new RawData.F32(outF32) : new RawData.U16(outU16);
     }
@@ -198,8 +222,9 @@ internal static class TiffRaw
             {
                 // 失真 DNG：每區塊一個 8-bit baseline（DCT）JPEG
                 var (px, jw, jh, jc) = LossyJpeg(src, cpp);
-                var v = new ushort[n];
-                for (var y = 0; y < Math.Min(ch, jh); y++)
+                int rows = Math.Min(ch, jh);
+                var v = new ushort[(long)cw * Math.Max(rows, 1) * cpp];
+                for (var y = 0; y < rows; y++)
                     for (var x = 0; x < Math.Min(cw, jw); x++)
                         for (var k = 0; k < cpp; k++)
                             v[(y * cw + x) * cpp + k] = px[(y * jw + x) * jc + Math.Min(k, jc - 1)];
@@ -208,13 +233,12 @@ internal static class TiffRaw
             case TiffCompression.AdobeDeflate:
             case TiffCompression.Deflate:
             {
-                int bytesPer = isFloat ? (int)((bits + 7) / 8) : 0;
-                long rowBytes = isFloat ? (long)cw * cpp * bytesPer : ((long)cw * cpp * bits + 7) / 8;
-                long limit;
-                try { limit = checked(rowBytes * ch); }
-                catch (OverflowException) { throw RawException.Limit("chunk too large"); }
+                long rowBytes = PackedRowBytes((long)cw * cpp, bits, packing, isFloat);
+                long limit = rowBytes * ch;
                 if (limit > int.MaxValue)
                     throw RawException.Limit("chunk too large");
+                if ((long)src.Length * 2048 < limit)
+                    throw RawException.Corrupt($"deflated chunk of {limit} bytes has only {src.Length} compressed bytes");
                 byte[] raw;
                 try
                 {
@@ -227,6 +251,9 @@ internal static class TiffRaw
                     _ = UnpackChunk(ReadOnlySpan<byte>.Empty, order, packing, 1, 1, cpp, bits, isFloat, info.Predictor);
                     throw;
                 }
+                long visible = vh == 0 ? 0 : rowBytes * (vh - 1) + PackedRowBytes((long)vw * cpp, bits, packing, isFloat);
+                if (raw.Length < visible)
+                    throw RawException.Corrupt($"deflated chunk has {raw.Length} bytes, expected at least {visible} for visible samples");
                 return UnpackChunk(raw, order, packing, cw, ch, cpp, bits, isFloat, info.Predictor);
             }
             case TiffCompression.JpegXl:
@@ -234,6 +261,15 @@ internal static class TiffRaw
             default:
                 throw RawException.Unsupported($"TIFF compression {info.Compression}");
         }
+    }
+
+    private static long PackedRowBytes(long samples, uint bits, Packing packing, bool isFloat)
+    {
+        if (isFloat) return samples * ((bits + 7) / 8);
+        if (bits == 8) return samples;
+        if (bits == 16 || packing == Packing.Word16) return samples * 2;
+        long count = samples * bits;
+        return packing == Packing.Words32Msb ? ((count + 31) / 32) * 4 : (count + 7) / 8;
     }
 
     // JPEG XL DNG（上游 jxl feature）：真解碼在 Raw/Codecs/JpegXl.cs（libjxl 原生邊界）。
@@ -249,7 +285,7 @@ internal static class TiffRaw
     /// <summary>解一個 baseline JPEG 區塊為 8-bit 樣本（lightcraft <c>lossy_jpeg</c>）。</summary>
     internal static (byte[] Samples, int Width, int Height, int Channels) LossyJpeg(ReadOnlyMemory<byte> src, int cpp)
     {
-        var (samples, w, h, c) = Jpeg8.Decode(src.Span, cpp == 1 ? 1 : 3);
+        var (samples, w, h, c) = Jpeg8.Decode(src.Span, cpp == 1 ? 1 : 3, 1 << 26);
         int want = cpp == 1 ? 1 : 3;
         if (w == 0 || h == 0 || samples.Length < (long)w * h * c)
             throw RawException.Corrupt("lossy JPEG tile: short output");

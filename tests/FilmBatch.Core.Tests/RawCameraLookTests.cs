@@ -480,7 +480,7 @@ public sealed class RawCameraLookTests
     }
 
     [Fact]
-    public void BundledProfiles_AllEightLoadAndValidate()
+    public void BundledProfiles_AllLoadAndValidate()
     {
         foreach (var model in CameraProfiles.BundledModels)
         {
@@ -493,6 +493,22 @@ public sealed class RawCameraLookTests
         Assert.Null(CameraProfiles.Get("NO SUCH MODEL XYZ"));
         Assert.Equal("ILCE-7M4.json", CameraProfiles.FileName("ILCE-7M4"));
         Assert.Equal("NIKON_Z_6_2.json", CameraProfiles.FileName("NIKON Z 6_2"));
+    }
+
+    [Fact]
+    public void SonyA7RV_ProfileTransformsColourWithItsCalibratedMatrixAndHueMap()
+    {
+        var profile = CameraProfiles.Get("ILCE-7RM5");
+        Assert.NotNull(profile);
+        var rgb = profile.Matrix().Apply(0.25, 0.5, 0.75);
+        Assert.Equal(0.20540661006533778, rgb.X, 12);
+        Assert.Equal(0.4944995424948724, rgb.Y, 12);
+        Assert.Equal(1.01043834273408, rgb.Z, 12);
+        Assert.NotNull(profile.HueSatTable);
+        var (shift, saturation, value) = profile.HueSatTable.Lookup(0, 0.25f, 0);
+        Assert.Equal(2.6575432f, shift, 5);
+        Assert.Equal(1.0169075f, saturation, 5);
+        Assert.Equal(1f, value);
     }
 
     [Fact]

@@ -78,6 +78,14 @@ public sealed class DemosaicTests
     }
 
     [Fact]
+    public void AhdWindowRejectsOversizedFullImageBeforeReadingSamples()
+    {
+        var n = new Normalized { Width = 100_000_000, Height = 4, Cpp = 1, Data = [0], Cfa = Cfa.Bayer("RGGB") };
+        var error = Assert.Throws<RawException>(() => Demosaic.AhdWindow(n, new PixelRect(0, 0, 2, 2)));
+        Assert.Equal(RawErrorKind.Limit, error.Kind);
+    }
+
+    [Fact]
     public void NonFiniteSamplesDoNotPanic()
     {
         var n = Demosaic.MosaicFromRgb(Edgy(24, 20), Cfa.Bayer("RGGB")!);

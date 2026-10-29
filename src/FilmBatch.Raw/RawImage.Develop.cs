@@ -55,7 +55,20 @@ public sealed partial class RawImage
     }
 
     /// <summary>完整的「RAW → 相機 RGB」：正規化、以 <paramref name="method"/> 去馬賽克、套用 OpcodeList3、預設裁切。</summary>
-    public RgbImage Develop(DemosaicMethod method) => FinishDemosaiced(Demosaic.Run(Normalized(), method));
+    public RgbImage Develop(DemosaicMethod method)
+    {
+        var normalized = Normalized();
+        if (Opcodes.List3.Count == 0 && method == DemosaicMethod.Ahd)
+        {
+            var crop = DevelopCrop(normalized.Width, normalized.Height);
+            if (Demosaic.AhdWindow(normalized, crop) is { } window)
+            {
+                var height = StretchedHeight(window.Height, PixelAspect);
+                return height == window.Height ? window : Resample.Resize(window, window.Width, height, ResampleFilter.Mitchell);
+            }
+        }
+        return FinishDemosaiced(Demosaic.Run(normalized, method));
+    }
 
     /// <summary>
     /// <see cref="Develop"/> 的最後幾步：對用其他方式從 <see cref="Normalized"/> 去馬賽克得到的相機 RGB

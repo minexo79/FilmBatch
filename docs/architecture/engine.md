@@ -48,6 +48,8 @@ RAW 來源保持未夾取的浮點線性 Rec.2020，`Rgba16` 只在原圖比較�
 
 選用外部 DCP 時，RAW 解碼依來源機型與 profile policy 驗證內容定址資產，在相機矩陣、白平衡、highlight 與 HueSat／Look 前建立獨立有效 profile；來源 gain map 保留。非線性 profile 的自訂 WB 會重新顯影，後段不得再套一次 WB。白平衡分析對候選以相同感光／幾何快照重算矩陣與色彩表，最多取 4096 個輸出樣本；無裁剪時只計算樣本所需的像素，裁剪的 highlight 重建仍需整張感光鄰域。來源內容被更換或 profile 缺失／機型不符時回報錯誤，不回退舊外觀。
 
+機型比對先正規化空白並忽略大小寫，仍要求完整相機型號相等：DNG 使用 `UniqueCameraModel`；非 DNG 以 EXIF `Make` 全名或第一個詞（廠商名稱）搭配 `Model`，已含該前綴時不重複加入。第一個詞支援 `NIKON CORPORATION`／`NIKON D5300` 這類廠商後綴差異，並不忽略型號或放寬非 DNG 的 profile policy。
+
 CLF 的 `WorkingLinear` 固定放在原 film 位置；`DisplayEncoded` 在顯示編碼後、基本顯示調整前，兩者擇一。包裝使用明確宣告的編碼，暖色／褪色與強度在線性 sRGB 混合，alpha 不變；取樣不解析 film 資產。實作與合成測試不代表所有 CLF、相機、平台或第三方外觀已驗證。
 
 | 階段 | 色彩空間 | 模組 |
@@ -146,6 +148,10 @@ Magick 與 Apple 編碼器依 `SourceImage.Encoding` 寫入匹配的 ICC，不�
 RAW 預覽擬合會先依 JPEG 的 ICC／EXIF／容器宣告決定色彩，只線性化一次，在線性光下縮放後轉到 Rec.2020。截斷代理像素以 NaN 排除；鄰域對比採 Rust `f32::min/max` 的略過 NaN 語意，避免連帶排除截斷像素周圍的有效樣本。X-Trans 穩健平均則沿用 Rust `total_cmp` 的負數與正負零排序。
 
 GPU AHD 的 green／候選 RGB／Lab／同質性距離依 CPU 的 f32 運算結合順序計算；四個 pass 共用 32-byte uniform，以執行時上傳的零 `rounding_mask` 保留捨入點，不截斷位元。Lab 正值分支以乘積餘差、Newton 修正與相鄰浮點中點判定求立方根，不再用 `pow(t, fl32(1/3))`。CPU 的 `MathF.Cbrt`、CFA 插值、反射邊界、同質性整數比較／平手平均、GPU 入場與 CPU 匯出隔離不變。近等距／不完整 tile 與 band 的回歸及全尺寸實拍見[數值證據](../evidence/performance-local-2026-10-26.md#13-raw-ahd-捨入與方向選擇修復)；本機位元相同不構成跨相機／後端的普遍保證。
+
+沒有 OpcodeList3 且未安裝 GPU AHD 加速器時，Bayer CPU AHD 直接依預設裁切區運算，以完整感光區作反射邊界；非方形像素仍在裁切後拉伸。存在 List3、非 Bayer、過小影像或已安裝加速器時保留原本全圖與 GPU 入場路徑。內附 Sony ILCE-7RM5 相機統計 profile 僅在既有非 DNG 相機 JPEG 擬合條件成立時參與矩陣與色彩表擬合；它不是外部 DCP，也不保證模擬原廠外觀。
+
+RAW TIFF 的區塊讀取先限制名目 tile padding、分組解碼、檢查 Deflate 可見樣本完整性；過大的有損 JPEG 解碼會在像素配置前拒絕。缺少 strip byte counts 時依排序後的下一個相異 offset 推算；稀疏檔頭的待訪 IFD 有上限。Mamiya MEF 的 12-bit strip 必須包含所有宣告的樣本，否則檔頭探測與完整解碼皆報損毀。CR3 的 PRVW／THMB 候選共用 8 MiB 的宣告長度掃描預算；超過剩餘預算的候選會略過，較小候選仍可使用，全尺寸 JPEG track 不受此限制。去除 DNG optional 跳過及未實作運算碼後，OpcodeList3 超過八個實際運算即報資源限制；不交付部分校正結果。這些限制會拒絕部分異常或損壞檔案，也可能略過較大的 CR3 候選；不代表所有相機 RAW／HEIF 已完成相容性或安全驗證。
 
 同一檔案需要完整顯影的 Thumb／Preview／Full 重疊載入時，`RawSourceLoader.DecodeLease` 依完整路徑與當次內容 SHA-256 共用感光解碼；色彩擬合另核對實際套用的 List3 校正鏈。各呼叫端各自持有可變的色彩標籤與運算碼清單，最後一份租約結束即移除完整 RAW／檔案位元組，不建立常駐感光快取。各等級仍按自己的分箱倍率顯影、保留場景線性與語意遮罩；上表的內嵌縮圖快路徑不進入此租約。每次完整顯影仍讀取並雜湊檔案；不同照片的首次解碼不會因此消失。
 

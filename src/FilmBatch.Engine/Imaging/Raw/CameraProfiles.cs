@@ -33,7 +33,7 @@ internal sealed class CameraProfile
         new(_matrix[0], _matrix[1], _matrix[2], _matrix[3], _matrix[4], _matrix[5], _matrix[6], _matrix[7], _matrix[8]);
 }
 
-/// <summary>內建八機型的描述檔查詢（camera_profiles 的 <c>get/bundled</c> 讀取面；不含寫入與使用者目錄）。</summary>
+/// <summary>內建機型的描述檔查詢（camera_profiles 的 <c>get/bundled</c> 讀取面；不含寫入與使用者目錄）。</summary>
 internal static class CameraProfiles
 {
     private static readonly Dictionary<string, CameraProfile?> _cache = new(StringComparer.Ordinal);
@@ -42,7 +42,7 @@ internal static class CameraProfiles
     /// <summary>內建機型（camera_profiles 的 <c>BUNDLED</c> 鍵；EXIF Model 原樣）。</summary>
     public static readonly string[] BundledModels =
     [
-        "ILCA-99M2", "ILCE-7CR", "ILCE-7M4", "NIKON D5300",
+        "ILCA-99M2", "ILCE-7CR", "ILCE-7M4", "ILCE-7RM5", "NIKON D5300",
         "NIKON Z 6_2", "NIKON Z 8", "X-H2S", "X-T4",
     ];
 

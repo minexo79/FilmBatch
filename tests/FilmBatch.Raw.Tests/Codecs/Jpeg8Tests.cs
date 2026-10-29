@@ -84,6 +84,38 @@ public sealed class Jpeg8Tests
         AssertDecode(name, 1, width, height, 1, fnv);
 
     [Fact]
+    public void LossyRawTileRejectsAnOversizedJpegBeforeAllocatingPixels()
+    {
+        var bytes = File.ReadAllBytes(Fixture("64x48_444"));
+        int sof = bytes.AsSpan().IndexOf(new byte[] { 0xff, 0xc0 });
+        Assert.True(sof >= 0);
+        // 5000×5000×3 exceeds the RAW preview/tile budget while remaining a valid SOF size.
+        bytes[sof + 5] = 0x13; bytes[sof + 6] = 0x88;
+        bytes[sof + 7] = 0x13; bytes[sof + 8] = 0x88;
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        var error = Record.Exception(() => TiffRaw.LossyJpeg(bytes, 3));
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.IsType<RawException>(error);
+        Assert.True(allocated < 1_000_000, $"JPEG size guard allocated {allocated} bytes");
+    }
+
+    [Fact]
+    public void LossyRawTileKeepsDecodedRowsAndZerosUncoveredRows()
+    {
+        var bytes = File.ReadAllBytes(Fixture("64x48_444"));
+        var info = new FilmBatch.Raw.Tiff.ImageInfo
+        {
+            Width = 64, Height = 64, BitsPerSample = [8, 8, 8], SamplesPerPixel = 3,
+            Compression = FilmBatch.Raw.Tiff.TiffCompression.LossyJpeg, Photometric = FilmBatch.Raw.Tiff.TiffPhotometric.LinearRaw,
+            Planar = 1, Predictor = 1, SampleFormat = 1, Layout = new FilmBatch.Raw.Tiff.ImageLayout.Tiles(64, 64),
+            Offsets = [0], ByteCounts = [(ulong)bytes.Length],
+        };
+        var pixels = Assert.IsType<RawData.U16>(TiffRaw.ReadImage(bytes, info, FilmBatch.Raw.Tiff.ByteOrder.Little, Packing.Msb)).Samples;
+        Assert.Equal(0x9f0caae625adecf3ul, Fnv1a64(pixels.Take(64 * 48 * 3).Select(static p => (byte)p).ToArray()));
+        Assert.All(pixels.Skip(64 * 48 * 3), static p => Assert.Equal((ushort)0, p));
+    }
+
+    [Fact]
     public void SofMaxU16DimensionsPassSizeLimit()
     {
         // SOF 寬高是 u16（最大 65535），恆小於 zune 的 1<<16 上限；

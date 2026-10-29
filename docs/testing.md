@@ -45,6 +45,15 @@ dotnet test tests/FilmBatch.App.Tests/FilmBatch.App.Tests.csproj -c Release \
 Mac 桌面另以含 gain-table 的 ProRAW 及含畸變／暗角資料的 RAF 驗證：在底片分頁復原／重做 RAW 選項，即使重解碼時間超過縮圖防抖間隔，底片縮圖仍自動跟上新來源，結果須等於同來源重新要求算圖的結果；切到 PNG 不顯示 RAW 控制項，再切回 RAW 恢復顯示且設定不變。驗證前後核對原始 RAW 的 SHA-256。
 以上原生 RAW 選項量測記錄的是當時的來源契約，含當時仍存在的色相縮圖；獨立 HSL 已移除該縮圖路徑。長邊 ≤240 的 RAW 縮圖在未選外部 DCP 時先用內嵌預覽；選用 DCP 時改走所選 profile 的完整顯影，不能把新選擇貼在舊 JPEG 上。選取後的大圖與匯出不使用內嵌縮圖。
 
+### RAW TIFF、相機統計與 AHD 裁切回歸
+
+```bash
+dotnet test tests/FilmBatch.Raw.Tests -c Release --filter 'FullyQualifiedName~TiffRawTests|FullyQualifiedName~TiffTests|FullyQualifiedName~SparseReadTests|FullyQualifiedName~RawPreviewTests|FullyQualifiedName~Jpeg8Tests|FullyQualifiedName~DngWriterTests|FullyQualifiedName~DevelopTests|FullyQualifiedName~GpuAhdTests|FullyQualifiedName~MamiyaMefTests|FullyQualifiedName~OpcodesTests'
+dotnet test tests/FilmBatch.Core.Tests -c Release --filter 'FullyQualifiedName~RawCameraLookTests|FullyQualifiedName~RawSourceGeometryTests|FullyQualifiedName~RawGeometryParityTests|FullyQualifiedName~RawDngConversionTests'
+```
+
+合成案例涵蓋不完整 Deflate／Mamiya strip、過大 tile／JPEG、CR3 預覽掃描預算、List3 運算上限、缺少 strip 長度、稀疏 IFD 佇列、Sony ILCE-7RM5 統計矩陣及色表、CPU AHD 裁切與非方形像素，以及實際 GPU 的全圖裁切一致性。GPU 略過不是 GPU 通過；外部語料未提供時的略過、原生 HEIF／輸出編碼與真實相機色彩皆需分別驗證。
+
 ### CLF 與相機 profile 回歸
 
 ```bash
@@ -54,7 +63,7 @@ dotnet test tests/FilmBatch.App.Tests -c Release --filter 'FullyQualifiedName~Fi
 dotnet run build/CheckShaders.cs -- --naga /path/to/naga
 ```
 
-測試覆蓋 parser／資產限制、相機機型與 policy、來源 gain-map 四層優先序及損壞回退、非線性雙光源表的候選與實際重顯影、CPU／GPU 數值、匯入與 undo／取消。合成 DNG 搭配外部 DCP 驗證來源 v2 gain map 與 HueSat 同時作用；雙表及曝光順序另用線性／sRGB 編碼、四個 GPU 分帶與預算回退核對獨立數值。須記錄各套件實際選取數與 skip；headless、合成 DNG、Metal 或 desktop mobile host 不可冒充 Windows DX12、合法實拍 RAW、iOS 原生操作或發佈驗收。完整 gates 見[實作計畫](superpowers/plans/2026-10-28-composable-color-transforms.md#4-verification-commands--release-gates)。
+測試覆蓋 parser／資產限制、相機機型與 policy、來源 gain-map 四層優先序及損壞回退、非線性雙光源表的候選與實際重顯影、CPU／GPU 數值、匯入與 undo／取消。非 DNG 合成機型測試涵蓋廠商名稱後綴、不同機型與不同廠商；行動／桌面共用 ViewModel 的合成 DNG 測試涵蓋載入失敗後顯示錯誤、選 `auto`、Undo 與重開專案的恢復，並以真實解碼入場閘門測試失敗 profile 間切換及 Undo：預覽須恢復目前錯誤，縮圖不可顯示過期錯誤。合成 DNG 搭配外部 DCP 驗證來源 v2 gain map 與 HueSat 同時作用；雙表及曝光順序另用線性／sRGB 編碼、四個 GPU 分帶與預算回退核對獨立數值。須記錄各套件實際選取數與 skip；headless、合成 DNG、Metal 或 desktop mobile host 不可冒充 Windows DX12、合法實拍 RAW、iOS 原生操作或發佈驗收。完整 gates 見[實作計畫](superpowers/plans/2026-10-28-composable-color-transforms.md#4-verification-commands--release-gates)。
 
 ### 色彩區塊：HSL 與曲線
 

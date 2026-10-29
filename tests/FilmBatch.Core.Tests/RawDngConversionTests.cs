@@ -73,6 +73,19 @@ public sealed class RawDngConversionTests
     }
 
     [Fact]
+    public void StartingColourRejectsExcessiveLensChainWithoutChangingRaw()
+    {
+        var raw = RawOf(RawFormat.Arw, "SONY", "Synthetic camera");
+        var lens = new FixVignetteRadial([0, 0, 0, 0, 0], [.5, .5]);
+        raw.Opcodes.List3.AddRange(Enumerable.Repeat<Opcode>(lens, 9));
+        var originalColor = raw.Color;
+        var error = Assert.Throws<RawException>(() => RawDngConversion.WithStartingColour(raw, ReadOnlyMemory<byte>.Empty));
+        Assert.Equal(RawErrorKind.Limit, error.Kind);
+        Assert.Same(originalColor, raw.Color);
+        Assert.Equal(9, raw.Opcodes.List3.Count);
+    }
+
+    [Fact]
     public void DngToneEligible_AllBranches()
     {
         var own = new ColorData { ColorMatrix = [Mat3.Identity, null], Illuminant = [17, 21] };

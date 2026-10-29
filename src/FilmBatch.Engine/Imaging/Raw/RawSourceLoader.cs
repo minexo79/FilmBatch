@@ -4,6 +4,7 @@ using FilmBatch.Raw;
 using FilmBatch.Raw.Color;
 using FilmBatch.Raw.Develop;
 using FilmBatch.Raw.Meta;
+using FilmBatch.Raw.Opcodes;
 using FilmBatch.Raw.Raster;
 using FilmBatch.Raw.Vendors.Fujifilm;
 
@@ -216,6 +217,7 @@ internal static partial class RawSourceLoader
             ? list3.Where(op => op.IsLensCorrection()).ToArray() : [];
         lensWarning = TryApplyLensFallback(raw, rawOptions.LensDatabasePath);
         if (disabled.Length > 0) list3.RemoveAll(op => disabled.Any(original => ReferenceEquals(original, op)));
+        OpcodeOps.ValidateList3(list3);
         var lens = CameraPreviewLens.LensGeometryOf(list3);
         var vignette = EmbeddedVignette.FromList3(list3, raw.ActiveArea, raw.Crop, raw.Orientation);
         var profile = SelectProfile(raw, rawOptions);

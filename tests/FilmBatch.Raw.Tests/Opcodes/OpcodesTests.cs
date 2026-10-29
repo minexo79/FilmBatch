@@ -198,6 +198,20 @@ public sealed class OpcodesTests
         }
     }
 
+    [Theory]
+    [InlineData(1073741824u, 1073741824u, 4u)]
+    [InlineData(uint.MaxValue, uint.MaxValue, uint.MaxValue)]
+    public void OversizedGainMapCountsArePreservedAsUnknownWithoutAllocation(uint rows, uint columns, uint planes)
+    {
+        var payload = Concat(
+            AreaBytes(0, 0, 1, 1, 0, 1, 1, 1),
+            BeU32(rows, columns),
+            Be(1, 1, 0, 0),
+            BeU32(planes));
+        var parsed = OpcodeOps.ParseList(new ListWriter().Op(9, payload).Finish());
+        Assert.IsType<Unknown>(Assert.Single(parsed));
+    }
+
     [Fact]
     public void GainMapPreservesPitchedAreaPlaneOffsetsAndClampedInterpolation()
     {
@@ -373,6 +387,34 @@ public sealed class OpcodesTests
         var snap = (float[])img.Data.Clone();
         var outImg = OpcodeOps.ApplyList3([new TrimBounds(0, 0, 1, 1)], img);
         Assert.Equal(snap, outImg.Data);
+    }
+
+    [Fact]
+    public void ExcessiveList3PassesFailWithoutReturningPartiallyCorrectedPixels()
+    {
+        var image = new RgbImage(1, 1, [1f / 512, 1f / 512, 1f / 512]);
+        var scale = new MapPolynomial(new Area(0, 0, 1, 1, 0, 3, 1, 1), [0, 2]);
+        var allowed = Enumerable.Repeat<Opcode>(scale, 8).Append(new TrimBounds(0, 0, 1, 1)).ToArray();
+        Assert.Equal(new float[] { .5f, .5f, .5f }, OpcodeOps.ApplyList3(allowed, image).Data);
+        var error = Assert.Throws<RawException>(() => OpcodeOps.ApplyList3([.. allowed, scale], image));
+        Assert.Equal(RawErrorKind.Limit, error.Kind);
+        Assert.Equal(new float[] { 1f / 512, 1f / 512, 1f / 512 }, image.Data);
+    }
+
+    [Fact]
+    public void List3LimitCountsAppliedOperationsAfterOptionalSkip()
+    {
+        var image = new RgbImage(2, 2, Enumerable.Repeat(.25f, 12).ToArray());
+        var vignette = new FixVignetteRadial([0, 0, 0, 0, 0], [.5, .5]);
+        var coefficients = new double[OpcodeOps.Wr2Len];
+        coefficients[0] = 1; coefficients[18] = 1;
+        var wr = new WarpRectilinear([[1, 0, 0, 0, 0, 0]], [.5, .5]);
+        var prefix = Enumerable.Repeat<Opcode>(vignette, 7).ToArray();
+        var optional = new WarpRectilinear2([coefficients], [.5, .5], false, true);
+        var required = new WarpRectilinear2([coefficients], [.5, .5], false, false);
+        Assert.Equal(image.Data, OpcodeOps.ApplyList3([.. prefix, optional, wr, new Unknown(99, 0, [])], image).Data);
+        Assert.Equal(RawErrorKind.Limit, Assert.Throws<RawException>(() =>
+            OpcodeOps.ApplyList3([.. prefix, required, wr], image)).Kind);
     }
 
     [Fact]

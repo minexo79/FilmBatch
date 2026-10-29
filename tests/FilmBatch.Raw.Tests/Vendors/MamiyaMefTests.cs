@@ -56,6 +56,22 @@ public sealed class MamiyaMefTests
     }
 
     [Fact]
+    public void TruncatedPackedStripIsRejectedForDecodeAndHeaderProbe()
+    {
+        var file = SampleFile(16, 6, Enumerable.Range(0, 96).Select(i => (ushort)(i * 17)).ToArray());
+        var raw = TiffFile.Parse(file).AllIfds().Single(i => i.U16(Tags.Photometric) == TiffPhotometric.Cfa);
+        var offset = checked((int)raw.Offset);
+        var count = System.Buffers.Binary.BinaryPrimitives.ReadUInt16BigEndian(file.AsSpan(offset));
+        var entry = Enumerable.Range(0, count).Select(i => offset + 2 + i * 12)
+            .Single(i => System.Buffers.Binary.BinaryPrimitives.ReadUInt16BigEndian(file.AsSpan(i)) == Tags.StripOffsets);
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(file.AsSpan(entry + 8), (uint)(file.Length - 1));
+
+        Assert.Equal(RawFormat.Mef, RawDecoder.Probe(file));
+        Assert.Equal(RawErrorKind.Corrupt, Assert.Throws<RawException>(() => RawDecoder.Decode(file)).Kind);
+        Assert.Equal(RawErrorKind.Corrupt, Assert.Throws<RawException>(() => RawDecoder.ProbeInfo(file)).Kind);
+    }
+
+    [Fact]
     public void WrongMakeIsNotMef()
     {
         var px = Enumerable.Range(0, 16 * 6).Select(i => (ushort)(i * 7 % 4096)).ToArray();

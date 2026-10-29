@@ -23,6 +23,8 @@ public static class DngWriter
     private const double LossyGamma = 2.2;
 
     // zlib 層級：BCL DeflateStream 取 Fastest（上游實測 level 1 的取捨；BCL 無數字層級可調）。
+    private static int DeflateTile(uint tile) => (int)Math.Min(Math.Max(tile, 16u) & ~15u, 2048u);
+
 
     /// <summary>IEEE 754 binary32 → binary16（捨入到偶數；溢位 → ±inf；NaN 保留）。</summary>
     public static ushort F32ToF16(float v)
@@ -281,8 +283,7 @@ public static class DngWriter
         {
             case (RawData.F32 f32, DngCompression.Deflate def):
             {
-                long tileL = Math.Max((long)def.Tile, 16) & ~15L;
-                int tile = (int)tileL;
+                int tile = DeflateTile(def.Tile);
                 int bp = def.Half ? 2 : 4;
                 ifd.Set(Tags.BitsPerSample, new TiffValue.Short(Enumerable.Repeat((ushort)(bp * 8), cpp).ToArray()));
                 ifd.Set(Tags.SampleFormat, new TiffValue.Short(Enumerable.Repeat((ushort)3, cpp).ToArray()));
@@ -424,8 +425,7 @@ public static class DngWriter
                     }
                     case DngCompression.Deflate def:
                     {
-                        long tileL = Math.Max((long)def.Tile, 16) & ~15L;
-                        int tile = (int)tileL;
+                        int tile = DeflateTile(def.Tile);
                         ifd.Set(Tags.BitsPerSample, new TiffValue.Short(Enumerable.Repeat((ushort)16, cpp).ToArray()));
                         ifd.Set(Tags.Compression, new TiffValue.Short([TiffCompression.AdobeDeflate]));
                         ifd.Set(Tags.Predictor, new TiffValue.Short([2]));

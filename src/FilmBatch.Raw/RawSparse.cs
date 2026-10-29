@@ -37,6 +37,28 @@ public sealed class RawRanges
         _spans.AddRange(output);
     }
 
+    internal void Extend(IEnumerable<(long Start, long End)> spans)
+    {
+        foreach (var (start, end) in spans)
+        {
+            long first = Math.Max(0, start);
+            if (first < end) _spans.Add((first, end));
+        }
+        _spans.Sort(static (a, b) => a.Start.CompareTo(b.Start));
+        int count = 0;
+        for (int i = 0; i < _spans.Count; i++)
+        {
+            var current = _spans[i];
+            if (count > 0 && current.Start <= _spans[count - 1].End)
+            {
+                var previous = _spans[count - 1];
+                _spans[count - 1] = (previous.Start, Math.Max(previous.End, current.End));
+            }
+            else _spans[count++] = current;
+        }
+        _spans.RemoveRange(count, _spans.Count - count);
+    }
+
     /// <summary><c>[start, end)</c> 是否完全被覆蓋（空範圍恆為真）。</summary>
     public bool Contains(long start, long end)
     {
@@ -294,6 +316,7 @@ public static class RawSparse
         if (!preview && RawDecoder.Probe(bytes) is null && TryFastOrdinaryTiff(tiff, loaded))
             return new RawHeaderPlan.Whole("not a supported raw");
         var holes = new RawRanges();
+        var holeSpans = new List<(long Start, long End)>();
         foreach (var ifd in tiff.AllIfds())
         {
             List<(ulong Offset, ulong Length)> chunks;
@@ -334,9 +357,10 @@ public static class RawSparse
                 if (e > (ulong)len) e = (ulong)len;
                 long ss = s > (ulong)len ? len : (long)s;
                 long ee = (long)e;
-                holes.Insert(ss, ee);
+                holeSpans.Add((ss, ee));
             }
         }
+        holes.Extend(holeSpans);
         // Panasonic RW2 的裸資料在任何 TIFF 影像之外（RawDataOffset 到檔尾）。
         if (holes.IsEmpty && bytes.Span.StartsWith("IIU\0"u8) && tiff.Ifds.Count > 0)
         {
@@ -427,6 +451,15 @@ public static class RawSparse
         var stack = new Stack<ulong>();
         stack.Push(first.Value);
         var seen = new HashSet<ulong>();
+        var queued = new HashSet<ulong> { first.Value };
+        bool Queue(ulong value)
+        {
+            if (value == 0 || value >= (ulong)len || !queued.Add(value)) return true;
+            if (stack.Count >= MaxIfds) return false;
+            stack.Push(value);
+            return true;
+        }
+        var metaSpans = new List<(long Start, long End)>();
         while (stack.Count > 0)
         {
             ulong off = stack.Pop();
@@ -444,7 +477,7 @@ public static class RawSparse
                 ? Math.Min(tableEnd > ulong.MaxValue - inline ? ulong.MaxValue : tableEnd + inline, (ulong)len)
                 : tableEnd;
             if (!w.Cover(At(off), At(end))) continue;
-            meta.Insert(At(off), At(end));
+            metaSpans.Add((At(off), At(end)));
             for (ulong i = 0; i < nRead; i++)
             {
                 ulong p = table + i * entry;
@@ -469,7 +502,7 @@ public static class RawSparse
                 else continue;
                 if (start > (ulong)len || total > (ulong)len - start) continue;
                 ulong valueEnd = start + total;
-                if (total > inline) meta.Insert(At(start), At(valueEnd));
+                if (total > inline) metaSpans.Add((At(start), At(valueEnd)));
                 bool child = tag == Tags.SubIfds || tag == Tags.ExifIfd || tag == Tags.GpsIfd || tag == Tags.InteropIfd;
                 if (!child)
                     foreach (var extraTag in extra)
@@ -481,11 +514,14 @@ public static class RawSparse
                 for (ulong k = 0; k < take; k++)
                 {
                     ulong pos = start + k * size;
-                    if (Unsigned(data, order, typ.Value, pos) is { } v) stack.Push(v);
+                    if (Unsigned(data, order, typ.Value, pos) is { } v && !Queue(v))
+                        return (meta, "too many child IFDs queued to visit");
                 }
             }
-            if (complete && OffsetAt(tableEnd) is { } next) stack.Push(next);
+            if (complete && OffsetAt(tableEnd) is { } next && !Queue(next))
+                return (meta, "too many child IFDs queued to visit");
         }
+        meta.Extend(metaSpans);
         return (meta, null);
     }
 

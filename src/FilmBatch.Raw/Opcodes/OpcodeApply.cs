@@ -18,6 +18,16 @@ public static partial class OpcodeOps
         }
     }
 
+    // Reject instead of returning a partly corrected image after excessive full-image passes.
+    internal static void ValidateList3(IReadOnlyList<Opcode> list)
+    {
+        if (list.Count <= 8) return;
+        var passes = 0;
+        foreach (var op in AppliedOps(list))
+            if (op.IsApplied() && ++passes > 8)
+                throw RawException.Limit("too many OpcodeList3 image passes");
+    }
+
     /// <summary>
     /// <c>WarpRectilinear2</c> 徑向係數 f(r) = Σ kr[p] r^p（p = 0..14），在 [min, max] 有效半徑內先箝制 r：
     /// r_real = r · f（reciprocal 時為 r / f）。係數退化或 f = 0 配 reciprocal 時為 null。
@@ -271,6 +281,7 @@ public static partial class OpcodeOps
     public static RgbImage ApplyList3(IReadOnlyList<Opcode> list, RgbImage img)
     {
         if (list.Count == 0) return img;
+        ValidateList3(list);
         var (w, h) = (img.Width, img.Height);
         foreach (var op in AppliedOps(list))
         {

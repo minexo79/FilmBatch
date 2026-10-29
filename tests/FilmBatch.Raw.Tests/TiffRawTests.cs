@@ -60,6 +60,93 @@ public sealed class TiffRawTests
     }
 
     [Fact]
+    public void TileGridMuchLargerThanImageIsRejected()
+    {
+        // A 1-pixel image claims a 4097×4097 tile; enough bytes evade the uncompressed plausibility check.
+        var data = new byte[262_273];
+        var info = new ImageInfo
+        {
+            Width = 1, Height = 1, BitsPerSample = [8], SamplesPerPixel = 1,
+            Compression = TiffCompression.None, Photometric = TiffPhotometric.Cfa, Planar = 1,
+            Predictor = 1, SampleFormat = 1, Layout = new ImageLayout.Tiles(4097, 4097),
+            Offsets = [0], ByteCounts = [(ulong)data.Length],
+        };
+        Assert.Equal(RawErrorKind.Corrupt, Assert.Throws<RawException>(
+            () => TiffRaw.ReadImage(data, info, ByteOrder.Little, Packing.Msb)).Kind);
+    }
+
+    [Fact]
+    public void LargeStripGroupsReassembleInImageOrder()
+    {
+        const int width = 1024, rows = 1024, stripBytes = width * rows;
+        var data = new byte[stripBytes * 2];
+        Array.Fill(data, (byte)11, 0, stripBytes);
+        Array.Fill(data, (byte)29, stripBytes, stripBytes);
+        var info = new ImageInfo
+        {
+            Width = width, Height = rows * 2, BitsPerSample = [8], SamplesPerPixel = 1,
+            Compression = TiffCompression.None, Photometric = TiffPhotometric.Cfa, Planar = 1,
+            Predictor = 1, SampleFormat = 1, Layout = new ImageLayout.Strips(rows),
+            Offsets = [0, stripBytes], ByteCounts = [stripBytes, stripBytes],
+        };
+        var samples = Assert.IsType<RawData.U16>(TiffRaw.ReadImage(data, info, ByteOrder.Little, Packing.Msb)).Samples;
+        Assert.Equal(11, samples[0]);
+        Assert.Equal(11, samples[stripBytes - 1]);
+        Assert.Equal(29, samples[stripBytes]);
+        Assert.Equal(29, samples[^1]);
+    }
+
+    [Fact]
+    public void DeflatedTileMustContainEveryVisibleSample()
+    {
+        ImageInfo Info(int length) => new()
+        {
+            Width = 512, Height = 512, BitsPerSample = [16], SamplesPerPixel = 1,
+            Compression = TiffCompression.AdobeDeflate, Photometric = TiffPhotometric.Cfa, Planar = 1,
+            Predictor = 1, SampleFormat = 1, Layout = new ImageLayout.Tiles(512, 512),
+            Offsets = [0], ByteCounts = [(ulong)length],
+        };
+        var full = Deflate(new byte[512 * 512 * 2]);
+        Assert.Equal(512 * 512, Assert.IsType<RawData.U16>(
+            TiffRaw.ReadImage(full, Info(full.Length), ByteOrder.Little, Packing.Msb)).Samples.Length);
+        foreach (var length in new[] { 1024, 500_000 })
+        {
+            var shortTile = Deflate(new byte[length]);
+            Assert.Equal(RawErrorKind.Corrupt, Assert.Throws<RawException>(
+                () => TiffRaw.ReadImage(shortTile, Info(shortTile.Length), ByteOrder.Little, Packing.Msb)).Kind);
+        }
+    }
+
+    [Fact]
+    public void DeflatedEdgeTileMayEndAfterItsLastVisibleSample()
+    {
+        byte[] visible =
+        [
+            1, 0, 2, 0, 3, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            5, 0, 6, 0, 7, 0, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            9, 0, 10, 0, 11, 0, 12, 0,
+        ];
+        var bytes = Deflate(visible);
+        var info = new ImageInfo
+        {
+            Width = 4, Height = 3, BitsPerSample = [16], SamplesPerPixel = 1,
+            Compression = TiffCompression.AdobeDeflate, Photometric = TiffPhotometric.Cfa, Planar = 1,
+            Predictor = 1, SampleFormat = 1, Layout = new ImageLayout.Tiles(8, 8),
+            Offsets = [0], ByteCounts = [(ulong)bytes.Length],
+        };
+        Assert.Equal(new ushort[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 },
+            Assert.IsType<RawData.U16>(TiffRaw.ReadImage(bytes, info, ByteOrder.Little, Packing.Msb)).Samples);
+    }
+
+    private static byte[] Deflate(byte[] data)
+    {
+        using var output = new MemoryStream();
+        using (var stream = new System.IO.Compression.ZLibStream(output, System.IO.Compression.CompressionLevel.Optimal, leaveOpen: true))
+            stream.Write(data);
+        return output.ToArray();
+    }
+
+    [Fact]
     public void ShortLosslessJpegTilesAreErrors()
     {
         RawData Decode(uint height, int rows)
