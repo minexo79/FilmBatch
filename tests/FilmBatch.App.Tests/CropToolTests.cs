@@ -22,6 +22,17 @@ public sealed class CropToolTests
     }
 
     [Fact]
+    public void FixedAspect_OnPortraitPhoto_IsPortraitWithoutSwapping()
+    {
+        var vm = new CropToolViewModel(_ => { }, () => (300, 400));
+        vm.Load(ModuleCatalog.Defaults);
+        vm.BeginCommand.Execute(null);
+        vm.Aspect = "16x9";
+        Assert.False(vm.Portrait);
+        Assert.True(vm.Working.W * 300 < vm.Working.H * 400);
+    }
+
+    [Fact]
     public void FixedAspect_ResizeKeepsRatio()
     {
         var (vm, _) = Create();
