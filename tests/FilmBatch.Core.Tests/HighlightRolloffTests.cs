@@ -84,6 +84,41 @@ public sealed class HighlightRolloffTests
         }
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void NegativeBasicHighlights_OnRaw_SeparatesTheShoulder_AndMatchesTheModule(bool gpu)
+    {
+        using IPreviewRenderer? renderer = gpu ? TryGpu() : new CpuFakeRenderer();
+        Assert.SkipWhen(renderer is null, "No GPU");
+        var source = ShoulderScene();
+        var off = renderer!.Render16(source, ModuleCatalog.Defaults, TestContext.Current.CancellationToken).Rgba16;
+        var basic = renderer.Render16(source, ModuleCatalog.Defaults.With("basic.highlights", -100.0),
+            TestContext.Current.CancellationToken).Rgba16;
+        var module = renderer.Render16(source, ModuleCatalog.Defaults
+            .With("highlight_rolloff.enabled", true).With("highlight_rolloff.strength", 100.0),
+            TestContext.Current.CancellationToken).Rgba16;
+        // 與亮部保護 100% 逐值相同；不再把貼白平台整塊減成同一個灰。
+        Assert.Equal(module, basic);
+        Assert.Equal(off[0], basic[0]);
+        Assert.True(basic[31 * 4] - basic[16 * 4] > off[31 * 4] - off[16 * 4]);
+        // 正亮部仍走顯示域，不經場景肩部。
+        var lifted = renderer.Render16(source, ModuleCatalog.Defaults.With("basic.highlights", 50.0),
+            TestContext.Current.CancellationToken).Rgba16;
+        Assert.True(lifted[31 * 4] >= off[31 * 4]);
+    }
+
+    [Fact]
+    public void NegativeBasicHighlights_OnNonRaw_KeepsTheDisplayDomainAdjustment()
+    {
+        var jpeg = new SourceImage(2, 1, [65535, 65535, 65535, 65535, 20000, 20000, 20000, 65535]);
+        var plain = CpuPipeline.Process(jpeg, ModuleCatalog.Defaults, null, CancellationToken.None).Rgba16;
+        var lowered = CpuPipeline.Process(jpeg, ModuleCatalog.Defaults.With("basic.highlights", -100.0),
+            null, CancellationToken.None).Rgba16;
+        Assert.True(lowered[0] < plain[0]);
+        Assert.Equal(plain[4], lowered[4]);
+    }
+
     [Fact]
     public void DisabledAndNonRaw_MatchTheUntouchedImage()
     {

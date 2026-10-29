@@ -74,13 +74,13 @@ CLF 的 `WorkingLinear` 固定放在原 film 位置；`DisplayEncoded` 在顯示
 
 **基本調整的細節契約**：`basic.structure` 比較目前像素與 Gaussian 基底的亮度，兩者必須來自相同、尚未套用全域顯示調整的影像。`CpuPipeline.BasicDisplay` 與 `basic_display.wgsl` 都先做細節，再做亮度／對比／亮部陰影／飽和；不能用調整後亮度與調整前基底相減，再除以正負通道相消後接近零的亮度。均勻色塊沒有空間細節，即使極端全域設定下也不應被細節增益改色；回歸入口為 `EffectPipelineTests.BasicStructure_UniformColourRemainsUniformUnderExtremeGlobalAdjustments`。這項順序修正不增加 blur、pass 或暫存，不變更參數格式；細節與全域調整同時非零的舊設定會得到修正後外觀，單獨啟用任一類則維持原行為。
 
-**暗部還原契約**：獨立的 `shadow_recovery` 模組預設關閉，不重定義顯示域的 `basic.shadows`。在未夾取的工作線性 sRGB 上，以 `log2((max(Y,0)+2⁻⁷)/0.18)` 作導引，按 alpha 加權的代理格統計與分數盒狀 guided filter 求局部基底，再把亮度／色度降噪與共同 RGB 增益套回來源。增益曲線不加黑位偏移，基底階調斜率下限 0.3；高於膝點的基底增益為 1，不在此處裁掉 HDR。alpha 不變，完全透明的隱藏 RGB 不進鄰域；純黑仍為黑。一般 RGB 來源先按既有流程線性化。
+**暗部還原契約**：獨立的 `shadow_recovery` 模組預設關閉，不重定義顯示域的 `basic.shadows`。在未夾取的工作線性 sRGB 上，以 `log2((max(Y,0)+2⁻⁷)/0.18)` 作導引，按 alpha 加權的代理格統計與分數盒狀 guided filter 求局部基底，再把亮度／色度降噪與共同 RGB 增益套回來源。增益曲線不加黑位偏移，基底階調斜率下限 0.3；高於膝點（0.18·2^−0.5，約 0.127）的基底增益為 1，不在此處裁掉 HDR；2026-10-29 膝點自 +0.5 EV 降到 −0.5 EV，使顯示亮度約 120 以上的牆面、天空幾乎不被抬升，代價是中暗部（顯示約 40–120）的提亮約少 0.7 EV。alpha 不變，完全透明的隱藏 RGB 不進鄰域；純黑仍為黑。一般 RGB 來源先按既有流程線性化。
 
 guided 統計先對導引作固定平移 `v=u+4`，累積 `(Σw,Σw·v,Σw·v²)`，重建後減回 4；變異數與理想 guided 基底不變，避免深暗部以兩個接近的大二階矩相減而丟失小變異數。CPU／GPU 同步採用，原導引仍供降噪差值使用，不加 pass、緩衝、量化或控制參數。`Recovery_SmoothDarkCoverageMatchesIndependentGuideReference` 以獨立 double／中心差平方的字面值檢查鏡射與不完整代理格；實拍修復與非普遍性的 2 LSB 研究目標見[追加數值證據](../evidence/performance-local-2026-10-26.md#12-暗部-guided-矩抵消修復)。
 
 局部半徑按裁切後短邊比例；降噪 σ 按 `ReferenceWidth/Height` 的來源像素足跡換算，因此縮小預覽可能減弱／跳過次像素降噪，不宣稱和全圖逐像素相同。CPU 重用既有兩張暫存，GPU 重用工作紋理；有效曝光與兩種降噪均為零時直接跳過，不讀取未寫入的暫存。取消在各 pass／列間檢查。`PhotoSamplingSettings` 暫停此局部算子，避免白平衡／Zone 取樣納入創意映射；參數沿用 Settings、預設、貼上、undo 與匯出快照，專案格式仍為 3。實際操作與測試入口見[建置說明](../building.md#局部暗部還原)，研究／解碼比較的證據與產品驗收分列於[暗部研究](../research/shadow-recovery-survey.md)。
 
-**亮部保護契約**：獨立的 `highlight_rolloff` 模組預設關閉，不重定義顯示域的 `basic.highlights`。僅 `Scene` 存在時套用。在底片／HSL／版材之後、相機曲線之前，把工作線性 sRGB 乘回 Rec.2020，只壓亮度高於 0.35 的像素：膝點後 1 EV 以三次 Hermite 把 EV 斜率從 1 收到 `1 − 0.60×強度`，其後維持該斜率。共同乘 RGB，alpha 與膝點以下不變。強度 0 跳過。CPU 與 `linear/highlight_rolloff.wgsl` 同式。取樣暫停、參數與專案格式沿用既有設定路徑。操作見[建置說明](../building.md#亮部保護)，候選比較見[亮部實驗](../research/highlight-rolloff.md)。
+**亮部保護契約**：獨立的 `highlight_rolloff` 模組預設關閉。僅 `Scene` 存在時套用。RAW 場景的 **負** `basic.highlights`（−100..0）由 `ModuleParams.From` 轉成強度 `−值/100` 的同一條肩部（與模組同時啟用取較強者），並把顯示域亮部清為 0，因此 −100 與亮部保護 100% 逐值相同；正亮部與非 RAW 仍走顯示域加減。在底片／HSL／版材之後、相機曲線之前，把工作線性 sRGB 乘回 Rec.2020，只壓亮度高於 0.35 的像素：膝點後 1 EV 以三次 Hermite 把 EV 斜率從 1 收到 `1 − 0.60×強度`，其後維持該斜率。共同乘 RGB，alpha 與膝點以下不變。強度 0 跳過。CPU 與 `linear/highlight_rolloff.wgsl` 同式。取樣暫停、參數與專案格式沿用既有設定路徑。操作見[建置說明](../building.md#亮部保護)，候選比較見[亮部實驗](../research/highlight-rolloff.md)。
 
 **色調曲線契約**：`curves` 位於「照片基本參數 → 基本」，緊接「基本調整」，不另設分頁。分段曲線 → RGB 主曲線 → 個別 R／G／B 通道依序作用於顯示編碼 RGB；CPU 與 GPU 共用 `ToneCurveSet` 合成的 3×1024 查表，再選用曲線飽和度修正，保留 alpha。預設啟用但恆等，直接略過算圖階段；GPU 緩衝區首次需要才配置，隨管線重用及釋放。
 

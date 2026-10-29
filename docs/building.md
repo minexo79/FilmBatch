@@ -80,7 +80,7 @@ dotnet test FilmBatch.sln -c Release --filter 'FullyQualifiedName~ToneCurve|Full
 
 ## 亮部保護
 
-這是獨立的 `highlight_rolloff` 模組，**預設關閉**；與「亮部」／`basic.highlights` 的顯示域調整分開。只作用於 RAW 場景。最終 JPEG／PNG／TIFF 仍是既有的顯示輸出。
+這是獨立的 `highlight_rolloff` 模組，**預設關閉**。只作用於 RAW 場景。RAW 的負「亮部」（`basic.highlights` < 0）也走同一條場景線性肩部（−100 等於強度 100），以保留已貼白天空的藍色與漸層；正亮部與非 RAW 仍是顯示域調整。最終 JPEG／PNG／TIFF 仍是既有的顯示輸出。
 
 1. 在基本參數的「亮部保護」展開並啟用；若找不到，先取消「隱藏已停用的模組」。
 2. 強度 100% 是實測過的肩部；往下調只把壓縮減弱，不是另一條曲線。暗部繼續用「暗部還原」。

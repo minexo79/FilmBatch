@@ -369,6 +369,15 @@ public sealed class ModuleParams
         m.View = RenderView.Whole(m.FrameWidth, m.FrameHeight);
         m.ShadowRecoveryOn &= m.ShadowRecoveryExposure > 0 || m.ShadowRecoveryLuminance > 0 || m.ShadowRecoveryChroma > 0;
         m.HighlightRolloffOn &= m.HighlightRolloffSlope < 1f;
+        // RAW 的負亮部在相機曲線之前壓場景亮度：曲線之後天空等高光已貼白，顯示域相減只會得到平坦灰。
+        // 與亮部保護取較強者；正亮部與非 RAW 仍走顯示域。
+        if (source.Scene is not null && m.BasicOn && m.Highlights < 0)
+        {
+            var slope = HighlightRolloff.Slope(-m.Highlights / 100f);
+            m.HighlightRolloffSlope = m.HighlightRolloffOn ? MathF.Min(m.HighlightRolloffSlope, slope) : slope;
+            m.HighlightRolloffOn = m.HighlightRolloffSlope < 1f;
+            m.Highlights = 0;
+        }
         m.FilmAsset = resolveFilmAsset && m.FilmOn && m.FilmStrength > 0
             ? FilmLookLibrary.Resolve(m.FilmLookKey, cancellationToken) : null;
         m.FilmLook = FilmLookUniforms.From(m);
