@@ -453,6 +453,18 @@ Apple M3／Metal 原生 MainWindow 實際操作文字預設、多選一次復原
 
 HSL／底片集中回歸 110 passed／0 skipped／0 failed；完整 solution 為 Raw 656 passed／293 skipped、Core 877 passed／28 skipped、App 400 passed／0 skipped，全部 0 failed。略過限外部 RAW／oracle／工具資料缺席及 Windows 專用案例，HSL 的 GPU 比對未略過；Naga 30.0.1 驗證全部 44 個嵌入 WGSL 通過。最初兩項 CPU RED、整合時遺漏測試來源宣告的編譯失敗與修正後結果分開保留。文字 driver、TRX、輸出比較與來源雜湊保存於 gitignored `artifacts/verification/2026-10-27-hsl-color.tar.gz`；不含照片、模型、點陣、第三方 profiles 或執行檔。未驗 Windows／Vulkan／iOS 原生操作，未重新封裝或公證發佈版，未 push。
 
+## iOS Simulator 產物路徑調查（2026-10-29）
+
+隔離 .NET SDK `10.0.402`／MSBuild `18.9.15.50611`、iOS workload `27.0.10722` 與 Xcode `27.1`（實驗性停用版本檢查）追查成功建置卻缺少可安裝主執行檔的 bundle。原先外部絕對 `--artifacts-path` 的 bin app 僅有中繼資料／簽章，執行檔與資源落在巢狀 publish 路徑；安裝 bin app 失敗。手動合併後首次啟動遇到 runtime dylib 的 codesigning `invalid-page`，逐一 ad-hoc 重簽只證明測試版可啟動，不是封裝或正式簽章驗證。
+
+直接檢查 SDK 的 `_GenerateBundleName` 與 `_ComputeVariables`：`MSBuild::MakeRelative` 對專案 `/Users/...` 和產物 `/var/...` 回傳絕對路徑，SDK 又把它接到專案目錄，造成錯誤的 `_RelativeAppBundlePath`；`/private/var/...` 對 `/var/...` 也重現。兩端改用相同的第一個實體目錄時，屬性回歸相對路徑。這是指定工具鏈及路徑條件下的診斷，不聲稱所有 SDK、真機 IPA 或正式簽章有同樣結果；[建置限制與處置](release.md#建置與啟動)、本機 gitignored 的去識別化證據 `artifacts/verification/2026-10-29-mobile-status/bundle-path-investigation.txt` 分開記錄。
+
+同一隔離來源與工具鏈改用標準 simulator build（不指定 `--artifacts-path`）：0 warnings／0 errors，未合併或手動重簽的原始 app 含 arm64 主執行檔，通過本機簽章檢查及 simulator 安裝／啟動。以合成 256×160 PNG 的專案啟動，實際畫面顯示預覽與 1/1 縮圖，沒有殘留「Working…」；截圖只代表此 simulator 與 CPU 路徑，不代表真機或正式發佈簽章。
+
+相同工具鏈另用來源與 `--artifacts-path` 同為實體 `/private/var/...` 的隔離 Release build，0 warnings／0 errors；原始 bin app 有 arm64 主執行檔，通過本機簽章檢查並可安裝、啟動到編輯器。重新安裝後此 simulator 的資料容器路徑改變：合成專案檔仍在新容器，但已存 `last_folder` 仍指向舊容器，畫面未自動重開專案；這是另一項待處理問題，不等於資料遺失，亦不推論實機升級。此比較不驗證真機 IPA 或正式簽章。
+
+行動狀態修正以 `61d7c5a` 獨立提交。以原 HEAD 加該修正的隔離候選驗證：五項行動 View 回歸通過；首次完整 App suite 在 iOS 建置並行、另含測試用 `InternalsVisibleTo` 時為 407 passed／1 個 renderer-idle 逾時。移除該無關組件可見性設定、停止並行建置後重跑為 408 passed／0 skipped／0 failed；沒有納入工作區 CLF／DCP 實作。並行負載是可能因素，未證實為逾時原因；不隱藏首次失敗。
+
 ## 如何新增歷史列
 
 只記對未來修改有用的決定：真實 commit／日期、可核對的理由或重現、被拒絕方案、目前契約／檢查、後續取代。沒有當時證據時明寫「只確認提交意圖」；數值必須保留平台、輸入與來源版本，不把舊測試 totals 複製成新版本的驗收結果。

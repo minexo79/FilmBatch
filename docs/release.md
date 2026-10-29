@@ -25,6 +25,21 @@ iOS 專案刻意不加入桌面 solution／CI。Engine 依 iOS RID 在編譯時�
 
 本機的 Xcode 27.1／iOS 27.1 實驗使用隔離的 .NET iOS SDK `27.0.10722`；該 SDK 官方要求 Xcode 27.0。只有明確選擇此實驗組合時，才對單次命令加 `-p:ValidateXcodeVersion=false`。這不是正式相容性宣告，不修改 `global.json`、SDK 內部檔案或全機 Xcode selection。Xcode 27 的可見裝置介面為 Device Hub；啟動 CoreSimulator 並不等於已開啟裝置視窗。完整先前工具鏈與 prototype 證據見 [Simulator 記錄](superpowers/plans/2026-10-19-ios-simulator-prototype.md)。
 
+**Simulator 產物路徑限制（2026-10-29）**：在 .NET SDK `10.0.402`、iOS workload `27.0.10722` 與 Xcode `27.1` 的實驗組合（單次停用 Xcode 版本檢查）中，使用絕對 `--artifacts-path` 時，建置可能成功卻把 `.app` 的 metadata／簽章與執行檔／資源分到 `bin` 和巢狀 `publish` 兩處，前者因缺少執行檔而無法安裝。SDK 先以 `MSBuild::MakeRelative` 計算 bundle 路徑；當專案與產物路徑沒有共同的第一個目錄時，MSBuild `18.9.15` 會回傳絕對路徑，後續 target 又把它接在專案目錄後。實測 `/Users/...` 對 `/var/...`、以及解析後的 `/private/var/...` 對 `/var/...` 都會命中；因此不能把問題只歸因於 `/var` 符號連結。
+
+優先在隔離的來源副本執行上方的標準 simulator build，不使用 `--artifacts-path`。若使用產物目錄，應以 `pwd -P`／實體路徑一致化來源及產物路徑，並確保兩者具有共同的第一個目錄；本實驗在來源及產物皆為 `/private/var/...` 時，Release simulator bundle 也能直接安裝及啟動。這不代表所有 workload 或真機 publish 已驗證。檢查 app 內主執行檔，並以實際 simulator 安裝和啟動驗證簽章；勿把手動合併、ad-hoc 重簽的測試 bundle 當作正式產物。
+
+可用已安裝該 workload 的 SDK 在隔離來源副本診斷路徑；這只計算屬性，不是建置或驗證 app。將下列路徑換成要檢查的絕對產物目錄；若 `_AppBundlePath` 仍為絕對路徑，檢查 `_RelativeAppBundlePath` 是否錯誤地包含專案目錄。範例的 Xcode 版本覆寫僅適用上述實驗組合。
+
+```bash
+dotnet msbuild src/FilmBatch.Mobile.iOS -t:_ComputeVariables \
+  -p:_ComputeVariablesDependsOn=_GenerateBundleName \
+  -p:Configuration=Release -p:RuntimeIdentifier=iossimulator-arm64 \
+  -p:UseArtifactsOutput=true -p:ArtifactsPath=/var/filmbatch-probe \
+  -p:ValidateXcodeVersion=false \
+  -getProperty:MSBuildProjectDirectory,_AppBundlePath,_RelativeAppBundlePath
+```
+
 2026-10-22 的 JPEG 偏紅調查已在目前來源的主要編輯器補跑原生預覽、編輯／復原及實際匯出；[輸入、獨立色彩參考與未重現範圍](evidence/ios-2026-10-20.md#ios-jpeg-色彩核對2026-10-22)另列，不沿用較早 binary 的結果。
 
 ### 真機 IPA 與重簽側載
