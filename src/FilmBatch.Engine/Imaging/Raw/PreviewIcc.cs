@@ -21,11 +21,10 @@ internal enum PreviewIccModel { Rgb, Gray, Cmyk, Other }
 internal enum PreviewIccKind { MatrixTrc, Gray, NeedsCms }
 
 /// <summary>
-/// 嵌入預覽 ICC 解析（上游 <c>icc::parse</c>／<c>info_of</c> `icc.rs:41-69`）：
-/// RGB + PCS XYZ + 非零色料 + 三條 TRC 為 matrix-shaper（行列式 |det| &gt; 1e-6 且 TRC 有效），
-/// 其色料矩陣即線性 RGB → XYZ D50（PCS 白 Y = 1）；灰階 + kTRC 且無 A2B LUT 為 gray；
-/// 其餘（LUT、CMYK、Lab 等）為 <c>NeedsCms</c>，呼叫端按模型送真正 CMS
-///（<see cref="PreviewCms"/>），失敗或模型不合才按上游「存在但不可用 → sRGB」分支。
+/// 嵌入預覽 ICC 解析：RGB + PCS XYZ + 非零色料 + 三條 TRC 且無 LUT 才使用 matrix-shaper
+///（行列式 |det| &gt; 1e-6 且 TRC 有效）；灰階 + kTRC 且無 LUT 為 gray。
+/// 含 A2B／D2B 轉換的 profile 交給 <see cref="PreviewCms"/> 依 rendering intent 選擇；
+/// CMS 失敗或模型不合才按「存在但不可用 → sRGB」分支。
 /// 具名空間辨識容限 0.004（上游 `NamedSpace::recognize` `space.rs:210`）。
 /// </summary>
 internal static class PreviewIcc
@@ -36,7 +35,7 @@ internal static class PreviewIcc
     {
         try
         {
-            if (profile.Length < 128)
+            if (profile.Length < 132)
                 return null;
             if (ReadU32(profile, 0) != (uint)profile.Length)
                 return null;
@@ -56,10 +55,12 @@ internal static class PreviewIcc
                     return null;
                 tags[sig] = (off, len);
             }
-            var hasLut = tags.ContainsKey("A2B0") || tags.ContainsKey("A2B1");
+            var hasLut = tags.ContainsKey("A2B0") || tags.ContainsKey("A2B1") || tags.ContainsKey("A2B2")
+                || tags.ContainsKey("D2B0") || tags.ContainsKey("D2B1")
+                || tags.ContainsKey("D2B2") || tags.ContainsKey("D2B3");
             if (colorSpace == "RGB " && pcs == "XYZ ")
             {
-                if (!tags.TryGetValue("rXYZ", out var r) || !tags.TryGetValue("gXYZ", out var g) ||
+                if (hasLut || !tags.TryGetValue("rXYZ", out var r) || !tags.TryGetValue("gXYZ", out var g) ||
                     !tags.TryGetValue("bXYZ", out var b) ||
                     !tags.TryGetValue("rTRC", out var rt) || !tags.TryGetValue("gTRC", out var gt) ||
                     !tags.TryGetValue("bTRC", out var bt))
@@ -81,7 +82,7 @@ internal static class PreviewIcc
                     return new PreviewIccInfo(PreviewIccModel.Gray, PreviewIccKind.NeedsCms, Mat3.Identity, [], null);
                 return new PreviewIccInfo(PreviewIccModel.Gray, PreviewIccKind.Gray, Mat3.Identity, [trc, trc, trc], null);
             }
-            var model = colorSpace switch { "GRAY" => PreviewIccModel.Gray, "CMYK" => PreviewIccModel.Cmyk, _ => PreviewIccModel.Other };
+            var model = colorSpace switch { "RGB " => PreviewIccModel.Rgb, "GRAY" => PreviewIccModel.Gray, "CMYK" => PreviewIccModel.Cmyk, _ => PreviewIccModel.Other };
             return new PreviewIccInfo(model, PreviewIccKind.NeedsCms, Mat3.Identity, [], null);
         }
         catch (ArgumentOutOfRangeException)
@@ -127,7 +128,7 @@ internal static class PreviewIcc
     private static PreviewTrc? TrcOf(byte[] profile, (uint Off, uint Len) tag)
     {
         var (off, len) = tag;
-        if (len < 8 || off > (uint)profile.Length - 8)
+        if (len < 12 || off > (uint)profile.Length - 12)
             return null;
         var type_ = ReadTag(profile, (int)off);
         if (type_ == "curv")
@@ -167,7 +168,7 @@ internal static class PreviewIcc
     {
         colorant = (0, 0, 0);
         var (off, len) = tag;
-        if (len < 8 || off > (uint)profile.Length - 8 || ReadTag(profile, (int)off) != "XYZ ")
+        if (len < 20 || off > (uint)profile.Length - 20 || ReadTag(profile, (int)off) != "XYZ ")
             return false;
         colorant = (S15Fixed16(profile, (int)off + 8), S15Fixed16(profile, (int)off + 12), S15Fixed16(profile, (int)off + 16));
         return colorant != (0.0, 0.0, 0.0);

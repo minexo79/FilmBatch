@@ -74,6 +74,10 @@ public static class BatchExporter
             throw new InvalidDataException(CoreText.T(
                 $"ProPhoto RGB 僅支援 16-bit TIFF／PNG，不支援 {options.Format}。",
                 $"ProPhoto RGB is only supported for 16-bit TIFF/PNG, not {options.Format}."));
+        if (options.OutputIccProfile is not null && options.ColorSpace != RgbEncoding.ProPhoto)
+            throw new InvalidDataException(CoreText.T(
+                "自訂輸出 ICC 必須使用 ProPhoto 中間色彩空間。",
+                "A custom output ICC requires the ProPhoto intermediate color space."));
         if (options.Format == ExportFormat.Jpeg && (options.Quality is < 1 or > 100))
             throw new InvalidDataException(CoreText.T(
                 $"JPEG 品質必須為 1–100（目前 {options.Quality}）。",
@@ -259,7 +263,7 @@ public static class BatchExporter
         Width = w,
         Height = h,
         Format = options.Format.ToString(),
-        ColorSpace = ColorSpaceName(options.ColorSpace),
+        ColorSpace = options.OutputIccProfile is { } icc ? $"ICC SHA-256: {icc.Sha256}" : ColorSpaceName(options.ColorSpace),
         Quality = options.Format == ExportFormat.Jpeg ? options.Quality : 0,
         Renderer = device,
         Status = status,
@@ -409,7 +413,10 @@ public static class BatchExporter
             }
             else
             {
-                ImageBackend.Encode(image, tmp, options.Format, options.Quality, exif);
+                var custom = options.OutputIccProfile is { } profile
+                    ? (profile.Convert(image.Rgba16, ct), profile.Bytes)
+                    : ((ushort[], byte[])?)null;
+                ImageBackend.Encode(image, tmp, options.Format, options.Quality, exif, custom);
             }
             if (options.Format is ExportFormat.Tiff16 or ExportFormat.Dng)
 #if FILMBATCH_APPLE_IMAGING

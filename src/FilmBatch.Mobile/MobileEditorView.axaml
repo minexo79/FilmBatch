@@ -58,7 +58,15 @@
               <ComboBox ItemsSource="{Binding Formats}" SelectedItem="{Binding SelectedFormat}" HorizontalAlignment="Stretch" MinHeight="44" AutomationProperties.AutomationId="Mobile.ExportFormat" />
               <NumericUpDown Value="{Binding Quality}" Minimum="1" Maximum="100" IsVisible="{Binding IsJpeg}" MinHeight="44" />
               <TextBlock Text="{l:Tr Export.Field.ColorSpace}" />
-              <ComboBox ItemsSource="{Binding ColorSpaces}" SelectedItem="{Binding SelectedColorSpace}" HorizontalAlignment="Stretch" MinHeight="44" IsEnabled="{Binding IsColorSpaceAvailable}" AutomationProperties.AutomationId="Mobile.ExportColorSpace" />
+              <ComboBox ItemsSource="{Binding ColorSpaces}" SelectedItem="{Binding SelectedColorSpace}" HorizontalAlignment="Stretch" MinHeight="44" IsEnabled="{Binding IsColorSpaceSelectionAvailable}" AutomationProperties.AutomationId="Mobile.ExportColorSpace" />
+              <StackPanel IsVisible="{Binding IsColorSpaceAvailable}" Spacing="4">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <Button Content="{l:Tr Export.Icc.Choose}" Command="{Binding BrowseOutputIccCommand}" MinHeight="44" AutomationProperties.AutomationId="Mobile.ExportIccChoose" />
+                  <Button Content="{l:Tr Export.Icc.Clear}" Command="{Binding ClearOutputIccCommand}" IsVisible="{Binding HasOutputIcc}" MinHeight="44" />
+                </StackPanel>
+                <TextBlock Text="{Binding OutputIccName}" IsVisible="{Binding HasOutputIcc}" TextWrapping="Wrap" />
+                <TextBlock Text="{l:Tr Export.Icc.Note}" TextWrapping="Wrap" />
+              </StackPanel>
               <TextBlock Text="{l:Tr Export.Field.Size}" />
               <ComboBox ItemsSource="{Binding Sizes}" SelectedItem="{Binding SelectedSize}" HorizontalAlignment="Stretch" MinHeight="44" AutomationProperties.AutomationId="Mobile.ExportSize" />
               <NumericUpDown Value="{Binding LongEdge}" Minimum="100" Maximum="20000" IsVisible="{Binding IsLongEdge}" MinHeight="44" AutomationProperties.AutomationId="Mobile.ExportLongEdge" />

@@ -248,13 +248,16 @@ R {1:P2}  G {2:P2}  B {3:P2}  Luma {4:P2}</value></data>
   <data name="Export.ColorSpace.Srgb" xml:space="preserve"><value>sRGB</value></data>
   <data name="Export.ColorSpace.ProPhoto" xml:space="preserve"><value>ProPhoto RGB</value></data>
   <data name="Export.ColorSpace.Note" xml:space="preserve"><value>ProPhoto RGB is available for 16-bit TIFF/PNG only</value></data>
+  <data name="Export.Icc.Choose" xml:space="preserve"><value>Choose output ICC…</value></data>
+  <data name="Export.Icc.Clear" xml:space="preserve"><value>Remove ICC</value></data>
+  <data name="Export.Icc.Note" xml:space="preserve"><value>RGB matrix/curve profiles only; the selected ICC replaces the color space above.</value></data>
   <data name="Export.Field.LongEdge" xml:space="preserve"><value>Long edge (px)</value></data>
   <data name="Export.Field.Destination" xml:space="preserve"><value>Destination</value></data>
   <data name="Common.ChooseFolder" xml:space="preserve"><value>Choose folder</value></data>
   <data name="Export.Field.FileName" xml:space="preserve"><value>File name template</value></data>
   <data name="Export.FileNameHint" xml:space="preserve"><value>Available: {name} {preset} {index} {index:000}</value></data>
   <data name="Export.Field.Metadata" xml:space="preserve"><value>Metadata</value></data>
-  <data name="Export.MetadataNote" xml:space="preserve"><value>Keeps EXIF (orientation reset to 1) and embeds an sRGB ICC profile</value></data>
+  <data name="Export.MetadataNote" xml:space="preserve"><value>Keeps EXIF (orientation reset to 1) and embeds an ICC profile matching the pixels</value></data>
   <data name="Tip.ToggleModule" xml:space="preserve"><value>Enable / disable this module</value></data>
   <data name="Presets.ImportYaml" xml:space="preserve"><value>Import YAML…</value></data>
   <data name="Presets.ExportYaml" xml:space="preserve"><value>Export YAML…</value></data>

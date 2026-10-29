@@ -99,12 +99,13 @@ internal static class ImageBackend
     /// <c>Exif\0\0</c> 位元組（桌面經編碼器設定檔寫入，Apple 於檔案層注入 APP1/eXIf）。
     /// TIFF 的目錄層附加由呼叫端 <see cref="TiffMetadata.Append"/> 完成。
     /// </summary>
-    internal static void Encode(SourceImage image, string path, ExportFormat format, int quality, byte[]? exif)
+    internal static void Encode(SourceImage image, string path, ExportFormat format, int quality, byte[]? exif,
+        (ushort[] Samples, byte[] Profile)? customOutput = null)
     {
 #if FILMBATCH_APPLE_IMAGING
-        AppleImageCodec.Encode(image, path, format, quality, exif);
+        AppleImageCodec.Encode(image, path, format, quality, exif, customOutput);
 #else
-        MagickImageCodec.Encode(image, path, format, quality, exif);
+        MagickImageCodec.Encode(image, path, format, quality, exif, customOutput);
 #endif
     }
 

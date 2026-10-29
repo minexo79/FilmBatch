@@ -535,6 +535,18 @@ Apple M3／Metal 使用隔離合成 Bayer DNG 檢查 CPU 裁切與全圖像素�
 
 以當前工作區的隔離來源建立 `dist/osx-arm64-lightcraft.CfnoXf0Y/`，未覆寫舊版；複製後通過 `codesign --verify --deep --strict`，最低 macOS 14.0，本機 ad-hoc 簽章、未公證。封裝 CLI 用 CPU 及 Apple M3／Metal 加 RAW GPU 分別匯出上述 CC0 樣本，皆為可讀的 1000×667 sRGB PNG；CPU 對八／九項 List3 匯出分別成功及以 exit 3 拒絕，後者不留 PNG，來源雜湊不變。封裝腳本的原生 `--smoke` 及加入 `caffeinate` 的直接重試先以 Avalonia RenderTimer `-6661` 中止；事後 CoreGraphics 檢查回報螢幕鎖定。解鎖後，對交付的 app 重跑原生 `--smoke`，exit 0 且 `SMOKE PASS`；已目視預覽、直方圖、縮圖、匯出控制及右鍵選單，並實測 Metal 算圖、參數復原、16-bit 匯出、ICC 與來源不改寫。此合成資料 smoke 不代表其他平台、真實相機相容性或正式發佈驗收。
 
+## ICC 輸出、內嵌預覽與模組開關（工作區，2026-10-29）
+
+選擇 PNG16／TIFF16 的使用者 RGB 矩陣／曲線輸出 ICC 時，從 ProPhoto 16-bit 中間像素轉換並嵌入選取快照；不把既有 sRGB 像素改貼標籤。CLI 的 `--output-icc` 與桌面／行動匯出共用同一契約；預覽不是 soft-proof，相機輸入 ICC、LUT 輸出及 JPEG／DNG 不在此實作的範圍。原有 RAW 內嵌 JPEG 預覽的混合矩陣／LUT ICC 由 CMS 依 relative intent 轉換，並修正截斷標頭與樣本／ICC 色彩模型不符的邊界；DCP 及既有效果設定不變。實際支援與限制見[影像契約](architecture/engine.md#48-engine影像讀取與批次匯出imaging--exporting)。
+
+以 Apple M3／macOS 26.6.2、合成資料執行完整 solution：App 438 passed／0 skipped，Core 1335 passed／28 skipped，RAW 805 passed／293 skipped，皆 0 failed；外部 RAW／oracle 與 Windows 專屬案例未涵蓋。ICC／開關聚焦案例 35 passed，CPU 與實際 Metal 開關案例均執行；之後新增的曲線邊界案例連同其他輸出 ICC 測試另為 7 passed。此結果不證明全部可能的模型、素材及平台均相容。
+
+以每組 4096 個合成 RGBA 像素比對 Magick／LCMS relative intent：系統 Adobe RGB、Display P3、sRGB 的輸出最大差分依序為 1、1、10／65535，alpha 完全一致。系統 ROMM RGB 曲線在約 0.001953 的接點下跳，非單調、不能唯一反解；如其他不符合單調限制的 profile 一樣拒絕，而非任意選擇顏色。合成連續／下跳曲線已加入輸出測試；這不是對所有 ROMM profile 的判定。
+
+原生桌面實際顯示匯出面板，透過隔離測試對話框選系統 Adobe RGB，再用 Apple M3／Metal 輸出 256×170 PNG16；嵌入 ICC 與原始 profile 位元組相同，合成來源 SHA-256 不變。這次對話框是測試替身，不代表已操作系統檔案選擇器。封裝後 CLI 使用 Metal 匯出同一合成來源與 Display P3，ICC 位元組相符；JPEG 加 ICC 以 exit 2 拒絕且未建立輸出目錄。這些驗證未使用使用者照片或下載的第三方 profile；未將下載資料隨程式散布。
+
+隔離來源封裝於 `dist/osx-arm64-icc.QWFLQZ9g/`，未覆寫舊版；複製後通過 `codesign --verify --deep --strict`，交付 app 的原生 `--smoke` 為 `SMOKE PASS`。最低 macOS 14.0，本機 ad-hoc 簽章、未公證。冒煙記錄及截圖位於忽略的 `artifacts/verification/icc-native.fJ50V0iu/`。macOS 上直接呼叫 Apple ImageIO 的測試不代替 iOS 實機驗證；Windows／iOS 原生與真實相機相容性仍未驗證。
+
 
 ## 如何新增歷史列
 

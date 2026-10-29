@@ -7,6 +7,7 @@ CLI 用法，以及本機 AI 降噪、AI 去背的操作。
 ```bash
 filmbatch-cli export "/path/to/photos" --out "/path/to/output" --format png
 filmbatch-cli export "/path/to/photos" --out "/path/to/prophoto" --format tiff --color-space prophoto
+filmbatch-cli export "/path/to/photos" --out "/path/to/output" --format png --output-icc "/path/to/display.icc"
 filmbatch-cli export "/path/to/photos" --out "/path/to/output" --overwrite   # 取代同名舊輸出；不加則自動編號
 filmbatch-cli export "/path/to/photos" --format jpg --quality 95 --long-edge 3000
 filmbatch-cli gpu-info
@@ -23,6 +24,7 @@ filmbatch-cli raw masks "/path/input.dng"
 - 每筆 RAW `export_log.json` 的 `Renderer` 會附上 `RAW GPU` 或 `RAW CPU`，降級時保留原因；一般影像維持原有裝置標示。精度、量測與 Halide AOT 取捨見 [ADR 0003](adr/0003-gpu-stack-decision.md)。
 - `--color-space srgb|prophoto` 預設為 `srgb`。ProPhoto 只支援 `--format tiff`／`png`，輸出為 16-bit、D50、純 gamma 1.8，嵌入自建的匹配 ICC；JPEG／DNG 或未知色彩空間回傳結束碼 2，不產生輸出檔。每筆匯出紀錄的 `ColorSpace` 保留實際選擇。
 - GUI 在匯出面板選 TIFF／PNG 後可選「ProPhoto RGB」；切回 JPEG／DNG 會重設為 sRGB。此選項不改變預覽與直方圖，也不改寫照片設定。RAW 中性輸出可保留 sRGB 外的色彩；一般 raster 匯入與會裁切色域的既有效果仍有原有限制，詳見[色彩契約](architecture/engine.md#48-engine影像讀取與批次匯出imaging--exporting)與[驗收記錄](superpowers/plans/2026-10-23-prophoto-output.md)。
+- `--output-icc <path>` 與 GUI 匯出面板的「選擇輸出 ICC」提供相同的使用者 profile 快照；選取時讀檔，PNG16／TIFF16 匯出會轉換像素再嵌入 ICC，記錄 SHA-256，不修改原檔。此選項取代 `--color-space`，上限 16 MiB，僅接受 XYZ PCS 的 RGB 矩陣／單調 TRC 顯示或色彩空間 profile，不接受 LUT、非 RGB 或裝置連結。切換 JPEG／DNG 會清除 GUI 選擇；CLI 對不相容組合回傳錯誤。預覽不是 soft-proof，輸出受 ProPhoto 16-bit 中間色域及既有效果限制。
 - AI 降噪另記於每筆匯出紀錄的 `Denoise`：模型身分與 SHA-256、實際推論 provider、推論時間、tile 數及快取命中。效果 renderer 的 GPU 名稱不代表神經網路全部在同一裝置執行。
 - RAW 處理啟用時，「基本調整」提供 As Shot／自訂 2500–9900 K＋色偏，取代相對色溫／色偏；RAW 面板仍提供實際內嵌語意遮罩，沒有對應遮罩的照片保留設定但不全圖套用。外部 Lensfun-format 目錄在「偏好設定 → 資料夾」指定（存於 settings.json，全部專案共用）；CLI 匯出用 `--lens-database`，兩者皆未設定時使用 `FILMBATCH_LENSFUN_DIR`，再其次為使用者在同一頁按「下載最新版」（或 CLI `lens-database download`）取得的資料庫。下載只取 Lensfun 儲存庫的 `data/db` XML（CC BY-SA 3.0），存於 `AppPaths.Root/lensfun/db-<commit>`，逐檔以 git blob SHA-1 驗證並整批解析通過後才以 `installed.json` 原子切換；這是獨立實作，不連結也不移植 Lensfun 的 LGPL 函式庫或 GPL 的 `lensfun-update-data`，資料庫也不隨程式散布。RAW 讀取絕不自動下載。
 - Lensfun 校正以 RAW 的預設裁切區（`DefaultCrop`）建立光學中心與半徑，再換算至完整感光區（`ActiveArea`）座標；非置中裁切的變形與暗角共用相同映射。

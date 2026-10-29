@@ -170,4 +170,43 @@ public class ExportPanelTests
         Assert.Equal(expected.ToArray(), profile.ToByteArray());
         Assert.NotEqual(ColorProfiles.SRGB.ToByteArray(), profile.ToByteArray());
     }
+
+    [AvaloniaFact]
+    public async Task OutputIccPicker_ExportsSelectedSnapshot_ThenRestoresOrdinaryColorSpace()
+    {
+        var folder = Directory.CreateTempSubdirectory("filmbatch-ui-icc-").FullName;
+        try
+        {
+            var dialogs = new FakeDialogs();
+            using var vm = TestEnv.CreateViewModel(dialogs);
+            await TestEnv.OpenSamplesAsync(vm);
+            var file = vm.Service!.Project.FileNames[0];
+            vm.OnSelectionChanged([file], file);
+            var export = vm.Sidebar.Export;
+            export.Format = ExportFormat.Png16;
+            export.Destination = folder;
+            var icc = ColorProfiles.AdobeRGB1998.ToByteArray();
+            var path = Path.Combine(folder, "selected.icc");
+            File.WriteAllBytes(path, icc);
+            dialogs.PickFileAnswer = path;
+            await export.BrowseOutputIccCommand.ExecuteAsync(null);
+            // The file can change after the picker closes; the batch uses the selected snapshot.
+            File.WriteAllBytes(path, [0]);
+            // A subsequent invalid selection is rejected without discarding the previous snapshot.
+            await export.BrowseOutputIccCommand.ExecuteAsync(null);
+            var summary = await export.ExportAsync(ct: TestContext.Current.CancellationToken);
+            Assert.Equal(1, summary.Succeeded);
+            var read = new MagickReadSettings();
+            read.SetDefines(new ImageMagick.Formats.PngReadDefines { PreserveiCCP = true });
+            using (var image = new MagickImage(Assert.Single(summary.OutputFiles), read))
+                Assert.Equal(icc, image.GetColorProfile()?.ToByteArray());
+            export.Format = ExportFormat.Jpeg;
+            Assert.Equal(RgbEncoding.Srgb, export.ColorSpace);
+            var jpeg = await export.ExportAsync(ct: TestContext.Current.CancellationToken);
+            Assert.Equal(1, jpeg.Succeeded);
+            using var result = new MagickImage(Assert.Single(jpeg.OutputFiles));
+            Assert.Equal(MagickFormat.Jpeg, result.Format);
+        }
+        finally { Directory.Delete(folder, recursive: true); }
+    }
 }

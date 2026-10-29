@@ -7,6 +7,8 @@
 // 腳本（mft1 手工組裝：identity 輸入／輸出表＋9³／17 點 CLUT，檔頭日期清零；重跑位元組一致）。
 // 線性 Rec.2020 目標 ICC 由產品內嵌資源提供（PreviewCms.Rec2020Linear）。
 // Copyright (c) 2026 ArtCraft Team and the LightCraft contributors，MIT OR Apache-2.0；為 FilmBatch 改寫為 C#.
+using System.Buffers.Binary;
+using FilmBatch.Engine.Imaging;
 using FilmBatch.Engine.Imaging.Raw;
 using ImageMagick;
 using ImageMagick.Formats;
@@ -98,6 +100,189 @@ public sealed class RawCmsPreviewTests
         Assert.True(Math.Abs(d[0] - LutRedSrgbSubstitute[0]) > 0.2f);
     }
 
+    [Theory]
+    [InlineData("A2B0")]
+    [InlineData("A2B1")]
+    public void MatrixAndLutProfile_UsesIntentTransformForRawPreview(string tag)
+    {
+        // The LUT maps every RGB value to black; the sRGB matrix would render red.
+        var icc = MatrixWithBlackLut(tag);
+        var file = TiffContainer(JpegWithIcc(SolidJpeg(255, 0, 0, 8, 8), icc));
+        Assert.True(CameraPreview.TryDecodePreview(file, 96, out var image, out _, out _));
+        Assert.InRange(image.Data[0], -0.001f, 0.001f);
+        Assert.InRange(image.Data[1], -0.001f, 0.001f);
+        Assert.InRange(image.Data[2], -0.001f, 0.001f);
+    }
+
+    [Theory]
+    [InlineData("A2B0")]
+    [InlineData("A2B1")]
+    public void AppleCms_MatrixAndLutProfile_UsesRelativeIntent(string tag)
+    {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "Requires Apple ColorSync.");
+        var image = AppleImageCodec.ToLinearRec2020(MatrixWithBlackLut(tag), [1f, 0f, 0f], 3, 1, 1, false);
+        Assert.NotNull(image);
+        Assert.InRange(image.Data[0], -0.001f, 0.001f);
+        Assert.InRange(image.Data[1], -0.001f, 0.001f);
+        Assert.InRange(image.Data[2], -0.001f, 0.001f);
+    }
+
+    [Fact]
+    public void AppleCms_PreservesPixelOrderAndConvertsSrgbPrimaries()
+    {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "Requires Apple ColorSync.");
+        float[] samples =
+        [
+            1f, 0f, 0f,  0f, 1f, 0f,
+            0f, 0f, 1f,  1f, 1f, 1f,
+        ];
+        // sRGB primaries and white independently converted to linear Rec.2020.
+        float[] expected =
+        [
+            .6274f, .0691f, .0164f,  .3293f, .9195f, .0880f,
+            .0433f, .0114f, .8956f,  1f, 1f, 1f,
+        ];
+        var result = AppleImageCodec.ToLinearRec2020(ColorProfiles.SRGB.ToByteArray(), samples, 3, 2, 2, false);
+        Assert.NotNull(result);
+        for (var i = 0; i < expected.Length; i++)
+            Assert.InRange(result.Data[i], expected[i] - .005f, expected[i] + .005f);
+    }
+
+    [Fact]
+    public void AppleCms_GrayLutTransformsMidtone()
+    {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "Requires Apple ColorSync.");
+        var profile = Convert.FromBase64String(CmsFixtures.GrayLut);
+        var result = AppleImageCodec.ToLinearRec2020(profile, [128f / 255f], 1, 1, 1, true);
+        Assert.NotNull(result);
+        foreach (var value in result.Data)
+            Assert.InRange(value, .055f, .061f);
+    }
+    [Fact]
+    public void AppleCms_PreservesExtendedColorsWithoutClipping()
+    {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "Requires Apple ColorSync.");
+        var icc = Convert.FromBase64String(CmsFixtures.NeutralRgbLut);
+        var result = AppleImageCodec.ToLinearRec2020(icc, [1f, 0f, 1f], 3, 1, 1, false);
+        Assert.NotNull(result);
+        Assert.True(result.Data[2] > 1.5f);
+    }
+
+    [Fact]
+    public void AppleCms_MalformedIcc_ReturnsNull()
+    {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "Requires Apple ColorSync.");
+        var truncated = Convert.FromBase64String(CmsFixtures.NeutralRgbLut)[..100];
+        var result = AppleImageCodec.ToLinearRec2020(truncated, [1f, 0f, 0f], 3, 1, 1, false);
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public void AppleCms_RejectsGrayProfileForRgbSamples()
+    {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "Requires Apple ColorSync.");
+        var profile = Convert.FromBase64String(CmsFixtures.GrayLut);
+        Assert.Null(AppleImageCodec.ToLinearRec2020(profile, [1f, 0f, 0f], 3, 1, 1, false));
+    }
+
+    [Fact]
+    public void RawPreview_DoesNotPassOtherChannelModelsToRgbCms()
+    {
+        var profile = Convert.FromBase64String(CmsFixtures.NeutralRgbLut);
+        "6CLR"u8.CopyTo(profile.AsSpan(16, 4));
+        var space = PreviewDecode.ResolveSpace(profile, null, null, 3);
+        Assert.Null(space.Cms);
+    }
+
+
+    private static byte[] CreateLut(bool isBlack)
+    {
+        var lut = new byte[48 + 3 * 256 + 2 * 2 * 2 * 3 + 3 * 256];
+        "mft1"u8.CopyTo(lut);
+        lut[8] = 3; lut[9] = 3; lut[10] = 2;
+        for (var i = 0; i < 3; i++)
+            BinaryPrimitives.WriteInt32BigEndian(lut.AsSpan(12 + (i * 3 + i) * 4, 4), 65536);
+        for (var channel = 0; channel < 3; channel++)
+            for (var i = 0; i < 256; i++)
+            {
+                lut[48 + channel * 256 + i] = (byte)i;
+                lut[48 + 3 * 256 + 24 + channel * 256 + i] = (byte)i;
+            }
+        var clutOffset = 48 + 3 * 256;
+        for (var r = 0; r < 2; r++)
+            for (var g = 0; g < 2; g++)
+                for (var b = 0; b < 2; b++)
+                {
+                    var idx = clutOffset + (r * 4 + g * 2 + b) * 3;
+                    if (isBlack)
+                    {
+                        lut[idx] = 0; lut[idx + 1] = 0; lut[idx + 2] = 0;
+                    }
+                    else
+                    {
+                        lut[idx] = (byte)(r != 0 ? 255 : 0);
+                        lut[idx + 1] = (byte)(g != 0 ? 255 : 0);
+                        lut[idx + 2] = (byte)(b != 0 ? 255 : 0);
+                    }
+                }
+        return lut;
+    }
+
+    private static byte[] MatrixWithBlackLut(string tag)
+    {
+        var matrix = ColorProfiles.SRGB.ToByteArray();
+        var count = checked((int)BinaryPrimitives.ReadUInt32BigEndian(matrix.AsSpan(128, 4)));
+        var oldData = 132 + count * 12;
+
+        var blackLut = CreateLut(isBlack: true);
+        var normalLut = CreateLut(isBlack: false);
+
+        var addedTags = new List<(string Tag, byte[] Lut)>();
+        if (tag == "A2B1")
+        {
+            // ICC.1 表 17：輸入設定檔（scnr）必要 AToB0Tag；測試相對比色時額外掛 AToB1Tag。
+            addedTags.Add(("A2B0", normalLut));
+            addedTags.Add(("A2B1", blackLut));
+        }
+        else
+        {
+            addedTags.Add((tag, blackLut));
+        }
+
+        var addedDirSize = addedTags.Count * 12;
+        var totalLutSize = addedTags.Sum(t => t.Lut.Length);
+        var profile = new byte[matrix.Length + addedDirSize + totalLutSize];
+        matrix.AsSpan(0, 132).CopyTo(profile);
+        // 相機嵌入預覽為輸入色彩裝置（scnr），免除 mntr 要求的 BToA 反向標籤。
+        "scnr"u8.CopyTo(profile.AsSpan(12, 4));
+        BinaryPrimitives.WriteUInt32BigEndian(profile, (uint)profile.Length);
+        BinaryPrimitives.WriteUInt32BigEndian(profile.AsSpan(128), (uint)(count + addedTags.Count));
+
+        for (var i = 0; i < count; i++)
+        {
+            var entry = matrix.AsSpan(132 + i * 12, 12);
+            var target = profile.AsSpan(132 + i * 12, 12);
+            entry.CopyTo(target);
+            BinaryPrimitives.WriteUInt32BigEndian(target[4..], BinaryPrimitives.ReadUInt32BigEndian(entry[4..]) + (uint)addedDirSize);
+        }
+
+        matrix.AsSpan(oldData).CopyTo(profile.AsSpan(oldData + addedDirSize));
+
+        var lutOffset = matrix.Length + addedDirSize;
+        for (var i = 0; i < addedTags.Count; i++)
+        {
+            var addedDir = profile.AsSpan(132 + (count + i) * 12, 12);
+            System.Text.Encoding.ASCII.GetBytes(addedTags[i].Tag, addedDir);
+            BinaryPrimitives.WriteUInt32BigEndian(addedDir[4..], (uint)lutOffset);
+            BinaryPrimitives.WriteUInt32BigEndian(addedDir[8..], (uint)addedTags[i].Lut.Length);
+            addedTags[i].Lut.CopyTo(profile.AsSpan(lutOffset));
+            lutOffset += addedTags[i].Lut.Length;
+        }
+
+        return profile;
+    }
+
+
     [Fact]
     public void LutProfile_WideValues_NotClipped()
     {
@@ -119,6 +304,23 @@ public sealed class RawCmsPreviewTests
         Assert.True(CameraPreview.TryDecodePreview(file, 96, out var image, out _, out _));
         foreach (var v in image.Data)
             Assert.InRange(v, 0.2158605f - 1e-3f, 0.2158605f + 1e-3f);
+    }
+
+    [Theory]
+    [InlineData(128)]
+    [InlineData(129)]
+    [InlineData(130)]
+    [InlineData(131)]
+    public void HeaderWithoutCompleteTagCount_UsesSrgbPreview(int length)
+    {
+        var icc = new byte[length];
+        BinaryPrimitives.WriteInt32BigEndian(icc, length);
+        "RGB "u8.CopyTo(icc.AsSpan(16));
+        "XYZ "u8.CopyTo(icc.AsSpan(20));
+        var file = TiffContainer(JpegWithIcc(SolidJpeg(128, 128, 128, 8, 8), icc));
+        Assert.True(CameraPreview.TryDecodePreview(file, 96, out var image, out _, out _));
+        foreach (var value in image.Data)
+            Assert.InRange(value, 0.2158605f - 1e-3f, 0.2158605f + 1e-3f);
     }
 
     [Fact]
@@ -160,7 +362,9 @@ public sealed class RawCmsPreviewTests
 }
 
 // 合成 CMS 回歸 fixture（位元組固定、可重現；產生器見本檔檔頭）：
-// neutral RGB LUT（scnr/RGB→Lab A2B0 mft1 9³，中性軸保持中性）與 gray LUT（GRAY→Lab A2B0，gamma 1.8）。
+// neutral RGB LUT（scnr/RGB→Lab A2B0 mft1 9³，中性軸保持中性）與
+// gray LUT（scnr/GRAY→Lab A2B0，gamma 1.8；含 ICC.1 表 16 必要 kTRC 與 cprt 標籤）。
+
 internal static class CmsFixtures
 {
     internal const string NeutralRgbLut =
@@ -220,23 +424,26 @@ internal static class CmsFixtures
         "6Onq6+zt7u/w8fLz9PX29/j5+vv8/f7/AA==";
 
     internal const string GrayLut =
-        "AAAFSAAAAAACIAAAc2NuckdSQVlMYWIgAAAAAAAAAAAAAAAAYWNzcG1sYWMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPbWAAEA" +
-        "AAAA0y1tbGFjAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADZGVzYwAAAKgAAAAod3RwdAAA" +
-        "ANAAAAAUQTJCMAAAAOQAAARkbWxhYwAAAAAAAAABAAAADGVuVVMAC2dyYXlMVVQAAAAAAAAAAAAAAFhZWiAAAAAAAAD21gABAAAA" +
-        "ANMtbWZ0MQAAAAABAxEAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAQAAAAECAwQFBgcICQoLDA0ODxAREhMUFRYX" +
-        "GBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSElKS0xNTk9QUVJTVFVWV1hZWltcXV5fYGFi" +
-        "Y2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6e3x9fn+AgYKDhIWGh4iJiouMjY6PkJGSk5SVlpeYmZqbnJ2en6ChoqOkpaanqKmqq6yt" +
-        "rq+wsbKztLW2t7i5uru8vb6/wMHCw8TFxsfIycrLzM3Oz9DR0tPU1dbX2Nna29zd3t/g4eLj5OXm5+jp6uvs7e7v8PHy8/T19vf4" +
-        "+fr7/P3+/wCAgAKAgAaAgA2AgBWAgB+AgCyAgDqAgEmAgFuAgG2AgIKAgJiAgK+AgMmAgOOAgP+AgAABAgMEBQYHCAkKCwwNDg8Q" +
-        "ERITFBUWFxgZGhscHR4fICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj9AQUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVpb" +
-        "XF1eX2BhYmNkZWZnaGlqa2xtbm9wcXJzdHV2d3h5ent8fX5/gIGCg4SFhoeIiYqLjI2Oj5CRkpOUlZaXmJmam5ydnp+goaKjpKWm" +
-        "p6ipqqusra6vsLGys7S1tre4ubq7vL2+v8DBwsPExcbHyMnKy8zNzs/Q0dLT1NXW19jZ2tvc3d7f4OHi4+Tl5ufo6err7O3u7/Dx" +
-        "8vP09fb3+Pn6+/z9/v8AAQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyAhIiMkJSYnKCkqKywtLi8wMTIzNDU2Nzg5Ojs8" +
-        "PT4/QEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWFlaW1xdXl9gYWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1+f4CBgoOEhYaH" +
-        "iImKi4yNjo+QkZKTlJWWl5iZmpucnZ6foKGio6SlpqeoqaqrrK2ur7CxsrO0tba3uLm6u7y9vr/AwcLDxMXGx8jJysvMzc7P0NHS" +
-        "09TV1tfY2drb3N3e3+Dh4uPk5ebn6Onq6+zt7u/w8fLz9PX29/j5+vv8/f7/AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwd" +
-        "Hh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSElKS0xNTk9QUVJTVFVWV1hZWltcXV5fYGFiY2RlZmdo" +
-        "aWprbG1ub3BxcnN0dXZ3eHl6e3x9fn+AgYKDhIWGh4iJiouMjY6PkJGSk5SVlpeYmZqbnJ2en6ChoqOkpaanqKmqq6ytrq+wsbKz" +
-        "tLW2t7i5uru8vb6/wMHCw8TFxsfIycrLzM3Oz9DR0tPU1dbX2Nna29zd3t/g4eLj5OXm5+jp6uvs7e7v8PHy8/T19vf4+fr7/P3+" +
-        "/wA=";
+        "AAAFpAAAAAACIAAAc2NuckdSQVlMYWIgAAAAAAAAAAAAAAAAYWNzcG1sYWMAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" +
+        "AAAAAPbWAAEAAAAA0y1tbGFjAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAF" +
+        "ZGVzYwAAAMAAAAAod3RwdAAAAOgAAAAUQTJCMAAAAPwAAARka1RSQwAABWAAAAAOY3BydAAABXAAAAAybWxhYwAA" +
+        "AAAAAAABAAAADGVuVVMAC2dyYXlMVVQAAAAAAAAAAAAAAFhZWiAAAAAAAAD21gABAAAAANMtbWZ0MQAAAAABAxEA" +
+        "AAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAQAAAAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwd" +
+        "Hh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSElKS0xNTk9QUVJTVFVWV1hZWltcXV5f" +
+        "YGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6e3x9fn+AgYKDhIWGh4iJiouMjY6PkJGSk5SVlpeYmZqbnJ2en6Ch" +
+        "oqOkpaanqKmqq6ytrq+wsbKztLW2t7i5uru8vb6/wMHCw8TFxsfIycrLzM3Oz9DR0tPU1dbX2Nna29zd3t/g4eLj" +
+        "5OXm5+jp6uvs7e7v8PHy8/T19vf4+fr7/P3+/wCAgAKAgAaAgA2AgBWAgB+AgCyAgDqAgEmAgFuAgG2AgIKAgJiA" +
+        "gK+AgMmAgOOAgP+AgAABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4fICEiIyQlJicoKSorLC0uLzAxMjM0" +
+        "NTY3ODk6Ozw9Pj9AQUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVpbXF1eX2BhYmNkZWZnaGlqa2xtbm9wcXJzdHV2" +
+        "d3h5ent8fX5/gIGCg4SFhoeIiYqLjI2Oj5CRkpOUlZaXmJmam5ydnp+goaKjpKWmp6ipqqusra6vsLGys7S1tre4" +
+        "ubq7vL2+v8DBwsPExcbHyMnKy8zNzs/Q0dLT1NXW19jZ2tvc3d7f4OHi4+Tl5ufo6err7O3u7/Dx8vP09fb3+Pn6" +
+        "+/z9/v8AAQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyAhIiMkJSYnKCkqKywtLi8wMTIzNDU2Nzg5Ojs8" +
+        "PT4/QEFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWFlaW1xdXl9gYWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1+" +
+        "f4CBgoOEhYaHiImKi4yNjo+QkZKTlJWWl5iZmpucnZ6foKGio6SlpqeoqaqrrK2ur7CxsrO0tba3uLm6u7y9vr/A" +
+        "wcLDxMXGx8jJysvMzc7P0NHS09TV1tfY2drb3N3e3+Dh4uPk5ebn6Onq6+zt7u/w8fLz9PX29/j5+vv8/f7/AAEC" +
+        "AwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0+P0BBQkNE" +
+        "RUZHSElKS0xNTk9QUVJTVFVWV1hZWltcXV5fYGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6e3x9fn+AgYKDhIWG" +
+        "h4iJiouMjY6PkJGSk5SVlpeYmZqbnJ2en6ChoqOkpaanqKmqq6ytrq+wsbKztLW2t7i5uru8vb6/wMHCw8TFxsfI" +
+        "ycrLzM3Oz9DR0tPU1dbX2Nna29zd3t/g4eLj5OXm5+jp6uvs7e7v8PHy8/T19vf4+fr7/P3+/wBjdXJ2AAAAAAAA" +
+        "AAEBzQAAdGV4dAAAAABDb3B5cmlnaHQgKGMpIDIwMjYgRmlsbUJhdGNoIGNvbnRyaWJ1dG9ycwAAAA==";
 }

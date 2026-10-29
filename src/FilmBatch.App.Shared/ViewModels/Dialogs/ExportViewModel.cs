@@ -20,6 +20,11 @@ public sealed partial class ExportViewModel : ObservableObject
     private readonly MainWindowViewModel _main;
     private CancellationTokenSource? _cts;
     private int _runId;
+    private OutputIccProfile? _outputIcc;
+    private int _iccGeneration;
+
+    [ObservableProperty]
+    private string _outputIccName = "";
 
     public IReadOnlyList<Option<ExportScope>> Scopes { get; } =
     [
@@ -61,7 +66,7 @@ public sealed partial class ExportViewModel : ObservableObject
     private PresetItemViewModel? _preset;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsJpeg), nameof(SelectedFormat), nameof(IsColorSpaceAvailable))]
+    [NotifyPropertyChangedFor(nameof(IsJpeg), nameof(SelectedFormat), nameof(IsColorSpaceAvailable), nameof(IsColorSpaceSelectionAvailable))]
     private Engine.Exporting.ExportFormat _format = Engine.Exporting.ExportFormat.Jpeg;
 
     [ObservableProperty]
@@ -137,6 +142,8 @@ public sealed partial class ExportViewModel : ObservableObject
     public bool IsByPreset => Scope == ExportScope.ByPreset;
     /// <summary>ProPhoto 僅供 TIFF16／PNG16；其他格式下選擇器停用且選項重設為 sRGB。</summary>
     public bool IsColorSpaceAvailable => Format is Engine.Exporting.ExportFormat.Tiff16 or Engine.Exporting.ExportFormat.Png16;
+    public bool HasOutputIcc => _outputIcc is not null;
+    public bool IsColorSpaceSelectionAvailable => IsColorSpaceAvailable && !HasOutputIcc;
     /// <summary>未匯出中、且目前規劃有張數、且目前選項通過驗證時可匯出（Count 變化時由 Refresh 通知）；上一次匯出的錯誤不擋重試。</summary>
     public bool CanExport => !IsExporting && _validationError is null && Count > 0;
 
@@ -189,6 +196,7 @@ public sealed partial class ExportViewModel : ObservableObject
     partial void OnPresetChanged(PresetItemViewModel? value) => Validate();
     partial void OnFormatChanged(Engine.Exporting.ExportFormat value)
     {
+        if (!IsColorSpaceAvailable) ClearOutputIcc();
         if (!IsColorSpaceAvailable && ColorSpace != RgbEncoding.Srgb)
             ColorSpace = RgbEncoding.Srgb;
         Validate();
@@ -228,7 +236,8 @@ public sealed partial class ExportViewModel : ObservableObject
         OverwriteExisting = OverwriteExisting,
         Format = Format,
         Quality = Quality,
-        ColorSpace = ColorSpace,
+        ColorSpace = _outputIcc is null ? ColorSpace : RgbEncoding.ProPhoto,
+        OutputIccProfile = _outputIcc,
         Size = Size,
         LongEdgePx = Size == Engine.Exporting.ExportSize.LongEdge ? LongEdge : 0,
     };
@@ -367,8 +376,45 @@ public sealed partial class ExportViewModel : ObservableObject
         Destination = picked;
     }
 
+    [RelayCommand]
+    private async Task BrowseOutputIcc()
+    {
+        if (!IsColorSpaceAvailable) return;
+        var generation = ++_iccGeneration;
+        try
+        {
+            var path = await _main.Dialogs.PickFileAsync(Loc.Get("Export.Icc.Choose"), ["*.icc", "*.icm"]);
+            if (path is null || generation != _iccGeneration || !IsColorSpaceAvailable) return;
+            var profile = await Task.Run(() => OutputIccProfile.Load(path));
+            if (generation != _iccGeneration || !IsColorSpaceAvailable) return;
+            _outputIcc = profile;
+            OutputIccName = Path.GetFileName(path);
+            OnPropertyChanged(nameof(HasOutputIcc));
+            OnPropertyChanged(nameof(IsColorSpaceSelectionAvailable));
+            Validate();
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            if (generation == _iccGeneration)
+                await _main.Dialogs.ConfirmAsync(Loc.Get("Export.Icc.Choose"), ex.Message, Loc.Get("Dialog.OK"));
+        }
+    }
+
+    [RelayCommand]
+    private void ClearOutputIcc()
+    {
+        ++_iccGeneration;
+        if (_outputIcc is null) return;
+        _outputIcc = null;
+        OutputIccName = "";
+        OnPropertyChanged(nameof(HasOutputIcc));
+        OnPropertyChanged(nameof(IsColorSpaceSelectionAvailable));
+        Validate();
+    }
+
     public void Dispose()
     {
+        ++_iccGeneration;
         ++_runId;
         try { _cts?.Cancel(); } catch (ObjectDisposedException) { }
         _cts?.Dispose();

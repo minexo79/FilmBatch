@@ -43,6 +43,13 @@ internal static class PreviewCms
         }
     }
 
+    /// <summary>原生 CMS 依 ICC 模型讀取通道；呼叫前必須確保樣本緩衝符合該模型。</summary>
+    internal static bool MatchesDeviceModel(byte[] icc, int channels, bool gray) =>
+        icc.Length >= 20 && (gray
+            ? channels == 1 && icc.AsSpan(16, 4).SequenceEqual("GRAY"u8)
+            : channels == 3 && icc.AsSpan(16, 4).SequenceEqual("RGB "u8)
+                || channels == 4 && icc.AsSpan(16, 4).SequenceEqual("CMYK"u8));
+
     /// <summary>
     /// 裝置樣本 → 線性 Rec.2020（上游 <c>cms_to_linear_rec2020</c>）：
     /// <paramref name="samples"/> 為 0..1 交錯裝置值（<paramref name="channels"/> = 1／3／4），

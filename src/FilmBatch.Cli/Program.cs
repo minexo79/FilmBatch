@@ -52,6 +52,7 @@ var exportFolder = new Argument<string>("folder") { Description = "照片資料�
 var outOption = new Option<string?>("--out") { Description = "輸出資料夾（預設 <照片資料夾>/export/）" };
 var formatOption = new Option<string>("--format") { Description = "jpg | tiff | png | dng（預設 jpg；DNG 保留已套用效果的線性資料）", DefaultValueFactory = _ => "jpg" };
 var colorSpaceOption = new Option<string>("--color-space") { Description = "srgb | prophoto（預設 srgb；prophoto 僅支援 tiff／png）", DefaultValueFactory = _ => "srgb" };
+var outputIccOption = new Option<string?>("--output-icc") { Description = "16-bit TIFF／PNG 的 RGB 矩陣／曲線 ICC（取代 --color-space）" };
 var qualityOption = new Option<int>("--quality") { Description = "JPEG 品質 1–100（預設 95）", DefaultValueFactory = _ => 95 };
 var longEdgeOption = new Option<int>("--long-edge") { Description = "長邊像素；0 = 原尺寸（預設 0）", DefaultValueFactory = _ => 0 };
 var presetOption = new Option<string?>("--preset") { Description = "只匯出使用此預設的照片（名稱或 Id）" };
@@ -66,7 +67,7 @@ var overwriteOption = new Option<bool>("--overwrite") { Description = "同名的
 
 var export = new Command("export", "批次匯出（與 GUI 共用匯出器）")
 {
-    exportFolder, outOption, overwriteOption, formatOption, colorSpaceOption, qualityOption, longEdgeOption,
+    exportFolder, outOption, overwriteOption, formatOption, colorSpaceOption, outputIccOption, qualityOption, longEdgeOption,
     presetOption, onlyUnassignedOption, presetsFolderOption,
     backendOption, softwareOption, lowPowerOption,
     embeddedLensOption, cameraLocalToneOption, denoiseOption, lensDatabaseOption,
@@ -115,6 +116,20 @@ export.SetAction(async (r, ct) =>
     }
     var quality = r.GetValue(qualityOption);
     var longEdge = r.GetValue(longEdgeOption);
+    OutputIccProfile? outputIcc = null;
+    if (r.GetValue(outputIccOption) is { } iccPath)
+    {
+        try
+        {
+            outputIcc = OutputIccProfile.Load(iccPath);
+            colorSpace = RgbEncoding.ProPhoto;
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            Console.Error.WriteLine($"無法載入輸出 ICC：{ex.Message}");
+            return 2;
+        }
+    }
     var options = new ExportOptions
     {
         Destination = r.GetValue(outOption) ?? Path.Combine(folder, "export"),
@@ -122,6 +137,7 @@ export.SetAction(async (r, ct) =>
         OverwriteExisting = r.GetValue(overwriteOption),
         Format = format,
         ColorSpace = colorSpace,
+        OutputIccProfile = outputIcc,
         Quality = quality,
         Size = longEdge > 0 ? ExportSize.LongEdge : ExportSize.Original,
         LongEdgePx = longEdge,

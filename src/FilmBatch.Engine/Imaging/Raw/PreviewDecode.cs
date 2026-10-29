@@ -174,8 +174,7 @@ internal static class PreviewDecode
                 if (info.Kind == PreviewIccKind.Gray && gray)
                     return new ResolvedSpace(info.Trc, PreviewIcc.RgbToXyzD50(ColorSpaces.Srgb), ColorSpaces.Srgb, null);
                 if (info.Kind == PreviewIccKind.NeedsCms
-                    && ((info.Model == PreviewIccModel.Gray) == gray)
-                    && info.Model != PreviewIccModel.Cmyk)
+                    && info.Model == (gray ? PreviewIccModel.Gray : PreviewIccModel.Rgb))
                 {
                     // 上游 `cms_to_linear_rec2020` 分支：RGB／Gray 模型合致者走真正 CMS（見 PreviewCms）；
                     // CMYK 設定檔配 RGB／灰階資料為模型不合 → 下方 sRGB；失敗時亦走 sRGB。

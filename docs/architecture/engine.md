@@ -145,7 +145,13 @@ ProPhoto 色域壓縮以實際限制通道的 0／1 邊界為投影基準，與�
 
 Magick 與 Apple 編碼器依 `SourceImage.Encoding` 寫入匹配的 ICC，不再轉換已編碼像素；16-bit samples 與 straight alpha 保持不變。ProPhoto 的 EXIF ColorSpace 為 `0xFFFF`，不保留聲稱 sRGB 的 Interop 目錄；Apple TIFF／PNG 均回填相同的標準 ICC 位元組。`export_log.json` 每筆記錄 `ColorSpace`。自建 profile 為 ICC v4.3、parametric gamma 1.8，沒有 ROMM 線性 toe 或 flare；可重建來源及授權見 [ICC 產生器](../../tools/prophoto-icc/README.md)，驗收見 [ProPhoto 計畫](../superpowers/plans/2026-10-23-prophoto-output.md)。
 
+**自訂輸出 ICC：** PNG16／TIFF16 可選使用者的 RGB 矩陣／單調 TRC 顯示或色彩空間 profile（ICC v2／v4、XYZ PCS）；檔案上限 16 MiB。LUT、裝置連結、非 RGB 或無法反轉的曲線會被拒絕。選取時讀取不可變快照，匯出以既有 ProPhoto 16-bit 結果為中間空間，按 profile 矩陣與反向曲線轉換像素，再嵌入同一份 ICC，保留 straight alpha。`export_log.json` 的色彩空間記錄該快照的 SHA-256；PNG／TIFF 的非 sRGB EXIF 宣告仍為 Uncalibrated。這個路徑先在 ProPhoto 色域及 16-bit 邊界收斂，不能恢復已被中間色域或效果裁切的色彩；不支援 LUT 輸出、soft-proof 或 JPEG／DNG。預覽與直方圖不受輸出 ICC 影響。
+
+選擇 ICC 不寫入照片設定，原檔後續變更不改變已選的快照；清除選擇恢復原本色彩空間，切至 JPEG／DNG 則清除 ICC 並重設 sRGB。使用者提供的 RAW 相機輸入 ICC 目前不受支援：相機感光域白平衡、highlights 與 profile-specific WB 候選須在同一相機轉換中一致處理，不能把 ICC 當成已轉換 RGB 的後置濾鏡。外部 DCP 功能不受這個限制影響。
+
 RAW 預覽擬合會先依 JPEG 的 ICC／EXIF／容器宣告決定色彩，只線性化一次，在線性光下縮放後轉到 Rec.2020。截斷代理像素以 NaN 排除；鄰域對比採 Rust `f32::min/max` 的略過 NaN 語意，避免連帶排除截斷像素周圍的有效樣本。X-Trans 穩健平均則沿用 Rust `total_cmp` 的負數與正負零排序。
+
+內嵌 RAW 預覽 ICC 同時具有矩陣／TRC 與 A2B／D2B 標籤時交由 CMS 選擇 relative colorimetric 轉換，而非先取矩陣；桌面使用 Magick／LCMS，Apple 使用 ColorSync 浮點轉換。CMS 入場必須符合 RGB、灰階或 CMYK 的實際通道數。截斷的 ICC 不可使整個 JPEG 預覽因讀取越界失敗；無效或無法轉換的描述檔依原有規則回退，不能把該結果視為成功套用 ICC。
 
 GPU AHD 的 green／候選 RGB／Lab／同質性距離依 CPU 的 f32 運算結合順序計算；四個 pass 共用 32-byte uniform，以執行時上傳的零 `rounding_mask` 保留捨入點，不截斷位元。Lab 正值分支以乘積餘差、Newton 修正與相鄰浮點中點判定求立方根，不再用 `pow(t, fl32(1/3))`。CPU 的 `MathF.Cbrt`、CFA 插值、反射邊界、同質性整數比較／平手平均、GPU 入場與 CPU 匯出隔離不變。近等距／不完整 tile 與 band 的回歸及全尺寸實拍見[數值證據](../evidence/performance-local-2026-10-26.md#13-raw-ahd-捨入與方向選擇修復)；本機位元相同不構成跨相機／後端的普遍保證。
 

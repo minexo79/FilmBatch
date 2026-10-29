@@ -20,6 +20,9 @@ public sealed record ExportOptions
     public ExportFormat Format { get; init; } = ExportFormat.Jpeg;
     /// <summary>輸出色彩空間（預設 sRGB；ProPhoto 僅限 TIFF16／PNG16，由呼叫端驗證）。</summary>
     public RgbEncoding ColorSpace { get; init; } = RgbEncoding.Srgb;
+
+    /// <summary>選用的輸出 ICC 快照；使用時 ColorSpace 必須是 ProPhoto，格式須為 PNG16 或 TIFF16。</summary>
+    public OutputIccProfile? OutputIccProfile { get; init; }
     /// <summary>JPEG 品質 1–100（非 JPEG 時忽略）。超出範圍由呼叫端驗證。</summary>
     public int Quality { get; init; } = 95;
     public ExportSize Size { get; init; } = ExportSize.Original;

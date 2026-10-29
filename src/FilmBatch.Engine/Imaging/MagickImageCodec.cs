@@ -135,7 +135,8 @@ internal static class MagickImageCodec
     }
 
     /// <summary>編碼 JPEG／PNG16／TIFF16（EXIF 由呼叫端於檔案層處理；輸出 ICC 依像素編碼、方向 1）。ProPhoto 僅限 TIFF16／PNG16。</summary>
-    internal static void Encode(SourceImage image, string path, ExportFormat format, int quality, byte[]? exif = null)
+    internal static void Encode(SourceImage image, string path, ExportFormat format, int quality, byte[]? exif = null,
+        (ushort[] Samples, byte[] Profile)? customOutput = null)
     {
         RgbEncodingInfo.Validate(image.Encoding);
         var proPhoto = image.Encoding == RgbEncoding.ProPhoto;
@@ -143,16 +144,20 @@ internal static class MagickImageCodec
             throw new InvalidDataException(CoreText.T(
                 $"ProPhoto RGB 僅支援 16-bit TIFF／PNG，不支援 {format}。",
                 $"ProPhoto RGB is only supported for 16-bit TIFF/PNG, not {format}."));
+        if (customOutput is not null && !proPhoto)
+            throw new InvalidDataException("A custom output ICC requires ProPhoto-encoded input.");
+        var rgba = customOutput?.Samples ?? image.Rgba16;
         using var picture = new MagickImage();
         var settings = new PixelReadSettings((uint)image.Width, (uint)image.Height, StorageType.Short, PixelMapping.RGBA);
-        picture.ReadPixels(System.Runtime.InteropServices.MemoryMarshal.AsBytes(image.Rgba16.AsSpan()), settings);
+        picture.ReadPixels(System.Runtime.InteropServices.MemoryMarshal.AsBytes(rgba.AsSpan()), settings);
         picture.Depth = 16;
         if (exif is not null)
             picture.SetProfile(new ExifProfile(proPhoto
                 ? TiffMetadata.Normalize(exif, (uint)image.Width, (uint)image.Height, encoding: image.Encoding)
                 : exif));
         // 已編碼樣本直接標籤：SetProfile 只掛 ICC，不做像素轉換（絕不呼叫 TransformColorSpace）。
-        picture.SetProfile(proPhoto ? new ColorProfile(RgbEncodingInfo.ProPhotoProfile) : ColorProfiles.SRGB);
+        picture.SetProfile(customOutput is { } output ? new ColorProfile(output.Profile)
+            : proPhoto ? new ColorProfile(RgbEncodingInfo.ProPhotoProfile) : ColorProfiles.SRGB);
         picture.Orientation = OrientationType.TopLeft;
         switch (format)
         {
@@ -190,17 +195,19 @@ internal static class MagickImageCodec
     /// <summary>嵌入預覽 CMS：裝置樣本 → 線性 Rec.2020（LCMS 經 Magick.NET；失敗回傳 null）。</summary>
     internal static RgbImage? ToLinearRec2020(byte[] icc, float[] samples, int channels, int width, int height, bool gray)
     {
+        if (width <= 0 || height <= 0 || !PreviewCms.MatchesDeviceModel(icc, channels, gray)
+            || (long)width * height > int.MaxValue / Math.Max(channels, 3)
+            || samples.Length != (long)width * height * channels)
+            return null;
         var dst = PreviewCms.Rec2020Linear;
-        if (dst is null || samples.Length != (long)width * height * channels)
-            return null;
-        if (width <= 0 || height <= 0 || channels < 1)
-            return null;
+        if (dst is null) return null;
         try
         {
             var quanta = new float[samples.Length];
             for (var i = 0; i < samples.Length; i++)
                 quanta[i] = samples[i] * 65535f;
             using var image = new MagickImage(MagickColors.Black, (uint)width, (uint)height);
+            image.RenderingIntent = RenderingIntent.Relative;
             image.ColorSpace = gray ? ColorSpace.Gray : channels == 4 ? ColorSpace.CMYK : ColorSpace.sRGB;
             PixelImportSettings import = gray
                 ? new PixelImportSettings((uint)width, (uint)height, StorageType.Quantum, "I")

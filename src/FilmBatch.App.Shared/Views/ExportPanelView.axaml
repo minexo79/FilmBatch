@@ -56,9 +56,17 @@
         <StackPanel Classes="field">
           <TextBlock Classes="field-label" Text="{l:Tr Export.Field.ColorSpace}" />
           <ComboBox Classes="flat" HorizontalAlignment="Stretch" ItemsSource="{Binding ColorSpaces}" SelectedItem="{Binding SelectedColorSpace}"
-                    IsEnabled="{Binding IsColorSpaceAvailable}" AutomationProperties.AutomationId="Export.ColorSpace"
+                    IsEnabled="{Binding IsColorSpaceSelectionAvailable}" AutomationProperties.AutomationId="Export.ColorSpace"
                     ToolTip.Tip="{l:Tr Export.ColorSpace.Note}" />
           <TextBlock Classes="secondary small" Text="{l:Tr Export.ColorSpace.Note}" TextWrapping="Wrap" IsVisible="{Binding IsColorSpaceAvailable}" />
+          <StackPanel IsVisible="{Binding IsColorSpaceAvailable}" Spacing="4">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <Button Classes="outline" Content="{l:Tr Export.Icc.Choose}" Command="{Binding BrowseOutputIccCommand}" AutomationProperties.AutomationId="Export.IccChoose" />
+              <Button Classes="outline" Content="{l:Tr Export.Icc.Clear}" Command="{Binding ClearOutputIccCommand}" IsVisible="{Binding HasOutputIcc}" />
+            </StackPanel>
+            <TextBlock Text="{Binding OutputIccName}" IsVisible="{Binding HasOutputIcc}" TextWrapping="Wrap" />
+            <TextBlock Classes="secondary small" Text="{l:Tr Export.Icc.Note}" TextWrapping="Wrap" />
+          </StackPanel>
         </StackPanel>
         <StackPanel Classes="field">
           <TextBlock Classes="field-label" Text="{l:Tr Export.Field.Size}" />

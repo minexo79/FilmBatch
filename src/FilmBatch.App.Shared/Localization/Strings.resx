@@ -248,13 +248,16 @@ R {1:P2}　G {2:P2}　B {3:P2}　亮度 {4:P2}</value></data>
   <data name="Export.ColorSpace.Srgb" xml:space="preserve"><value>sRGB</value></data>
   <data name="Export.ColorSpace.ProPhoto" xml:space="preserve"><value>ProPhoto RGB</value></data>
   <data name="Export.ColorSpace.Note" xml:space="preserve"><value>ProPhoto RGB 僅供 16-bit TIFF／PNG 使用</value></data>
+  <data name="Export.Icc.Choose" xml:space="preserve"><value>選擇輸出 ICC…</value></data>
+  <data name="Export.Icc.Clear" xml:space="preserve"><value>移除 ICC</value></data>
+  <data name="Export.Icc.Note" xml:space="preserve"><value>僅支援 RGB 矩陣／曲線設定檔；選取後取代上方色彩空間。</value></data>
   <data name="Export.Field.LongEdge" xml:space="preserve"><value>長邊（px）</value></data>
   <data name="Export.Field.Destination" xml:space="preserve"><value>目的地</value></data>
   <data name="Common.ChooseFolder" xml:space="preserve"><value>選擇資料夾</value></data>
   <data name="Export.Field.FileName" xml:space="preserve"><value>檔名範本</value></data>
   <data name="Export.FileNameHint" xml:space="preserve"><value>可用：{name} {preset} {index} {index:000}</value></data>
   <data name="Export.Field.Metadata" xml:space="preserve"><value>中繼資料</value></data>
-  <data name="Export.MetadataNote" xml:space="preserve"><value>保留 EXIF（方向重設為 1），嵌入 sRGB ICC</value></data>
+  <data name="Export.MetadataNote" xml:space="preserve"><value>保留 EXIF（方向重設為 1），嵌入與像素相符的 ICC</value></data>
   <data name="Tip.ToggleModule" xml:space="preserve"><value>啟用／停用此模組</value></data>
   <data name="Presets.ImportYaml" xml:space="preserve"><value>匯入 YAML…</value></data>
   <data name="Presets.ExportYaml" xml:space="preserve"><value>匯出 YAML…</value></data>

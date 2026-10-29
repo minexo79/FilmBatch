@@ -21,7 +21,7 @@ namespace FilmBatch.Engine.Imaging;
 /// 支援 ImageIO 可辨識格式（PNG／JPEG／TIFF／HEIC/HEIF 等）。RAW 不經此路徑
 /// （<see cref="Raw.RawSourceLoader"/> 先行攔截）。ICC 轉換為真正色彩管理：
 /// 矩陣/TRC 型設定檔走受控線性化＋D50 色料矩陣（與 <see cref="Raw.PreviewIcc"/> 同一數學），
-/// LUT/CMYK 型設定檔與嵌入預覽 CMS 走 CG 位元圖內容的 ColorSync 轉換。
+/// 一般影像的 LUT/CMYK 設定檔走 CG 位元圖；嵌入 RAW 預覽則使用 ColorSync 浮點轉換。
 /// 解碼／色彩失敗一律擲出例外（誠實錯誤），不以替代色彩假裝成功。
 /// 所有 Create/Copy 參考由 <see cref="OwnedObjects"/> 集中釋放；Get 規則指標不外洩。
 /// </remarks>
@@ -616,11 +616,12 @@ internal static unsafe partial class AppleImageCodec
 
     /// <summary>
     /// 以 ImageIO 編碼 JPEG（8-bit sRGB，丟棄 alpha）／PNG16／TIFF16（16-bit RGBA，alphaLast）。
-    /// 已編碼樣本直接標籤：CGImage 沿用像素編碼的色彩空間，不經 ColorSync 轉換。
+    /// 已編碼樣本直接標籤：CGImage 沿用像素編碼或已轉換的輸出 ICC，不經 ColorSync 再次轉換。
     /// EXIF 以 canonical 位元組在檔案層注入（JPEG APP1／PNG eXIf），TIFF 由呼叫端
     /// <see cref="TiffMetadata.Append"/> 附加。Orientation 一律為 1（像素已轉正）。ProPhoto 僅限 TIFF16／PNG16。
     /// </summary>
-    internal static void Encode(SourceImage image, string path, ExportFormat format, int quality, byte[]? exif)
+    internal static void Encode(SourceImage image, string path, ExportFormat format, int quality, byte[]? exif,
+        (ushort[] Samples, byte[] Profile)? customOutput = null)
     {
         RequireApple();
         RgbEncodingInfo.Validate(image.Encoding);
@@ -629,6 +630,9 @@ internal static unsafe partial class AppleImageCodec
             throw new InvalidDataException(CoreText.T(
                 $"ProPhoto RGB 僅支援 16-bit TIFF／PNG，不支援 {format}。",
                 $"ProPhoto RGB is only supported for 16-bit TIFF/PNG, not {format}."));
+        if (customOutput is not null && !proPhoto)
+            throw new InvalidDataException("A custom output ICC requires ProPhoto-encoded input.");
+        var rgba = customOutput?.Samples ?? image.Rgba16;
         var w = image.Width;
         var h = image.Height;
         using var scope = new OwnedObjects();
@@ -646,11 +650,10 @@ internal static unsafe partial class AppleImageCodec
             throw new InvalidDataException(CoreText.T($"無法建立輸出：{path}", $"Could not create output: {path}"));
         scope.Add(destination);
 
-        var outputSpace = proPhoto ? ProPhotoColorSpace(scope) : scope.Add(Native.CGColorSpaceCreateWithName(NameRef(Frameworks.Graphics, "kCGColorSpaceSRGB")));
+        var outputSpace = proPhoto ? IccColorSpace(scope, customOutput?.Profile) : scope.Add(Native.CGColorSpaceCreateWithName(NameRef(Frameworks.Graphics, "kCGColorSpaceSRGB")));
         nint cgImage;
         if (format == ExportFormat.Jpeg)
         {
-            var rgba = image.Rgba16;
             var rgb = new byte[checked(w * h * 3)];
             for (int s = 0, d = 0; d < rgb.Length; s += 4, d += 3)
             {
@@ -668,9 +671,9 @@ internal static unsafe partial class AppleImageCodec
         }
         else
         {
-            fixed (ushort* p = image.Rgba16)
+            fixed (ushort* p = rgba)
             {
-                var data = scope.Add(Native.CFDataCreate(0, (nint)p, image.Rgba16.Length * sizeof(ushort)));
+                var data = scope.Add(Native.CFDataCreate(0, (nint)p, rgba.Length * sizeof(ushort)));
                 var provider = scope.Add(Native.CGDataProviderCreateWithCFData(data));
                 cgImage = scope.Add(Native.CGImageCreate((nuint)w, (nuint)h, 16, 64, (nuint)w * 8, outputSpace,
                     AlphaLast16, provider, 0, 1, 0));
@@ -702,7 +705,7 @@ internal static unsafe partial class AppleImageCodec
         byte[]? icc = null;
         if (proPhoto)
         {
-            icc = RgbEncodingInfo.ProPhotoProfile;
+            icc = customOutput?.Profile ?? RgbEncodingInfo.ProPhotoProfile;
             if (exif is { Length: > 6 })
                 exif = TiffMetadata.Normalize(exif, (uint)w, (uint)h, encoding: RgbEncoding.ProPhoto);
         }
@@ -722,16 +725,16 @@ internal static unsafe partial class AppleImageCodec
             InjectMetadata(path, format, exif, icc);
     }
 
-    /// <summary>以 canonical ProPhoto ICC 位元組建立 CGColorSpace（CGImage 像素直接標籤，不轉換）。</summary>
-    private static nint ProPhotoColorSpace(OwnedObjects scope)
+    /// <summary>以輸出 ICC 位元組建立 CGColorSpace（CGImage 像素直接標籤，不轉換）。</summary>
+    private static nint IccColorSpace(OwnedObjects scope, byte[]? outputIcc = null)
     {
-        var profile = RgbEncodingInfo.ProPhotoProfile;
+        var profile = outputIcc ?? RgbEncodingInfo.ProPhotoProfile;
         fixed (byte* p = profile)
         {
             var data = scope.Add(Native.CFDataCreate(0, (nint)p, profile.Length));
             var space = Native.CGColorSpaceCreateWithICCData(data);
             if (space == 0)
-                throw new InvalidDataException("Could not create the ProPhoto output color space.");
+                throw new InvalidDataException("Could not create the output ICC color space.");
             return scope.Add(space);
         }
     }
@@ -1438,78 +1441,87 @@ internal static unsafe partial class AppleImageCodec
 
     /// <summary>
     /// 裝置樣本 → 線性 Rec.2020 的真正 CMS（LUT／CMYK／Gray 設定檔）：
-    /// 以來源 ICC 建立 CGImage，繪入以 <see cref="Raw.PreviewCms.Rec2020Linear"/> ICC
-    /// 建立的 32-bit float RGB 內容，讀回線性 Rec.2020 float（HDRI，不削波）。
+    /// 經 ColorSync 變換（相對比色 intent、支援延伸範圍浮點數），直達線性 Rec.2020 float（HDRI，不削波）。
     /// </summary>
     internal static RgbImage? ToLinearRec2020(byte[] icc, float[] samples, int channels, int width, int height, bool gray)
     {
-        var dst = Raw.PreviewCms.Rec2020Linear;
-        if (dst is null || samples.Length != (long)width * height * channels)
+        if (width <= 0 || height <= 0 || !Raw.PreviewCms.MatchesDeviceModel(icc, channels, gray)
+            || (long)width * height > int.MaxValue / Math.Max(channels, 3)
+            || samples.Length != (long)width * height * channels)
             return null;
-        if (width <= 0 || height <= 0 || channels < 1)
+        var dst = Raw.PreviewCms.Rec2020Linear;
+        if (dst is null) return null;
+        if (!OperatingSystem.IsMacOS() && !OperatingSystem.IsIOS() && !OperatingSystem.IsMacCatalyst() && !OperatingSystem.IsTvOS())
             return null;
         try
         {
             using var scope = new OwnedObjects();
-            nint srcSpace, dstSpace;
+            nint srcProf, dstProf;
             fixed (byte* pIcc = icc)
             {
                 var iccData = scope.Add(Native.CFDataCreate(0, (nint)pIcc, icc.Length));
-                srcSpace = Native.CGColorSpaceCreateWithICCData(iccData);
-                if (srcSpace == 0) return null;
-                scope.Add(srcSpace);
+                srcProf = Native.ColorSyncProfileCreate(iccData, null);
+                if (srcProf == 0) return null;
+                scope.Add(srcProf);
             }
             fixed (byte* pDst = dst)
             {
                 var dstData = scope.Add(Native.CFDataCreate(0, (nint)pDst, dst.Length));
-                dstSpace = Native.CGColorSpaceCreateWithICCData(dstData);
-                if (dstSpace == 0) return null;
-                scope.Add(dstSpace);
+                dstProf = Native.ColorSyncProfileCreate(dstData, null);
+                if (dstProf == 0) return null;
+                scope.Add(dstProf);
             }
 
             var srcChannels = gray ? 1 : channels;
-            var floats = new float[samples.Length];
-            Array.Copy(samples, floats, samples.Length);
-            nint srcImage;
-            fixed (float* p = floats)
-            {
-                var data = scope.Add(Native.CFDataCreate(0, (nint)p, floats.Length * sizeof(float)));
-                var provider = scope.Add(Native.CGDataProviderCreateWithCFData(data));
-                var bitmapInfo = 0x100u; // kCGBitmapFloatComponents
-                srcImage = Native.CGImageCreate((nuint)width, (nuint)height, 32, (nuint)(32 * srcChannels),
-                    (nuint)width * (nuint)srcChannels * 4u, srcSpace, bitmapInfo, provider, 0, 0, 0);
-            }
-            if (srcImage == 0) return null;
-            scope.Add(srcImage);
+            var kProfile = NameRef(Frameworks.ColorSync, "kColorSyncProfile");
+            var kIntent = NameRef(Frameworks.ColorSync, "kColorSyncRenderingIntent");
+            var kIntentRelative = NameRef(Frameworks.ColorSync, "kColorSyncRenderingIntentRelative");
+            var kTransformTag = NameRef(Frameworks.ColorSync, "kColorSyncTransformTag");
+            var kDeviceToPCS = NameRef(Frameworks.ColorSync, "kColorSyncTransformDeviceToPCS");
+            var kPCSToDevice = NameRef(Frameworks.ColorSync, "kColorSyncTransformPCSToDevice");
 
-            var ctx = Native.CGBitmapContextCreate(0, (nuint)width, (nuint)height, 32,
-                (nuint)width * 16, dstSpace, 0x100u | 0x2000u | 0x03u); // float | ByteOrder32Little | alphaLast
-            if (ctx == 0) return null;
-            scope.Add(ctx);
-            var rect = new Native.CGRect(0, 0, width, height);
-            Native.CGContextDrawImage(ctx, rect, srcImage);
-            var outImage = Native.CGBitmapContextCreateImage(ctx);
-            if (outImage == 0) return null;
-            scope.Add(outImage);
-            var provider2 = Native.CGImageGetDataProvider(outImage);
-            if (provider2 == 0) return null;
-            var outData = scope.Add(Native.CGDataProviderCopyData(provider2));
-            var outBytes = Data(outData);
-            var stride = checked((int)Native.CGImageGetBytesPerRow(outImage));
-            var little = (Native.CGImageGetBitmapInfo(outImage) & 0x7000) == 0x2000;
+            var keyCallbacks = NativeLibrary.GetExport(Frameworks.Foundation, "kCFTypeDictionaryKeyCallBacks");
+            var valCallbacks = NativeLibrary.GetExport(Frameworks.Foundation, "kCFTypeDictionaryValueCallBacks");
+            var arrCallbacks = NativeLibrary.GetExport(Frameworks.Foundation, "kCFTypeArrayCallBacks");
+
+            var srcKeys = new[] { kProfile, kIntent, kTransformTag };
+            var srcVals = new[] { srcProf, kIntentRelative, kDeviceToPCS };
+            var srcDict = scope.Add(Native.CFDictionaryCreate(0, srcKeys, srcVals, 3, keyCallbacks, valCallbacks));
+
+            var dstKeys = new[] { kProfile, kIntent, kTransformTag };
+            var dstVals = new[] { dstProf, kIntentRelative, kPCSToDevice };
+            var dstDict = scope.Add(Native.CFDictionaryCreate(0, dstKeys, dstVals, 3, keyCallbacks, valCallbacks));
+
+            var seqArr = new[] { srcDict, dstDict };
+            var seq = scope.Add(Native.CFArrayCreate(0, seqArr, 2, arrCallbacks));
+
+            var optKeys = new[] { NameRef(Frameworks.ColorSync, "kColorSyncConvertUseExtendedRange") };
+            var optVals = new[] { Native.kCFBooleanTrue() };
+            var opts = scope.Add(Native.CFDictionaryCreate(0, optKeys, optVals, 1, keyCallbacks, valCallbacks));
+
+            var trans = Native.ColorSyncTransformCreate(seq, opts);
+            if (trans == 0) return null;
+            scope.Add(trans);
+
+            var srcStride = checked((nuint)width * (nuint)srcChannels * sizeof(float));
+            var dstStride = checked((nuint)width * 3u * sizeof(float));
             var linear = new float[checked((long)width * height * 3)];
-            for (var y = 0; y < height; y++)
-                for (var x = 0; x < width; x++)
-                {
-                    var at = y * stride + x * 16;
-                    for (var c = 0; c < 3; c++)
-                    {
-                        var f = little
-                            ? BinaryPrimitives.ReadSingleLittleEndian(outBytes.Slice(at + c * 4, 4))
-                            : BinaryPrimitives.ReadSingleBigEndian(outBytes.Slice(at + c * 4, 4));
-                        linear[(y * width + x) * 3 + c] = float.IsFinite(f) ? f : 0f;
-                    }
-                }
+
+            fixed (float* pSrc = samples)
+            fixed (float* pDst = linear)
+            {
+                var ok = Native.ColorSyncTransformConvert(trans, (nuint)width, (nuint)height,
+                    pDst, 7, 0, dstStride,
+                    pSrc, 7, 0, srcStride,
+                    0);
+                if (!ok) return null;
+            }
+
+            for (var i = 0; i < linear.Length; i++)
+            {
+                if (!float.IsFinite(linear[i]))
+                    linear[i] = 0f;
+            }
             return new RgbImage(width, height, linear);
         }
         catch
@@ -1517,6 +1529,7 @@ internal static unsafe partial class AppleImageCodec
             return null; // CMS 失敗：按上游分支由呼叫端走 sRGB
         }
     }
+
 
     // ---------- CF 輔助 ----------
 
@@ -1616,12 +1629,13 @@ internal static unsafe partial class AppleImageCodec
     /// <summary>Framework 句柄（顯式路徑；不依賴 __Internal）。</summary>
     private static class Frameworks
     {
-        private static nint _foundation, _graphics, _imageIo;
+        private static nint _foundation, _graphics, _imageIo, _colorSync;
         private static readonly object _lock = new();
 
         internal static nint Foundation => Get(0);
         internal static nint Graphics => Get(1);
         internal static nint ImageIo => Get(2);
+        internal static nint ColorSync => Get(3);
 
         private static nint Get(int which)
         {
@@ -1631,7 +1645,8 @@ internal static unsafe partial class AppleImageCodec
                 {
                     0 => _foundation != 0 ? _foundation : _foundation = NativeLibrary.Load(Native.Foundation),
                     1 => _graphics != 0 ? _graphics : _graphics = NativeLibrary.Load(Native.Graphics),
-                    _ => _imageIo != 0 ? _imageIo : _imageIo = NativeLibrary.Load(Native.ImageIo),
+                    2 => _imageIo != 0 ? _imageIo : _imageIo = NativeLibrary.Load(Native.ImageIo),
+                    _ => _colorSync != 0 ? _colorSync : _colorSync = NativeLibrary.Load(Native.ColorSync),
                 };
             }
         }
@@ -1645,6 +1660,8 @@ internal static unsafe partial class AppleImageCodec
         internal const string Foundation = "/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation";
         internal const string Graphics = "/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics";
         internal const string ImageIo = "/System/Library/Frameworks/ImageIO.framework/ImageIO";
+        internal const string ColorSync = "/System/Library/Frameworks/ColorSync.framework/ColorSync";
+
 
         [LibraryImport(Foundation, StringMarshalling = StringMarshalling.Utf8)]
         internal static partial nint CFStringCreateWithCString(nint allocator, string value, uint encoding);
@@ -1664,6 +1681,8 @@ internal static unsafe partial class AppleImageCodec
         [LibraryImport(Foundation)] internal static partial nint CFStringGetTypeID();
         [LibraryImport(Foundation)] internal static partial nint CFBooleanGetTypeID();
         [LibraryImport(Foundation)] internal static partial void CFRelease(nint value);
+        [LibraryImport(Foundation)] internal static partial nint CFArrayCreate(nint allocator, nint[] values, nint count, nint callbacks);
+
 
         [LibraryImport(Graphics)] internal static partial nint CGColorSpaceCreateWithName(nint name);
         [LibraryImport(Graphics)] internal static partial nint CGColorSpaceCreateWithICCData(nint data);
@@ -1685,8 +1704,19 @@ internal static unsafe partial class AppleImageCodec
         [LibraryImport(Graphics)] internal static partial nint CGImageGetDataProvider(nint image);
         [LibraryImport(Graphics)] internal static partial nint CGDataProviderCopyData(nint provider);
         [LibraryImport(Graphics)] internal static partial nint CGBitmapContextCreate(nint data, nuint width, nuint height, nuint bitsPerComponent, nuint bytesPerRow, nint colorSpace, uint bitmapInfo);
+        [LibraryImport(Graphics)] internal static partial void CGContextSetRenderingIntent(nint context, int intent);
         [LibraryImport(Graphics)] internal static partial void CGContextDrawImage(nint context, CGRect rect, nint image);
         [LibraryImport(Graphics)] internal static partial nint CGBitmapContextCreateImage(nint context);
+        [LibraryImport(ColorSync)] internal static unsafe partial nint ColorSyncProfileCreate(nint data, nint* error);
+        [LibraryImport(ColorSync)] internal static partial nint ColorSyncTransformCreate(nint profileSequence, nint options);
+        [LibraryImport(ColorSync)]
+        [return: MarshalAs(UnmanagedType.I1)]
+        internal static unsafe partial bool ColorSyncTransformConvert(
+            nint transform, nuint width, nuint height,
+            void* dst, int dstDepth, uint dstLayout, nuint dstBytesPerRow,
+            void* src, int srcDepth, uint srcLayout, nuint srcBytesPerRow,
+            nint options);
+
 
         /// <summary>CGRect（四個 double）：arm64 ABI 以 VFP 暫存器傳遞同質結構，必須依值封送。</summary>
         [StructLayout(LayoutKind.Sequential)]
