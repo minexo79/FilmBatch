@@ -32,7 +32,7 @@ public sealed class ShadowRecoveryTests
         using var renderer = new CpuFakeRenderer();
         var output = renderer.Render16(source, Recovery(), TestContext.Current.CancellationToken).Rgba16;
         Assert.Equal((ushort)0, output[(8 * width + 8) * 4]);
-        Assert.InRange(output[(8 * width + 28) * 4], 18000, 40000);
+        Assert.InRange(output[(8 * width + 28) * 4], 14000, 40000);
         Assert.True(output[(8 * width + 52) * 4] > output[(8 * width + 28) * 4] + 2000,
             "Lifted shadow steps must retain visible separation.");
         Assert.Equal(ushort.MaxValue, output[(8 * width + 72) * 4]);
@@ -118,7 +118,7 @@ public sealed class ShadowRecoveryTests
             .With("shadow_recovery.radius", 10.0), TestContext.Current.CancellationToken).Rgba16;
         for (var i = 0; i < output.Length; i += 4)
         {
-            Assert.InRange(output[i], 18000, 40000);
+            Assert.InRange(output[i], 14000, 40000);
             Assert.Equal(output[0], output[i]);
             Assert.Equal((ushort)32768, output[i + 3]);
         }
@@ -198,11 +198,12 @@ public sealed class ShadowRecoveryTests
         // Independent f64 reference: evaluate variance from weighted squared deviations, not E[u²]−E[u]².
         // Rows are constant; the vertical coverage factors cancel. Radius 14.5 gives proxy s=4, r=3.625.
         // Include mirrored borders and the incomplete right/bottom proxy cells; compare the lifted RGB.
+        // Values follow the −0.5 EV knee (inverted from the earlier 0.5 EV literals, round-trip error < 1e-16).
         (int X, double Value)[] reference =
         [
-            (0, .02696592362752479), (32, .03635096053321995), (64, .045933400630358834),
-            (96, .03525138552569103), (128, .044364222415281054), (160, .03403072440436738),
-            (192, .0432930439246547), (224, .03334405075457169),
+            (0, .023310518779651779), (32, .030413497230238295), (64, .037886411280786896),
+            (96, .02963392718090167), (128, .036398869914108706), (160, .028668366747737994),
+            (192, .035649784558406165), (224, .028549685870658714),
         ];
         foreach (var y in new[] { 0, 72, height - 1 })
         foreach (var (x, expected) in reference)
@@ -213,6 +214,28 @@ public sealed class ShadowRecoveryTests
                 Assert.InRange(Math.Abs(output[i + c] - expected), 0, 8 * ulp);
             Assert.Equal(pixels[i + 3], output[i + 3]);
         }
+    }
+
+    [Theory]
+    [InlineData(.18f)] // 中性灰：高於膝點，不抬升
+    [InlineData(.1f)]  // 約 −0.85 EV：膝點之上的亮牆、天空邊緣
+    public void Recovery_LeavesFlatMidAndHighTonesAlone(float grey)
+    {
+        const int size = 64;
+        var pixels = new float[size * size * 4];
+        for (var i = 0; i < pixels.Length; i += 4)
+        {
+            pixels[i] = pixels[i + 1] = pixels[i + 2] = grey;
+            pixels[i + 3] = 1f;
+        }
+        var source = new SourceImage(size, size, new ushort[pixels.Length]);
+        var parameters = ModuleParams.From(source, Recovery(5), cancellationToken: TestContext.Current.CancellationToken);
+        var output = new float[pixels.Length];
+        ShadowRecovery.Apply(pixels, output, new float[pixels.Length], size, size, parameters,
+            TestContext.Current.CancellationToken);
+        var centre = ((size / 2) * size + size / 2) * 4;
+        Assert.True(output[centre] <= grey * 1.03f,
+            $"Tones above the knee must keep their level; {grey} became {output[centre]} ({output[centre] / grey:F2}x).");
     }
 
     [Fact]

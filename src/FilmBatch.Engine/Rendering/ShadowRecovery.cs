@@ -18,7 +18,7 @@ namespace FilmBatch.Engine.Rendering;
 /// = alpha × (1−Δu²)²₊ × 空間 Gaussian，取鄰域差的加權平均；Y 與 C = RGB − Y 各自乘
 /// 強度 × 暗部權重後加回（C 的變化不改亮度）。純黑（RGB 皆 0）不降噪。</item>
 /// <item>共同增益 g = 2^ψ(B) 乘 RGB：保持比例、黑色維持 0、不夾取。ψ 隨曝光量單調遞增，
-/// 膝點 0.18·2^0.5 以上為 0（HDR 高光不變），基底階調斜率不低於 0.3（不反轉）。</item>
+/// 膝點 0.18·2^−0.5（約 0.127，已偏亮的牆面與天空不再被抬升）以上為 0（HDR 高光不變），基底階調斜率不低於 0.3（不反轉）。</item>
 /// </list>
 /// Alpha 不變；alpha=0 像素原樣通過。CPU 與 linear/shadow_*.wgsl 逐步同式（f32）。
 /// </summary>
@@ -32,7 +32,7 @@ internal static class ShadowRecovery
     /// <summary>guided filter 正則化（導引 EV²）：標準差小於約 0.2 EV 的紋理併入基底。</summary>
     private const float Epsilon = 0.04f;
     /// <summary>抬升膝點（相對中性灰 EV）與 C1 膝寬（EV）。</summary>
-    private const float Knee = 0.5f, KneeWidth = 1f;
+    private const float Knee = -0.5f, KneeWidth = 1f;
     /// <summary>基底階調的最低斜率：較亮的基底在抬升後不會變得比較暗的基底更暗。</summary>
     private const float ContrastFloor = 0.3f;
     /// <summary>降噪暗部權重：基底在此 EV 以下全強度，至 <see cref="NoiseNone"/> 漸弱為 0。</summary>

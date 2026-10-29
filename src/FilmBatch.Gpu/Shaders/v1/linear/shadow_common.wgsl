@@ -6,7 +6,7 @@ const SHADOW_MID_GREY: f32 = 0.18;
 const SHADOW_GUIDE_OFFSET: f32 = 0.0078125;  // c = 2^-7
 const SHADOW_MOMENT_SHIFT: f32 = 4.0;        // 只平移統計導引，抑制暗部二階矩抵消；重建後減回
 const SHADOW_EPSILON: f32 = 0.04;            // guided filter 正則化（導引 EV²）
-const SHADOW_KNEE: f32 = 0.5;                // 抬升膝點（相對中性灰 EV）
+const SHADOW_KNEE: f32 = -0.5;               // 抬升膝點（相對中性灰 EV）
 const SHADOW_KNEE_WIDTH: f32 = 1.0;          // C1 膝寬（EV）
 const SHADOW_CONTRAST_FLOOR: f32 = 0.3;      // 基底階調最低斜率
 const SHADOW_NOISE_FULL: f32 = -2.5;         // 降噪全強度的基底 EV 上限
