@@ -14,6 +14,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\FilmBatch.App\FilmBatch.App.csproj" />
+    <ProjectReference Include="..\..\src\FilmBatch.Mobile\FilmBatch.Mobile.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />

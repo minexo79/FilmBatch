@@ -248,8 +248,10 @@ public sealed partial class MobileEditorView : UserControl, IDisposable
         _ioCancellation = cancellation;
         try
         {
-            MobileStatus.Text = MobileText.T("處理中…", "Working…");
+            var working = MobileText.T("處理中…", "Working…");
+            MobileStatus.Text = working;
             await action(cancellation.Token);
+            if (MobileStatus.Text == working) MobileStatus.Text = null;
         }
         catch (OperationCanceledException) { MobileStatus.Text = MobileText.T("已取消；已完成的副本仍保留在此 App。", "Cancelled; completed copies remain in this app."); }
         catch (Exception error)
