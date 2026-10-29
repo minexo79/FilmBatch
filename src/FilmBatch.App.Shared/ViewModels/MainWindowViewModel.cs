@@ -42,6 +42,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     private bool _hasLoadProgress;
     private bool _resumePreview;
     private string? _loadingError;
+    private string? _failedRawProfileFile;
+    private RawLoadOptions _failedRawProfileOptions;
     private readonly ConditionalWeakTable<SourceImage, ForegroundSourceCache> _foregroundSources = new();
 
     private sealed class ForegroundSourceCache
@@ -404,6 +406,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             if (Service is not null) Service.Project.EntriesChanged -= OnEntriesChanged;
 
             Stack.Clear();
+            _failedRawProfileFile = null;
             Service = new ProjectService(project, Library, Stack);
             project.EntriesChanged += OnEntriesChanged;
             Folder = project.Folder;
@@ -449,6 +452,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             InterruptEdit();
         if (FocusFile != newFocus)
         {
+            _failedRawProfileFile = null;
             // 換照片前把未套用的裁切寫回原本的焦點照片；若還在「裁切」分頁，
             // 記住要對新照片進入裁切——新來源可能尚未解碼，Begin 會延後到載入完成。
             // 照片工具：作廢提案與進行中的取樣（同專案的參考色保留），關閉取樣視圖。
@@ -492,6 +496,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             Denoise.RefreshContext();
             return;
         }
+        Preview.LoadError = null;
         Preview.UpdateOverlay(Selection.Count);
         Preview.IsBusy = true;
         var rawOptions = RawLoadOptions.FromSettings(EditingSettings(file));
@@ -512,6 +517,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
                 _ = LoadPreviewAsync();
                 return;
             }
+            _failedRawProfileFile = null;
             Preview.SetOriginal(source);
             BackgroundRemoval.RefreshContext();
             ReportLensDatabaseWarning(source);
@@ -523,15 +529,30 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
         catch (OperationCanceledException) { }
         catch (Exception ex)
         {
-            if (_disposed || Service != service || file != FocusFile || generation != _previewLoadGeneration
-                || rawOptions != RawLoadOptions.FromSettings(EditingSettings(file))) return;
+            if (_disposed || Service != service || file != FocusFile || generation != _previewLoadGeneration) return;
+            if (rawOptions != RawLoadOptions.FromSettings(EditingSettings(file)))
+            {
+                _ = LoadPreviewAsync();
+                return;
+            }
             AppLog.Error($"讀取失敗：{file}", ex);
+            var source = Preview.Source;
+            var extension = Path.GetExtension(file);
+            var rawCandidate = Project.IsRawFile(file)
+                || extension.Equals(".tif", StringComparison.OrdinalIgnoreCase)
+                || extension.Equals(".tiff", StringComparison.OrdinalIgnoreCase)
+                || (source?.RawInfo is not null && source.FilePath == service.Project.PathOf(file));
+            _failedRawProfileFile = rawOptions.CameraProfileKey is not null && rawCandidate ? file : null;
+            _failedRawProfileOptions = rawOptions;
             Filmstrip.SetError(file, ex.Message);
             Preview.Clear();
+            if (_failedRawProfileFile is not null) Preview.LoadError = ex.Message;
             Inspector.Refresh();
             Denoise.RefreshContext();
         }
     }
+
+    internal bool IsRecoveringRawProfile(string file) => _failedRawProfileFile == file;
 
     /// <summary>上次以提示顯示過的鏡頭資料庫錯誤；同一錯誤換照片時不重複提示，偏好設定變更後重設。</summary>
     private string? _shownLensWarning;
@@ -553,7 +574,14 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     {
         if (_disposed) return;
         if (_suspended) { _resumePreview = true; return; }
-        if (Service is null || FocusFile is null || Preview.Source is null) return;
+        if (Service is null || FocusFile is null) return;
+        if (Preview.Source is null)
+        {
+            if (IsRecoveringRawProfile(FocusFile)
+                && _failedRawProfileOptions != RawLoadOptions.FromSettings(EditingSettings(FocusFile)))
+                _ = LoadPreviewAsync();
+            return;
+        }
         if (BackgroundRemoval.IsEditing) return;
         var settings = EditingSettings(FocusFile);
         if (Preview.Source.FilePath != Service.Project.PathOf(FocusFile)

@@ -422,9 +422,11 @@ public sealed partial class FilmstripViewModel : ObservableObject
                     continue;
                 }
                 var delivered = false;
+                RawLoadOptions? attemptedOptions = null;
                 try
                 {
                     var rawOptions = RawLoadOptions.FromSettings(service.SettingsFor(next.FileName));
+                    attemptedOptions = rawOptions;
                     // 已去背或啟用 AI 降噪的 RAW 必須走場景線性現像來源：相機內嵌 JPEG 是另一資料域
                     //（裁切與 gamma 皆不同），用它做 AI 縮圖會把模型選成 NAFNet 而非 RawNIND。
                     bool NeedsDeveloped() => Project.IsRawFile(next.FileName)
@@ -485,6 +487,12 @@ public sealed partial class FilmstripViewModel : ObservableObject
                     if (_main.Service == service && _main.Images.IsCurrent(generation)
                         && _byName.TryGetValue(next.FileName, out var still) && ReferenceEquals(still, next))
                     {
+                        if (attemptedOptions is { } attempted
+                            && attempted != RawLoadOptions.FromSettings(service.SettingsFor(next.FileName)))
+                        {
+                            EnqueueExplicit(next, front: true);
+                            continue;
+                        }
                         AppLog.Error($"讀取失敗：{next.FileName}", ex);
                         ApplyError(next, ex.Message);
                         delivered = true;

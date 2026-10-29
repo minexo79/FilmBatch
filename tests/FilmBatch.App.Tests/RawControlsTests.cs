@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Reflection;
 using Avalonia.Headless.XUnit;
 using FilmBatch.App.ViewModels;
 using FilmBatch.App.Views;
@@ -50,6 +51,131 @@ public sealed class RawControlsTests
         Assert.Contains(profiles.Options, item => item.Key == key);
         main.Stack.Undo();
         Assert.Equal("auto", main.Service.SettingsFor(rawName).Text("raw.camera_profile"));
+    }
+
+    [AvaloniaFact]
+    public async Task CameraProfileFailure_ShowsReasonAndAllowsSelectingAuto()
+    {
+        var dialogs = new FakeDialogs();
+        using var main = TestEnv.CreateViewModel(dialogs);
+        var file = await ImportMismatchedCameraProfile(main, dialogs);
+        var section = main.Inspector.Modules.Single(m => m.Key == "raw");
+
+        Assert.True(section.IsVisible);
+        Assert.Contains("model", main.Preview.EmptyText, StringComparison.OrdinalIgnoreCase);
+        Assert.StartsWith("dcp-", main.Service!.SettingsFor(file).Text("raw.camera_profile"));
+        main.CameraProfiles.Selected = main.CameraProfiles.Options.Single(option => option.Key == "auto");
+        TestEnv.PumpUntil(() => main.Preview.Source is { RawOptions.CameraProfileKey: null }
+            && main.Preview.Image is not null && !main.Preview.IsBusy);
+        Assert.Equal("auto", main.Service.SettingsFor(file).Text("raw.camera_profile"));
+    }
+
+    [AvaloniaFact]
+    public async Task CameraProfileFailure_UndoReloadsTheRestoredProfile()
+    {
+        var dialogs = new FakeDialogs();
+        using var main = TestEnv.CreateViewModel(dialogs);
+        var file = await ImportMismatchedCameraProfile(main, dialogs);
+
+        main.UndoCommand.Execute(null);
+        Assert.Equal("auto", main.Service!.SettingsFor(file).Text("raw.camera_profile"));
+        TestEnv.PumpUntil(() => main.Preview.Source is { RawOptions.CameraProfileKey: null }
+            && main.Preview.Image is not null && !main.Preview.IsBusy, timeoutMs: 3000);
+    }
+
+    [AvaloniaFact]
+    public async Task CameraProfileFailure_UndoWhileAnotherProfileIsDecodingRestoresTheCurrentError()
+    {
+        var dialogs = new FakeDialogs();
+        using var main = TestEnv.CreateViewModel(dialogs);
+        var file = await ImportMismatchedCameraProfile(main, dialogs);
+        var originalKey = main.Service!.SettingsFor(file).Text("raw.camera_profile");
+        var originalError = main.Preview.LoadError;
+        Assert.NotNull(originalError);
+        var photo = main.Filmstrip.Items.Single();
+        var inflight = typeof(FilmstripViewModel).GetField("_inflight", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        TestEnv.PumpUntil(() => photo.Error == originalError && inflight.GetValue(main.Filmstrip) is null);
+
+        var gate = (SemaphoreSlim)typeof(ImageCache).GetField("_decodeGate", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(main.Images)!;
+        var permits = 0;
+        while (gate.Wait(0, TestContext.Current.CancellationToken)) permits++;
+        try
+        {
+            Assert.True(permits > 0);
+            var missingKey = "dcp-" + new string('f', 64);
+            main.Inspector.SetValue("raw.camera_profile", ParamValue.Of(missingKey), null);
+            Assert.Equal(missingKey, main.Service.SettingsFor(file).Text("raw.camera_profile"));
+            Assert.True(main.Preview.IsBusy);
+            Assert.Null(main.Preview.LoadError);
+            var pending = main.Images.GetPreviewAsync(Path.Combine(main.Folder!, file),
+                RawLoadOptions.FromSettings(main.FocusedResolved), TestContext.Current.CancellationToken);
+            Assert.False(pending.IsCompleted);
+            TestEnv.PumpUntil(() => ReferenceEquals(inflight.GetValue(main.Filmstrip), photo));
+            main.UndoCommand.Execute(null);
+            Assert.Equal(originalKey, main.Service.SettingsFor(file).Text("raw.camera_profile"));
+            var sawStaleThumbnailError = false;
+            photo.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(ThumbnailViewModel.Error)
+                    && photo.Error?.Contains(missingKey, StringComparison.Ordinal) == true)
+                    sawStaleThumbnailError = true;
+            };
+            gate.Release(permits);
+            permits = 0;
+            var failure = await Assert.ThrowsAsync<CameraProfileException>(async () => await pending);
+            Assert.Equal(CameraProfileFault.Missing, failure.Fault);
+
+            TestEnv.PumpUntil(() => !main.Preview.IsBusy && main.Preview.LoadError == originalError
+                && photo.Error == originalError, timeoutMs: 3000);
+            Assert.True(main.Inspector.Modules.Single(m => m.Key == "raw").IsVisible);
+            Assert.False(sawStaleThumbnailError, "An obsolete profile error was shown on the thumbnail.");
+        }
+        finally
+        {
+            if (permits > 0) gate.Release(permits);
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task CameraProfileFailure_ReopenedProjectCanSelectAutoWithoutAnEarlierPreview()
+    {
+        var dialogs = new FakeDialogs();
+        using var main = TestEnv.CreateViewModel(dialogs);
+        var file = await ImportMismatchedCameraProfile(main, dialogs);
+        var folder = main.Folder!;
+        main.OnSelectionChanged([], null);
+        await main.OpenFolderAsync(folder);
+        main.OnSelectionChanged([file], file);
+        TestEnv.PumpUntil(() => main.Preview.Source is null && !main.Preview.IsBusy
+            && main.Filmstrip.Items.Single().Error is not null);
+
+        Assert.True(main.Inspector.Modules.Single(m => m.Key == "raw").IsVisible);
+        main.CameraProfiles.Selected = main.CameraProfiles.Options.Single(option => option.Key == "auto");
+        TestEnv.PumpUntil(() => main.Preview.Source is { RawOptions.CameraProfileKey: null }
+            && main.Preview.Image is not null && !main.Preview.IsBusy);
+        Assert.Equal("auto", main.Service!.SettingsFor(file).Text("raw.camera_profile"));
+    }
+
+    private static async Task<string> ImportMismatchedCameraProfile(MainWindowViewModel main, FakeDialogs dialogs)
+    {
+        var folder = Path.Combine(AppPaths.Root, "profile-recovery");
+        Directory.CreateDirectory(folder);
+        const string file = "photo.dng";
+        File.WriteAllBytes(Path.Combine(folder, file), DngWriter.WriteRenderedDng(16, 12,
+            Enumerable.Repeat(0.18f, 16 * 12 * 3).ToArray(), ColorSpaces.Srgb,
+            new FilmBatch.Raw.Meta.Metadata { Make = "FilmBatch", Model = "Other camera" }));
+        await main.OpenFolderAsync(folder);
+        main.OnSelectionChanged([file], file);
+        TestEnv.PumpUntil(() => main.Preview.Source?.RawInfo is not null
+            && main.Preview.Image is not null && !main.Preview.IsBusy);
+        var path = Path.Combine(AppPaths.Root, "other-model.dcp");
+        File.WriteAllBytes(path, SyntheticProfile());
+        dialogs.PickFileAnswer = path;
+        await main.CameraProfiles.ImportCommand.ExecuteAsync(null);
+        TestEnv.PumpUntil(() => main.Preview.Source is null && !main.Preview.IsBusy
+            && main.Filmstrip.Items.Single().Error is not null);
+        return file;
     }
 
     [AvaloniaFact]

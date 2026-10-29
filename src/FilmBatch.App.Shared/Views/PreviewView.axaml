@@ -16,6 +16,7 @@
                      ActiveTool="{Binding ActiveTool}" LayoutFrameSize="{Binding FrameSize}"
                      WindowImage="{Binding WindowImage}" WindowRegion="{Binding WindowRegion}" WindowVisible="{Binding WindowVisible}" />
     <TextBlock Classes="secondary" Text="{Binding EmptyText}" HorizontalAlignment="Center" VerticalAlignment="Center"
+               Margin="20" TextWrapping="Wrap" TextAlignment="Center"
                IsVisible="{Binding Image, Converter={x:Static ObjectConverters.IsNull}}" IsHitTestVisible="False" />
 
     <!-- 浮動工具列：常用編輯動作，位於右上角（行動版的算圖指示畫在其左側）；全螢幕預覽時隱藏 -->

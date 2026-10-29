@@ -212,7 +212,8 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
                 var source = _main.Preview.Source;
                 if (source?.FilePath != svc.Project.PathOf(file)) source = null;
                 m.SetRawSource(source);
-                if (m.Key == "raw" && source?.RawInfo is null) m.IsVisible = false;
+                if (m.Key == "raw" && source?.RawInfo is null && !_main.IsRecoveringRawProfile(file))
+                    m.IsVisible = false;
             }
         }
         CameraProfiles?.OnSettingsChanged();

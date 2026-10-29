@@ -222,7 +222,11 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
     /// </summary>
     private readonly ConditionalWeakTable<SourceImage, PhotoExif> _exifCache = new();
 
-    public string EmptyText => Loc.Format("Preview.Empty", OperatingSystem.IsMacOS() ? "⌘O" : "Ctrl+O");
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(EmptyText))]
+    private string? _loadError;
+
+    public string EmptyText => LoadError ?? Loc.Format("Preview.Empty", OperatingSystem.IsMacOS() ? "⌘O" : "Ctrl+O");
 
     private string? _controlModule;
 
@@ -469,6 +473,7 @@ public sealed partial class PreviewViewModel(MainWindowViewModel main) : Observa
     {
         // 換照片：先結束進行中的控制點編輯，下一張照片的拖曳另成一筆復原紀錄
         EndControlPointEdit();
+        LoadError = null;
         Source = null;
         Image = null;
         _front?.Dispose();

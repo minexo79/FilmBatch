@@ -226,6 +226,27 @@ public sealed class DcpSourceTests : IDisposable
         Near(IdentityExposure0, Develop(IdentityRaw(), Publish(ExposureProfile("  acme   model a ", IdentityMatrix, CancellingForward, offset: (0, 1)))));
     }
 
+    [Theory]
+    [InlineData("NIKON CORPORATION", "NIKON D5300", "NIKON D5300", true)]
+    [InlineData("NIKON CORPORATION", "D5300", "NIKON D5300", true)]
+    [InlineData("NIKON CORPORATION", "D5300", "NIKON CORPORATION D5300", true)]
+    [InlineData("Canon Inc.", "Canon EOS M50", "Canon EOS M50", true)]
+    [InlineData("NIKON CORPORATION", "NIKON D5300", "NIKON D5500", false)]
+    [InlineData("OTHER CORPORATION", "NIKON D5300", "NIKON D5300", false)]
+    public void NonDngProfile_MatchesModelWithManufacturerSuffixButRejectsOtherCameras(
+        string make, string model, string profileModel, bool matches)
+    {
+        var raw = NonDngRaw();
+        raw.Format = RawFormat.Nef;
+        raw.Metadata.Make = make;
+        raw.Metadata.Model = model;
+        var key = Publish(Profile(profileModel, IdentityMatrix, CancellingForward,
+            (0, 1), 3, null, null, null, null, null, 0));
+
+        if (matches) Near(IdentityExposure0, Develop(raw, key));
+        else AssertUseFault(() => Develop(raw, key), "ModelMismatch");
+    }
+
     [Fact]
     public void Disabled_raw_and_raster_files_ignore_the_profile_without_dropping_the_setting()
     {

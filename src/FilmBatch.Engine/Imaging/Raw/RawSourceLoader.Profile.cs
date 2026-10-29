@@ -12,19 +12,27 @@ internal static partial class RawSourceLoader
         if (options.CameraProfileKey is not { } key) return null;
         var profile = CameraProfileStore.Resolve(AppPaths.UserCameraProfiles, key, RawProcessingScope.Options.CancellationToken);
         var metadata = raw.Metadata;
-        string? model;
-        if (raw.Format == RawFormat.Dng) model = metadata.UniqueCameraModel;
+        var profileModel = NormalizeModel(profile.UniqueCameraModel);
+        bool matches;
+        if (raw.Format == RawFormat.Dng)
+        {
+            var model = NormalizeModel(metadata.UniqueCameraModel);
+            if (model.Length == 0)
+                throw new CameraProfileUseException(CameraProfileUseFault.MissingModel, "RAW camera model is missing.");
+            matches = string.Equals(model, profileModel, StringComparison.OrdinalIgnoreCase);
+        }
         else
         {
             var make = NormalizeModel(metadata.Make);
-            var name = NormalizeModel(metadata.Model);
-            model = name.Length == 0 ? null : make.Length == 0 || name.StartsWith(make + " ", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(make, name, StringComparison.OrdinalIgnoreCase) ? name : make + " " + name;
+            var model = NormalizeModel(metadata.Model);
+            if (model.Length == 0)
+                throw new CameraProfileUseException(CameraProfileUseFault.MissingModel, "RAW camera model is missing.");
+            // EXIF Make can include a legal suffix absent from Model and the DCP identity.
+            var separator = make.IndexOf(' ');
+            matches = MatchesCamera(profileModel, make, model)
+                || (separator > 0 && MatchesCamera(profileModel, make.AsSpan(0, separator), model));
         }
-        var normalized = NormalizeModel(model);
-        if (normalized.Length == 0)
-            throw new CameraProfileUseException(CameraProfileUseFault.MissingModel, "RAW camera model is missing.");
-        if (!string.Equals(normalized, NormalizeModel(profile.UniqueCameraModel), StringComparison.OrdinalIgnoreCase))
+        if (!matches)
             throw new CameraProfileUseException(CameraProfileUseFault.ModelMismatch, "Camera profile model does not match the RAW camera.");
         if (raw.Format != RawFormat.Dng && profile.ProfileEmbedPolicy is 0 or 1)
             throw new CameraProfileUseException(CameraProfileUseFault.Policy, "This camera profile policy does not permit processing a non-DNG RAW.");
@@ -42,6 +50,18 @@ internal static partial class RawSourceLoader
         raw.Color = selected;
         return profile;
     }
+
+    private static bool MatchesCamera(string profile, ReadOnlySpan<char> make, string model)
+    {
+        if (make.IsEmpty || HasMakePrefix(model, make))
+            return string.Equals(profile, model, StringComparison.OrdinalIgnoreCase);
+        return profile.Length > make.Length && HasMakePrefix(profile, make)
+            && profile.AsSpan(make.Length + 1).Equals(model, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool HasMakePrefix(string name, ReadOnlySpan<char> make) =>
+        name.AsSpan().StartsWith(make, StringComparison.OrdinalIgnoreCase)
+        && (name.Length == make.Length || name[make.Length] == ' ');
 
     private static string NormalizeModel(string? value) => string.Join(' ', (value ?? "").Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
 }
