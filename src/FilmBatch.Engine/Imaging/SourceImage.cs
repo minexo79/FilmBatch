@@ -2,6 +2,7 @@ using FilmBatch.Core.Projects;
 using FilmBatch.Engine.Denoising;
 using FilmBatch.Engine.Imaging.Raw;
 using FilmBatch.Raw;
+using FilmBatch.Raw.Color;
 using FilmBatch.Raw.Raster;
 
 namespace FilmBatch.Engine.Imaging;
@@ -11,7 +12,8 @@ namespace FilmBatch.Engine.Imaging;
 /// 相機色調、白平衡模型與輸出→RAW 幾何。整份資料視為不可變：渲染不得原地改寫
 /// （管線一律複製進工作緩衝）；<see cref="SourceImage.Downscale"/> 產生新的場景資料。
 /// </summary>
-internal sealed record RawSceneData(RgbImage Image, CameraTone? Tone, RawWhiteBalance? WhiteBalance, RawSourceGeometry Geometry);
+internal sealed record RawSceneData(RgbImage Image, CameraTone? Tone, RawWhiteBalance? WhiteBalance, RawSourceGeometry Geometry,
+    DcpToneCurve? ProfileTone = null, RawSamplingIdentity? SamplingIdentity = null);
 
 /// <summary>
 /// 解碼後的影像來源或已渲染輸出。一般影像保存 16-bit sRGB RGBA，輸出以 <see cref="Encoding"/> 標明編碼；
@@ -44,7 +46,7 @@ public sealed class SourceImage
         Height = scene.Image.Height;
         ReferenceWidth = Width;
         ReferenceHeight = Height;
-        _display = new(() => RawDisplay.Encode(scene.Image, scene.Tone), LazyThreadSafetyMode.ExecutionAndPublication);
+        _display = new(() => RawDisplay.Encode(scene.Image, scene.Tone, scene.ProfileTone), LazyThreadSafetyMode.ExecutionAndPublication);
     }
 
     /// <summary>
@@ -191,6 +193,7 @@ public sealed class SourceImage
             return new SourceImage(scene with
             {
                 Image = Resample.Resize(scene.Image, w, h, ResampleFilter.Box),
+                SamplingIdentity = scene.SamplingIdentity?.Resize(w, h),
             })
             {
                 FilePath = FilePath, RawOptions = RawOptions, RawInfo = RawInfo, SemanticMasks = SemanticMasks,

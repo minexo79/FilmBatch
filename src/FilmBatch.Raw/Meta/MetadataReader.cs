@@ -24,6 +24,7 @@ public static class MetadataReader
         {
             Make = Text(ifd0, Tags.Make),
             Model = Text(ifd0, Tags.Model) ?? Text(ifd0, Tags.UniqueCameraModel),
+            UniqueCameraModel = Text(ifd0, Tags.UniqueCameraModel),
             Software = Text(ifd0, Tags.Software),
             SerialNumber = Text(exif, Tags.BodySerialNumber) ?? Text(ifd0, Tags.CameraSerialNumber),
             LensMake = Text(exif, Tags.LensMake),

@@ -453,6 +453,26 @@ Apple M3／Metal 原生 MainWindow 實際操作文字預設、多選一次復原
 
 HSL／底片集中回歸 110 passed／0 skipped／0 failed；完整 solution 為 Raw 656 passed／293 skipped、Core 877 passed／28 skipped、App 400 passed／0 skipped，全部 0 failed。略過限外部 RAW／oracle／工具資料缺席及 Windows 專用案例，HSL 的 GPU 比對未略過；Naga 30.0.1 驗證全部 44 個嵌入 WGSL 通過。最初兩項 CPU RED、整合時遺漏測試來源宣告的編譯失敗與修正後結果分開保留。文字 driver、TRX、輸出比較與來源雜湊保存於 gitignored `artifacts/verification/2026-10-27-hsl-color.tar.gz`；不含照片、模型、點陣、第三方 profiles 或執行檔。未驗 Windows／Vulkan／iOS 原生操作，未重新封裝或公證發佈版，未 push。
 
+## CLF 序列與 DCP 相機描述檔（工作區實作，2026-10-29）
+
+依 [CT-2／DCP-1 計畫](superpowers/plans/2026-10-28-composable-color-transforms.md) 在既有底片與 RAW 流程實作受限 CLF 序列、原檔內容定址、CPU／GPU 算圖及外部 DCP 顯影；未加入通用效果 graph、OCIO 產品相依或第三方 profile。新選擇的缺檔、損壞、機型／policy 不符會回報失敗，舊 LUT 的相容行為保留。白平衡候選使用選定 profile 重顯影；缺檔或來源被更換時顯示警告並丟棄舊提案，不建立 undo。
+
+Apple M3／Metal 合成驗證：OCIO 2.6.0 對 16,396 個 CLF 鏈輸入的獨立 CPU 比對最大 RGB 絕對誤差 `1.19e-7`、alpha 相同；三種不同 CLF 鏈在 1920×1080 與 6000×4000 的 CPU／Metal `Render16` 最大差 `1/65535`、alpha 相同。合成雙光源 DCP 經實際 parser 後，在九個有界輸入上與 RAWmakase 0.4.6 的 HueSat／曝光結果最大絕對差 `4.293397e-7`；此比較不涵蓋完整 RAW、tone、Look 或 Adobe 外觀。合成 DNG 的來源 v2 gain map 與外部 DCP HueSat 同時生效；四層來源 map 優先序、兩種 HSV 編碼的 CPU／Metal 雙表、四個 GPU 分帶及超預算 CPU 回退均另有行為檢查。
+
+完整 solution 為 Raw 782 passed／293 skipped、Core 1296 passed／28 skipped、App 428 passed／0 skipped，0 failed；略過包含外部相機樣本／oracle 及 Windows 專用項。Naga 30.0.1 驗證 46 個 WGSL 通過。隔離 iOS Simulator Release 建置 0 warnings／0 errors，使用實驗性 Xcode 版本檢查覆寫；這不是 iOS 執行或工具鏈相容性驗收。
+
+同機、同輸入的舊版／新版／新版／舊版成對量測，停用與既有 LUT 的四組 median 差介於 `-4.19%` 至 `-0.92%`；新 CLF 鏈、大表冷／熱載入及程序 RSS 分開記錄，不推論跨平台速度。測試輸入與輸出 digest、數值、版本、每次耗時及去識別化記錄保存在本機 gitignored `artifacts/verification/2026-10-29-color-results/`；不包含私人照片或第三方 profile。
+
+另以 512×384 合成 Bayer DNG、隔離 DCP 與五次暖機／30 次樣本量測：as-shot DCP 手動白平衡 median／p95 為 170.32／178.42 ms，自動為 1332.42／1356.69 ms；同一程序不選 DCP 時分別為 57.11／60.98 與 520.36／543.96 ms。程序整體最大 RSS 為 234,749,952 bytes，非單項記憶體；樣本由工具輸出轉錄並核對數量與統計，不視為配對效能結論或真實相機／iOS 數據。
+
+macOS 原生桌面：以隔離合成 DNG／CLF／DCP 專案，經使用者操作原生 picker 匯入；驗證 CLF 宣告與復原／重做、DCP 切換／復原及自訂白平衡，重新開啟後 ViewModel 保存設定，原始 DNG digest 不變。先前自動化 picker 路徑不符的原因仍未知；重開截圖空白，不宣稱 macOS 重開後畫面已驗證。
+
+iOS 27.0 Simulator／CPU：原生 Files 匯入相同合成 DNG、CLF 與 DCP；確認保存的檔案位元組與 key，CLF 與 DCP 的復原／重做會改變預覽，重新啟動後設定及取樣預覽保留。重開後縮圖已完成且畫面可用，但狀態仍顯示「Working…」；原始碼顯示自動重開成功時未更新狀態文字，推測為原因，尚未修復。截圖比較只涵蓋畫面局部，不是色彩正確性 oracle；XCTest 存取元件回報 `kAXErrorIllegalArgument`，故以座標操作並另核對檔案與畫面。
+
+同日後續修正行動 I/O 狀態：成功回傳且狀態仍是原本的「Working…」才清除，保留操作結果、錯誤、取消及期間改寫的狀態。實際行動 View 回歸 5 passed；App suite 433 passed／0 skipped。隔離 iOS 27.0 Simulator 以合成 256×160 PNG 與預存專案重新啟動後，預覽及 1/1 縮圖完成，未再顯示「Working…」；以座標開啟原生 Photos 選取器並未選取即取消，畫面同樣清除該狀態、未建立新專案。原圖 SHA-256 不變，畫面保存在 gitignored `artifacts/verification/2026-10-29-mobile-status/`。本次 `--artifacts-path` 建置回報成功，卻將 app 中繼資料與連結輸出拆至不同路徑；bin bundle 安裝失敗，測試時合併同次輸出並逐一 ad-hoc 簽署 runtime dylib 後才可啟動。此畫面證據不驗證原始封裝、實機或正式簽章；Xcode 版本檢查仍以實驗性參數覆寫。
+
+Windows DX12、實體 iOS、合法相機 RAW／profile 的端到端比較、維護者／法律審查與其他計畫 gates 仍待完成；這些實作和合成證據**不是發佈驗收**。沒有授權 commit、push、發佈或公證。
+
 ## iOS Simulator 產物路徑調查（2026-10-29）
 
 隔離 .NET SDK `10.0.402`／MSBuild `18.9.15.50611`、iOS workload `27.0.10722` 與 Xcode `27.1`（實驗性停用版本檢查）追查成功建置卻缺少可安裝主執行檔的 bundle。原先外部絕對 `--artifacts-path` 的 bin app 僅有中繼資料／簽章，執行檔與資源落在巢狀 publish 路徑；安裝 bin app 失敗。手動合併後首次啟動遇到 runtime dylib 的 codesigning `invalid-page`，逐一 ad-hoc 重簽只證明測試版可啟動，不是封裝或正式簽章驗證。

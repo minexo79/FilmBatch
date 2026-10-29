@@ -111,7 +111,7 @@ public sealed class WindowRenderEquivalenceTests
             var window = renderer.RenderWindow(source, settings, view, full.Stats!, Ct);
             Assert.Equal((view.W, view.H), (window.Width, window.Height));
             var (max, mean) = Compare(full, view, window);
-            var region = WindowRegion.Expand(ModuleParams.From(source, settings), view);
+            var region = WindowRegion.Expand(ModuleParams.From(source, settings, cancellationToken: Ct), view);
             TestContext.Current.TestOutputHelper?.WriteLine(
                 $"{backend} {name} {where}: max [{string.Join(",", max)}] mean [{string.Join(",", mean.Select(m => m.ToString("F4")))}]"
                 + $" region {region.W}x{region.H} of {view.FrameW}x{view.FrameH}");
@@ -153,7 +153,7 @@ public sealed class WindowRenderEquivalenceTests
     public void Pointwise_modules_render_only_the_window(string name)
     {
         var (source, settings) = Case(name);
-        var p = ModuleParams.From(source, settings);
+        var p = ModuleParams.From(source, settings, cancellationToken: Ct);
         var view = new RenderView(p.FrameWidth, p.FrameHeight, 101, 57, 333, 222);
         Assert.Equal(view, WindowRegion.Expand(p, view));
     }
@@ -173,7 +173,7 @@ public sealed class WindowRenderEquivalenceTests
     public void Default_view_is_whole_frame()
     {
         var settings = WindowCases.All.Single(c => c.Name == "crop-rotate").Settings;
-        var p = ModuleParams.From(Plain.Value, settings);
+        var p = ModuleParams.From(Plain.Value, settings, cancellationToken: Ct);
         Assert.False(p.IsWindow);
         Assert.Equal(RenderView.Whole(p.FrameWidth, p.FrameHeight), p.View);
         Assert.Equal((p.FrameWidth, p.FrameHeight), (p.OutWidth, p.OutHeight));

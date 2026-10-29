@@ -5,6 +5,11 @@ using FilmBatch.Raw.Color;
 using FilmBatch.Raw.Opcodes;
 
 namespace FilmBatch.Engine.Imaging.Raw;
+internal sealed record RawSamplingIdentity(ulong A, ulong B, ulong C, ulong D, int Edge, (int Width, int Height)[] Resizes)
+{
+    internal RawSamplingIdentity Resize(int width, int height) => this with { Resizes = [.. Resizes, (width, height)] };
+}
+
 
 internal static partial class RawSourceLoader
 {
@@ -47,6 +52,9 @@ internal static partial class RawSourceLoader
         }
 
         internal ReadOnlyMemory<byte> Bytes => Entry.Bytes;
+        internal RawSamplingIdentity SamplingIdentity(int edge) => new(_key.A, _key.B, _key.C, _key.D, edge, []);
+        internal bool Matches(RawSamplingIdentity identity) =>
+            _key.A == identity.A && _key.B == identity.B && _key.C == identity.C && _key.D == identity.D;
 
         /// <summary>樣本只讀共用；顯影會改寫的色彩標籤、運算碼清單與 Data 欄位各自獨立。</summary>
         internal RawImage CreateRaw()

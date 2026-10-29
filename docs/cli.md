@@ -26,7 +26,8 @@ filmbatch-cli raw masks "/path/input.dng"
 - AI 降噪另記於每筆匯出紀錄的 `Denoise`：模型身分與 SHA-256、實際推論 provider、推論時間、tile 數及快取命中。效果 renderer 的 GPU 名稱不代表神經網路全部在同一裝置執行。
 - RAW 處理啟用時，「基本調整」提供 As Shot／自訂 2500–9900 K＋色偏，取代相對色溫／色偏；RAW 面板仍提供實際內嵌語意遮罩，沒有對應遮罩的照片保留設定但不全圖套用。外部 Lensfun-format 目錄在「偏好設定 → 資料夾」指定（存於 settings.json，全部專案共用）；CLI 匯出用 `--lens-database`，兩者皆未設定時使用 `FILMBATCH_LENSFUN_DIR`，再其次為使用者在同一頁按「下載最新版」（或 CLI `lens-database download`）取得的資料庫。下載只取 Lensfun 儲存庫的 `data/db` XML（CC BY-SA 3.0），存於 `AppPaths.Root/lensfun/db-<commit>`，逐檔以 git blob SHA-1 驗證並整批解析通過後才以 `installed.json` 原子切換；這是獨立實作，不連結也不移植 Lensfun 的 LGPL 函式庫或 GPL 的 `lensfun-update-data`，資料庫也不隨程式散布。RAW 讀取絕不自動下載。
 - Lensfun 校正以 RAW 的預設裁切區（`DefaultCrop`）建立光學中心與半徑，再換算至完整感光區（`ActiveArea`）座標；非置中裁切的變形與暗角共用相同映射。
-- `raw convert` 補上可用的相機色彩矩陣、hue/saturation table 與 tone，保留感光樣本、幾何及標準拍攝中繼資料；沒有可用色彩描述或目的檔已存在時拒絕寫入。標準 DNG profile 無法完整表示檔案內 JPEG 擬合外觀的逐像素亮度還原／chroma 曲線，不能宣稱轉前與轉後逐像素相同；相同色彩模型的對照與此限制分開記錄。
+- 已保存專案／預設可選 `raw.camera_profile=auto` 或使用者匯入的 `dcp-<64 小寫 hex>`，也可選 `film.look=look-<64 小寫 hex>` 的 CLF 資產；CLI 匯出使用相同的本機資產庫與解析失敗規則。這些 key 不是檔案路徑，跨機移動專案時也須合法攜帶對應資產。缺檔、內容變動、機型或 policy 不符時逐張回報失敗；停用 RAW／film 或 film 強度為零時不載入相應資產。
+- `raw convert` 補上來源可用的相機色彩矩陣、hue/saturation table 與 tone，保留感光樣本、幾何及標準拍攝中繼資料；沒有可用色彩描述或目的檔已存在時拒絕寫入。它不讀專案選擇的外部 DCP，也不等於 `export --format dng` 的算圖後輸出。標準 DNG profile 無法完整表示檔案內 JPEG 擬合外觀的逐像素亮度還原／chroma 曲線，不能宣稱轉前與轉後逐像素相同。
 
 ### 本機 AI 降噪
 

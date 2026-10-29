@@ -1,4 +1,6 @@
 using Avalonia.Platform.Storage;
+using FilmBatch.Core.Film;
+using FilmBatch.Raw.Color;
 using FilmBatch.Core.Projects;
 
 namespace FilmBatch.Mobile;
@@ -74,7 +76,7 @@ public sealed class MobileWorkspace
         using (file)
         {
             await using var input = await file.OpenReadAsync();
-            return await CopyAsync(input, file.Name, folder, cancellationToken);
+            return await CopyAssetAsync(input, file.Name, folder, cancellationToken);
         }
     }
 
@@ -265,7 +267,17 @@ public sealed class MobileWorkspace
         }
     }
 
-    private static async Task<string> CopyAsync(Stream source, string name, string destination, CancellationToken cancellationToken)
+    internal static Task<string> CopyAssetAsync(Stream source, string name, string destination, CancellationToken cancellationToken)
+    {
+        var extension = Path.GetExtension(name);
+        long? maximum = extension.Equals(".clf", StringComparison.OrdinalIgnoreCase) ? ClfFile.MaxInputBytes
+            : extension.Equals(".fblook", StringComparison.OrdinalIgnoreCase) ? ColorTransformFile.MaxFileBytes
+            : extension.Equals(".dcp", StringComparison.OrdinalIgnoreCase) ? DcpProfile.MaxSourceBytes
+            : null;
+        return CopyAsync(source, name, destination, cancellationToken, maximum);
+    }
+
+    private static async Task<string> CopyAsync(Stream source, string name, string destination, CancellationToken cancellationToken, long? maxBytes = null)
     {
         ValidateName(name);
         Directory.CreateDirectory(destination);
@@ -275,7 +287,22 @@ public sealed class MobileWorkspace
             await using (var output = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None,
                 65536, FileOptions.Asynchronous | FileOptions.SequentialScan))
             {
-                await source.CopyToAsync(output, cancellationToken);
+                if (maxBytes is not { } limit)
+                    await source.CopyToAsync(output, cancellationToken);
+                else
+                {
+                    var buffer = new byte[65536];
+                    long total = 0;
+                    while (true)
+                    {
+                        var count = (int)Math.Min(buffer.Length, limit - total + 1);
+                        var read = await source.ReadAsync(buffer.AsMemory(0, count), cancellationToken);
+                        if (read == 0) break;
+                        total += read;
+                        if (total > limit) throw new InvalidDataException($"Asset exceeds the {limit}-byte limit.");
+                        await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+                    }
+                }
                 await output.FlushAsync(cancellationToken);
             }
             cancellationToken.ThrowIfCancellationRequested();

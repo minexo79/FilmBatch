@@ -3,6 +3,9 @@ using Avalonia.Platform.Storage;
 using FilmBatch.App.Gallery;
 using FilmBatch.App.Services;
 using FilmBatch.App.ViewModels.Dialogs;
+using FilmBatch.Core.Film;
+using FilmBatch.Raw.Color;
+using FilmBatch.App.ViewModels;
 
 namespace FilmBatch.App.Dialogs;
 
@@ -69,6 +72,13 @@ public sealed class DialogService(Func<Window?> owner) : IDialogService
 
     public Task<string?> PromptAsync(string title, string label, string initial) =>
         SimpleDialogs.PromptAsync(Owner, title, label, initial);
+
+    public Task<ClfImportOptions?> ShowColorTransformImportAsync(ColorTransform transform, CancellationToken cancellationToken) =>
+        SimpleDialogs.ColorTransformAsync(Owner, transform, cancellationToken);
+
+    public Task<bool> ShowCameraProfileImportAsync(DcpProfile profile, CancellationToken cancellationToken) =>
+        SimpleDialogs.ConfirmAsync(Owner, Localization.Loc.Get("Raw.Profile.ImportTitle"),
+            CameraProfileViewModel.Describe(profile), Localization.Loc.Get("Dialog.OK"), cancellationToken);
 
     public void ShowGallery() => new GalleryWindow().Show(Owner);
 

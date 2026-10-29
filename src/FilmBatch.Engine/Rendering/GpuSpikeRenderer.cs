@@ -39,7 +39,7 @@ public sealed class GpuSpikeRenderer : IPreviewRenderer
         cancellationToken.ThrowIfCancellationRequested();
         if (DenoiseSettings.From(settings).IsActive)
             source = DenoiseProcessor.Shared.Prepare(source, settings, cancellationToken);
-        var parameters = ModuleParams.From(source, settings, encoding);
+        var parameters = ModuleParams.From(source, settings, encoding, cancellationToken: cancellationToken);
         _assets.Prepare(source, parameters);
         // 匯出不受預覽記憶體預算限制：只要不超過裝置紋理上限就用 GPU，
         // 實際配置顯示記憶體失敗時才改用 CPU 等效路徑（不靜默截斷）。
@@ -68,7 +68,7 @@ public sealed class GpuSpikeRenderer : IPreviewRenderer
         var timer = Stopwatch.StartNew();
         if (DenoiseSettings.From(settings).IsActive)
             source = DenoiseProcessor.Shared.Prepare(source, settings, cancellationToken);
-        var parameters = Prepare(source, settings);
+        var parameters = Prepare(source, settings, cancellationToken);
         // 輸出為裁切後的尺寸
         var output = new byte[parameters.OutWidth * parameters.OutHeight * 4];
         if (UsingCpu)
@@ -102,7 +102,7 @@ public sealed class GpuSpikeRenderer : IPreviewRenderer
         var timer = Stopwatch.StartNew();
         if (DenoiseSettings.From(settings).IsActive)
             frameSource = DenoiseProcessor.Shared.Prepare(frameSource, settings, cancellationToken);
-        var parameters = ModuleParams.From(frameSource, settings);
+        var parameters = ModuleParams.From(frameSource, settings, cancellationToken: cancellationToken);
         _assets.Prepare(frameSource, parameters);
         var region = WindowRegion.Expand(parameters, view);
         parameters.View = region;
@@ -137,9 +137,9 @@ public sealed class GpuSpikeRenderer : IPreviewRenderer
         };
     }
 
-    private ModuleParams Prepare(SourceImage source, Settings settings)
+    private ModuleParams Prepare(SourceImage source, Settings settings, CancellationToken cancellationToken)
     {
-        var parameters = ModuleParams.From(source, settings);
+        var parameters = ModuleParams.From(source, settings, cancellationToken: cancellationToken);
         _assets.Prepare(source, parameters);
         _cpuBackend = _pipeline.CanRender(source, parameters) ? null : RenderBackend.GpuBudgetExceeded;
         return parameters;

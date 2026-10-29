@@ -15,7 +15,7 @@ public sealed class RawWhiteBalanceRangeTests
     public void RendererInput_ClampsUnnormalizedCustomKelvin(double previous, double expected)
     {
         var source = new SourceImage(1, 1, [0, 0, 0, ushort.MaxValue]);
-        var parameters = ModuleParams.From(source, Settings.Empty.With("raw.temperature", previous));
+        var parameters = ModuleParams.From(source, Settings.Empty.With("raw.temperature", previous), cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal((float)expected, parameters.RawTemperature);
     }
 

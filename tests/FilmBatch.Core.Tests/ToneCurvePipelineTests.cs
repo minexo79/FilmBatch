@@ -60,8 +60,8 @@ public sealed class ToneCurvePipelineTests
                 .With("curves.split_shadows", 70.0).With("curves.split_mid", 20.0),
             strong.With("curves.enabled", false),
         ];
-        foreach (var settings in neutral) Assert.Null(ModuleParams.From(source, settings).Curves);
-        Assert.NotNull(ModuleParams.From(source, strong).Curves);
+        foreach (var settings in neutral) Assert.Null(ModuleParams.From(source, settings, cancellationToken: TestContext.Current.CancellationToken).Curves);
+        Assert.NotNull(ModuleParams.From(source, strong, cancellationToken: TestContext.Current.CancellationToken).Curves);
 
         using var renderer = CreateRenderer(gpu);
         var disabled = Render(renderer, source, ModuleCatalog.Defaults.With("curves.enabled", false));

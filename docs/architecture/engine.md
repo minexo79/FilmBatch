@@ -27,6 +27,7 @@ flowchart LR
 | `CpuFakeRenderer` | `CpuFakeRenderer.cs` | **正式的 CPU 算圖器**（名稱同樣是歷史遺留），內部呼叫 `CpuPipeline`；無 GPU 或使用者強制軟體模式時使用 |
 | `DenoiseProcessor` | `Denoising/` | CPU／GPU 共用的效果前來源階段。正式預覽／匯出仍先全解析度推論；縮圖只處理提供的像素，不重開原檔，另有一筆神經結果快取。RAW 快取代理輸入後混合；sRGB 串流混合／量化並直接縮小；見 [ADR 0002](../adr/0002-ai-denoise.md) |
 | `FilmLookProcessing` | `FilmLookProcessing.cs` | 底片風格的 CPU 參考實作：LUT → 暖色 → 褪色 → 依效果比例混合；不再內含 HSL |
+| `ColorTransformProcessing`／`ColorTransformKernel` | `ColorTransformProcessing.cs`、`ColorTransformKernel.cs` | 同一有限 CLF 序列的 CPU 與 GPU 算術；GPU 以一個固定 shader 執行，ops／table storage 及在途資產計入裝置限制與預算 |
 | `FilmLookUniforms` | `FilmLookUniforms.cs` | 傳給 `film/look.wgsl` 的單一 `Mix`（16 bytes），與 WGSL `LookParams` 對齊 |
 | `HslProcessing`／`HslUniforms` | `HslProcessing.cs`、`HslUniforms.cs` | 獨立八色相帶（OKLCh），底片混合後、古典版材前執行；`HslOn` 與底片開關／強度無關。八個固定 `Vector4`（128 bytes）對齊 `linear/hsl.wgsl`，全零跳過、alpha 不動 |
 | `PhotoAdjustments` | `PhotoAdjustments.cs` | BasicLinear 後的羽化膚色與單調 Zone 亮度曲線；CPU 逐像素與有界分析共用純量數學，GPU 對應 `linear/photo_adjustments.wgsl` |
@@ -44,6 +45,10 @@ flowchart LR
 **處理順序**（`CpuPipeline.Process` 與 `GpuEffectPipeline.Process` 相同）
 
 RAW 來源保持未夾取的浮點線性 Rec.2020，`Rgba16` 只在原圖比較／直方圖等顯示用途首次取用時編碼。兩套算圖管線先轉到未夾取的線性 sRGB 工作域，在裁切後套用相機白平衡與語意遮罩，再執行既有效果；顯示段前轉回 Rec.2020，依原順序完成相機色調、高光去飽和與壓縮，再轉顯示 sRGB。高光壓縮的通道最大值不能與色域轉換交換順序。一般影像維持原有 sRGB 路徑；藝術 LUT 仍有自身的有界輸入限制。
+
+選用外部 DCP 時，RAW 解碼依來源機型與 profile policy 驗證內容定址資產，在相機矩陣、白平衡、highlight 與 HueSat／Look 前建立獨立有效 profile；來源 gain map 保留。非線性 profile 的自訂 WB 會重新顯影，後段不得再套一次 WB。白平衡分析對候選以相同感光／幾何快照重算矩陣與色彩表，最多取 4096 個輸出樣本；無裁剪時只計算樣本所需的像素，裁剪的 highlight 重建仍需整張感光鄰域。來源內容被更換或 profile 缺失／機型不符時回報錯誤，不回退舊外觀。
+
+CLF 的 `WorkingLinear` 固定放在原 film 位置；`DisplayEncoded` 在顯示編碼後、基本顯示調整前，兩者擇一。包裝使用明確宣告的編碼，暖色／褪色與強度在線性 sRGB 混合，alpha 不變；取樣不解析 film 資產。實作與合成測試不代表所有 CLF、相機、平台或第三方外觀已驗證。
 
 | 階段 | 色彩空間 | 模組 |
 |---|---|---|
@@ -92,7 +97,7 @@ guided 統計先對導引作固定平移 `v=u+4`，累積 `(Σw,Σw·v,Σw·v²)
 | 同一張縮圖只算最新設定 | `RequestThumbnail` 會先移除同 key 的舊請求 |
 | Loupe 窗口 slot | `RequestWindow` 只留最新一筆；優先序為預覽 > 窗口 > 預取 > 縮圖。窗口有獨立要求世代，不因 Main 未換代而重用；`CancelWindow`、重建與清空縮圖時作廢，成功與失敗在 UI 排入前及送達時都再核對世代 |
 | 偏好設定切換 GPU 後端 | `ResetRenderer` 推進 `Epoch`、清空佇列，在 GPU 執行緒上重建算圖器 |
-| 算圖失敗 | 先重建裝置重試一次，仍失敗以 `RenderFailure` 回報原始例外與要求來源；無法建立算圖器也須回報逐筆要求的失敗終態。窗口走獨立 `WindowFailed`，只解除該要求的去重狀態，不污染主預覽／縮圖錯誤，也不無限自動重送 |
+| 算圖失敗 | 一般錯誤先重建裝置重試一次，仍失敗以 `RenderFailure` 回報原始例外與要求來源；`ColorTransformAssetException` 為資產錯誤，直接回報、不重建裝置或回傳原圖。無法建立算圖器也須回報逐筆要求的失敗終態；窗口走獨立 `WindowFailed` |
 | GPU 建立失敗 | 改用 fallback（CPU 算圖器）並發 `Notice` |
 | 閒置來源釋放 | 每筆工作在不可內聯的 `RunNext` 中完成後才回到等待迴圈，避免上一筆要求／結果留在常駐執行緒的堆疊上；不靠產品端強制 GC |
 

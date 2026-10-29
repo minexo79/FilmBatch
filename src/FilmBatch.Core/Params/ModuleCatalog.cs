@@ -28,6 +28,7 @@ public static class ModuleCatalog
             Bool(ModuleSchema.EnabledKey, "啟用", true),
             Bool("embedded_lens", "內嵌鏡頭校正", true),
             Bool("camera_local_tone", "相機局部色調"),
+            Choice("camera_profile", "相機描述檔", O("auto", "自動")) with { IsCameraProfileChoice = true },
             Choice("wb_mode", "白平衡", O("as-shot", "拍攝值"), O("custom", "自訂")),
             Float("temperature", "色溫（K）", 6500, 2500, 9900, 50, "K"),
             Float("tint", "色調（WB）", 0, -150, 150),
@@ -263,7 +264,7 @@ public static class ModuleCatalog
         new("film", "底片風格", ModuleGroup.Film, PasteCategory.Color,
         [
             Bool(ModuleSchema.EnabledKey, "啟用"),
-            Choice("look", "底片", [.. Film.FilmLookLibrary.All.Select(l => O(l.Key, l.Name))]),
+            Choice("look", "底片", [.. Film.FilmLookLibrary.All.Select(l => O(l.Key, l.Name))]) with { IsFilmLookChoice = true },
             Float("strength", "效果比例", 100, 0, 100, 1, "%"),
             Float("warmth", "暖色", 0, -100, 100),
             Float("fade", "褪色", 0, 0, 100),

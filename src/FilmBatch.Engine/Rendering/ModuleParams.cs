@@ -98,11 +98,11 @@ public sealed class ModuleParams
     public float LeakAmount, LeakAngle, LeakSize, LeakHue, LeakIrregularity;
     public float LeakRed, LeakYellow, LeakBlue, LeakWhite;
     public int LeakCount;
-    // film（底片風格：LUT＋暖色＋褪色；FilmLut 為 null 時不套用）。分色相修正是獨立的 hsl 模組。
+    // film：LUT 或有界 transform；停用與 strength=0 時不解析資產。
     public bool FilmOn;
     public string FilmLookKey = "";
     public float FilmStrength, FilmWarmth, FilmFade;
-    public FilmLut? FilmLut;
+    public FilmLookAsset? FilmAsset;
     internal FilmLookUniforms FilmLook;
     // hsl（分色相修正：八色相帶 × h/s/l；獨立於底片，線性 pass 在底片之後、古典版材之前）
     public bool HslOn;
@@ -133,7 +133,8 @@ public sealed class ModuleParams
     internal EffectImage? DoubleAsset, LeakAsset, DirtAsset;
 
 
-    public static ModuleParams From(SourceImage source, Settings s, RgbEncoding encoding = RgbEncoding.Srgb)
+    public static ModuleParams From(SourceImage source, Settings s, RgbEncoding encoding = RgbEncoding.Srgb,
+        bool resolveFilmAsset = true, CancellationToken cancellationToken = default)
     {
         RgbEncodingInfo.Validate(encoding);
         string? fileName = null;
@@ -368,7 +369,8 @@ public sealed class ModuleParams
         m.View = RenderView.Whole(m.FrameWidth, m.FrameHeight);
         m.ShadowRecoveryOn &= m.ShadowRecoveryExposure > 0 || m.ShadowRecoveryLuminance > 0 || m.ShadowRecoveryChroma > 0;
         m.HighlightRolloffOn &= m.HighlightRolloffSlope < 1f;
-        m.FilmLut = m.FilmOn ? FilmLookLibrary.TryLut(m.FilmLookKey) : null;
+        m.FilmAsset = resolveFilmAsset && m.FilmOn && m.FilmStrength > 0
+            ? FilmLookLibrary.Resolve(m.FilmLookKey, cancellationToken) : null;
         m.FilmLook = FilmLookUniforms.From(m);
         m.Hsl = HslUniforms.From(m, out var hslActive);
         m.HslOn &= hslActive;

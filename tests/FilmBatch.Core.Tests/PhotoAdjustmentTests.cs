@@ -336,13 +336,13 @@ public sealed class PhotoAdjustmentTests
         // 一般 16-bit 來源：zone.enabled 被 From 閘掉 → 輸出與預設一致。
         var plain = Flat16(16, 16, 20000);
         var withZone = ModuleCatalog.Defaults.With("zone.enabled", true).With("zone.offset", 2.0);
-        Assert.False(ModuleParams.From(plain, withZone).ZoneOn);
+        Assert.False(ModuleParams.From(plain, withZone, cancellationToken: ct).ZoneOn);
         Assert.Equal(CpuPipeline.Process(plain, ModuleCatalog.Defaults, null, ct).Rgba16,
             CpuPipeline.Process(plain, withZone, null, ct).Rgba16);
 
         // 場景線性來源：同一設定有效 → HDR 區塊變亮。
         var scene = SceneSource(16, 16, 0.72f);
-        Assert.True(ModuleParams.From(scene, withZone).ZoneOn);
+        Assert.True(ModuleParams.From(scene, withZone, cancellationToken: ct).ZoneOn);
         var baseline = CpuPipeline.Process(scene, ModuleCatalog.Defaults, null, ct);
         var zoned = CpuPipeline.Process(scene, withZone, null, ct);
         Assert.True(zoned.Rgba16[0] > baseline.Rgba16[0], "Zone +2EV 應提高場景線性亮度");

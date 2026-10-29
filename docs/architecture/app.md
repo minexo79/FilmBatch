@@ -69,10 +69,13 @@ flowchart TB
 - 預設管理的 Esc 透過 `IsCancel` 關閉視窗，包含焦點位於文字欄位時；關閉後沿用原本的套用流程。偏好設定仍維持關閉時套用；背景載入 CPU 目標是唯一即時套用並保存的效能選項，不重建 GPU。
 - RAW 原廠處理只在焦點來源已解碼為 RAW（`SourceImage.RawInfo` 存在）時顯示，仍遵守「隱藏未啟用模組」；一般影像即使帶有已保存的 RAW 設定也不顯示此面板、不刪除設定。來源解碼完成或失敗時重新整理面板；照片基本參數預設依 `basic` key 展開基本調整，不依賴模組目錄的位置。
 - 底片風格縮圖在送出前核對來源的 `RawOptions` 與焦點照片設定；RAW 尚在重新顯影時沿用等待來源的排程，不以舊來源產生新設定的縮圖。匹配來源就緒後自動重算，包含在底片分頁復原／重做 RAW 選項的情況。獨立 HSL 不再有預覽圖與縮圖工作。
-- RAW 的 `wb_mode=as-shot|custom`、自訂 2500–9900 K／色偏與 `mask_*` 只重算畫面，不重新解碼。控制項、JSON 專案、YAML 預設及直接建立的算圖輸入共用自訂色溫範圍；舊自訂值正規化至邊界，不改寫來源的拍攝白平衡中繼資料，也不改相對的 `basic.temperature`。遮罩精確保存 `Name`＋`InstanceId`；缺失或同名不明確時顯示不可用，不改成全圖作用。全尺寸算圖保留原有16-bit alpha與單像素細節，不先降成固定大小；上游 developed matte 會量化為8-bit，不能泛稱任意16-bit軟邊逐碼相同。
+- RAW 的 `wb_mode=as-shot|custom`、自訂 2500–9900 K／色偏與 `mask_*` 使用既有控制、設定及一次復原。未選外部相機 profile 時 WB 沿用既有場景矩陣快速路徑；選用外部 DCP 時 WB mode／色溫／色偏屬來源快取鍵，須重新顯影，不能只重算畫面。拍攝白平衡中繼資料不改寫，相對的 `basic.temperature` 仍保留。遮罩精確保存 `Name`＋`InstanceId`；缺失或同名不明確時顯示不可用，不改成全圖作用。全尺寸算圖保留原有 16-bit alpha 與單像素細節。
 - `embedded_lens`、`camera_local_tone`、外部 Lensfun 資料夾與模組啟用狀態屬於來源快取鍵。外部資料夾是應用程式偏好設定（`AppSettings.LensDatabaseFolder` → 程序共用的 `RawLoadOptions.LensDatabaseDirectory`；CLI 用 `--lens-database`；兩者皆未設定時讀 `FILMBATCH_LENSFUN_DIR`，再其次為 `LensDatabaseStore` 明確下載的 `data/db`；下載與 AI 模型共用 `Downloads/Downloader`），不屬於照片設定，變更時重新解碼目前照片與縮圖。外部 Lensfun-format XML 只在缺少已驗證內嵌校正時匹配，略過 DOCTYPE（官方資料庫每個檔案都有）但不解析外部資源、不定義實體，並限制檔案大小；不隨程式散布資料庫。校正的光學中心與半徑取預設裁切，再轉成 ActiveArea 的既有 opcode 慣例；warp、gain table 與語意遮罩共用輸出→有效 RAW 的逆映射。未設定／無匹配不加校正；明確設定但不存在、不可讀或格式錯誤的資料庫不讓照片打不開：來源退回不使用外部校正，並以 `SourceImage.LensDatabaseWarning` 回報（App 提示一次並寫入記錄、匯出記錄寫入 `LensDatabaseWarning`），帶警告的來源不進快取重用，修好資料夾後下次載入即重新比對。
+- RAW 面板使用可更新的相機 profile 選擇列。`auto` 為既有 RAW 起始外觀，並不保證來源一定有內嵌 profile；獨立 `.dcp` 匯入會顯示機型／policy，保留 source bytes 並以 `dcp-`＋SHA-256 識別。多選套用為一筆復原；缺失、損毀、機型不符或使用政策不允許時明確回報。一般影像或關閉 RAW 時不套用外部 profile，設定仍保存。來源、預覽與縮圖切換不得沿用不同 profile／WB 的影像。
+- CLF／DCP 匯入在背景封存、驗證並發布；等待 picker／確認期間切換 selection／project 或 suspend／dispose 會取消並阻止舊結果套用。行動 picker 複製時對 CLF、FBLOOK 與 DCP 分別執行檔案上限，非 seek stream 也有界。這些是共用程式碼契約，不代表 iOS 原生匯入已驗收。
 - 解碼失敗／取消的快取項目不重用；外部檔案或資料夾修復後可用相同選項重新要求來源。過期解碼失敗必須同時核對來源選項，不能清除 undo 已還原的畫面。
 - 照片工具以服務、照片、來源及設定世代綁定提案；背景結果另核對請求序號。進入取樣視圖先取消已排隊的一般預覽，收到新影格才允許點選；接受前只疊加暫存設定。Esc（包含文字焦點）、失焦、收合、來源／設定變更、裁切替換與主 ViewModel 處置都不能套用過期提案。
+- 已顯示的外部 DCP 或 RAW 原檔在白平衡求解期間遺失、損毀或被替換時，手動／自動求解會在照片工具警告區顯示原因、清除舊提案與暫存預覽，不改設定或復原堆疊；切換照片或取消後的過期錯誤不顯示到新脈絡。
 - 「AI 功能」只在照片基本參數，預設展開且不寫入設定。降噪模組仍在 `InspectorViewModel.Modules`（載入、隱藏停用模組、複製與重設照舊），但不進基本分組。收合會取消未套用的單張去背草稿與進行中的單張選取；進行中的批次去背、模型下載／匯入與降噪推論繼續。離開基本參數分頁仍沿用原本的取消，與收合不同。底片效果分頁沒有這塊面板，收合它的狀態不會取消去背。
 - `Zoom <= 0` 的 Fit 置中由 `PreviewCanvas.ZoomProperty` 的 class handler 清除 Pan，不只放在 `PreviewViewModel`。Gallery 等沒有綁定同一個 ViewModel 的獨立畫布也需要這個契約；一般畫布切換則仍保留共用 Pan。
 - 畫布以 `PreviewViewModel.FrameSize` 的來源／裁切畫框計算 Fit、倍率及可見範圍；`FrameLongEdge` 由它推導。`PreviewCanvas.LayoutFrameSize` 不從顯示 bitmap 的整數尺寸反推長寬比，避免 Lanczos 顯示縮放取整後又改變下一次尺寸、在靜止視窗持續 refit。沒有來源幾何的獨立畫布仍使用 bitmap 尺寸。

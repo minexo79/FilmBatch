@@ -1,5 +1,6 @@
 using FilmBatch.Engine.Denoising;
 using FilmBatch.Core.Curves;
+using FilmBatch.Core.Film;
 using FilmBatch.Core.Params;
 using FilmBatch.Core.Random;
 using FilmBatch.Engine.Imaging;
@@ -24,7 +25,7 @@ public static class CpuPipeline
     {
         if (DenoiseSettings.From(settings).IsActive)
             source = DenoiseProcessor.Shared.Prepare(source, settings, ct);
-        var p = ModuleParams.From(source, settings, encoding);
+        var p = ModuleParams.From(source, settings, encoding, cancellationToken: ct);
         return Process(source, p, outRgba16, ct);
     }
 
@@ -90,7 +91,12 @@ public static class CpuPipeline
         ct.ThrowIfCancellationRequested();
 
         // ③ 底片（線性）：底片風格 → 分色相修正 → 古典版材
-        if (p.FilmOn && p.FilmLut is not null && p.FilmStrength > 0) FilmLookProcessing.Apply(cur, n, p.FilmLook, p.FilmLut);
+        if (p.FilmOn && p.FilmStrength > 0)
+        {
+            if (p.FilmAsset?.Lut is { } lut) FilmLookProcessing.Apply(cur, n, p.FilmLook, lut);
+            else if (p.FilmAsset?.Transform is { Options.Stage: ColorTransformStage.WorkingLinear } transform)
+                FilmLookProcessing.ApplyTransform(cur, n, p.FilmLook, transform, ct);
+        }
         if (p.HslOn) HslProcessing.Apply(cur, n, p.Hsl);
         ct.ThrowIfCancellationRequested();
         if (p.PlateOn && p.PlateStrength > 0) PhotoPlate(cur, w, h, p);
@@ -100,19 +106,23 @@ public static class CpuPipeline
         ct.ThrowIfCancellationRequested();
 
         // ③→④ 顯示空間
-        if (source.Scene is { } scene) RawDisplay.FinishLinear(cur, scene.Tone, proPhoto);
+        var displayTransform = p.FilmOn && p.FilmStrength > 0 &&
+            p.FilmAsset?.Transform is { Options.Stage: ColorTransformStage.DisplayEncoded };
+        if (source.Scene is { } scene) RawDisplay.FinishLinear(cur, scene.Tone, proPhoto || displayTransform, scene.ProfileTone);
         else Parallel.For(0, n, i =>
         {
             var s = i * 4;
             // MathF.Pow 保留純量：M3 實測 Exp(Log) 向量組合反而較慢。
             var px = Vector128.LoadUnsafe(ref cur[s]);
-            var rgb = proPhoto
+            var rgb = proPhoto || displayTransform
                 ? Vector128.Create(RgbEncodingInfo.EncodeExtendedSrgb(px[0]), RgbEncodingInfo.EncodeExtendedSrgb(px[1]),
                     RgbEncodingInfo.EncodeExtendedSrgb(px[2]), px[3])
                 : Vector128.Create(LinearToSrgb(px[0]), LinearToSrgb(px[1]), LinearToSrgb(px[2]), px[3]);
             rgb.CopyTo(cur, s);
         });
         ct.ThrowIfCancellationRequested();
+        if (displayTransform)
+            FilmLookProcessing.ApplyTransform(cur, n, p.FilmLook, p.FilmAsset!.Transform!, ct);
 
         // ④ 顯示：基本調整（顯示部分）→ 色調曲線 → 色調分離 → 清晰銳化
         if (p.BasicOn) BasicDisplay(cur, a, w, h, p);

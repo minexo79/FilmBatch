@@ -12,7 +12,7 @@ struct Params {
     m0: vec4f, m1: vec4f, m2: vec4f,        // 相機 → Rec.2020 矩陣（列）
     to0: vec4f, to1: vec4f, to2: vec4f,     // Rec.2020 D65 → ProPhoto D50
     from0: vec4f, from1: vec4f, from2: vec4f,
-    info: vec4i,      // x = w，y = rows，z = 旗標 bit0 描述檔 bit1 HueSatMap bit2 LookTable bit3 HueSat
+    info: vec4i,      // x = w，y = rows，z = flags: profile, HueSatMap, LookTable, HueSat, external SDR
     t0: Table, t1: Table, t2: Table,
 }
 
@@ -112,7 +112,7 @@ fn hsv_to_rgb(h: f32, s: f32, v: f32) -> vec3f {
     }
 }
 
-fn apply_table(t: Table, c: vec3f) -> vec3f {
+fn apply_table(t: Table, c: vec3f, sdr: bool) -> vec3f {
     let mx = max(max(c.x, c.y), c.z);
     if (!(mx > 0.0 && mx < 3.0e38)) { return c; }
     let d = mx - min(min(c.x, c.y), c.z);
@@ -131,7 +131,11 @@ fn apply_table(t: Table, c: vec3f) -> vec3f {
     let look = lookup(t, hue, sat, v_index);
     let s2 = limited(sat, look.y);
     var v2: f32;
-    if (srgb && mx <= 1.0) {
+    if (sdr && srgb) {
+        v2 = select(srgb_to_linear(min(v_index * look.z, 1.0)), mx, look.z == 1.0 && mx <= 1.0);
+    } else if (sdr) {
+        v2 = min(mx * look.z, 1.0);
+    } else if (srgb && mx <= 1.0) {
         v2 = select(srgb_to_linear(min(v_index * look.z, 1.0)), mx, look.z == 1.0);
     } else if (srgb) {
         v2 = mx * min(srgb_to_linear(min(look.z, 1.0)), 1.0);
@@ -148,7 +152,7 @@ fn luminance(c: vec3f) -> f32 {
 }
 
 fn hue_sat_correction(c: vec3f) -> vec3f {
-    let q = mul3(p.from0, p.from1, p.from2, apply_table(p.t2, mul3(p.to0, p.to1, p.to2, c)));
+    let q = mul3(p.from0, p.from1, p.from2, apply_table(p.t2, mul3(p.to0, p.to1, p.to2, c), false));
     let before = luminance(c);
     let after = luminance(q);
     let finite = all(abs(q) < vec3f(3.0e38));
@@ -174,9 +178,9 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
     let gain = p.wb.w;
     if ((flags & 1) != 0) {
         var pr = mul3(p.to0, p.to1, p.to2, rgb);
-        if ((flags & 2) != 0) { pr = apply_table(p.t0, pr); }
+        if ((flags & 2) != 0) { pr = apply_table(p.t0, pr, (flags & 16) != 0); }
         pr = pr * gain;
-        if ((flags & 4) != 0) { pr = apply_table(p.t1, pr); }
+        if ((flags & 4) != 0) { pr = apply_table(p.t1, pr, (flags & 16) != 0); }
         rgb = mul3(p.from0, p.from1, p.from2, pr);
     } else {
         rgb = rgb * gain;

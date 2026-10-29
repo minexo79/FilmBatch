@@ -29,6 +29,23 @@
           </DataTemplate>
         </ContentControl.DataTemplates>
       </ContentControl>
+      <ContentControl Content="{Binding CameraProfiles}" IsVisible="{Binding CameraProfiles, Converter={x:Static ObjectConverters.IsNotNull}}">
+        <ContentControl.DataTemplates>
+          <DataTemplate x:DataType="vm:CameraProfileViewModel">
+            <StackPanel Spacing="6" Margin="0,4">
+              <Grid ColumnDefinitions="*,Auto" Classes="param-line">
+                <TextBlock Classes="param-name" Text="{l:Tr Param.raw.camera_profile}" VerticalAlignment="Center" />
+                <ComboBox Grid.Column="1" Classes="flat" MinWidth="150" ItemsSource="{Binding Options}"
+                          SelectedItem="{Binding Selected}" DisplayMemberBinding="{Binding Label, x:DataType=vm:CameraProfileOption}"
+                          AutomationProperties.Name="{l:Tr Param.raw.camera_profile}" />
+              </Grid>
+              <Button Classes="flat" Content="{l:Tr Raw.Profile.Import}" Command="{Binding ImportCommand}"
+                      AutomationProperties.Name="{l:Tr Raw.Profile.Import}" />
+              <TextBlock Classes="secondary small" Text="{Binding Detail}" TextWrapping="Wrap" />
+            </StackPanel>
+          </DataTemplate>
+        </ContentControl.DataTemplates>
+      </ContentControl>
       <!-- hsl 模組的色相帶編輯器（預設下拉＋色相帶選取＋三滑桿），同樣在一般參數位置 -->
       <ContentControl Content="{Binding Hsl}" IsVisible="{Binding Hsl, Converter={x:Static ObjectConverters.IsNotNull}}">
         <ContentControl.DataTemplates>

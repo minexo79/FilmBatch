@@ -5,6 +5,8 @@ using FilmBatch.App.Services;
 using FilmBatch.App.ViewModels;
 using FilmBatch.App.ViewModels.Dialogs;
 using FilmBatch.Core;
+using FilmBatch.Core.Film;
+using FilmBatch.Raw.Color;
 using FilmBatch.Engine.Imaging;
 using FilmBatch.Engine.Rendering;
 
@@ -36,6 +38,10 @@ public sealed class FakeDialogs : IDialogService
     public Task<string?> PickFolderAsync(string? startFolder) => Task.FromResult(PickFolderAnswer);
     public string? PickFileAnswer { get; set; }
     public string? SaveFileAnswer { get; set; }
+    public Func<ColorTransform, Task<ClfImportOptions?>>? OnTransformImport { get; set; }
+    public Task<ClfImportOptions?> ShowColorTransformImportAsync(ColorTransform transform, CancellationToken cancellationToken) =>
+        OnTransformImport?.Invoke(transform) ?? Task.FromResult<ClfImportOptions?>(null);
+    public Task<bool> ShowCameraProfileImportAsync(DcpProfile profile, CancellationToken cancellationToken) => Task.FromResult(ConfirmAnswer);
     public Task<string?> PickFileAsync(string title, IReadOnlyList<string> patterns) => Task.FromResult(PickFileAnswer);
     public Task<string?> SaveFileAsync(string title, string suggestedName, IReadOnlyList<string> patterns) => Task.FromResult(SaveFileAnswer);
 

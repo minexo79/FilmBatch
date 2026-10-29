@@ -374,15 +374,39 @@ R {1:P2}　G {2:P2}　B {3:P2}　亮度 {4:P2}</value></data>
   <data name="Module.raw" xml:space="preserve"><value>RAW 原廠處理</value></data>
   <data name="Param.raw.embedded_lens" xml:space="preserve"><value>內嵌鏡頭校正</value></data>
   <data name="Param.raw.camera_local_tone" xml:space="preserve"><value>相機局部色調</value></data>
+  <data name="Param.raw.camera_profile" xml:space="preserve"><value>相機描述檔</value></data>
   <!-- 底片風格（FilmLookControl） -->
   <data name="Film.Look" xml:space="preserve"><value>底片</value></data>
   <data name="Film.Import" xml:space="preserve"><value>匯入 LUT</value></data>
-  <data name="Film.ImportTitle" xml:space="preserve"><value>匯入 .cube、.fblut 或 Hald PNG</value></data>
+  <data name="Film.ImportTitle" xml:space="preserve"><value>匯入 .cube、.fblut、.clf、.fblook 或 Hald PNG</value></data>
   <data name="Film.LookApplied" xml:space="preserve"><value>已套用底片「{0}」</value></data>
   <data name="Film.LutSpace" xml:space="preserve"><value>LUT 色彩空間</value></data>
   <data name="Film.LutSpace.Srgb" xml:space="preserve"><value>sRGB</value></data>
   <data name="Film.LutSpace.ProPhoto" xml:space="preserve"><value>ProPhoto RGB（gamma 1.8）</value></data>
-  <data name="Film.LutSpaceHint" xml:space="preserve"><value>此選擇只套用在 .cube。Hald PNG 維持 sRGB。</value></data>
+  <data name="Film.LutSpaceHint" xml:space="preserve"><value>此選擇只套用在 .cube。CLF 另行宣告，Hald PNG 維持 sRGB。</value></data>
+  <data name="Film.Transform.Declaration" xml:space="preserve"><value>請宣告此 CLF 的執行位置及輸入／輸出編碼；這些不是自動辨識結果，也不使用上方 .cube 色彩空間設定。</value></data>
+  <data name="Film.Transform.Description" xml:space="preserve"><value>描述</value></data>
+  <data name="Film.Transform.InputDescriptor" xml:space="preserve"><value>檔案的輸入描述</value></data>
+  <data name="Film.Transform.OutputDescriptor" xml:space="preserve"><value>檔案的輸出描述</value></data>
+  <data name="Film.Transform.Stage" xml:space="preserve"><value>執行位置</value></data>
+  <data name="Film.Transform.Input" xml:space="preserve"><value>輸入編碼</value></data>
+  <data name="Film.Transform.Output" xml:space="preserve"><value>輸出編碼</value></data>
+  <data name="Film.Transform.Working" xml:space="preserve"><value>線性工作空間</value></data>
+  <data name="Film.Transform.Display" xml:space="preserve"><value>顯示編碼後</value></data>
+  <data name="Film.Transform.LinearSrgb" xml:space="preserve"><value>線性 sRGB</value></data>
+  <data name="Film.Transform.Srgb" xml:space="preserve"><value>sRGB</value></data>
+  <data name="Film.Transform.ProPhoto" xml:space="preserve"><value>ProPhoto RGB（gamma 1.8）</value></data>
+  <data name="Film.Transform.Invalid" xml:space="preserve"><value>CLF · 資產標頭無效</value></data>
+  <data name="Choice.raw.camera_profile.auto" xml:space="preserve"><value>自動</value></data>
+  <data name="Raw.Profile.Import" xml:space="preserve"><value>匯入相機描述檔</value></data>
+  <data name="Raw.Profile.ImportTitle" xml:space="preserve"><value>匯入 DCP 相機描述檔</value></data>
+  <data name="Raw.Profile.Description" xml:space="preserve"><value>相機機型：{0}&#10;使用政策：{1}&#10;版權資訊：{2}&#10;使用政策不代表第三方授權；請確認有權使用此檔案。</value></data>
+  <data name="Raw.Profile.NoCopyright" xml:space="preserve"><value>未提供</value></data>
+  <data name="Raw.Profile.Invalid" xml:space="preserve"><value>描述檔缺失或損毀；啟用時會顯示錯誤。</value></data>
+  <data name="Raw.Profile.Policy0" xml:space="preserve"><value>僅 DNG；允許複製</value></data>
+  <data name="Raw.Profile.Policy1" xml:space="preserve"><value>僅 DNG；使用時嵌入</value></data>
+  <data name="Raw.Profile.Policy2" xml:space="preserve"><value>允許非 DNG；不可新嵌入</value></data>
+  <data name="Raw.Profile.Policy3" xml:space="preserve"><value>允許非 DNG</value></data>
   <!-- 獨立 HSL 色相修正（HslControl）：文字預設、色相帶名稱與「自訂」標記 -->
   <data name="Hsl.PresetLabel" xml:space="preserve"><value>色相修正</value></data>
   <data name="Hsl.Custom" xml:space="preserve"><value>自訂</value></data>
@@ -546,6 +570,7 @@ R {1:P2}　G {2:P2}　B {3:P2}　亮度 {4:P2}</value></data>
   <data name="PhotoTools.RefValue" xml:space="preserve"><value>參考 RGB {0:0.###} {1:0.###} {2:0.###}</value></data>
   <data name="PhotoTools.SkinRegionSet" xml:space="preserve"><value>已選膚色區域 {0:0.##}×{1:0.##}</value></data>
   <data name="PhotoTools.WbUnavailable" xml:space="preserve"><value>此照片無法推算白平衡</value></data>
+  <data name="PhotoTools.WbFailed" xml:space="preserve"><value>白平衡求解失敗：{0}</value></data>
   <data name="PhotoTools.WbProposal" xml:space="preserve"><value>提案 {0}K・色偏 {1}｜信心 {2:0.##}｜殘差 {3:0.###}｜樣本 {4}（剔除 {5}）｜散度 {6:0.###}</value></data>
   <data name="PhotoTools.ClipWarning" xml:space="preserve"><value>輸出已裁切：降低曝光後重新取樣</value></data>
   <data name="PhotoTools.WbBoundary" xml:space="preserve"><value>提案抵達色溫或色偏範圍邊界</value></data>

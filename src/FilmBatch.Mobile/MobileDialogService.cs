@@ -6,6 +6,9 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
+using FilmBatch.App.Controls;
+using FilmBatch.Core.Film;
+using FilmBatch.Raw.Color;
 using FilmBatch.App.Localization;
 using FilmBatch.App.Services;
 using FilmBatch.App.ViewModels;
@@ -73,7 +76,12 @@ internal sealed class MobileDialogService(Func<TopLevel?> topLevel, Border overl
         });
         if (selected.Count == 0) return null;
         if (generation != _generation) { selected[0].Dispose(); return null; }
-        return await workspace.ImportAssetAsync(selected[0], token);
+        var path = await workspace.ImportAssetAsync(selected[0], token);
+        if (generation == _generation && !token.IsCancellationRequested) return path;
+        // This uniquely named copy belongs to the invalidated picker, not to the shared library.
+        File.Delete(path);
+        Directory.Delete(Path.GetDirectoryName(path)!);
+        return null;
     }
 
     public async Task<string?> SaveFileAsync(string title, string suggestedName, IReadOnlyList<string> patterns)
@@ -199,6 +207,17 @@ internal sealed class MobileDialogService(Func<TopLevel?> topLevel, Border overl
         return result == 0 ? input.Text : null;
     }
 
+    public async Task<ClfImportOptions?> ShowColorTransformImportAsync(ColorTransform transform, CancellationToken cancellationToken)
+    {
+        var panel = new ColorTransformImportPanel(transform);
+        var result = await ShowAsync(Loc.Get("Film.ImportTitle"), panel, [Loc.Get("Dialog.OK"), Loc.Get("Dialog.Cancel")], cancellationToken);
+        return result == 0 && !cancellationToken.IsCancellationRequested ? panel.Options : null;
+    }
+
+    public async Task<bool> ShowCameraProfileImportAsync(DcpProfile profile, CancellationToken cancellationToken) =>
+        await ShowAsync(Loc.Get("Raw.Profile.ImportTitle"), MobileText.Label(CameraProfileViewModel.Describe(profile)),
+            [Loc.Get("Dialog.OK"), Loc.Get("Dialog.Cancel")], cancellationToken) == 0 && !cancellationToken.IsCancellationRequested;
+
     public void ShowGallery() => _ = ShowAsync("FilmBatch", MobileText.Label(
         MobileText.T("這是行動版照片編輯器；元件展示位於桌面版。", "This is the mobile photo editor; the component gallery belongs to the desktop application.")), [Loc.Get("Dialog.Close")]);
 
@@ -229,7 +248,7 @@ internal sealed class MobileDialogService(Func<TopLevel?> topLevel, Border overl
         return result == 0 ? list.SelectedItem as MobileProject : null;
     }
 
-    private async Task<int> ShowAsync(string title, Control body, IReadOnlyList<string> choices)
+    private async Task<int> ShowAsync(string title, Control body, IReadOnlyList<string> choices, CancellationToken cancellationToken = default)
     {
         // A confirmation may be opened by a command inside a manager sheet. Preserve that sheet.
         var previousChild = overlay.Child;
@@ -237,6 +256,7 @@ internal sealed class MobileDialogService(Func<TopLevel?> topLevel, Border overl
         var previousCancel = _cancelModal;
         var generation = _generation;
         var completion = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var registration = cancellationToken.Register(() => completion.TrySetResult(-1));
         var card = new DockPanel { Margin = new Thickness(16), MaxWidth = 620, MaxHeight = 720,
             HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         var heading = MobileText.Label(title);

@@ -123,6 +123,10 @@ public sealed partial class HsvTable
     }
 
     public (float R, float G, float B) Apply(float r, float g, float b)
+        => Apply(r, g, b, false);
+
+    internal (float R, float G, float B) Apply(float r, float g, float b, bool sdr,
+        HsvTable? second = null, float firstWeight = 1)
     {
         var max = Max3(r, g, b);
         if (!(max > 0 && float.IsFinite(max))) return (r, g, b);
@@ -131,9 +135,20 @@ public sealed partial class HsvTable
         var sat = d / max;
         var vIndex = SrgbValue ? Transfer.LinearToSrgb(MathF.Min(max, 1)) : max;
         var (shift, ss, vs) = Lookup(hue, sat, vIndex);
+        if (second is not null)
+        {
+            var other = second.Lookup(hue, sat, vIndex);
+            var rest = 1 - firstWeight;
+            shift = firstWeight * shift + rest * other.Shift;
+            ss = firstWeight * ss + rest * other.SatScale;
+            vs = firstWeight * vs + rest * other.ValScale;
+        }
         var s2 = Limited(sat, ss);
         float v2;
-        if (SrgbValue && max <= 1) v2 = vs == 1 ? max : Transfer.SrgbToLinear(MathF.Min(vIndex * vs, 1));
+        if (sdr && SrgbValue)
+            v2 = vs == 1 && max <= 1 ? max : Transfer.SrgbToLinear(MathF.Min(vIndex * vs, 1));
+        else if (sdr) v2 = MathF.Min(max * vs, 1);
+        else if (SrgbValue && max <= 1) v2 = vs == 1 ? max : Transfer.SrgbToLinear(MathF.Min(vIndex * vs, 1));
         else if (SrgbValue) v2 = max * MathF.Min(Transfer.SrgbToLinear(MathF.Min(vs, 1)), 1);
         else v2 = Limited(max, vs);
         return HsvToRgb(hue + shift, s2, v2);
@@ -209,6 +224,7 @@ public sealed partial class ProfileLook
 public sealed class ProfileTables
 {
     private readonly HsvTable? _hueSat;
+    private readonly HsvTable? _samplingSecond;
     private readonly HsvTable? _look;
     private readonly float[] _toProPhoto;
     private readonly float[] _fromProPhoto;
@@ -216,36 +232,53 @@ public sealed class ProfileTables
     internal HsvTable? HueSatTable => _hueSat;
     internal HsvTable? LookTable => _look;
     internal float[] ToProPhoto => _toProPhoto;
+    internal bool Sdr { get; }
     internal float[] FromProPhoto => _fromProPhoto;
 
-    private ProfileTables(HsvTable? hueSat, HsvTable? look, float[] toProPhoto, float[] fromProPhoto)
+    private ProfileTables(HsvTable? hueSat, HsvTable? look, float[] toProPhoto, float[] fromProPhoto, bool sdr, HsvTable? samplingSecond = null)
     {
         _hueSat = hueSat;
+        _samplingSecond = samplingSecond;
         _look = look;
         _toProPhoto = toProPhoto;
         _fromProPhoto = fromProPhoto;
+        Sdr = sdr;
     }
 
     /// <summary>描述檔沒有色相／飽和表與外觀表時為 null。</summary>
-    public static ProfileTables? Create(ProfileLook look, double illuminantWeight)
+    public static ProfileTables? Create(ProfileLook look, double illuminantWeight, bool sdr = false)
     {
         var hueSat = look.HueSatFor(illuminantWeight);
         if (hueSat is null && look.LookTable is null) return null;
         var to = ColorSpaces.ProPhoto.FromXyz().Mul(ColorSpaces.Bradford(ColorSpaces.D65, ColorSpaces.D50)).Mul(ColorSpaces.Rec2020.ToXyz());
         if (to.Inverse() is not { } from) return null;
-        return new ProfileTables(hueSat, look.LookTable, to.ToF32(), from.ToF32());
+        return new ProfileTables(hueSat, look.LookTable, to.ToF32(), from.ToF32(), sdr);
+    }
+
+    // Candidate fitting changes illuminant many times. Interpolate lookups instead of
+    // allocating and blending a potentially multi-megabyte table for every candidate.
+    internal static ProfileTables? CreateForSampling(ProfileLook look)
+    {
+        var first = look.HueSatMap[0] ?? look.HueSatMap[1];
+        var second = look.HueSatMap[0] is null ? null : look.HueSatMap[1];
+        if (first is null && look.LookTable is null) return null;
+        var to = ColorSpaces.ProPhoto.FromXyz().Mul(ColorSpaces.Bradford(ColorSpaces.D65, ColorSpaces.D50)).Mul(ColorSpaces.Rec2020.ToXyz());
+        if (to.Inverse() is not { } from) return null;
+        return new ProfileTables(first, look.LookTable, to.ToF32(), from.ToF32(), true, second);
     }
 
     /// <summary>色相／飽和、曝光補償、外觀表；線性 Rec.2020 D65 → 線性 Rec.2020 D65。</summary>
-    public (float R, float G, float B) Apply(float r, float g, float b, float gain)
+    public (float R, float G, float B) Apply(float r, float g, float b, float gain) => Apply(r, g, b, gain, 1);
+
+    internal (float R, float G, float B) Apply(float r, float g, float b, float gain, float firstWeight)
     {
         var m = _toProPhoto;
         var pr = m[0] * r + m[1] * g + m[2] * b;
         var pg = m[3] * r + m[4] * g + m[5] * b;
         var pb = m[6] * r + m[7] * g + m[8] * b;
-        if (_hueSat is { } t) (pr, pg, pb) = t.Apply(pr, pg, pb);
+        if (_hueSat is { } t) (pr, pg, pb) = t.Apply(pr, pg, pb, Sdr, _samplingSecond, firstWeight);
         pr *= gain; pg *= gain; pb *= gain;
-        if (_look is { } l) (pr, pg, pb) = l.Apply(pr, pg, pb);
+        if (_look is { } l) (pr, pg, pb) = l.Apply(pr, pg, pb, Sdr);
         m = _fromProPhoto;
         return (m[0] * pr + m[1] * pg + m[2] * pb, m[3] * pr + m[4] * pg + m[5] * pb, m[6] * pr + m[7] * pg + m[8] * pb);
     }

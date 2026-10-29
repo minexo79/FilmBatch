@@ -29,6 +29,8 @@ public sealed record ParamDef
     /// <summary>位置以 0 為中心（例如位移 −0.5 ~ 0.5），鏡像時取負值；否則以 1 − x 鏡像。</summary>
     public bool IsCenteredOffset { get; init; }
     public IReadOnlyList<ChoiceOption> Choices { get; init; } = [];
+    internal bool IsCameraProfileChoice { get; init; }
+    internal bool IsFilmLookChoice { get; init; }
 
     public static ParamDef Bool(string key, string label, bool def = false) =>
         new() { Key = key, Label = label, Kind = ParamKind.Bool, Default = def, Max = 1 };
@@ -71,7 +73,8 @@ public sealed record ParamDef
     public ParamValue Coerce(ParamValue v) => Kind switch
     {
         ParamKind.Bool => ParamValue.Of(v.AsBool),
-        ParamKind.Choice when Key == "look" && UserLutLibrary.IsUserKey(v.AsText) => ParamValue.Of(v.AsText),
+        ParamKind.Choice when IsFilmLookChoice && (UserLutLibrary.IsUserKey(v.AsText) || UserTransformLibrary.IsLookKey(v.AsText)) => ParamValue.Of(v.AsText),
+        ParamKind.Choice when IsCameraProfileChoice && CameraProfileKey.IsUserKey(v.AsText) => ParamValue.Of(v.AsText),
         ParamKind.Choice => Choices.Any(c => c.Key == v.AsText) ? ParamValue.Of(v.AsText) : Default,
         ParamKind.Path or ParamKind.Text => ParamValue.Of(v.AsText),
         ParamKind.Curve => ToneCurve.TryParse(v.AsText, out var curve) ? ParamValue.Of(curve.Serialize()) : Default,

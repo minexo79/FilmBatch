@@ -1,4 +1,5 @@
 using FilmBatch.Core;
+using FilmBatch.Core.Film;
 using FilmBatch.Core.Params;
 using FilmBatch.Engine.Denoising;
 using FilmBatch.Engine.Imaging;
@@ -547,6 +548,7 @@ public sealed class RenderScheduler : IDisposable
                 return null;
             }
             catch (Exception ex) when (attempt == 0 && ex is not OperationCanceledException
+                && ex is not ColorTransformAssetException
                 && !(DenoiseSettings.From(settings).IsActive && ex is IOException))
             {
                 // 裝置遺失或驅動程式重置：重建裝置並重新上傳後重試一次

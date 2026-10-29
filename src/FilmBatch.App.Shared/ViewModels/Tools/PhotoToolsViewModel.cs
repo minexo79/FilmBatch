@@ -6,7 +6,9 @@ using FilmBatch.App.Localization;
 using FilmBatch.Core.Params;
 using FilmBatch.Core.Projects;
 using FilmBatch.Engine.Imaging;
+using FilmBatch.Engine.Imaging.Raw;
 using FilmBatch.Engine.Rendering;
+using FilmBatch.Raw;
 
 namespace FilmBatch.App.ViewModels.Tools;
 
@@ -21,8 +23,8 @@ internal interface IPhotoAnalyzer
 {
     PhotoSample Sample(SourceImage source, Settings settings, PhotoRegion region, bool applyAdjustments = true);
     PhotoReference? CaptureReference(SourceImage source, Settings settings, PhotoRegion region);
-    WhiteBalanceSuggestion? SolveWhiteBalance(SourceImage source, Settings settings, PhotoRegion region, PhotoReference? reference = null);
-    IReadOnlyList<WhiteBalanceSuggestion> AutomaticWhiteBalance(SourceImage source, Settings settings);
+    WhiteBalanceSuggestion? SolveWhiteBalance(SourceImage source, Settings settings, PhotoRegion region, PhotoReference? reference, CancellationToken cancellationToken);
+    IReadOnlyList<WhiteBalanceSuggestion> AutomaticWhiteBalance(SourceImage source, Settings settings, CancellationToken cancellationToken);
     PhotoReference? ReferenceGains(PhotoSample sample, PhotoReference reference);
 }
 
@@ -32,9 +34,10 @@ internal sealed class PhotoAnalyzer : IPhotoAnalyzer
     public PhotoSample Sample(SourceImage s, Settings st, PhotoRegion r, bool applyAdjustments = true) =>
         PhotoAnalysis.Sample(s, st, r, applyAdjustments);
     public PhotoReference? CaptureReference(SourceImage s, Settings st, PhotoRegion r) => PhotoAnalysis.CaptureReference(s, st, r);
-    public WhiteBalanceSuggestion? SolveWhiteBalance(SourceImage s, Settings st, PhotoRegion r, PhotoReference? reference = null) =>
-        PhotoAnalysis.SolveWhiteBalance(s, st, r, reference);
-    public IReadOnlyList<WhiteBalanceSuggestion> AutomaticWhiteBalance(SourceImage s, Settings st) => PhotoAnalysis.AutomaticWhiteBalance(s, st);
+    public WhiteBalanceSuggestion? SolveWhiteBalance(SourceImage s, Settings st, PhotoRegion r, PhotoReference? reference, CancellationToken cancellationToken) =>
+        PhotoAnalysis.SolveWhiteBalance(s, st, r, reference, cancellationToken);
+    public IReadOnlyList<WhiteBalanceSuggestion> AutomaticWhiteBalance(SourceImage s, Settings st, CancellationToken cancellationToken) =>
+        PhotoAnalysis.AutomaticWhiteBalance(s, st, cancellationToken);
     public PhotoReference? ReferenceGains(PhotoSample sample, PhotoReference reference) => PhotoAnalysis.ReferenceGains(sample, reference);
 }
 
@@ -86,6 +89,7 @@ public sealed partial class PhotoToolsViewModel : ObservableObject
     private PhotoRegionTool? _tool;
     private long _contextId;
     private long _requestId;
+    private CancellationTokenSource? _wbCancellation;
     private ProjectService? _service;
     private string? _file;
     private SourceImage? _source;
@@ -396,6 +400,8 @@ public sealed partial class PhotoToolsViewModel : ObservableObject
     {
         ++_contextId;
         ++_requestId;
+        _wbCancellation?.Cancel();
+        _wbCancellation = null;
     }
 
     /// <summary>關閉工具（回到一般預覽）：作廢提案、結束取樣視圖。</summary>
@@ -559,13 +565,17 @@ public sealed partial class PhotoToolsViewModel : ObservableObject
         var request = ++_requestId;
         var reference = UseWbReference ? _wbReference : null;
         if (service is null || file is null || source is null || !CanWb) return;
+        _wbCancellation?.Cancel();
+        using var cancellation = new CancellationTokenSource();
+        _wbCancellation = cancellation;
+        var token = cancellation.Token;
         IsBusy = true;
         try
         {
             // 背景只負責取樣與求解；所有可觀察狀態都在 await 之後於呼叫執行緒更新。
             var (sample, suggestion) = await Task.Run(() => (
                 _analyzer.Sample(source, settings, region, applyAdjustments: false),
-                _analyzer.SolveWhiteBalance(source, settings, region, reference)));
+                _analyzer.SolveWhiteBalance(source, settings, region, reference, token)), token);
             if (context != _contextId || request != _requestId) return;
             _wbRegion = region;
             WbProposal = suggestion;
@@ -576,7 +586,18 @@ public sealed partial class PhotoToolsViewModel : ObservableObject
             WarningText = WbWarning(sample, suggestion);
             RefreshProposalPreview();
         }
-        finally { if (request == _requestId) IsBusy = false; }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        catch (Exception error) when (error is CameraProfileException or CameraProfileUseException
+            or RawException or InvalidDataException or IOException or UnauthorizedAccessException)
+        {
+            if (context == _contextId && request == _requestId && !token.IsCancellationRequested)
+                FailWhiteBalance(error);
+        }
+        finally
+        {
+            if (ReferenceEquals(_wbCancellation, cancellation)) _wbCancellation = null;
+            if (request == _requestId) IsBusy = false;
+        }
     }
 
     private static string WbStatus(PhotoSample sample, WhiteBalanceSuggestion? s)
@@ -608,10 +629,14 @@ public sealed partial class PhotoToolsViewModel : ObservableObject
         var settings = _settings;
         var context = _contextId;
         var request = ++_requestId;
+        _wbCancellation?.Cancel();
+        using var cancellation = new CancellationTokenSource();
+        _wbCancellation = cancellation;
+        var token = cancellation.Token;
         IsBusy = true;
         try
         {
-            var list = await Task.Run(() => _analyzer.AutomaticWhiteBalance(source, settings));
+            var list = await Task.Run(() => _analyzer.AutomaticWhiteBalance(source, settings, token), token);
             if (context != _contextId || request != _requestId) return;
             Candidates = list;
             WbProposal = null;
@@ -623,7 +648,34 @@ public sealed partial class PhotoToolsViewModel : ObservableObject
                 : Loc.Format("PhotoTools.AutoCandidates", list.Count);
             WarningText = "";
         }
-        finally { if (request == _requestId) IsBusy = false; }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        catch (Exception error) when (error is CameraProfileException or CameraProfileUseException
+            or RawException or InvalidDataException or IOException or UnauthorizedAccessException)
+        {
+            if (context == _contextId && request == _requestId && !token.IsCancellationRequested)
+                FailWhiteBalance(error);
+        }
+        finally
+        {
+            if (ReferenceEquals(_wbCancellation, cancellation)) _wbCancellation = null;
+            if (request == _requestId) IsBusy = false;
+        }
+    }
+
+    private void FailWhiteBalance(Exception error)
+    {
+        _wbRegion = null;
+        WbProposal = null;
+        SelectedCandidate = null;
+        Candidates = [];
+        CanApply = false;
+        HasProposal = false;
+        IsPreviewing = false;
+        _previewProposal = null;
+        StatusText = "";
+        WarningText = Loc.Format("PhotoTools.WbFailed", error.Message);
+        OnPropertyChanged(nameof(PreviewOverlay));
+        _main.RequestPreview();
     }
 
     partial void OnSelectedCandidateChanged(WhiteBalanceSuggestion? value)

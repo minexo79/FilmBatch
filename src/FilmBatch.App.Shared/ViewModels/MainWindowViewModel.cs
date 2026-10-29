@@ -86,6 +86,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     /// <summary>film 模組的底片風格縮圖格與色相帶編輯器（在「底片效果」分頁）。</summary>
     public FilmLookViewModel FilmLook => FilmEffects.FilmLook!;
+    public CameraProfileViewModel CameraProfiles => Inspector.CameraProfiles!;
 
     public SidebarViewModel Sidebar { get; }
     public PreviewViewModel Preview { get; }
@@ -370,6 +371,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 
     public async Task OpenFolderAsync(string folder)
     {
+        FilmLook.CancelImport();
+        CameraProfiles.CancelImport();
         var generation = ++_openGeneration;
         _loadingCancelled = false;
         _loadingError = null;
@@ -436,6 +439,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     public void OnSelectionChanged(IReadOnlyList<string> selection, string? focus)
     {
         var newFocus = focus ?? selection.LastOrDefault();
+        if (FocusFile != newFocus || Selection.Count != selection.Count || !Selection.SequenceEqual(selection))
+        {
+            FilmLook.CancelImport();
+            CameraProfiles.CancelImport();
+        }
         // 進行中的滑桿手勢屬於原本的照片：先寫回原照片，之後同一手勢的修改不轉移到新選取。
         if (_edit is { } edit && (FocusFile != newFocus || edit.Files.Length != selection.Count || edit.Files.Any(f => !selection.Contains(f))))
             InterruptEdit();
@@ -1633,6 +1641,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     public void Suspend()
     {
         if (_disposed || _suspended) return;
+        FilmLook.CancelImport();
+        CameraProfiles.CancelImport();
         InterruptEdit();
         _suspended = true;
         // Folder scan adoption stops; explicit user cancellation stays cancelled.
@@ -1697,6 +1707,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         if (_disposed) return;
+        FilmLook.CancelImport();
+        CameraProfiles.Dispose();
         EndEdit();
         _disposed = true;
         PhotoTools.InvalidateForPhotoChange();

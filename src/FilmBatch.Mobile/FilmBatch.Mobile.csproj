@@ -11,4 +11,7 @@
     <PackageReference Include="Avalonia" />
     <PackageReference Include="Avalonia.Themes.Fluent" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="FilmBatch.App.Tests" />
+  </ItemGroup>
 </Project>

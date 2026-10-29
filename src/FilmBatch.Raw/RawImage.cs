@@ -27,8 +27,20 @@ public sealed class ColorData
 
     public Xy? AsShotWhiteXy { get; set; }
 
-    /// <summary>「正常」顯影要加的 EV（<c>BaselineExposure</c> + <c>BaselineExposureOffset</c>）。</summary>
+    /// <summary>「正常」顯影要加的 EV：影像自身 <c>BaselineExposure</c>＋來源 profile 的 <c>BaselineExposureOffset</c>。</summary>
     public double BaselineExposure { get; set; }
+
+    /// <summary>影像自身的 <c>BaselineExposure</c>（DNG tag 50730），與 profile offset 分開保存。</summary>
+    public double ImageBaselineExposure { get; set; }
+
+    /// <summary>來源 profile 的 <c>BaselineExposureOffset</c>（DNG 1.5+ tag 51109）。</summary>
+    public double ProfileBaselineExposureOffset { get; set; }
+
+    /// <summary><c>CameraCalibrationSignature</c>；外部 profile 的 calibration 只有相同 signature 才能使用。</summary>
+    public string? CameraCalibrationSignature { get; set; }
+
+    /// <summary><c>ProfileCalibrationSignature</c>；檔案要求的 calibration signature。</summary>
+    public string? ProfileCalibrationSignature { get; set; }
 
     /// <summary><c>BaselineSharpness</c>；null 表示 DNG 預設值 1。顯影不使用。</summary>
     public double? BaselineSharpness { get; set; }
@@ -52,6 +64,10 @@ public sealed class ColorData
         BaselineExposure = BaselineExposure,
         BaselineSharpness = BaselineSharpness,
         Profile = Profile,
+        ImageBaselineExposure = ImageBaselineExposure,
+        ProfileBaselineExposureOffset = ProfileBaselineExposureOffset,
+        CameraCalibrationSignature = CameraCalibrationSignature,
+        ProfileCalibrationSignature = ProfileCalibrationSignature,
         KelvinPresets = KelvinPresets,
     };
 }

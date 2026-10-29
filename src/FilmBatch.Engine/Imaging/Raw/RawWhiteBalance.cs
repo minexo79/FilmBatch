@@ -20,14 +20,19 @@ public sealed class RawWhiteBalance
     private readonly ColorData? _cameraTags;
     private readonly Xy _developedFor;
     private readonly Xy _asShotWhite;
+    private readonly double? _bakedTemperature;
+    private readonly double? _bakedTint;
 
-    private RawWhiteBalance(double temperature, double tint, Xy asShotWhite, ColorData? cameraTags, Xy developedFor)
+    private RawWhiteBalance(double temperature, double tint, Xy asShotWhite, ColorData? cameraTags, Xy developedFor,
+        double? bakedTemperature = null, double? bakedTint = null)
     {
         AsShotTemperature = temperature;
         AsShotTint = tint;
         _asShotWhite = asShotWhite;
         _cameraTags = cameraTags;
         _developedFor = developedFor;
+        _bakedTemperature = bakedTemperature;
+        _bakedTint = bakedTint;
     }
 
     /// <summary>As Shot 色溫（Kelvin，整數；上游 <c>as_shot_temp</c>）。相對刻度來源固定 6500（= as shot）。</summary>
@@ -72,6 +77,16 @@ public sealed class RawWhiteBalance
         return new RawWhiteBalance(temp, tint, Cct.TempTintToXy(temp, tint), cameraTags, developedFor);
     }
 
+    internal static RawWhiteBalance CreateExternal(RawImage raw, Xy asShot, Xy developedFor,
+        double? bakedTemperature, double? bakedTint)
+    {
+        var t = Cct.XyToTempTint(asShot);
+        var temperature = Math.Round(t.Temp, MidpointRounding.AwayFromZero);
+        var tint = Math.Round(t.Tint, MidpointRounding.AwayFromZero);
+        return new RawWhiteBalance(temperature, tint, Cct.TempTintToXy(temperature, tint), WithoutProfile(raw.Color),
+            developedFor, bakedTemperature, bakedTint);
+    }
+
     private static ColorData WithoutProfile(ColorData color)
     {
         var clone = color.Clone();
@@ -87,7 +102,8 @@ public sealed class RawWhiteBalance
     /// </summary>
     public Mat3? MatrixFor(double temperature, double tint)
     {
-        if (Math.Abs(temperature - AsShotTemperature) < 1e-6 && Math.Abs(tint - AsShotTint) < 1e-6)
+        if (Math.Abs(temperature - (_bakedTemperature ?? AsShotTemperature)) < 1e-6 &&
+            Math.Abs(tint - (_bakedTint ?? AsShotTint)) < 1e-6)
             return null;
         if (_cameraTags is { } tags
             && CameraColor.Rebalance(tags, _developedFor, Cct.TempTintToXy(temperature, tint)) is { } rebalanced)

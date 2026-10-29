@@ -43,7 +43,18 @@ dotnet test tests/FilmBatch.App.Tests/FilmBatch.App.Tests.csproj -c Release \
 涵蓋 RAW／一般影像切換、隱藏未啟用模組、保留已保存的 RAW 設定、預設展開基本調整、來源選項切換後縮圖自動更新，以及 Kelvin／遮罩設定的復原、儲存、重開、過期解碼失敗與修復後快取重新解碼。永久測試使用隔離的 DNG／一般影像與實際 CPU 管線，不依賴外部相機語料。自訂 Kelvin 範圍為 2500–9900 K；舊 JSON／YAML 值正規化，但拍攝白平衡中繼資料保持原樣。
 
 Mac 桌面另以含 gain-table 的 ProRAW 及含畸變／暗角資料的 RAF 驗證：在底片分頁復原／重做 RAW 選項，即使重解碼時間超過縮圖防抖間隔，底片縮圖仍自動跟上新來源，結果須等於同來源重新要求算圖的結果；切到 PNG 不顯示 RAW 控制項，再切回 RAW 恢復顯示且設定不變。驗證前後核對原始 RAW 的 SHA-256。
-以上原生 RAW 選項量測記錄的是當時的來源契約，含當時仍存在的色相縮圖；獨立 HSL 已移除該縮圖路徑。目前長邊 ≤240 的 RAW 縮圖先用內嵌預覽，不因 `IncludeSemanticMasks` 改走完整顯影。取不到內嵌預覽才退回場景線性 RAW；選取後的大圖與匯出不使用內嵌縮圖。
+以上原生 RAW 選項量測記錄的是當時的來源契約，含當時仍存在的色相縮圖；獨立 HSL 已移除該縮圖路徑。長邊 ≤240 的 RAW 縮圖在未選外部 DCP 時先用內嵌預覽；選用 DCP 時改走所選 profile 的完整顯影，不能把新選擇貼在舊 JPEG 上。選取後的大圖與匯出不使用內嵌縮圖。
+
+### CLF 與相機 profile 回歸
+
+```bash
+dotnet test tests/FilmBatch.Core.Tests -c Release --filter 'FullyQualifiedName~ClfFileTests|FullyQualifiedName~ColorTransform|FullyQualifiedName~CameraProfile|FullyQualifiedName~DcpSourceTests|FullyQualifiedName~DcpToneTests|FullyQualifiedName~PhotoAnalysisTests'
+dotnet test tests/FilmBatch.Raw.Tests -c Release --filter 'FullyQualifiedName~DcpProfileTests|FullyQualifiedName~GpuColourTests|FullyQualifiedName~GainTableMapTests|FullyQualifiedName~CameraColorTests|FullyQualifiedName~ProfileTests'
+dotnet test tests/FilmBatch.App.Tests -c Release --filter 'FullyQualifiedName~FilmLookViewModelTests|FullyQualifiedName~RawControlsTests|FullyQualifiedName~RawSourceLifecycleTests|FullyQualifiedName~PhotoToolsTests|FullyQualifiedName~MobileWorkspaceTests|FullyQualifiedName~MobileDialogServiceTests|FullyQualifiedName~LocalizationTests'
+dotnet run build/CheckShaders.cs -- --naga /path/to/naga
+```
+
+測試覆蓋 parser／資產限制、相機機型與 policy、來源 gain-map 四層優先序及損壞回退、非線性雙光源表的候選與實際重顯影、CPU／GPU 數值、匯入與 undo／取消。合成 DNG 搭配外部 DCP 驗證來源 v2 gain map 與 HueSat 同時作用；雙表及曝光順序另用線性／sRGB 編碼、四個 GPU 分帶與預算回退核對獨立數值。須記錄各套件實際選取數與 skip；headless、合成 DNG、Metal 或 desktop mobile host 不可冒充 Windows DX12、合法實拍 RAW、iOS 原生操作或發佈驗收。完整 gates 見[實作計畫](superpowers/plans/2026-10-28-composable-color-transforms.md#4-verification-commands--release-gates)。
 
 ### 色彩區塊：HSL 與曲線
 

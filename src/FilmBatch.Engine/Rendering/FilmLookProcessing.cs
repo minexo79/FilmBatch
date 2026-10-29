@@ -19,6 +19,66 @@ internal static class FilmLookProcessing
             pixels[i] = result.X; pixels[i + 1] = result.Y; pixels[i + 2] = result.Z;
         });
 
+    /// <summary>在固定 hook 執行 transform；輸入／輸出宣告與混合均保留 extended 值及 alpha。</summary>
+    public static void ApplyTransform(float[] pixels, int count, FilmLookUniforms u,
+        ColorTransformAsset asset, CancellationToken cancellationToken)
+    {
+        const int chunkSize = 4096;
+        var chunks = count / chunkSize + (count % chunkSize == 0 ? 0 : 1);
+        Parallel.For(0, chunks, new ParallelOptions { CancellationToken = cancellationToken }, chunk =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var end = Math.Min(count, (chunk + 1) * chunkSize);
+            for (var pixel = chunk * chunkSize; pixel < end; pixel++)
+            {
+                var i = pixel * 4;
+                var stage = new Vector3(pixels[i], pixels[i + 1], pixels[i + 2]);
+                var linear = asset.Options.Stage == ColorTransformStage.DisplayEncoded
+                    ? DecodeExtended(stage) : stage;
+                var input = Encode(linear, asset.Options.Input);
+                var transformed = ColorTransformProcessing.Pixel(new Vector4(input, pixels[i + 3]), asset.Transform);
+                var look = Decode(new Vector3(transformed.X, transformed.Y, transformed.Z), asset.Options.Output);
+                if (u.Mix.Y != 0) look *= new Vector3(1 + .12f * u.Mix.Y, 1, 1 - .12f * u.Mix.Y);
+                if (u.Mix.Z != 0)
+                    look = Linear(Srgb(Vector3.Max(look, Vector3.Zero)) * (1 - .2f * u.Mix.Z) + new Vector3(.1f * u.Mix.Z));
+                var mixed = Vector3.Lerp(linear, look, u.Mix.X);
+                var result = asset.Options.Stage == ColorTransformStage.DisplayEncoded ? EncodeExtended(mixed) : mixed;
+                pixels[i] = result.X; pixels[i + 1] = result.Y; pixels[i + 2] = result.Z;
+            }
+        });
+    }
+
+    private static Vector3 Encode(Vector3 linear, ColorTransformEncoding encoding) => encoding switch
+    {
+        ColorTransformEncoding.LinearSrgb => linear,
+        ColorTransformEncoding.Srgb => EncodeExtended(linear),
+        ColorTransformEncoding.ProPhotoGamma18 => SignedPower(Matrix(linear, RgbEncodingInfo.SrgbToProPhoto), 1f / 1.8f),
+        _ => throw new InvalidDataException($"Unknown transform encoding: {encoding}"),
+    };
+
+    private static Vector3 Decode(Vector3 encoded, ColorTransformEncoding encoding) => encoding switch
+    {
+        ColorTransformEncoding.LinearSrgb => encoded,
+        ColorTransformEncoding.Srgb => DecodeExtended(encoded),
+        ColorTransformEncoding.ProPhotoGamma18 => Matrix(SignedPower(encoded, 1.8f), RgbEncodingInfo.ProPhotoToSrgb),
+        _ => throw new InvalidDataException($"Unknown transform encoding: {encoding}"),
+    };
+
+    private static Vector3 Matrix(Vector3 c, float[] m) => new(
+        m[0] * c.X + m[1] * c.Y + m[2] * c.Z,
+        m[3] * c.X + m[4] * c.Y + m[5] * c.Z,
+        m[6] * c.X + m[7] * c.Y + m[8] * c.Z);
+
+    private static Vector3 SignedPower(Vector3 c, float power) => new(
+        MathF.CopySign(MathF.Pow(MathF.Abs(c.X), power), c.X),
+        MathF.CopySign(MathF.Pow(MathF.Abs(c.Y), power), c.Y),
+        MathF.CopySign(MathF.Pow(MathF.Abs(c.Z), power), c.Z));
+
+    private static Vector3 EncodeExtended(Vector3 c) => new(
+        RgbEncodingInfo.EncodeExtendedSrgb(c.X), RgbEncodingInfo.EncodeExtendedSrgb(c.Y), RgbEncodingInfo.EncodeExtendedSrgb(c.Z));
+    private static Vector3 DecodeExtended(Vector3 c) => new(
+        RgbEncodingInfo.DecodeExtendedSrgb(c.X), RgbEncodingInfo.DecodeExtendedSrgb(c.Y), RgbEncodingInfo.DecodeExtendedSrgb(c.Z));
+
     public static Vector3 Pixel(Vector3 linear, in FilmLookUniforms u, FilmLut lut)
     {
         Vector3 look;

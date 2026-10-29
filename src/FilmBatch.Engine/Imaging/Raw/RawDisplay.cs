@@ -47,9 +47,9 @@ internal static class RawDisplay
     /// 將線性 Rec.2020 影像編碼為 16-bit sRGB RGBA（逐像素獨立，無逐像素配置）。
     /// 只作 SourceImage 的延遲顯示副本；RAW 渲染管線不在來源階段呼叫它。
     /// </summary>
-    internal static ushort[] Encode(RgbImage image, CameraTone? tone)
+    internal static ushort[] Encode(RgbImage image, CameraTone? tone, DcpToneCurve? profileTone = null)
     {
-        var map = tone is null ? ToneMap.Create(0.0, 0.0, 0.0) : ToneMap.Camera(tone, 0.0, 0.0, 0.0);
+        var map = profileTone is not null ? null : tone is null ? ToneMap.Create(0.0, 0.0, 0.0) : ToneMap.Camera(tone, 0.0, 0.0, 0.0);
         var m = ColorSpaces.Rec2020.ToSpace(ColorSpaces.Srgb).ToF32();
         var luma = ColorSpaces.Luma2020;
         var data = image.Data;
@@ -60,7 +60,7 @@ internal static class RawDisplay
             var dst = y * image.Width * 4;
             for (var x = 0; x < image.Width; x++, src += 3, dst += 4)
             {
-                var (r0, r1, r2) = FinishCore(map, data[src], data[src + 1], data[src + 2], luma, m);
+                var (r0, r1, r2) = FinishCore(map, data[src], data[src + 1], data[src + 2], luma, m, profileTone: profileTone);
                 out16[dst] = Quant(LinearToSrgb(r0));
                 out16[dst + 1] = Quant(LinearToSrgb(r1));
                 out16[dst + 2] = Quant(LinearToSrgb(r2));
@@ -75,9 +75,9 @@ internal static class RawDisplay
     /// 原地套用與 <see cref="Encode"/> 同順序的色調／去飽和／色域映射與精確 sRGB 曲線，
     /// ProPhoto 匯出延後色域映射並保留有號延伸 sRGB；一般預覽仍輸出 [0,1] sRGB。alpha 不變。
     /// </summary>
-    internal static void FinishLinear(float[] rgba, CameraTone? tone, bool extendedSrgb = false)
+    internal static void FinishLinear(float[] rgba, CameraTone? tone, bool extendedSrgb = false, DcpToneCurve? profileTone = null)
     {
-        var map = tone is null ? ToneMap.Create(0.0, 0.0, 0.0) : ToneMap.Camera(tone, 0.0, 0.0, 0.0);
+        var map = profileTone is not null ? null : tone is null ? ToneMap.Create(0.0, 0.0, 0.0) : ToneMap.Camera(tone, 0.0, 0.0, 0.0);
         var (input, m) = RawFinishParams.Working;
         var luma = ColorSpaces.Luma2020;
         var n = rgba.Length / 4;
@@ -87,7 +87,7 @@ internal static class RawDisplay
             var c0 = input[0] * rgba[o] + input[1] * rgba[o + 1] + input[2] * rgba[o + 2];
             var c1 = input[3] * rgba[o] + input[4] * rgba[o + 1] + input[5] * rgba[o + 2];
             var c2 = input[6] * rgba[o] + input[7] * rgba[o + 1] + input[8] * rgba[o + 2];
-            var (r0, r1, r2) = FinishCore(map, c0, c1, c2, luma, m, extendedSrgb);
+            var (r0, r1, r2) = FinishCore(map, c0, c1, c2, luma, m, extendedSrgb, profileTone);
             rgba[o] = extendedSrgb ? RgbEncodingInfo.EncodeExtendedSrgb(r0) : LinearToSrgb(r0);
             rgba[o + 1] = extendedSrgb ? RgbEncodingInfo.EncodeExtendedSrgb(r1) : LinearToSrgb(r1);
             rgba[o + 2] = extendedSrgb ? RgbEncodingInfo.EncodeExtendedSrgb(r2) : LinearToSrgb(r2);
@@ -99,11 +99,11 @@ internal static class RawDisplay
     /// 高光去飽和、以 <paramref name="m"/> 轉到 sRGB 後做色域映射。輸出為未編碼線性 sRGB（已收進 [0,1]）。
     /// </summary>
     private static (float R, float G, float B) FinishCore(
-        ToneMap map, float c0, float c1, float c2, float[] luma, float[] m, bool extendedSrgb = false)
+        ToneMap? map, float c0, float c1, float c2, float[] luma, float[] m, bool extendedSrgb = false, DcpToneCurve? profileTone = null)
     {
         // --- tone map on luminance, highlight desaturation（finish_with 原順序）
         var yl = c0 * luma[0] + c1 * luma[1] + c2 * luma[2];
-        var o = map.Apply(yl);
+        var o = profileTone is null ? map!.Apply(yl) : EvaluateProfileTone(profileTone, yl);
         float d0, d1, d2;
         if (yl > 1e-9f)
         {
@@ -116,7 +116,7 @@ internal static class RawDisplay
         {
             d0 = d1 = d2 = 0f;
         }
-        var ck = map.ChromaScale(o);
+        var ck = profileTone is null ? map!.ChromaScale(o) : 1f;
         if (ck != 1f)
         {
             d0 = o + (d0 - o) * ck;
@@ -153,6 +153,42 @@ internal static class RawDisplay
         }
         return (Clamp(r0, 0f, 1f), Clamp(r1, 0f, 1f), Clamp(r2, 0f, 1f));
     }
+
+    // 原始節點的 Fritsch–Carlson 三次插值；二分搜尋避免 65,536 點時每像素線性掃描。
+    private static float EvaluateProfileTone(DcpToneCurve tone, float value)
+    {
+        if (!float.IsFinite(value) || value <= 0f) return 0f;
+        var points = tone.Points;
+        var count = points.Length / 2;
+        var x = Math.Clamp(value, 0f, 1f);
+        var lo = 0;
+        var hi = count - 1;
+        while (lo + 1 < hi)
+        {
+            var mid = (lo + hi) / 2;
+            if (points[mid * 2] <= x) lo = mid;
+            else hi = mid;
+        }
+        var i = Math.Min(lo, count - 2);
+        var x0 = points[i * 2];
+        var x1 = points[i * 2 + 2];
+        var h = x1 - x0;
+        var t = (x - x0) / h;
+        var t2 = t * t;
+        var t3 = t2 * t;
+        var slope = (points[i * 2 + 3] - points[i * 2 + 1]) / h;
+        var left = i == 0 ? slope : Tangent(
+            (points[i * 2 + 1] - points[i * 2 - 1]) / (x0 - points[i * 2 - 2]), slope);
+        var right = i + 1 == count - 1 ? slope : Tangent(slope,
+            (points[i * 2 + 5] - points[i * 2 + 3]) / (points[i * 2 + 4] - x1));
+        var result = (2 * t3 - 3 * t2 + 1) * points[i * 2 + 1]
+            + (t3 - 2 * t2 + t) * h * left
+            + (-2 * t3 + 3 * t2) * points[i * 2 + 3]
+            + (t3 - t2) * h * right;
+        return Math.Clamp(result, 0f, 1f);
+    }
+
+    private static float Tangent(float a, float b) => a * b <= 0 ? 0 : 2 / (1 / a + 1 / b);
 
     private static float LinearToSrgb(float v) =>
         v <= 0.0031308f ? v * 12.92f : 1.055f * MathF.Pow(v, 1f / 2.4f) - 0.055f;

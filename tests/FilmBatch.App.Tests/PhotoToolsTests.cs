@@ -11,6 +11,7 @@ using FilmBatch.Core.Presets;
 using FilmBatch.Core.Projects;
 using FilmBatch.Core.Params;
 using FilmBatch.Engine.Imaging;
+using FilmBatch.Engine.Imaging.Raw;
 using FilmBatch.Engine.Rendering;
 using FilmBatch.Raw;
 
@@ -27,6 +28,8 @@ public sealed class PhotoToolsTests
     {
         public WhiteBalanceSuggestion? Wb { get; set; }
         public PhotoReference? Reference { get; set; } = new PhotoReference(0.5, 0.5, 0.5);
+        public Func<WhiteBalanceSuggestion?>? SolveOverride { get; set; }
+        public Func<IReadOnlyList<WhiteBalanceSuggestion>>? AutoOverride { get; set; }
         public TaskCompletionSource CaptureGate { get; } = new();
         public TaskCompletionSource CaptureEntered { get; } = new();
 
@@ -40,8 +43,10 @@ public sealed class PhotoToolsTests
             return Reference;
         }
 
-        public WhiteBalanceSuggestion? SolveWhiteBalance(SourceImage s, Settings st, PhotoRegion r, PhotoReference? reference = null) => Wb;
-        public IReadOnlyList<WhiteBalanceSuggestion> AutomaticWhiteBalance(SourceImage s, Settings st) => [];
+        public WhiteBalanceSuggestion? SolveWhiteBalance(SourceImage s, Settings st, PhotoRegion r, PhotoReference? reference, CancellationToken cancellationToken) =>
+            SolveOverride is null ? Wb : SolveOverride();
+        public IReadOnlyList<WhiteBalanceSuggestion> AutomaticWhiteBalance(SourceImage s, Settings st, CancellationToken cancellationToken) =>
+            AutoOverride is null ? [] : AutoOverride();
         public PhotoReference? ReferenceGains(PhotoSample sample, PhotoReference reference) => new PhotoReference(1.0, 1.0, 1.0);
     }
 
@@ -181,7 +186,7 @@ public sealed class PhotoToolsTests
         var map = new FilmBatch.App.Controls.Tools.CanvasMapping(new Avalonia.Rect(0, 0, 500, 400));
         var region = tools.MapDrag(map.ToCanvas(new Avalonia.Point(.3, .3)),
             map.ToCanvas(new Avalonia.Point(.7, .7)), map)!.Value;
-        var transform = FilmBatch.Engine.Rendering.ModuleParams.From(source, settings).CropT;
+        var transform = FilmBatch.Engine.Rendering.ModuleParams.From(source, settings, cancellationToken: TestContext.Current.CancellationToken).CropT;
         foreach (var (x, y) in new[] { (.3, .3), (.7, .3), (.7, .7), (.3, .7) })
         {
             var (sx, sy) = transform.OutToSource.Apply(x * transform.OutWidth, y * transform.OutHeight);
@@ -360,6 +365,58 @@ public sealed class PhotoToolsTests
         Assert.False(tools.IsSampling);
         main.Stack.Undo();
         Assert.Equal("as-shot", main.Service.SettingsFor(main.FocusFile!).Text("raw.wb_mode"));
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task WhiteBalance_LateProfileFailureDoesNotOverwriteNewPhoto(bool automatic)
+    {
+        using var main = TestEnv.CreateViewModel();
+        var folder = Path.Combine(AppPaths.Root, "photo-tools-stale-wb");
+        Directory.CreateDirectory(folder);
+        const string rawName = "tool.dng";
+        File.WriteAllBytes(Path.Combine(folder, rawName), DngWriter.WriteRenderedDng(16, 12,
+            Enumerable.Repeat(.18f, 16 * 12 * 3).ToArray(), FilmBatch.Raw.Color.ColorSpaces.Srgb,
+            new FilmBatch.Raw.Meta.Metadata { Make = "FilmBatch", Model = "photo tools" }));
+        await main.OpenFolderAsync(folder);
+        main.OnSelectionChanged([rawName], rawName);
+        TestEnv.PumpUntil(() => main.Preview.Source?.WhiteBalance is not null);
+        using var gate = new ManualResetEventSlim();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void Fail()
+        {
+            entered.TrySetResult();
+            gate.Wait(TestContext.Current.CancellationToken);
+            throw new CameraProfileException(CameraProfileFault.Missing, "old profile missing");
+        }
+        var analyzer = new FakeAnalyzer
+        {
+            SolveOverride = () => { Fail(); return null; },
+            AutoOverride = () => { Fail(); return []; },
+        };
+        var tools = CreateTools(main, analyzer);
+        tools.UpdateContext(main.Service, rawName, main.Preview.Source, main.FocusedResolved);
+        Assert.True(tools.CanWb);
+        Task request;
+        if (automatic) request = tools.AutoWbCommand.ExecuteAsync(null);
+        else
+        {
+            tools.PickWbCommand.Execute(null);
+            request = tools.RegionPicked(Region(.2, .2));
+        }
+        try
+        {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+            tools.InvalidateForPhotoChange();
+        }
+        finally { gate.Set(); }
+        await request;
+        Assert.Empty(tools.WarningText);
+        Assert.False(tools.IsBusy);
+        Assert.Null(tools.WbProposal);
+        Assert.Empty(tools.Candidates);
+        Assert.False(tools.CanApply);
     }
 
     [AvaloniaFact]

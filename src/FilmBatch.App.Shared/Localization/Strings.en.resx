@@ -374,6 +374,7 @@ Clear overrides: use the new preset entirely.</value></data>
   <data name="Module.raw" xml:space="preserve"><value>RAW Camera Processing</value></data>
   <data name="Param.raw.embedded_lens" xml:space="preserve"><value>Embedded Lens Corrections</value></data>
   <data name="Param.raw.camera_local_tone" xml:space="preserve"><value>Camera Local Tone Mapping</value></data>
+  <data name="Param.raw.camera_profile" xml:space="preserve"><value>Camera Profile</value></data>
   <data name="Module.basic" xml:space="preserve"><value>Basic Adjustments</value></data>
   <data name="Module.lens_distortion" xml:space="preserve"><value>Lens Distortion</value></data>
   <data name="Module.multi_lens" xml:space="preserve"><value>Multi-Lens</value></data>
@@ -560,12 +561,35 @@ Clear overrides: use the new preset entirely.</value></data>
   <!-- Film look (FilmLookControl) -->
   <data name="Film.Look" xml:space="preserve"><value>Film</value></data>
   <data name="Film.Import" xml:space="preserve"><value>Import LUT</value></data>
-  <data name="Film.ImportTitle" xml:space="preserve"><value>Import a cube, fblut, or Hald PNG</value></data>
+  <data name="Film.ImportTitle" xml:space="preserve"><value>Import a cube, fblut, clf, fblook, or Hald PNG</value></data>
   <data name="Film.LookApplied" xml:space="preserve"><value>Applied film "{0}"</value></data>
   <data name="Film.LutSpace" xml:space="preserve"><value>LUT color space</value></data>
   <data name="Film.LutSpace.Srgb" xml:space="preserve"><value>sRGB</value></data>
   <data name="Film.LutSpace.ProPhoto" xml:space="preserve"><value>ProPhoto RGB (gamma 1.8)</value></data>
-  <data name="Film.LutSpaceHint" xml:space="preserve"><value>This selection applies to .cube files. Hald PNG remains sRGB.</value></data>
+  <data name="Film.LutSpaceHint" xml:space="preserve"><value>This selection applies only to .cube files. CLF is declared separately; Hald PNG remains sRGB.</value></data>
+  <data name="Film.Transform.Declaration" xml:space="preserve"><value>Declare this CLF's processing stage and input/output encodings. These are not detected automatically and do not use the .cube color-space choice above.</value></data>
+  <data name="Film.Transform.Description" xml:space="preserve"><value>Description</value></data>
+  <data name="Film.Transform.InputDescriptor" xml:space="preserve"><value>File input descriptor</value></data>
+  <data name="Film.Transform.OutputDescriptor" xml:space="preserve"><value>File output descriptor</value></data>
+  <data name="Film.Transform.Stage" xml:space="preserve"><value>Processing stage</value></data>
+  <data name="Film.Transform.Input" xml:space="preserve"><value>Input encoding</value></data>
+  <data name="Film.Transform.Output" xml:space="preserve"><value>Output encoding</value></data>
+  <data name="Film.Transform.Working" xml:space="preserve"><value>Working linear</value></data>
+  <data name="Film.Transform.Display" xml:space="preserve"><value>After display encoding</value></data>
+  <data name="Film.Transform.LinearSrgb" xml:space="preserve"><value>Linear sRGB</value></data>
+  <data name="Film.Transform.Srgb" xml:space="preserve"><value>sRGB</value></data>
+  <data name="Film.Transform.ProPhoto" xml:space="preserve"><value>ProPhoto RGB (gamma 1.8)</value></data>
+  <data name="Film.Transform.Invalid" xml:space="preserve"><value>CLF · invalid asset header</value></data>
+  <data name="Choice.raw.camera_profile.auto" xml:space="preserve"><value>Auto</value></data>
+  <data name="Raw.Profile.Import" xml:space="preserve"><value>Import camera profile</value></data>
+  <data name="Raw.Profile.ImportTitle" xml:space="preserve"><value>Import DCP camera profile</value></data>
+  <data name="Raw.Profile.Description" xml:space="preserve"><value>Camera model: {0}&#10;Usage policy: {1}&#10;Copyright: {2}&#10;The policy does not grant third-party rights; ensure you may use this file.</value></data>
+  <data name="Raw.Profile.NoCopyright" xml:space="preserve"><value>Not provided</value></data>
+  <data name="Raw.Profile.Invalid" xml:space="preserve"><value>Profile is missing or corrupt; enabling it reports an error.</value></data>
+  <data name="Raw.Profile.Policy0" xml:space="preserve"><value>DNG only; copying allowed</value></data>
+  <data name="Raw.Profile.Policy1" xml:space="preserve"><value>DNG only; embed if used</value></data>
+  <data name="Raw.Profile.Policy2" xml:space="preserve"><value>Non-DNG allowed; no new embedding</value></data>
+  <data name="Raw.Profile.Policy3" xml:space="preserve"><value>Non-DNG allowed</value></data>
   <!-- Independent HSL hue correction (HslControl): text presets, band names and the custom badge -->
   <data name="Hsl.PresetLabel" xml:space="preserve"><value>Hue Correction</value></data>
   <data name="Hsl.Custom" xml:space="preserve"><value>CUSTOM</value></data>
@@ -701,6 +725,7 @@ Clear overrides: use the new preset entirely.</value></data>
   <data name="PhotoTools.RefValue" xml:space="preserve"><value>Reference RGB {0:0.###} {1:0.###} {2:0.###}</value></data>
   <data name="PhotoTools.SkinRegionSet" xml:space="preserve"><value>Skin region {0:0.##}×{1:0.##} selected</value></data>
   <data name="PhotoTools.WbUnavailable" xml:space="preserve"><value>White balance cannot be estimated for this photo</value></data>
+  <data name="PhotoTools.WbFailed" xml:space="preserve"><value>White-balance calculation failed: {0}</value></data>
   <data name="PhotoTools.WbProposal" xml:space="preserve"><value>Proposal {0}K, tint {1} | confidence {2:0.##} | residual {3:0.###} | samples {4} (rejected {5}) | dispersion {6:0.###}</value></data>
   <data name="PhotoTools.ClipWarning" xml:space="preserve"><value>Output clipped: lower exposure and resample</value></data>
   <data name="PhotoTools.WbBoundary" xml:space="preserve"><value>Proposal reached the temperature or tint range boundary</value></data>

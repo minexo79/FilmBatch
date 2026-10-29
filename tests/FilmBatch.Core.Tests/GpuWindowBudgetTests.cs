@@ -97,7 +97,7 @@ public sealed class GpuWindowBudgetTests
         var info = probe.AdapterInfo;
         var source = WindowCases.Synthetic(1024, 768);
         var settings = ModuleCatalog.Defaults;
-        var parameters = ModuleParams.From(source, settings);
+        var parameters = ModuleParams.From(source, settings, cancellationToken: Ct);
         var view = new RenderView(parameters.FrameWidth, parameters.FrameHeight, 100, 80, 768, 576);
         var region = WindowRegion.Expand(parameters, view);
 
@@ -135,7 +135,7 @@ public sealed class GpuWindowBudgetTests
         var source = WindowCases.Synthetic(1024, 768);
         var settings = ModuleCatalog.Defaults.With("basic.enabled", true).With("basic.structure", 60.0)
             .With("vignette.enabled", true).With("vignette.amount", 40.0);
-        var parameters = ModuleParams.From(source, settings);
+        var parameters = ModuleParams.From(source, settings, cancellationToken: Ct);
         var view = new RenderView(parameters.FrameWidth, parameters.FrameHeight, 100, 80, 768, 576);
         var region = WindowRegion.Expand(parameters, view);
         // 結構帶來有界鄰域外擴：區域必須大於窗口，分塊才有重疊 halo。
@@ -176,7 +176,7 @@ public sealed class GpuWindowBudgetTests
         });
         var source = WindowCases.Synthetic(1024, 768);
         var settings = ModuleCatalog.Defaults;
-        var parameters = ModuleParams.From(source, settings);
+        var parameters = ModuleParams.From(source, settings, cancellationToken: Ct);
         var view = new RenderView(parameters.FrameWidth, parameters.FrameHeight, 100, 80, 768, 576);
         var window = gpu.RenderWindow(source, settings, view, new FrameStats(parameters.FrameWidth, parameters.FrameHeight), Ct);
         Assert.True(gpu.IsSoftware, $"expected CPU fallback, got {gpu.DeviceName}");

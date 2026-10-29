@@ -190,7 +190,7 @@ public sealed class ShadowRecoveryTests
             pixels[i + 3] = ((x / 4) % 3) switch { 0 => 1f, 1 => .25f, _ => .5f };
         }
         var source = new SourceImage(width, height, new ushort[pixels.Length]);
-        var parameters = ModuleParams.From(source, Recovery().With("shadow_recovery.radius", 10.0));
+        var parameters = ModuleParams.From(source, Recovery().With("shadow_recovery.radius", 10.0), cancellationToken: TestContext.Current.CancellationToken);
         var output = new float[pixels.Length];
         ShadowRecovery.Apply(pixels, output, new float[pixels.Length], width, height, parameters,
             TestContext.Current.CancellationToken);

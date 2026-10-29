@@ -28,6 +28,9 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
     /// <summary>film 模組頂部的底片風格縮圖格；只有包含 film 模組的分頁才有。</summary>
     public FilmLookViewModel? FilmLook { get; }
 
+    /// <summary>Dynamic camera-profile selection in the RAW module.</summary>
+    public CameraProfileViewModel? CameraProfiles { get; }
+
     /// <summary>是否顯示照片資訊（檔名、預設、重設與預設按鈕）；只有「照片基本參數」分頁顯示。</summary>
     public bool ShowsPhotoInfo { get; }
 
@@ -98,10 +101,11 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
         ShowsPhotoInfo = showsPhotoInfo;
         var schemas = ModuleCatalog.Modules.Where(s => groups.Contains(s.Group) && !TabOnlyModules.Contains(s.Key)).ToList();
         FilmLook = schemas.Any(s => s.Key == "film") ? new FilmLookViewModel(main) : null;
+        CameraProfiles = schemas.Any(s => s.Key == "raw") ? new CameraProfileViewModel(main) : null;
         Modules = schemas
             .Select(s => new ModuleSectionViewModel(s, this,
                 ResetModule,
-                m => _main.CopyModuleOnly(m.Key), FilmLook, main.Preview) { IsVisible = s.Key != "raw" })
+                m => _main.CopyModuleOnly(m.Key), FilmLook, main.Preview, CameraProfiles) { IsVisible = s.Key != "raw" })
             .ToList();
         foreach (var m in Modules)
         {
@@ -181,6 +185,7 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
             if (Modules.FirstOrDefault(m => m.Key == "raw") is { } raw) { raw.IsVisible = false; raw.SetRawSource(null); }
             Modules.FirstOrDefault(m => m.Key == "basic")?.SetRawSource(null);
             if (IsActive) _main.Preview.ShowControlPoint(null, null);
+            CameraProfiles?.OnSettingsChanged();
             FilmLook?.OnSettingsChanged();
             return;
         }
@@ -210,6 +215,7 @@ public sealed partial class InspectorViewModel : ObservableObject, IParamHost
                 if (m.Key == "raw" && source?.RawInfo is null) m.IsVisible = false;
             }
         }
+        CameraProfiles?.OnSettingsChanged();
         FilmLook?.OnSettingsChanged();
         UpdateControlPoint(resolved);
     }

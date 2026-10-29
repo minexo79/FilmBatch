@@ -2,6 +2,8 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using FilmBatch.App.Localization;
+using FilmBatch.App.Controls;
+using FilmBatch.Core.Film;
 
 namespace FilmBatch.App.Dialogs;
 
@@ -25,7 +27,7 @@ internal static class SimpleDialogs
         return panel;
     }
 
-    public static async Task<bool> ConfirmAsync(Window owner, string title, string message, string confirmText)
+    public static async Task<bool> ConfirmAsync(Window owner, string title, string message, string confirmText, CancellationToken cancellationToken = default)
     {
         var w = CreateWindow(title, 420);
         var ok = new Button { Content = confirmText, IsDefault = true, Classes = { "accent" } };
@@ -38,7 +40,9 @@ internal static class SimpleDialogs
             Spacing = 16,
             Children = { new TextBlock { Text = message, TextWrapping = Avalonia.Media.TextWrapping.Wrap }, Buttons(ok, cancel) },
         };
-        return await w.ShowDialog<bool>(owner);
+        using var registration = cancellationToken.Register(() =>
+            Avalonia.Threading.Dispatcher.UIThread.Post(() => { if (w.IsVisible) w.Close(false); }));
+        return await w.ShowDialog<bool>(owner) && !cancellationToken.IsCancellationRequested;
     }
 
     public static async Task<string?> PromptAsync(Window owner, string title, string label, string initial)
@@ -61,6 +65,26 @@ internal static class SimpleDialogs
             box.SelectAll();
         };
         return await w.ShowDialog<string?>(owner);
+    }
+
+    public static async Task<ClfImportOptions?> ColorTransformAsync(Window owner, ColorTransform transform, CancellationToken cancellationToken)
+    {
+        var window = CreateWindow(Loc.Get("Film.ImportTitle"), 480);
+        var panel = new ColorTransformImportPanel(transform);
+        var ok = new Button { Content = Loc.Get("Dialog.OK"), IsDefault = true, Classes = { "accent" } };
+        var cancel = new Button { Content = Loc.Get("Dialog.Cancel"), IsCancel = true };
+        ClfImportOptions? result = null;
+        ok.Click += (_, _) => { result = panel.Options; window.Close(); };
+        cancel.Click += (_, _) => window.Close();
+        window.Content = new StackPanel
+        {
+            Margin = new Thickness(16), Spacing = 12,
+            Children = { new ScrollViewer { Content = panel, MaxHeight = 540 }, Buttons(ok, cancel) },
+        };
+        using var registration = cancellationToken.Register(() =>
+            Avalonia.Threading.Dispatcher.UIThread.Post(() => { if (window.IsVisible) window.Close(); }));
+        await window.ShowDialog(owner);
+        return cancellationToken.IsCancellationRequested ? null : result;
     }
 
     /// <summary>指定預設時目標照片已有覆寫：保留 / 清除，可勾選「記住我的選擇」（計畫書 2.7.1）。</summary>

@@ -50,7 +50,7 @@ public static class PhotoAnalysis
     /// </summary>
     public static PhotoSample Sample(SourceImage source, Settings settings, PhotoRegion region, bool applyAdjustments = true)
     {
-        var p = ModuleParams.From(source, settings);
+        var p = ModuleParams.From(source, settings, resolveFilmAsset: false);
         return SampleCore(source, p, region, applyAdjustments);
     }
 
@@ -72,13 +72,18 @@ public static class PhotoAnalysis
     /// separately. Kelvin is relative to the current model, not sensor calibration.
     /// </summary>
     public static WhiteBalanceSuggestion? SolveWhiteBalance(
-        SourceImage source, Settings settings, PhotoRegion region, PhotoReference? reference = null)
+        SourceImage source, Settings settings, PhotoRegion region, PhotoReference? reference = null) =>
+        SolveWhiteBalance(source, settings, region, reference, CancellationToken.None);
+
+    internal static WhiteBalanceSuggestion? SolveWhiteBalance(
+        SourceImage source, Settings settings, PhotoRegion region, PhotoReference? reference, CancellationToken cancellationToken)
     {
         var wb = source.WhiteBalance;
         var ratios = TargetRatios(reference);
         if (wb is null || ratios is null) return null;
-        var p = ModuleParams.From(source, settings);
-        var fit = FitForward(source, p, wb, region, ratios.Value);
+        var p = ModuleParams.From(source, settings, resolveFilmAsset: false);
+        var candidate = source.RawOptions.CameraProfileKey is null ? null : new RawSourceLoader.CandidateSnapshot(source, cancellationToken);
+        var fit = FitForward(source, p, wb, region, ratios.Value, candidate, cancellationToken);
         if (!double.IsFinite(fit.Residual)) return null;
         var atBoundary = AtBounds(fit.Temp, fit.Tint);
         var confidence = ConfidenceFor(fit.Residual, fit.Dispersion, atBoundary);
@@ -93,19 +98,23 @@ public static class PhotoAnalysis
     /// may yield zero candidates; confidence is never forced. Empty by design when
     /// no WB model exists.
     /// </summary>
-    public static IReadOnlyList<WhiteBalanceSuggestion> AutomaticWhiteBalance(SourceImage source, Settings settings)
+    public static IReadOnlyList<WhiteBalanceSuggestion> AutomaticWhiteBalance(SourceImage source, Settings settings) =>
+        AutomaticWhiteBalance(source, settings, CancellationToken.None);
+
+    internal static IReadOnlyList<WhiteBalanceSuggestion> AutomaticWhiteBalance(SourceImage source, Settings settings, CancellationToken cancellationToken)
     {
         var wb = source.WhiteBalance;
         if (wb is null) return [];
-        var p = ModuleParams.From(source, settings);
+        var p = ModuleParams.From(source, settings, resolveFilmAsset: false);
         // A single chromaticity, even at many brightness levels, cannot distinguish
         // colored reflectance from illumination. This restriction is automatic-only.
         var scene = SampleCore(source, p, new(0, 0, 1, 1), applyAdjustments: false);
         if (!scene.CanUse || scene.Dispersion < .03) return [];
+        var rawCandidate = source.RawOptions.CameraProfileKey is null ? null : new RawSourceLoader.CandidateSnapshot(source, cancellationToken);
         var results = new List<WhiteBalanceSuggestion>(3);
         foreach (var tile in AutoTiles())
         {
-            var fit = FitForward(source, p, wb, tile, (1, 1, 1));
+            var fit = FitForward(source, p, wb, tile, (1, 1, 1), rawCandidate, cancellationToken);
             if (!double.IsFinite(fit.Residual)) continue;
             var atBoundary = AtBounds(fit.Temp, fit.Tint);
             // Unlabelled scene content cannot justify calibrated-illuminant confidence.
@@ -326,10 +335,11 @@ public static class PhotoAnalysis
 
     private static (double Temp, double Tint, double Residual, double Dispersion) FitForward(
         SourceImage source, ModuleParams p, RawWhiteBalance wb, PhotoRegion region,
-        (double R, double G, double B) ratios)
+        (double R, double G, double B) ratios, RawSourceLoader.CandidateSnapshot? candidate, CancellationToken cancellationToken)
     {
         var points = ArrayPool<SamplePoint>.Shared.Rent(MaxSamples);
         var scratch = ArrayPool<double>.Shared.Rent(MaxSamples * 6);
+        var redeveloped = candidate is null ? null : ArrayPool<SamplePoint>.Shared.Rent(MaxSamples);
         try
         {
             var count = ReadSamples(source, region, points, out var rejected, out _);
@@ -345,8 +355,25 @@ public static class PhotoAnalysis
                 // ModuleParams stores Kelvin/tint as f32; score the actual rendered candidate.
                 temp = (float)temp;
                 tint = (float)tint;
-                var working = ToWorking.Mul(wb.MatrixFor(temp, tint) ?? Mat3.Identity).Mul(ToRec2020);
-                var sample = EvaluateSamples(source, p, points, count, rejected, working, masks, gains, true, scratch);
+                cancellationToken.ThrowIfCancellationRequested();
+                SampleStatistics sample;
+                if (candidate is not null)
+                {
+                    candidate.Prepare(temp, tint);
+                    for (var i = 0; i < count; i++)
+                    {
+                        var point = points[i];
+                        var raw = candidate.Sample(point.X, point.Y);
+                        var (r, g, b) = ToWorking.Apply(raw.R, raw.G, raw.B);
+                        redeveloped![i] = new(r, g, b, point.X, point.Y);
+                    }
+                    sample = EvaluateSamples(source, p, redeveloped!, count, rejected, null, masks, gains, true, scratch);
+                }
+                else
+                {
+                    var working = ToWorking.Mul(wb.MatrixFor(temp, tint) ?? Mat3.Identity).Mul(ToRec2020);
+                    sample = EvaluateSamples(source, p, points, count, rejected, working, masks, gains, true, scratch);
+                }
                 if (!sample.CanUse) return;
                 var dr = sample.Red / sample.Luminance - ratios.R;
                 var dg = sample.Green / sample.Luminance - ratios.G;
@@ -376,6 +403,7 @@ public static class PhotoAnalysis
         finally
         {
             ArrayPool<SamplePoint>.Shared.Return(points);
+            if (redeveloped is not null) ArrayPool<SamplePoint>.Shared.Return(redeveloped);
             ArrayPool<double>.Shared.Return(scratch);
         }
     }

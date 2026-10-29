@@ -234,7 +234,7 @@ public sealed class GainTableMapTests
     {
         // raw IFD 帶 v1，IFD0 帶損毀的 v2：v2 損毀應落到 v1
         var v1 = Tag(ByteOrder.Little, [1, 1, 2], [1.0, 1.0], [0.0, 0.0], [1f, 0f, 0f, 0f, 0f], null, Floats(ByteOrder.Little, [1f, 2f]));
-        var raw = DngFile(ifd0Extra: null, rawExtra: [(Tags.ProfileGainTableMap, v1)]);
+        var raw = DngFile(ifd0Extra: [(Tags.ProfileGainTableMap2, new byte[] { 1, 2, 3 })], rawExtra: [(Tags.ProfileGainTableMap, v1)]);
         var decoded = RawDecoder.Decode(raw);
         Assert.NotNull(decoded.Color.Profile.GainTableMap);
         Assert.Equal([1f, 2f], decoded.Color.Profile.GainTableMap!.Gains);
@@ -248,6 +248,35 @@ public sealed class GainTableMapTests
         raw = DngFile(ifd0Extra: null, rawExtra: [(Tags.ProfileGainTableMap, new byte[] { 1, 2, 3 })]);
         decoded = RawDecoder.Decode(raw);
         Assert.Null(decoded.Color.Profile.GainTableMap);
+    }
+
+    [Fact]
+    public void DngDecode_GainMapSelectsEachPriorityBeforeFallingBack()
+    {
+        static byte[] Map(float value, bool v2) =>
+            Tag(ByteOrder.Little, [1, 1, 2], [1.0, 1.0], [0.0, 0.0], [1f, 0f, 0f, 0f, 0f],
+                v2 ? (3, 2f, 0f, 1f) : null, Floats(ByteOrder.Little, [value, value]));
+
+        var rootV2 = Map(2f, true);
+        var rawV2 = Map(3f, true);
+        var rawV1 = Map(4f, false);
+        var rootV1 = Map(5f, false);
+        ( (ushort Tag, byte[] Value)[] root, (ushort Tag, byte[] Value)[] raw, float expected)[] cases =
+        [
+            ([(Tags.ProfileGainTableMap2, rootV2), (Tags.ProfileGainTableMap, rootV1)],
+             [(Tags.ProfileGainTableMap2, rawV2), (Tags.ProfileGainTableMap, rawV1)], 2f),
+            ([(Tags.ProfileGainTableMap, rootV1)],
+             [(Tags.ProfileGainTableMap2, rawV2), (Tags.ProfileGainTableMap, rawV1)], 3f),
+            ([(Tags.ProfileGainTableMap, rootV1)], [(Tags.ProfileGainTableMap, rawV1)], 4f),
+            ([(Tags.ProfileGainTableMap, rootV1)], [], 5f),
+        ];
+        foreach (var (root, raw, expected) in cases)
+        {
+            var map = RawDecoder.Decode(DngFile(root, raw)).Color.Profile.GainTableMap;
+            Assert.NotNull(map);
+            Assert.Equal(expected, map.Gains[0]);
+        }
+        Assert.Null(RawDecoder.Decode(DngFile(null, null)).Color.Profile.GainTableMap);
     }
 
     [Fact]

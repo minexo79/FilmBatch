@@ -1,5 +1,7 @@
 using FilmBatch.App.ViewModels;
 using FilmBatch.App.ViewModels.Dialogs;
+using FilmBatch.Core.Film;
+using FilmBatch.Raw.Color;
 
 namespace FilmBatch.App.Services;
 
@@ -23,6 +25,10 @@ public interface IDialogService
     Task ShowPreferencesAsync(PreferencesViewModel vm);
     Task<bool> ConfirmAsync(string title, string message, string confirmText);
     Task<string?> PromptAsync(string title, string label, string initial);
+    /// <summary>Shows parsed CLF descriptors and requests explicit stage and encoding declarations; null cancels.</summary>
+    Task<ClfImportOptions?> ShowColorTransformImportAsync(ColorTransform transform, CancellationToken cancellationToken);
+    /// <summary>Confirms the parsed camera model and usage policy before publishing a DCP.</summary>
+    Task<bool> ShowCameraProfileImportAsync(DcpProfile profile, CancellationToken cancellationToken);
     void ShowGallery();
     Task ShowAboutAsync(AboutViewModel vm);
 

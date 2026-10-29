@@ -21,23 +21,20 @@ public class FilmLookTests
     {
         foreach (var look in FilmLookLibrary.All)
         {
-            var lut = FilmLookLibrary.TryLut(look.Key);
+            var lut = FilmLookLibrary.Resolve(look.Key, TestContext.Current.CancellationToken)?.Lut;
             Assert.NotNull(lut);
             Assert.Equal(33, lut.Size);
         }
     }
 
     [Fact]
-    public void TryLut_UnknownKey_ReturnsNull_AndCachesKnownKey()
-    {
-        Assert.Null(FilmLookLibrary.TryLut("no-such-film"));
-        Assert.Same(FilmLookLibrary.TryLut("kodak-ektar-100"), FilmLookLibrary.TryLut("kodak-ektar-100"));
-    }
+    public void Resolve_UnknownKey_ReturnsNull() =>
+        Assert.Null(FilmLookLibrary.Resolve("no-such-film", TestContext.Current.CancellationToken));
 
     [Fact]
     public void BlackAndWhiteLooks_ProduceNeutralOutput()
     {
-        var lut = FilmLookLibrary.TryLut("ilford-hp5-400")!;
+        var lut = FilmLookLibrary.Resolve("ilford-hp5-400", TestContext.Current.CancellationToken)!.Lut!;
         var got = lut.Sample(new Vector3(.8f, .2f, .3f));
         Assert.Equal(got.X, got.Y, 2);
         Assert.Equal(got.Y, got.Z, 2);
@@ -46,7 +43,7 @@ public class FilmLookTests
     [Fact]
     public void ColorLooks_AreNotIdentity()
     {
-        var lut = FilmLookLibrary.TryLut("fuji-velvia-50")!;
+        var lut = FilmLookLibrary.Resolve("fuji-velvia-50", TestContext.Current.CancellationToken)!.Lut!;
         var input = new Vector3(.25f, .5f, .3f);
         Assert.True(Vector3.Distance(input, lut.Sample(input)) > .01f);
     }

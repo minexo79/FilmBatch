@@ -105,7 +105,47 @@ fn lut_position(ev: f32) -> f32 {
     return rounded(clamp(unit, 0.0, 1.0) * f32(LUT_COUNT - 1u));
 }
 
+// 外部 DCP tone 儲存原始 (x,y) 節點；scene0.w 為節點數，0 表示既有 EV LUT。
+fn profile_slope(i: u32) -> f32 {
+    return (lut[2u * i + 3u] - lut[2u * i + 1u]) / (lut[2u * i + 2u] - lut[2u * i]);
+}
+
+fn profile_tangent(a: f32, b: f32) -> f32 {
+    if (a * b <= 0.0) { return 0.0; }
+    return 2.0 / (1.0 / a + 1.0 / b);
+}
+
+fn profile_tone(y: f32) -> f32 {
+    if (!is_finite(y) || y <= 0.0) { return 0.0; }
+    let count = u32(p.scene0.w);
+    let x = clamp(y, 0.0, 1.0);
+    var lo = 0u;
+    var hi = count - 1u;
+    while (lo + 1u < hi) {
+        let mid = (lo + hi) / 2u;
+        if (lut[2u * mid] <= x) { lo = mid; } else { hi = mid; }
+    }
+    let i = min(lo, count - 2u);
+    let x0 = lut[2u * i];
+    let x1 = lut[2u * i + 2u];
+    let h = x1 - x0;
+    let t = (x - x0) / h;
+    let t2 = t * t;
+    let t3 = t2 * t;
+    let slope = profile_slope(i);
+    var left = slope;
+    if (i > 0u) { left = profile_tangent(profile_slope(i - 1u), slope); }
+    var right = slope;
+    if (i + 1u < count - 1u) { right = profile_tangent(slope, profile_slope(i + 1u)); }
+    let result = (2.0 * t3 - 3.0 * t2 + 1.0) * lut[2u * i + 1u]
+        + (t3 - 2.0 * t2 + t) * h * left
+        + (-2.0 * t3 + 3.0 * t2) * lut[2u * i + 3u]
+        + (t3 - t2) * h * right;
+    return clamp(result, 0.0, 1.0);
+}
+
 fn tone_apply(y: f32) -> f32 {
+    if (p.scene0.w != 0.0) { return profile_tone(y); }
     // ToneMap.Apply：非有限或 <= 0 回 0（CPU 端永不傳播 NaN）
     if (!is_finite(y) || y <= 0.0) { return 0.0; }
     if (y >= GREY * 1024.0) { return lut[LUT_COUNT - 1u]; }
@@ -198,7 +238,8 @@ fn raw_finish(c: vec3f, luma: vec3f) -> vec3f {
     } else {
         d = vec3f(0.0);
     }
-    let ck = chroma_scale(o);
+    var ck = 1.0;
+    if (p.scene0.w == 0.0) { ck = chroma_scale(o); }
     if (ck != 1.0) {
         d = rounded3(vec3f(o) + rounded3(rounded3(d - vec3f(o)) * ck));
     }

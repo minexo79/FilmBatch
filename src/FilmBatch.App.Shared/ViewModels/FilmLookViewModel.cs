@@ -2,7 +2,9 @@ using System.Collections.ObjectModel;
 using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using FilmBatch.App.Controls;
 using FilmBatch.App.Localization;
+using FilmBatch.Core;
 using FilmBatch.Core.Film;
 using FilmBatch.Core.Params;
 using FilmBatch.Engine.Film;
@@ -56,6 +58,7 @@ public sealed partial class FilmLookViewModel : ObservableObject
     private string? _lastFocus;
     private Settings? _lastResolved;
     private LutImportSpaceViewModel _importColorSpace;
+    private CancellationTokenSource? _importCancellation;
 
     public FilmLookViewModel(MainWindowViewModel main)
     {
@@ -175,22 +178,66 @@ public sealed partial class FilmLookViewModel : ObservableObject
         });
     }
 
+    internal void CancelImport()
+    {
+        var cancellation = _importCancellation;
+        _importCancellation = null;
+        cancellation?.Cancel();
+    }
+
     [RelayCommand]
     private async Task ImportLut()
     {
-        var path = await _main.Dialogs.PickFileAsync(Loc.Get("Film.ImportTitle"), ["*.cube", "*.fblut", "*.png"]);
-        if (path is null) return;
+        CancelImport();
+        using var cancellation = new CancellationTokenSource();
+        _importCancellation = cancellation;
+        var token = cancellation.Token;
+        var root = Path.GetFullPath(AppPaths.UserLuts);
+        var service = _main.Service;
+        var selection = _main.Selection.ToArray();
+        var focus = _main.FocusFile;
+        bool Current() => !token.IsCancellationRequested && ReferenceEquals(_importCancellation, cancellation)
+            && ReferenceEquals(service, _main.Service) && focus == _main.FocusFile
+            && root == Path.GetFullPath(AppPaths.UserLuts) && selection.SequenceEqual(_main.Selection);
         try
         {
-            var lut = LutFileImport.Open(path, ImportColorSpace.Space);
-            var key = UserLutLibrary.Import(lut, Path.GetFileNameWithoutExtension(path));
+            var path = await _main.Dialogs.PickFileAsync(Loc.Get("Film.ImportTitle"), ["*.cube", "*.fblut", "*.png", "*.clf", "*.fblook"]);
+            if (path is null || !Current()) return;
+            var extension = Path.GetExtension(path);
+            string key;
+            if (extension.Equals(".clf", StringComparison.OrdinalIgnoreCase)
+                || extension.Equals(".fblook", StringComparison.OrdinalIgnoreCase))
+            {
+                var isFblook = extension.Equals(".fblook", StringComparison.OrdinalIgnoreCase);
+                using var staged = await Task.Run(() =>
+                {
+                    using var source = File.OpenRead(path);
+                    return UserTransformLibrary.Stage(root, source, isFblook, token);
+                }, token);
+                if (!Current()) return;
+                var options = isFblook ? staged.EmbeddedOptions
+                    : await _main.Dialogs.ShowColorTransformImportAsync(staged.Transform, token);
+                if (options is null || !Current()) return;
+                key = await Task.Run(() => staged.Publish(options, Path.GetFileNameWithoutExtension(path), token), token);
+                if (!Current()) return;
+            }
+            else
+            {
+                var lut = LutFileImport.Open(path, ImportColorSpace.Space);
+                key = UserLutLibrary.Import(lut, Path.GetFileNameWithoutExtension(path));
+            }
+            if (!Current()) return;
             ReloadImported();
-            var tile = Imported.First(t => t.Key == key);
-            ApplyLook(tile);
+            ApplyLook(Imported.First(t => t.Key == key));
         }
-        catch (Exception ex) when (ex is InvalidDataException or IOException)
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException)
         {
-            await _main.Dialogs.ConfirmAsync(Loc.Get("Film.ImportTitle"), ex.Message, Loc.Get("Dialog.OK"));
+            if (Current()) await _main.Dialogs.ConfirmAsync(Loc.Get("Film.ImportTitle"), ex.Message, Loc.Get("Dialog.OK"));
+        }
+        finally
+        {
+            if (ReferenceEquals(_importCancellation, cancellation)) _importCancellation = null;
         }
     }
 
@@ -199,6 +246,8 @@ public sealed partial class FilmLookViewModel : ObservableObject
         Imported.Clear();
         foreach (var (key, name) in UserLutLibrary.All)
             Imported.Add(new FilmTileViewModel(key, () => name, () => ImportDetail(key)));
+        foreach (var item in UserTransformLibrary.List(AppPaths.UserLuts))
+            Imported.Add(new FilmTileViewModel(item.Key, () => item.Name, () => TransformDetail(item.Options)));
         RefreshSelection();
     }
 
@@ -210,6 +259,10 @@ public sealed partial class FilmLookViewModel : ObservableObject
         UserLutLibrary.TryGet(key, out var lut) && lut is { ColorSpace: FilmLutColorSpace.ProPhoto }
             ? Loc.Get("Film.LutSpace.ProPhoto")
             : "";
+
+    private static string TransformDetail(ClfImportOptions? options) => options is { } declared
+        ? $"CLF · {ColorTransformImportPanel.StageLabel(declared.Stage)} · {ColorTransformImportPanel.EncodingLabel(declared.Input)} → {ColorTransformImportPanel.EncodingLabel(declared.Output)}"
+        : Loc.Get("Film.Transform.Invalid");
 
     [RelayCommand]
     private void ApplyLook(FilmTileViewModel? tile)

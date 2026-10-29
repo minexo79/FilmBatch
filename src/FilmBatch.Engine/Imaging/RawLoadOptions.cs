@@ -13,14 +13,17 @@ public readonly record struct RawLoadOptions(
     bool EmbeddedLensCorrections = false,
     bool CameraLocalTone = false,
     bool IncludeSemanticMasks = false,
-    string? LensDatabasePath = null)
+    string? LensDatabasePath = null,
+    string? CameraProfileKey = null,
+    double? CameraProfileTemperature = null,
+    double? CameraProfileTint = null)
 {
     /// <summary>外部 Lensfun 資料庫資料夾（整個程序共用的偏好設定，不屬於照片設定）。
     /// 變更後由呼叫端重新載入來源：<see cref="FromSettings"/> 的結果會跟著改變，舊來源的快取鍵因此失效。</summary>
     public static string? LensDatabaseDirectory { get; set; }
 
-    /// <summary>從照片的已解析設定取得 RAW 處理選項；停用 RAW 模組時保留既有外觀。
-    /// 白平衡與遮罩調整是算圖設定（ModuleParams），不在此——改滑桿不會重新解碼來源。</summary>
+    /// <summary>從照片設定取得 RAW 處理選項。停用時保留設定但不載入描述檔。
+    /// 外部描述檔需要在顯影時套用白平衡，因此自訂色溫／色偏也是來源身分的一部分。</summary>
     public static RawLoadOptions FromSettings(Settings settings)
     {
         if (!settings.Bool("raw.enabled")) return default;
@@ -29,7 +32,11 @@ public readonly record struct RawLoadOptions(
             directory = Environment.GetEnvironmentVariable("FILMBATCH_LENSFUN_DIR");
         if (string.IsNullOrWhiteSpace(directory))
             directory = Raw.LensDatabaseStore.DefaultInstalledDirectory();
+        var key = settings.Text("raw.camera_profile");
+        var profile = FilmBatch.Core.Params.CameraProfileKey.IsUserKey(key) ? key : null;
+        var custom = profile is not null && settings.Text("raw.wb_mode") == "custom";
         return new(settings.Bool("raw.embedded_lens"), settings.Bool("raw.camera_local_tone"),
-            IncludeSemanticMasks: true, string.IsNullOrWhiteSpace(directory) ? null : directory);
+            IncludeSemanticMasks: true, string.IsNullOrWhiteSpace(directory) ? null : directory,
+            profile, custom ? settings.Number("raw.temperature") : null, custom ? settings.Number("raw.tint") : null);
     }
 }

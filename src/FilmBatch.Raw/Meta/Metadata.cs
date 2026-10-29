@@ -13,6 +13,9 @@ public sealed class Metadata
 
     public string? Model { get; set; }
 
+    /// <summary>DNG <c>UniqueCameraModel</c>；即使 <see cref="Model"/> 存在也獨立保存（DCP 機型比對用）。</summary>
+    public string? UniqueCameraModel { get; set; }
+
     public string? SerialNumber { get; set; }
 
     public string? Software { get; set; }

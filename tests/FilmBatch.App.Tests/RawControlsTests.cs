@@ -7,6 +7,12 @@ using FilmBatch.Core.Params;
 using FilmBatch.Engine.Imaging;
 using FilmBatch.Raw;
 using FilmBatch.Raw.Color;
+using Avalonia.Threading;
+using FilmBatch.App.Services;
+using FilmBatch.App.ViewModels.Dialogs;
+using FilmBatch.Core.Film;
+using FilmBatch.Engine.Rendering;
+using FilmBatch.Engine.Imaging.Raw;
 
 namespace FilmBatch.App.Tests;
 
@@ -16,6 +22,243 @@ namespace FilmBatch.App.Tests;
 /// </summary>
 public sealed class RawControlsTests
 {
+    [AvaloniaFact]
+    public async Task CameraProfileImport_PreservesBytesSelectsAndUndoes()
+    {
+        var dialogs = new FakeDialogs();
+        using var main = TestEnv.CreateViewModel(dialogs);
+        var folder = Path.Combine(AppPaths.Root, "camera-profile-test");
+        Directory.CreateDirectory(folder);
+        const string rawName = "photo.dng";
+        File.WriteAllBytes(Path.Combine(folder, rawName), DngWriter.WriteRenderedDng(16, 12,
+            Enumerable.Repeat(0.18f, 16 * 12 * 3).ToArray(), ColorSpaces.Srgb,
+            new FilmBatch.Raw.Meta.Metadata { Make = "FilmBatch", Model = "RAW controls" }));
+        await main.OpenFolderAsync(folder);
+        main.OnSelectionChanged([rawName], rawName);
+        var section = main.Inspector.Modules.Single(m => m.Key == "raw");
+        Assert.DoesNotContain(section.Params, p => p.FlatKey == "raw.camera_profile");
+        Assert.NotNull(section.CameraProfiles);
+        var profiles = section.CameraProfiles!;
+        var path = Path.Combine(AppPaths.Root, "synthetic.dcp");
+        var bytes = SyntheticProfile();
+        File.WriteAllBytes(path, bytes);
+        dialogs.PickFileAnswer = path;
+        await profiles.ImportCommand.ExecuteAsync(null);
+        var key = main.Service!.SettingsFor(rawName).Text("raw.camera_profile");
+        Assert.StartsWith("dcp-", key);
+        Assert.Equal(bytes, File.ReadAllBytes(Path.Combine(AppPaths.UserCameraProfiles, key + ".dcp")));
+        Assert.Contains(profiles.Options, item => item.Key == key);
+        main.Stack.Undo();
+        Assert.Equal("auto", main.Service.SettingsFor(rawName).Text("raw.camera_profile"));
+    }
+
+    [AvaloniaFact]
+    public async Task CameraProfileImport_WithoutSelectionDoesNotPublish()
+    {
+        var dialogs = new FakeDialogs();
+        using var main = TestEnv.CreateViewModel(dialogs);
+        var path = Path.Combine(AppPaths.Root, "unselected.dcp");
+        Directory.CreateDirectory(AppPaths.Root);
+        File.WriteAllBytes(path, SyntheticProfile());
+        dialogs.PickFileAnswer = path;
+        await main.CameraProfiles.ImportCommand.ExecuteAsync(null);
+        Assert.False(Directory.Exists(AppPaths.UserCameraProfiles) &&
+            Directory.EnumerateFiles(AppPaths.UserCameraProfiles, "*.dcp").Any());
+    }
+
+    [AvaloniaFact]
+    public async Task CameraProfileImport_SelectionChangedWhileConfirmingDoesNotPublishOrApply()
+    {
+        TestEnv.IsolateUserFolder();
+        var dialogs = new DelayedCameraDialogs();
+        using var main = new MainWindowViewModel(new AppSettings(), dialogs, () => new CpuFakeRenderer(),
+            action => Dispatcher.UIThread.Post(action));
+        await TestEnv.OpenSamplesAsync(main);
+        var files = main.Filmstrip.Items.Take(2).Select(item => item.FileName).ToArray();
+        main.OnSelectionChanged([files[0]], files[0]);
+        var path = Path.Combine(AppPaths.Root, "delayed.dcp");
+        File.WriteAllBytes(path, SyntheticProfile());
+        dialogs.PickFileAnswer = path;
+        var import = main.CameraProfiles.ImportCommand.ExecuteAsync(null);
+        await dialogs.Shown.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        Assert.Equal("FilmBatch RAW controls", dialogs.Profile!.UniqueCameraModel);
+        Assert.Equal(0, dialogs.Profile.ProfileEmbedPolicy);
+        main.OnSelectionChanged([files[1]], files[1]);
+        dialogs.Result.SetResult(true);
+        await import;
+        Assert.Equal("auto", main.Service!.SettingsFor(files[0]).Text("raw.camera_profile"));
+        Assert.Equal("auto", main.Service.SettingsFor(files[1]).Text("raw.camera_profile"));
+        Assert.Empty(Directory.EnumerateFiles(AppPaths.UserCameraProfiles, "*.dcp"));
+    }
+
+    [AvaloniaFact]
+    public async Task CameraProfileImport_SuspendWhileConfirmingDoesNotPublishOrApply()
+    {
+        TestEnv.IsolateUserFolder();
+        var dialogs = new DelayedCameraDialogs();
+        using var main = new MainWindowViewModel(new AppSettings(), dialogs, () => new CpuFakeRenderer(),
+            action => Dispatcher.UIThread.Post(action));
+        await TestEnv.OpenSamplesAsync(main);
+        var file = main.Filmstrip.Items[0].FileName;
+        main.OnSelectionChanged([file], file);
+        var path = Path.Combine(AppPaths.Root, "suspend.dcp");
+        File.WriteAllBytes(path, SyntheticProfile());
+        dialogs.PickFileAnswer = path;
+        var import = main.CameraProfiles.ImportCommand.ExecuteAsync(null);
+        await dialogs.Shown.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        main.Suspend();
+        dialogs.Result.SetResult(true);
+        await import;
+        Assert.Equal("auto", main.Service!.SettingsFor(file).Text("raw.camera_profile"));
+        Assert.Empty(Directory.EnumerateFiles(AppPaths.UserCameraProfiles, "*.dcp"));
+    }
+
+    [AvaloniaFact]
+    public async Task CameraProfileImport_MultipleSelectionIsOneUndoAndMissingAssetStaysSelected()
+    {
+        var dialogs = new FakeDialogs();
+        using var main = TestEnv.CreateViewModel(dialogs);
+        await TestEnv.OpenSamplesAsync(main);
+        var files = main.Filmstrip.Items.Take(2).Select(item => item.FileName).ToArray();
+        main.OnSelectionChanged(files, files[0]);
+        var path = Path.Combine(AppPaths.Root, "multiple.dcp");
+        File.WriteAllBytes(path, SyntheticProfile());
+        dialogs.PickFileAnswer = path;
+        await main.CameraProfiles.ImportCommand.ExecuteAsync(null);
+        var key = main.Service!.SettingsFor(files[0]).Text("raw.camera_profile");
+        Assert.StartsWith("dcp-", key);
+        Assert.Equal(key, main.Service.SettingsFor(files[1]).Text("raw.camera_profile"));
+        main.Stack.Undo();
+        Assert.All(files, file => Assert.Equal("auto", main.Service.SettingsFor(file).Text("raw.camera_profile")));
+        main.Stack.Redo();
+        File.Delete(Path.Combine(AppPaths.UserCameraProfiles, key + ".dcp"));
+        main.OnSelectionChanged([files[1]], files[1]);
+        Assert.Equal(key, main.CameraProfiles.Selected!.Key);
+        Assert.Equal(key, main.Service.SettingsFor(files[1]).Text("raw.camera_profile"));
+        TestEnv.PumpUntil(() => main.CameraProfiles.Detail.Contains(key, StringComparison.Ordinal));
+    }
+
+    [AvaloniaFact]
+    public async Task WhiteBalance_MissingSelectedProfileReportsFailureAndDiscardsProposal()
+    {
+        await MissingProfileDuringWhiteBalance(automatic: false);
+    }
+
+    [AvaloniaFact]
+    public async Task AutomaticWhiteBalance_MissingSelectedProfileReportsFailureAndDiscardsProposal()
+    {
+        await MissingProfileDuringWhiteBalance(automatic: true);
+    }
+
+    [AvaloniaFact]
+    public async Task WhiteBalance_ReplacedRawSourceReportsFailureAndDiscardsProposal()
+    {
+        await MissingProfileDuringWhiteBalance(automatic: false, replaceSource: true);
+    }
+
+    private static async Task MissingProfileDuringWhiteBalance(bool automatic, bool replaceSource = false)
+    {
+        using var main = TestEnv.CreateViewModel();
+        var folder = Path.Combine(AppPaths.Root, "white-balance-profile");
+        Directory.CreateDirectory(folder);
+        const string rawName = "photo.dng";
+        var color = new ColorData { ColorMatrix = [Mat3.Identity, null], Illuminant = [21, 0] };
+        var warm = CameraColor.CameraNeutral(color, Cct.TempTintToXy(3500, 0));
+        var cool = CameraColor.CameraNeutral(color, Cct.TempTintToXy(7500, 0));
+        var pixels = new float[32 * 24 * 3];
+        for (var y = 0; y < 24; y++)
+        for (var x = 0; x < 32; x++)
+        {
+            var neutral = x < 16 ? warm : cool;
+            for (var c = 0; c < 3; c++) pixels[(y * 32 + x) * 3 + c] = (float)neutral[c] * .2f;
+        }
+        File.WriteAllBytes(Path.Combine(folder, rawName), DngWriter.WriteRenderedDng(32, 24, pixels,
+            ColorSpaces.Srgb, new FilmBatch.Raw.Meta.Metadata { Make = "FilmBatch", Model = "RAW controls" }));
+        await main.OpenFolderAsync(folder);
+        main.OnSelectionChanged([rawName], rawName);
+        TestEnv.PumpUntil(() => main.Preview.Source?.WhiteBalance is not null);
+        using var profile = new MemoryStream(SyntheticProfile(), writable: false);
+        var key = CameraProfileStore.Import(AppPaths.UserCameraProfiles, profile, "fixture", TestContext.Current.CancellationToken);
+        main.Inspector.SetValue("raw.camera_profile", key, null);
+        TestEnv.PumpUntil(() => main.Preview.Source is { } s && s.RawOptions.CameraProfileKey == key && !main.Preview.IsBusy);
+
+        var tools = main.PhotoTools;
+        var region = new PhotoRegion(0, 0, .45, 1);
+        tools.PickWbCommand.Execute(null);
+        await tools.RegionPicked(region);
+        Assert.NotNull(tools.WbProposal);
+        Assert.True(tools.CanApply);
+        var before = main.Service!.SettingsFor(rawName);
+        main.Stack.Clear();
+        if (replaceSource) File.WriteAllBytes(Path.Combine(folder, rawName), [1, 2, 3]);
+        else File.Delete(Path.Combine(AppPaths.UserCameraProfiles, key + ".dcp"));
+
+        if (automatic) await tools.AutoWbCommand.ExecuteAsync(null);
+        else
+        {
+            tools.PickWbCommand.Execute(null);
+            await tools.RegionPicked(region);
+        }
+
+        if (replaceSource) Assert.Contains("source", tools.WarningText, StringComparison.OrdinalIgnoreCase);
+        else Assert.Contains(key, tools.WarningText);
+        Assert.False(tools.IsBusy);
+        Assert.Null(tools.WbProposal);
+        Assert.Empty(tools.Candidates);
+        Assert.False(tools.CanApply);
+        Assert.False(tools.IsPreviewing);
+        Assert.Equal(before, main.Service.SettingsFor(rawName));
+        Assert.False(main.Stack.CanUndo);
+    }
+
+    private sealed class DelayedCameraDialogs : IDialogService
+    {
+        private readonly FakeDialogs _inner = new();
+        public string? PickFileAnswer { set => _inner.PickFileAnswer = value; }
+        public TaskCompletionSource Shown { get; } = new();
+        public TaskCompletionSource<bool> Result { get; } = new();
+        public DcpProfile? Profile { get; private set; }
+        public Task<bool> ShowCameraProfileImportAsync(DcpProfile profile, CancellationToken cancellationToken)
+        {
+            Profile = profile;
+            Shown.TrySetResult();
+            return Result.Task;
+        }
+        public Task<string?> PickPhotoFolderAsync(string? folder) => _inner.PickPhotoFolderAsync(folder);
+        public Task<string?> PickFolderAsync(string? folder) => _inner.PickFolderAsync(folder);
+        public Task<string?> PickFileAsync(string title, IReadOnlyList<string> patterns) => _inner.PickFileAsync(title, patterns);
+        public Task<string?> SaveFileAsync(string title, string name, IReadOnlyList<string> patterns) => _inner.SaveFileAsync(title, name, patterns);
+        public Task<(bool Keep, bool Remember)?> AskKeepOverridesAsync(int count) => _inner.AskKeepOverridesAsync(count);
+        public Task<bool> ShowSelectivePasteAsync(SelectivePasteViewModel vm) => _inner.ShowSelectivePasteAsync(vm);
+        public Task<bool> ShowNewPresetAsync(NewPresetViewModel vm) => _inner.ShowNewPresetAsync(vm);
+        public Task ShowPresetManagerAsync(PresetManagerViewModel vm) => _inner.ShowPresetManagerAsync(vm);
+        public Task ShowPreferencesAsync(PreferencesViewModel vm) => _inner.ShowPreferencesAsync(vm);
+        public Task<bool> ConfirmAsync(string title, string message, string confirmText) => _inner.ConfirmAsync(title, message, confirmText);
+        public Task<string?> PromptAsync(string title, string label, string initial) => _inner.PromptAsync(title, label, initial);
+        public Task<ClfImportOptions?> ShowColorTransformImportAsync(ColorTransform transform, CancellationToken cancellationToken) =>
+            _inner.ShowColorTransformImportAsync(transform, cancellationToken);
+        public void ShowGallery() => _inner.ShowGallery();
+        public Task ShowAboutAsync(AboutViewModel vm) => _inner.ShowAboutAsync(vm);
+        public Task OpenUriAsync(string uri) => _inner.OpenUriAsync(uri);
+    }
+
+    private static byte[] SyntheticProfile()
+    {
+        var model = System.Text.Encoding.UTF8.GetBytes("FilmBatch RAW controls\0");
+        const uint ifd = 8, data = 8 + 2 + 3 * 12 + 4;
+        using var stream = new MemoryStream();
+        using var writer = new BinaryWriter(stream);
+        writer.Write((byte)'I'); writer.Write((byte)'I'); writer.Write((ushort)0x4352); writer.Write(ifd);
+        writer.Write((ushort)3);
+        void Entry(ushort tag, ushort type, uint count, uint value) { writer.Write(tag); writer.Write(type); writer.Write(count); writer.Write(value); }
+        Entry(50708, 2, (uint)model.Length, data);
+        Entry(50721, 10, 9, data + (uint)model.Length);
+        Entry(50778, 3, 1, 21);
+        writer.Write(0u); writer.Write(model);
+        for (var i = 0; i < 9; i++) { writer.Write(i % 4 == 0 ? 1 : 0); writer.Write(1); }
+        writer.Flush();
+        return stream.ToArray();
+    }
     // ───────────── schema ─────────────
 
     [Theory]

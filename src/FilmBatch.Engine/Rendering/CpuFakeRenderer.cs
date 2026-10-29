@@ -50,7 +50,7 @@ public sealed class CpuFakeRenderer : IPreviewRenderer
         var sw = Stopwatch.StartNew();
         if (DenoiseSettings.From(settings).IsActive)
             frameSource = DenoiseProcessor.Shared.Prepare(frameSource, settings, cancellationToken);
-        var parameters = ModuleParams.From(frameSource, settings);
+        var parameters = ModuleParams.From(frameSource, settings, cancellationToken: cancellationToken);
         _assets.Prepare(frameSource, parameters);
         var region = WindowRegion.Expand(parameters, view);
         parameters.View = region;
@@ -73,7 +73,7 @@ public sealed class CpuFakeRenderer : IPreviewRenderer
     private SourceImage RenderPrepared16(SourceImage source, Settings settings, CancellationToken cancellationToken,
         RgbEncoding encoding = RgbEncoding.Srgb)
     {
-        var parameters = ModuleParams.From(source, settings, encoding);
+        var parameters = ModuleParams.From(source, settings, encoding, cancellationToken: cancellationToken);
         _assets.Prepare(source, parameters);
         return CpuPipeline.Process(source, parameters, null, cancellationToken);
     }

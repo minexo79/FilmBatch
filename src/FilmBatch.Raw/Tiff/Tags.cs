@@ -162,6 +162,7 @@ public static class Tags
     public const ushort ProfileHueSatMapData2 = 50939;
     public const ushort ProfileToneCurve = 50940;
     public const ushort ProfileEmbedPolicy = 50941;
+    public const ushort ProfileCopyright = 50942;
     public const ushort ProfileLookTableDims = 50981;
     public const ushort ProfileLookTableData = 50982;
     public const ushort ProfileHueSatMapEncoding = 51107;

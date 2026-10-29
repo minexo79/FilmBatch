@@ -1,6 +1,6 @@
 # 底片風格（Film Look）
 
-`film` 模組（中文「底片風格」、英文「Film Look」）以 3D LUT 模擬底片顏色：選一卷底片（一個 3D LUT），調整效果比例、暖色與褪色。八色相帶修正已獨立成 `hsl` 模組，與曲線一起放在基本參數的「色彩」區塊，不要求啟用底片。本文件說明 LUT 來源與授權、兩個模組的演算法、色相帶定義、如何新增底片，以及舊專案的相容處理。
+`film` 模組（中文「底片風格」、英文「Film Look」）沿用一個底片選擇與效果比例、暖色、褪色。內建外觀與既有使用者 LUT 使用 3D LUT；本工作區另實作有界 CLF 3.0 轉換序列匯入，格式與限制見文末。八色相帶修正獨立於底片。本次變更的跨平台、實拍與發佈 gate 尚未全部完成，不能把本文件視為發佈驗收。
 
 本模組於 2026-10 取代舊的 Recipe Lab 底片配方模組（Sony 創意風格模擬、自訂配方 `.YML`、樣張校正工具已全部移除）。
 
@@ -105,7 +105,7 @@
 
 ## 3. 演算法
 
-底片風格是一個逐像素 pass，位於處理順序 ③ 底片階段（線性光）的第一步，之後依序執行獨立 HSL、古典版材。CPU 參考實作為 `src/FilmBatch.Engine/Rendering/FilmLookProcessing.cs`，GPU 實作為 `src/FilmBatch.Gpu/Shaders/v1/film/look.wgsl`；HSL 對應 `HslProcessing.cs` 與 `linear/hsl.wgsl`，CPU／GPU 以實際渲染比對。
+既有 LUT 在處理順序 ③ 底片階段（線性光）的第一步執行，之後依序執行獨立 HSL、古典版材。CPU 參考實作為 `src/FilmBatch.Engine/Rendering/FilmLookProcessing.cs`，GPU 實作為 `src/FilmBatch.Gpu/Shaders/v1/film/look.wgsl`；HSL 對應 `HslProcessing.cs` 與 `linear/hsl.wgsl`。CLF 序列則依匯入時宣告選擇工作線性或顯示編碼位置，只執行一次，見下方「CLF 色彩轉換」。
 
 ### 3.1 處理順序
 
@@ -128,7 +128,7 @@
 | 暖色 ±100 | R ×(1 ± 0.12)、B ×(1 ∓ 0.12)（線性光） |
 | 褪色 0–100 | sRGB `x × (1 − 0.2f) + 0.1f` |
 
-**跳過規則**：模組關閉、`film.strength == 0`，或 `film.look` 是未知 key（`FilmLookLibrary.TryLut` 回傳 null）時完全略過底片 pass；獨立 HSL 不受影響。HSL 關閉或 24 個值全零時也完全略過，不做無效色彩往返。
+**跳過規則**：模組關閉或 `film.strength == 0` 時不解析資產且完全略過底片 pass；未知 legacy key 由 `FilmLookLibrary.Resolve` 回傳 null 並略過。啟用的 `look-` 資產若缺檔、損毀或雜湊不符則回報失敗，不以原圖冒充成功。獨立 HSL 不受影響，關閉或 24 個值全零時完全略過。
 
 **參數傳遞**：`ModuleParams` 的底片欄位以 `FilmLookUniforms.From` 組成 `Mix`（效果比例 0–1、暖色 −1–1、褪色 0–1、LUT 邊長）、`To0`…`To2`（線性 sRGB → ProPhoto 矩陣，`To0.w` 為 ProPhoto 旗標，sRGB LUT 時為 0）與 `From0`…`From2`（ProPhoto → sRGB），共 7 × `vec4f` = 112 bytes，對齊 WGSL `LookParams`。獨立 HSL 的 24 個值由 `HslUniforms` 組成 `Band0`…`Band7`（色相、飽和、明度 −1–1、0），共 8 × `vec4f` = 128 bytes，對齊 WGSL `HslParams`。OKLab 的 CPU 轉換集中於 `Oklab.cs`，HSL shader 使用相同係數。
 
@@ -241,3 +241,13 @@
 匯入的表存在 `AppPaths.UserLuts`（`user-` 加內容雜湊），`film.look` 可存這個 key。它們不是內建 36 卷，檔名只當顯示名稱，不代表廠商授權。
 
 ProPhoto 匯入的表在清單格中多一行色彩空間標記（`ProPhoto RGB (gamma 1.8)`），sRGB 匯入與內建底片不標。顯示名稱一律是來源檔名，色彩空間不寫進名稱檔。
+
+## CLF 色彩轉換
+
+底片面板的同一匯入按鈕接受 `.clf` 與 `.fblook`。匯入 `.clf` 時顯示檔案描述，必須由使用者宣告執行位置（工作線性或顯示編碼）與輸入／輸出編碼（線性 sRGB、sRGB 或 ProPhoto RGB D50／gamma 1.8）；程式不從 descriptor 猜測色彩空間。`.fblook` 沿用封存的宣告，不再詢問；旁邊的 `.cube` 色彩空間選項不影響這兩種檔案。
+
+這是 CLF 3.0 的受限集合，不宣稱完整 CLF／CTF 相容：只接受無 namespace 的 `ProcessList`、非空 id、嚴格 UTF-8 與 Matrix、Range、LUT1D、LUT3D；不支援 `.ctf`、外部 Reference、Log、Exponent、ASC_CDL、inverse LUT、IndexMap、half-domain 或未知節點／屬性。CLF 上限 128 MiB、64 個節點、XML 深度 16，正規化表格與參數合計 32 MiB；LUT1D 最多 65,536 點、LUT3D 最多 128³。LUT3D 預設 trilinear，另支援明示 tetrahedral。完整格式邊界見[研究契約](research/composable-color-transforms.md#32-clf-接受集合與數學)。
+
+`.fblook` 是 16-byte 宣告 header 加原樣 CLF bytes；key 為 `look-` 加完整 envelope 的 SHA-256。檔名只作顯示名稱，使用者必須確認來源授權；不同宣告產生不同 key。匯入前先封存來源，確認後原子發布相同內容；切換照片／專案、取消或暫停不能把舊結果套用至新選取。已發布的共用資產不因之後取消而刪除。
+
+兩種位置均以宣告編碼包裝序列，再在線性 sRGB 套用暖色／褪色與效果比例；alpha 保持不變。這不改寫既有 `.cube`、`.fblut`、Hald 或內建 LUT。選到缺失或損壞的 `look-` 時，啟用的預覽、縮圖及匯出應明確失敗；關閉或強度為零時不載入該資產。固定合成數值、實際 GPU 與尚未執行的跨平台／實拍驗收須分開記錄，見[實作計畫](superpowers/plans/2026-10-28-composable-color-transforms.md#4-verification-commands--release-gates)。

@@ -61,7 +61,8 @@ public sealed class SettingsJsonConverter : JsonConverter<Settings>
             throw new InvalidDataException($"Invalid curve: {key}");
         // Asset choices can be supplied by the user's library, not only the static catalog.
         if (definition.Kind == ParamKind.Choice && key is not "light_leak.texture"
-            && !(key == "film.look" && UserLutLibrary.IsUserKey(value.AsText))
+            && !(key == "film.look" && (UserLutLibrary.IsUserKey(value.AsText) || UserTransformLibrary.IsLookKey(value.AsText)))
+            && !(key == "raw.camera_profile" && CameraProfileKey.IsUserKey(value.AsText))
             && !definition.Choices.Any(choice => choice.Key == value.AsText))
             throw new InvalidDataException($"Unknown option for {key}: {value.AsText}");
         return value;

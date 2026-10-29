@@ -22,7 +22,7 @@ public sealed class EffectFootprintTests
         return buf;
     }
 
-    private static ModuleParams Params(Settings s) => ModuleParams.From(new SourceImage(W, H, new ushort[W * H * 4]), s);
+    private static ModuleParams Params(Settings s) => ModuleParams.From(new SourceImage(W, H, new ushort[W * H * 4]), s, cancellationToken: TestContext.Current.CancellationToken);
 
     private static float[] Run(Action<float[], float[], int, int, ModuleParams> effect, Settings s)
     {
@@ -225,7 +225,7 @@ public sealed class EffectFootprintTests
     [MemberData(nameof(SkinCases))]
     public void Skin_contours_follow_the_crop_and_match_the_adjustment_weight(Settings s)
     {
-        var p = ModuleParams.From(new SourceImage(SrcW, SrcH, new ushort[SrcW * SrcH * 4]), s);
+        var p = ModuleParams.From(new SourceImage(SrcW, SrcH, new ushort[SrcW * SrcH * 4]), s, cancellationToken: TestContext.Current.CancellationToken);
         var paths = EffectFootprint.For("skin", s, p.CropT.OutWidth, p.CropT.OutHeight, SrcW, SrcH);
         // 內圈的中心＝四個把手的中點（仿射保持中點）
         var handles = paths.Where(x => x.Stroke == FootprintStroke.Handle).Select(x => x.Points[0]).ToList();
@@ -252,7 +252,7 @@ public sealed class EffectFootprintTests
     [MemberData(nameof(SkinCases))]
     public void Skin_drags_round_trip_through_the_crop(Settings s)
     {
-        var p = ModuleParams.From(new SourceImage(SrcW, SrcH, new ushort[SrcW * SrcH * 4]), s);
+        var p = ModuleParams.From(new SourceImage(SrcW, SrcH, new ushort[SrcW * SrcH * 4]), s, cancellationToken: TestContext.Current.CancellationToken);
         var (w, h) = (p.CropT.OutWidth, p.CropT.OutHeight);
         var paths = EffectFootprint.For("skin", s, w, h, SrcW, SrcH);
         IReadOnlyList<KeyValuePair<string, double>> Drag(FootprintPath path, Vector2 at) =>

@@ -6,6 +6,7 @@ using System.Runtime.InteropServices;
 using FilmBatch.Gpu.Device;
 using FilmBatch.Gpu.Resources;
 using FilmBatch.Gpu.ShaderSystem;
+using FilmBatch.Raw.Color;
 
 namespace FilmBatch.Engine.Imaging.Raw;
 
@@ -21,42 +22,59 @@ internal sealed class RawDisplayGpu : IDisposable
     private ComputeKernel? _textureKernel;
     private GpuBuffer? _toneLut, _chromaLut, _textureUniform;
     private CameraTone? _cachedTone;
+    private DcpToneCurve? _cachedProfileTone;
     private bool _toneReady;
 
     // Records the finish directly between linear effects and display effects. No CPU readback.
     internal void Dispatch(GpuCommandList commands, GpuTexture input, GpuTexture output, CameraTone? tone,
-        bool extendedSrgb = false)
+        bool extendedSrgb = false, DcpToneCurve? profileTone = null)
     {
-        Prepare(tone);
+        Prepare(tone, profileTone);
         var f = RawFinishParams.Working;
         var m = f.Output; var conversion = f.Input;
         var values = new WorkingUniforms(new FinishUniforms(m[0], m[1], m[2], 0,
             m[3], m[4], m[5], 0, m[6], m[7], m[8], 0, output.Width, output.Height, 0, extendedSrgb ? 1u : 0u),
-            new Vector4(conversion[0], conversion[1], conversion[2], 0),
+            new Vector4(conversion[0], conversion[1], conversion[2], profileTone is null ? 0 : profileTone.Points.Length / 2),
             new Vector4(conversion[3], conversion[4], conversion[5], 0),
             new Vector4(conversion[6], conversion[7], conversion[8], 0));
         _gpu.WriteBuffer(_textureUniform!, values);
         commands.Dispatch2D(_textureKernel!, [input, _toneLut!, _chromaLut!, output, _textureUniform!], output.Width, output.Height);
     }
 
-    internal void Prepare(CameraTone? tone)
+    internal void Prepare(CameraTone? tone, DcpToneCurve? profileTone = null)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         _textureKernel ??= _gpu.CreateKernel(_shaders.Load("io/raw_working_finish.wgsl"), "main",
             [BindingSpec.TextureFloat, BindingSpec.StorageRead, BindingSpec.StorageRead,
              BindingSpec.StorageTexture(GpuTextureFormat.Rgba32Float), BindingSpec.Uniform], "raw working finish");
-        if (!_toneReady || !ReferenceEquals(_cachedTone, tone))
+        if (!_toneReady || !ReferenceEquals(_cachedTone, tone) || !ReferenceEquals(_cachedProfileTone, profileTone))
         {
-            var map = tone is null ? ToneMap.Create(0, 0, 0) : ToneMap.Camera(tone, 0, 0, 0);
-            var lut = map.Lut(); var chroma = map.ChromaLut();
-            _toneLut ??= _gpu.CreateBuffer((ulong)lut.Length * 4, GpuBufferUsage.Storage | GpuBufferUsage.CopyDst, "raw tone");
-            _chromaLut ??= _gpu.CreateBuffer((ulong)chroma.Length * 4, GpuBufferUsage.Storage | GpuBufferUsage.CopyDst, "raw chroma");
-            _gpu.WriteBuffer<float>(_toneLut, lut);
-            _gpu.WriteBuffer<float>(_chromaLut, chroma);
-            _cachedTone = tone; _toneReady = true;
+            _toneReady = false;
+            var map = profileTone is null ? tone is null ? ToneMap.Create(0, 0, 0) : ToneMap.Camera(tone, 0, 0, 0) : null;
+            var lut = map?.Lut();
+            var bytes = profileTone is null ? (ulong)lut!.Length * sizeof(float) : ProfileToneBytes(profileTone);
+            if (_toneLut is not null && _toneLut.Size != bytes)
+            {
+                _toneLut.Dispose();
+                _toneLut = null;
+            }
+            _toneLut ??= _gpu.CreateBuffer(bytes, GpuBufferUsage.Storage | GpuBufferUsage.CopyDst, "raw tone");
+            _chromaLut ??= _gpu.CreateBuffer(ToneMap.ChromaCount * sizeof(float), GpuBufferUsage.Storage | GpuBufferUsage.CopyDst, "raw chroma");
+            if (profileTone is null)
+            {
+                _gpu.WriteBuffer<float>(_toneLut, lut!);
+                _gpu.WriteBuffer<float>(_chromaLut, map!.ChromaLut());
+            }
+            else _gpu.WriteBuffer<float>(_toneLut, profileTone.Points);
+            _cachedTone = tone; _cachedProfileTone = profileTone; _toneReady = true;
         }
         _textureUniform ??= _gpu.CreateBuffer(112, GpuBufferUsage.Uniform | GpuBufferUsage.CopyDst, "raw working finish parameters");
     }
+
+    internal static ulong ProfileToneBytes(DcpToneCurve? tone) => tone is null ? 0 : (ulong)tone.Points.Length * sizeof(float);
+
+    // External tone cache is retained across frames and must count against the renderer budget.
+    internal ulong ProfileResidentBytes => _cachedProfileTone is null ? 0 : _toneLut?.Size ?? 0;
 
     [StructLayout(LayoutKind.Sequential)]
     private readonly record struct WorkingUniforms(FinishUniforms Finish, Vector4 Scene0, Vector4 Scene1, Vector4 Scene2);
@@ -72,7 +90,7 @@ internal sealed class RawDisplayGpu : IDisposable
     {
         _toneLut?.Dispose(); _chromaLut?.Dispose(); _textureUniform?.Dispose();
         _toneLut = _chromaLut = _textureUniform = null;
-        _cachedTone = null; _toneReady = false;
+        _cachedTone = null; _cachedProfileTone = null; _toneReady = false;
     }
 
     public void Dispose()

@@ -97,7 +97,9 @@ flowchart LR
 |---|---|
 | `FilmLut` | 3D LUT 資料（`Size`、`Data`、`ColorSpace`；`FilmLutColorSpace` 為 sRGB 或 ProPhoto D50／gamma 1.8；Hald 像素順序）；`Sample` 四面體內插、`Resample` 改邊長、`FromHald`、`ToTextureRgba` 轉成 GPU 紋理排列 |
 | `FilmLutFile` | `.fblut` 二進位格式讀寫：sRGB 為 FBLUT1（magic、int32 邊長、16-bit unorm）；ProPhoto 為 FBLUT2（邊長後多一個色彩空間位元組） |
-| `FilmLookLibrary` | 底片清單（以 `JsonDocument` 讀嵌入的 `looks.json`）、`GroupsInOrder`、`DefaultKey`（`kodak-portra-400`）；`TryLut(key)` 第一次使用時載入並快取，未知 key 回傳 null |
+| `FilmLookLibrary`／`FilmLookAsset` | 底片清單與互斥的 LUT／轉換資產。`Resolve(key)` 延遲讀取；未知 legacy key 回 null，啟用的 `look-` 資產失敗則拋出帶原始原因的 `ColorTransformAssetException` |
+| `ClfFile`／`ColorTransform` | 有界 CLF 3.0 子集 parser 與不可變 float32 節點／資料；Matrix、Range、LUT1D、LUT3D 依序執行，未知運算與超限拒絕 |
+| `ColorTransformFile`／`UserTransformLibrary` | `.fblook` 保存 16-byte 宣告與原始 CLF，`look-`＋SHA-256 定址；匯入封存、驗證後原子發布，解析以 root＋key 校驗並保持有界快取 |
 | `HueBands`／`HuePresets` | 獨立 `hsl` 模組的八色相帶 key、中心角（與 `linear/hsl.wgsl` 同值）、24 個參數 schema（`Params`、`FlatKeys`）；七個文字預設與 `Find`（判斷目前值是否為某預設，否則為「自訂」）。與曲線同屬 `ModuleGroup.Color` |
 | `Film/Looks/` | `looks.json`（36 卷清單，順序即介面順序）、36 個 33³ `.fblut`、`LICENSE.txt`（CC BY-SA 4.0 聲明），皆為嵌入資源 `FilmBatch.Looks/*` |
 | `Params/RetiredParams` | 舊 Recipe Lab 模組的 13 個 `film.*` key，以及改為偏好設定的 `raw.lens_database`；`SettingsJsonConverter` 與 `PresetFile` 讀檔時靜默丟棄 |

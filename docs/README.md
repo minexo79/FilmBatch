@@ -15,6 +15,8 @@
 | 排查介面、裁切、切換照片或大量載入 | [介面層](architecture/app.md) | [生命週期回歸](testing.md#編輯生命週期回歸)、[載入回歸](testing.md#大量照片載入與即時預覽回歸) |
 | 調整底片色彩或新增 LUT | [底片風格](film-looks.md) | [LUT 轉換工具](../tools/film-luts/README.md)、[授權聲明](../THIRD-PARTY-NOTICES.txt) |
 | 評估 Sony Creative Look 移植 | [Sony A7M5 Survey 與效果實驗](research/sony-creative-looks-survey.md) | 目前 NO-GO：資料域、第三方資料權利與原版驗收前提尚未通過；未加入產品 |
+| 評估保留原曲線的通用色彩轉換 | [可組合色彩轉換研究](research/composable-color-transforms.md) | [CT-2 實作計畫](superpowers/plans/2026-10-28-composable-color-transforms.md)；本工作區已實作有界 CLF 子引擎，跨平台與實拍驗收未完成，不等於已發佈支援 |
+| 評估 RAW 的 `.dcp` 相機描述檔 | [DCP-1 研究與限制](research/composable-color-transforms.md#7-dcp-1raw-相機描述檔擴充) | [DCP-1 實作計畫](superpowers/plans/2026-10-28-composable-color-transforms.md#6-dcp-1--raw-相機描述檔擴充)；本工作區已實作，跨平台、實拍及授權審查未完成；Sony 上游 base 的 policy 0 不用於 ARW |
 | 使用局部暗部還原或色調曲線 | [building.md](building.md#局部暗部還原) | [暗部研究](research/shadow-recovery-survey.md) |
 | 使用亮部保護 | [building.md](building.md#亮部保護) | [亮部實驗](research/highlight-rolloff.md)；預設關閉，不取代基本調整的亮部 |
 | 使用 AI 降噪或去背、CLI | [CLI 與本機 AI](cli.md) | [ADR 0002](adr/0002-ai-denoise.md)、[去背驗證](evidence/cutout-2026-10-22.md) |

@@ -31,6 +31,7 @@ public sealed partial class ModuleSectionViewModel : ObservableObject
         OnPropertyChanged(nameof(Label));
         foreach (var p in _allParams) p.RefreshLabels();
         FilmLook?.RefreshLabels();
+        CameraProfiles?.RefreshLabels();
         Curves?.RefreshLabels();
         Hsl?.RefreshLabels();
     }
@@ -50,7 +51,7 @@ public sealed partial class ModuleSectionViewModel : ObservableObject
 
     public ModuleSectionViewModel(ModuleSchema schema, IParamHost host,
         Action<ModuleSectionViewModel> onReset, Action<ModuleSectionViewModel> onCopyOnly,
-        FilmLookViewModel? filmLook = null, PreviewViewModel? preview = null)
+        FilmLookViewModel? filmLook = null, PreviewViewModel? preview = null, CameraProfileViewModel? cameraProfiles = null)
     {
         Schema = schema;
         _host = host;
@@ -63,12 +64,14 @@ public sealed partial class ModuleSectionViewModel : ObservableObject
             .Select(p => ParamViewModel.Create(schema.Key, p, host))];
         if (schema.Key == "basic") InsertRawWhiteBalance(host);
         FilmLook = schema.Key == "film" ? filmLook : null;
+        CameraProfiles = schema.Key == "raw" ? cameraProfiles : null;
         Curves = schema.Key == "curves" ? new ToneCurvesViewModel(host, _allParams, preview) : null;
         // hsl 模組：24 個色相參數由色相帶編輯器（HslViewModel）顯示，沒有一般參數列。
         // film 模組：底片（look）由縮圖格選，一般參數列留其餘欄位。
         Hsl = schema.Key == "hsl" ? new HslViewModel(host, [.. _allParams.Where(IsHueParam)]) : null;
         Params = new((FilmLook is null ? _allParams : _allParams.Where(p => p.Def.Key != "look"))
-            .Where(p => p.FlatKey != "raw.mask_instance" && Curves is null && Hsl is null));
+            .Where(p => p.FlatKey != "raw.mask_instance" && (CameraProfiles is null || p.FlatKey != "raw.camera_profile")
+                && Curves is null && Hsl is null));
     }
 
     /// <summary>原生 smoke 與面板共用的來源中繼資料入口；null 清除上一張照片資料。</summary>
@@ -137,6 +140,9 @@ public sealed partial class ModuleSectionViewModel : ObservableObject
 
     /// <summary>film 模組頂部的底片風格選擇；其他模組為 null。</summary>
     public FilmLookViewModel? FilmLook { get; }
+
+    /// <summary>RAW camera profile chooser; null for other modules.</summary>
+    public CameraProfileViewModel? CameraProfiles { get; }
 
     /// <summary>曲線共用畫布；其他模組為 null。參數仍由 _allParams 載入。</summary>
     public ToneCurvesViewModel? Curves { get; }

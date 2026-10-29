@@ -428,7 +428,7 @@ public sealed partial class FilmstripViewModel : ObservableObject
                     // 已去背或啟用 AI 降噪的 RAW 必須走場景線性現像來源：相機內嵌 JPEG 是另一資料域
                     //（裁切與 gamma 皆不同），用它做 AI 縮圖會把模型選成 NAFNet 而非 RawNIND。
                     bool NeedsDeveloped() => Project.IsRawFile(next.FileName)
-                        && (service.Project[next.FileName].ForegroundMask is not null
+                        && (rawOptions.CameraProfileKey is not null || service.Project[next.FileName].ForegroundMask is not null
                             || service.SettingsFor(next.FileName).Bool("denoise.enabled"));
                     var needsDeveloped = NeedsDeveloped();
                     var source = next.Source is { } cached && cached.RawOptions == rawOptions

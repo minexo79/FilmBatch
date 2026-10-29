@@ -25,6 +25,8 @@
 | `geometry/`、`optical/`、`film/`、`detail/`、`surface/` | 各階段的效果模組 |
 | `spike/` | M0 技術驗證用的 shader，只供 `filmbatch-cli spike` 基準測試 |
 
+`film/transform.wgsl` 用單一 dispatch 依序執行 CLF 的 Matrix／Range／LUT1D／LUT3D；來源與目的紋理之外，另綁定宣告／混合 uniform、16-byte op records 與唯讀 float 表。`ColorTransformKernel` 隨 verified key 管理目前及在途 buffer，renderer 在資源限制與預算檢查時計入它們；不足時沿用 CPU fallback。`io/raw_working_finish.wgsl` 的外部 DCP tone 使用原始曲線節點，而非重採樣 LUT。兩者的處理位置與限制見 [Engine 契約](engine.md#46-engine算圖管線rendering)；shader 驗證或 Metal 執行不代表其他後端已驗收。
+
 每支 shader 的慣例（以 `optical/vignette.wgsl` 為例）：
 
 ```wgsl

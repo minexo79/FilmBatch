@@ -327,7 +327,7 @@ internal static class RawGpuDemosaic
             var t1 = Pack(tables?.LookTable);
             var t2 = Pack(hueSat?.Table);
             var flags = (tables is not null ? 1 : 0) | (tables?.HueSatTable is not null ? 2 : 0)
-                | (tables?.LookTable is not null ? 4 : 0) | (hueSat is not null ? 8 : 0);
+                | (tables?.LookTable is not null ? 4 : 0) | (hueSat is not null ? 8 : 0) | (tables?.Sdr == true ? 16 : 0);
             var to = tables?.ToProPhoto ?? hueSat?.To;
             var from = tables?.FromProPhoto ?? hueSat?.From;
             var colour = Colour;

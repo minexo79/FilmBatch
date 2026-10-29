@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using FilmBatch.Core;
 using FilmBatch.Core.Film;
 using FilmBatch.Engine.Imaging;
+using FilmBatch.Engine.Rendering;
 using Avalonia.Headless.XUnit;
 using FilmBatch.App.ViewModels;
 
@@ -228,6 +229,238 @@ public class FilmLookViewModelTests
         Assert.Equal("reverse-prophoto", tile.Name);
         Assert.True(tile.HasDetail);
         AssertSelected(vm, file, tile);
+    }
+
+    private const string ColorClf = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <ProcessList id="synthetic" compCLFversion="3.0">
+          <Description>Test transform</Description>
+          <InputDescriptor>linear input</InputDescriptor>
+          <OutputDescriptor>linear output</OutputDescriptor>
+          <Matrix inBitDepth="32f" outBitDepth="32f">
+            <Array dim="3 4">0.5 0 0 0  0 1 0 0  0 0 1 0</Array>
+          </Matrix>
+        </ProcessList>
+        """;
+
+    [AvaloniaFact]
+    public async Task ImportClf_PreservesBytesAndDeclaration_AppliesPixelsAndUndo()
+    {
+        var options = new ClfImportOptions(ColorTransformStage.WorkingLinear,
+            ColorTransformEncoding.LinearSrgb, ColorTransformEncoding.LinearSrgb);
+        var dialogs = new FakeDialogs { OnTransformImport = transform =>
+        {
+            Assert.Equal("linear input", transform.InputDescriptor);
+            Assert.Equal("linear output", transform.OutputDescriptor);
+            return Task.FromResult<ClfImportOptions?>(options);
+        }};
+        using var vm = TestEnv.CreateViewModel(dialogs);
+        await TestEnv.OpenSamplesAsync(vm).WaitAsync(TestContext.Current.CancellationToken);
+        var file = vm.Filmstrip.Items[0].FileName;
+        vm.OnSelectionChanged([file], file);
+        var before = vm.Service!.SettingsFor(file);
+        var path = Path.Combine(AppPaths.Root, "half-red.clf");
+        File.WriteAllText(path, ColorClf);
+        dialogs.PickFileAnswer = path;
+        await vm.FilmLook.ImportLutCommand.ExecuteAsync(null);
+
+        var tile = Assert.Single(vm.FilmLook.Imported);
+        Assert.StartsWith("look-", tile.Key);
+        var saved = File.ReadAllBytes(Path.Combine(AppPaths.UserLuts, tile.Key + ".fblook"));
+        Assert.Equal(File.ReadAllBytes(path), saved[ColorTransformFile.HeaderBytes..]);
+        Assert.Equal("look-" + Convert.ToHexString(SHA256.HashData(saved)).ToLowerInvariant(), tile.Key);
+        var asset = UserTransformLibrary.Resolve(AppPaths.UserLuts, tile.Key, TestContext.Current.CancellationToken);
+        Assert.Equal(options, asset.Options);
+        AssertSelected(vm, file, tile);
+
+        var source = new SourceImage(1, 1, [32768, 32768, 32768, 65535]);
+        using var renderer = new CpuFakeRenderer();
+        var unchanged = renderer.Render16(source, before.With("film.enabled", false), TestContext.Current.CancellationToken).Rgba16;
+        var changed = renderer.Render16(source, vm.Service.SettingsFor(file), TestContext.Current.CancellationToken).Rgba16;
+        Assert.True(changed[0] < unchanged[0]);
+        vm.UndoCommand.Execute(null);
+        Assert.Equal(before["film.look"].AsText, vm.Service.SettingsFor(file)["film.look"].AsText);
+    }
+
+    [AvaloniaFact]
+    public async Task ImportClf_CancelOrSelectionChange_DoesNotApplyOrPublish()
+    {
+        var result = new TaskCompletionSource<ClfImportOptions?>();
+        var shown = new TaskCompletionSource();
+        var dialogs = new FakeDialogs { OnTransformImport = _ => { shown.TrySetResult(); return result.Task; } };
+        using var vm = TestEnv.CreateViewModel(dialogs);
+        await TestEnv.OpenSamplesAsync(vm).WaitAsync(TestContext.Current.CancellationToken);
+        var files = vm.Filmstrip.Items.Take(2).Select(t => t.FileName).ToArray();
+        vm.OnSelectionChanged([files[0]], files[0]);
+        var old = vm.Service!.SettingsFor(files[0]);
+        var path = Path.Combine(AppPaths.Root, "half-red.clf");
+        File.WriteAllText(path, ColorClf);
+        dialogs.PickFileAnswer = path;
+        var import = vm.FilmLook.ImportLutCommand.ExecuteAsync(null);
+        await shown.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        vm.OnSelectionChanged([files[1]], files[1]);
+        result.SetResult(new(ColorTransformStage.WorkingLinear, ColorTransformEncoding.LinearSrgb, ColorTransformEncoding.LinearSrgb));
+        await import;
+        Assert.Equal(old, vm.Service.SettingsFor(files[0]));
+        Assert.Empty(Directory.EnumerateFiles(AppPaths.UserLuts, "*.fblook"));
+    }
+
+    [AvaloniaFact]
+    public async Task ImportClf_SourceChangedDuringDeclaration_PublishesSealedBytes()
+    {
+        var result = new TaskCompletionSource<ClfImportOptions?>();
+        var shown = new TaskCompletionSource();
+        var dialogs = new FakeDialogs { OnTransformImport = _ => { shown.TrySetResult(); return result.Task; } };
+        using var vm = TestEnv.CreateViewModel(dialogs);
+        await TestEnv.OpenSamplesAsync(vm).WaitAsync(TestContext.Current.CancellationToken);
+        var file = vm.Filmstrip.Items[0].FileName;
+        vm.OnSelectionChanged([file], file);
+        var path = Path.Combine(AppPaths.Root, "sealed.clf");
+        File.WriteAllText(path, ColorClf);
+        var original = File.ReadAllBytes(path);
+        dialogs.PickFileAnswer = path;
+        var import = vm.FilmLook.ImportLutCommand.ExecuteAsync(null);
+        await shown.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        File.WriteAllText(path, "<invalid/>");
+        result.SetResult(new(ColorTransformStage.WorkingLinear, ColorTransformEncoding.LinearSrgb, ColorTransformEncoding.LinearSrgb));
+        await import;
+
+        var tile = Assert.Single(vm.FilmLook.Imported);
+        var saved = File.ReadAllBytes(Path.Combine(AppPaths.UserLuts, tile.Key + ".fblook"));
+        Assert.Equal(original, saved[ColorTransformFile.HeaderBytes..]);
+        AssertSelected(vm, file, tile);
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ImportClf_SuspendOrDisposeDuringDeclaration_DoesNotApplyOrDeleteExistingAsset(bool dispose)
+    {
+        var result = new TaskCompletionSource<ClfImportOptions?>();
+        var shown = new TaskCompletionSource();
+        var dialogs = new FakeDialogs { OnTransformImport = _ => { shown.TrySetResult(); return result.Task; } };
+        using var vm = TestEnv.CreateViewModel(dialogs);
+        await TestEnv.OpenSamplesAsync(vm).WaitAsync(TestContext.Current.CancellationToken);
+        var file = vm.Filmstrip.Items[0].FileName;
+        vm.OnSelectionChanged([file], file);
+        var service = vm.Service!;
+        var before = service.SettingsFor(file);
+        var options = new ClfImportOptions(ColorTransformStage.WorkingLinear,
+            ColorTransformEncoding.LinearSrgb, ColorTransformEncoding.LinearSrgb);
+        using var source = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(ColorClf));
+        var key = UserTransformLibrary.Import(AppPaths.UserLuts, source, false, options, "existing");
+        var assetPath = Path.Combine(AppPaths.UserLuts, key + ".fblook");
+        var existing = File.ReadAllBytes(assetPath);
+        var path = Path.Combine(AppPaths.Root, "pending.clf");
+        File.WriteAllText(path, ColorClf);
+        dialogs.PickFileAnswer = path;
+        var import = vm.FilmLook.ImportLutCommand.ExecuteAsync(null);
+        await shown.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        if (dispose) vm.Dispose(); else vm.Suspend();
+        result.SetResult(options);
+        await import;
+
+        Assert.Equal(before, service.SettingsFor(file));
+        Assert.Equal(existing, File.ReadAllBytes(assetPath));
+        Assert.Single(Directory.EnumerateFiles(AppPaths.UserLuts, "*.fblook"));
+        Assert.Empty(Directory.EnumerateFiles(AppPaths.UserLuts, ".ct-*.tmp"));
+    }
+
+    [AvaloniaFact]
+    public async Task ImportClf_SelectionChangesAndReturns_DoesNotApplyToRestoredSelection()
+    {
+        var result = new TaskCompletionSource<ClfImportOptions?>();
+        var shown = new TaskCompletionSource();
+        var dialogs = new FakeDialogs { OnTransformImport = _ => { shown.TrySetResult(); return result.Task; } };
+        using var vm = TestEnv.CreateViewModel(dialogs);
+        await TestEnv.OpenSamplesAsync(vm).WaitAsync(TestContext.Current.CancellationToken);
+        var files = vm.Filmstrip.Items.Take(2).Select(t => t.FileName).ToArray();
+        vm.OnSelectionChanged([files[0]], files[0]);
+        var before = vm.Service!.SettingsFor(files[0]);
+        var path = Path.Combine(AppPaths.Root, "pending.clf");
+        File.WriteAllText(path, ColorClf);
+        dialogs.PickFileAnswer = path;
+        var import = vm.FilmLook.ImportLutCommand.ExecuteAsync(null);
+        await shown.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        vm.OnSelectionChanged([files[1]], files[1]);
+        vm.OnSelectionChanged([files[0]], files[0]);
+        result.SetResult(new(ColorTransformStage.WorkingLinear, ColorTransformEncoding.LinearSrgb, ColorTransformEncoding.LinearSrgb));
+        await import;
+
+        Assert.Equal(before, vm.Service.SettingsFor(files[0]));
+        Assert.Empty(Directory.EnumerateFiles(AppPaths.UserLuts, "*.fblook"));
+        Assert.Empty(Directory.EnumerateFiles(AppPaths.UserLuts, ".ct-*.tmp"));
+    }
+
+    [AvaloniaTheory]
+    [InlineData(".clf", ClfFile.MaxInputBytes)]
+    [InlineData(".fblook", ColorTransformFile.MaxFileBytes)]
+    public async Task ImportTransform_OversizedFileDoesNotChangeSettingsOrCreateUndo(string extension, long limit)
+    {
+        var dialogs = new FakeDialogs();
+        using var vm = TestEnv.CreateViewModel(dialogs);
+        await TestEnv.OpenSamplesAsync(vm).WaitAsync(TestContext.Current.CancellationToken);
+        var file = vm.Filmstrip.Items[0].FileName;
+        vm.OnSelectionChanged([file], file);
+        var before = vm.Service!.SettingsFor(file);
+        Directory.CreateDirectory(AppPaths.UserLuts);
+        var path = Path.Combine(AppPaths.Root, "oversized" + extension);
+        using (var stream = File.Create(path)) stream.SetLength(limit + 1);
+        dialogs.PickFileAnswer = path;
+        await vm.FilmLook.ImportLutCommand.ExecuteAsync(null);
+
+        Assert.Equal(before, vm.Service.SettingsFor(file));
+        Assert.False(vm.Stack.CanUndo);
+        Assert.Empty(Directory.EnumerateFiles(AppPaths.UserLuts, "*.fblook"));
+        Assert.Empty(Directory.EnumerateFiles(AppPaths.UserLuts, ".ct-*.tmp"));
+    }
+
+    [AvaloniaFact]
+    public async Task ImportFblook_PreservesBytesAndEmbeddedDeclarations_WithoutPrompt()
+    {
+        var dialogs = new FakeDialogs { OnTransformImport = _ => throw new InvalidOperationException("FBLOOK must not prompt") };
+        using var vm = TestEnv.CreateViewModel(dialogs);
+        await TestEnv.OpenSamplesAsync(vm).WaitAsync(TestContext.Current.CancellationToken);
+        var file = vm.Filmstrip.Items[0].FileName;
+        vm.OnSelectionChanged([file], file);
+        var path = Path.Combine(AppPaths.Root, "embedded.fblook");
+        var options = new ClfImportOptions(ColorTransformStage.DisplayEncoded,
+            ColorTransformEncoding.Srgb, ColorTransformEncoding.ProPhotoGamma18);
+        using (var source = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(ColorClf)))
+        using (var destination = File.Create(path))
+            ColorTransformFile.Write(destination, options, source, TestContext.Current.CancellationToken);
+        var bytes = File.ReadAllBytes(path);
+        dialogs.PickFileAnswer = path;
+        await vm.FilmLook.ImportLutCommand.ExecuteAsync(null);
+        var tile = Assert.Single(vm.FilmLook.Imported);
+        Assert.Equal(bytes, File.ReadAllBytes(Path.Combine(AppPaths.UserLuts, tile.Key + ".fblook")));
+        Assert.Equal(options, UserTransformLibrary.Resolve(AppPaths.UserLuts, tile.Key, TestContext.Current.CancellationToken).Options);
+        Assert.True(tile.HasDetail);
+        AssertSelected(vm, file, tile);
+        var reloaded = new FilmLookViewModel(vm);
+        Assert.Contains(reloaded.Imported, t => t.Key == tile.Key && t.Detail == tile.Detail);
+    }
+
+    [AvaloniaFact]
+    public async Task ImportClf_CancelAndInvalidInputLeaveSettingsAndAssetsUnchanged()
+    {
+        var dialogs = new FakeDialogs { OnTransformImport = _ => Task.FromResult<ClfImportOptions?>(null) };
+        using var vm = TestEnv.CreateViewModel(dialogs);
+        await TestEnv.OpenSamplesAsync(vm).WaitAsync(TestContext.Current.CancellationToken);
+        var file = vm.Filmstrip.Items[0].FileName;
+        vm.OnSelectionChanged([file], file);
+        var before = vm.Service!.SettingsFor(file);
+        var path = Path.Combine(AppPaths.Root, "cancel.clf");
+        dialogs.PickFileAnswer = path;
+        File.WriteAllText(path, ColorClf);
+        await vm.FilmLook.ImportLutCommand.ExecuteAsync(null);
+        Assert.Equal(before, vm.Service.SettingsFor(file));
+        Assert.Empty(Directory.EnumerateFiles(AppPaths.UserLuts));
+
+        File.WriteAllText(path, "<ProcessList><Log/></ProcessList>");
+        await vm.FilmLook.ImportLutCommand.ExecuteAsync(null);
+        Assert.Equal(before, vm.Service.SettingsFor(file));
+        Assert.Empty(Directory.EnumerateFiles(AppPaths.UserLuts));
     }
 
     private const string IdentityCube =

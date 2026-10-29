@@ -63,7 +63,7 @@ public class CubeLutTests
             var key = UserLutLibrary.Import(CubeLut.Parse(Identity2), "mine");
             Assert.True(UserLutLibrary.IsUserKey(key));
             UserLutLibrary.Reset();
-            var again = FilmLookLibrary.TryLut(key);
+            var again = FilmLookLibrary.Resolve(key, TestContext.Current.CancellationToken)?.Lut;
             Assert.NotNull(again);
             Assert.Equal(FilmLutColorSpace.Srgb, again!.ColorSpace);
             Assert.Equal(new Vector3(1, 0, 0), again.Sample(new Vector3(1, 0, 0)));
@@ -115,7 +115,7 @@ public class CubeLutTests
             Assert.Equal(8 + 4 + 1 + 2 * 2 * 2 * 3 * 2, stored.Length);
 
             UserLutLibrary.Reset();
-            var again = FilmLookLibrary.TryLut(key);
+            var again = FilmLookLibrary.Resolve(key, TestContext.Current.CancellationToken)?.Lut;
             Assert.NotNull(again);
             Assert.Equal(FilmLutColorSpace.ProPhoto, again!.ColorSpace);
             Assert.Equal(source.Data, again.Data);
@@ -144,8 +144,8 @@ public class CubeLutTests
             Assert.Equal(srgbBytes.AsSpan(12).ToArray(), proBytes.AsSpan(13).ToArray());
 
             UserLutLibrary.Reset();
-            Assert.Equal(FilmLutColorSpace.Srgb, FilmLookLibrary.TryLut(keyS)!.ColorSpace);
-            var loadedPro = FilmLookLibrary.TryLut(keyP);
+            Assert.Equal(FilmLutColorSpace.Srgb, FilmLookLibrary.Resolve(keyS, TestContext.Current.CancellationToken)!.Lut!.ColorSpace);
+            var loadedPro = FilmLookLibrary.Resolve(keyP, TestContext.Current.CancellationToken)?.Lut;
             Assert.Equal(FilmLutColorSpace.ProPhoto, loadedPro!.ColorSpace);
             Assert.Equal(new Vector3(1, 0, 0), loadedPro.Sample(new Vector3(1, 0, 0)));
         });
@@ -172,14 +172,14 @@ public class CubeLutTests
             var hash = Convert.ToHexString(SHA256.HashData(historical)).ToLowerInvariant()[..16];
             Assert.Equal("user-" + hash, key);
             UserLutLibrary.Reset();
-            Assert.Equal(FilmLutColorSpace.Srgb, FilmLookLibrary.TryLut(key)!.ColorSpace);
+            Assert.Equal(FilmLutColorSpace.Srgb, FilmLookLibrary.Resolve(key, TestContext.Current.CancellationToken)!.Lut!.ColorSpace);
         });
     }
 
     [Fact]
     public void BuiltInFblut1_LoadsAsSrgb()
     {
-        var lut = FilmLookLibrary.TryLut(FilmLookLibrary.DefaultKey);
+        var lut = FilmLookLibrary.Resolve(FilmLookLibrary.DefaultKey, TestContext.Current.CancellationToken)?.Lut;
         Assert.NotNull(lut);
         Assert.Equal(33, lut!.Size);
         Assert.Equal(FilmLutColorSpace.Srgb, lut.ColorSpace);

@@ -34,12 +34,14 @@ internal static partial class RawSourceLoader
         RawImage raw;
         try { raw = decoded.CreateRaw(); }
         catch (RawException ex) when (!IsRawExtension(path) && ex.Kind == RawErrorKind.NotRaw) { return null; }
-        var info = raw.Info();
         var masks = rawOptions.IncludeSemanticMasks ? FilmBatch.Raw.RawSemanticMasks.Read(bytes) : [];
         var directory = rawOptions.LensDatabasePath;
         if (!string.IsNullOrWhiteSpace(directory) && !Path.IsPathRooted(directory))
             directory = Path.GetFullPath(directory, Path.GetDirectoryName(Path.GetFullPath(path))!);
         var scene = DevelopScene(raw, bytes, edge, rawOptions with { LensDatabasePath = directory }, out var lensWarning, decoded);
+        if (rawOptions.CameraProfileKey is not null)
+            scene = scene with { SamplingIdentity = decoded.SamplingIdentity(edge) };
+        var info = raw.Info();
         var (referenceWidth, referenceHeight) = info.DevelopedSize();
         if (info.Orientation.SwapsAxes()) (referenceWidth, referenceHeight) = (referenceHeight, referenceWidth);
         return new SourceImage(scene)
@@ -216,10 +218,28 @@ internal static partial class RawSourceLoader
         if (disabled.Length > 0) list3.RemoveAll(op => disabled.Any(original => ReferenceEquals(original, op)));
         var lens = CameraPreviewLens.LensGeometryOf(list3);
         var vignette = EmbeddedVignette.FromList3(list3, raw.ActiveArea, raw.Crop, raw.Orientation);
-        var (xy, transform, look) = decoded is null
-            ? CameraPreview.StartingColour(raw, bytes, lens, vignette)
-            : decoded.StartingColour(raw, lens, vignette);
-        var whiteBalance = RawWhiteBalance.Create(raw, xy, transform, look);
+        var profile = SelectProfile(raw, rawOptions);
+        Xy xy;
+        CameraTransform transform;
+        CameraLook? look;
+        RawWhiteBalance whiteBalance;
+        if (profile is null)
+        {
+            (xy, transform, look) = decoded is null
+                ? CameraPreview.StartingColour(raw, bytes, lens, vignette)
+                : decoded.StartingColour(raw, lens, vignette);
+            whiteBalance = RawWhiteBalance.Create(raw, xy, transform, look);
+        }
+        else
+        {
+            var asShot = CameraColor.AsShotWhiteXy(raw);
+            xy = rawOptions.CameraProfileTemperature is { } temperature && rawOptions.CameraProfileTint is { } tint
+                ? Cct.TempTintToXy(temperature, tint) : asShot;
+            transform = CameraColor.CameraTransform(raw, xy);
+            look = null;
+            whiteBalance = RawWhiteBalance.CreateExternal(raw, asShot, xy,
+                rawOptions.CameraProfileTemperature, rawOptions.CameraProfileTint);
+        }
         var factor = BinFactor(raw, edge);
         var binned = factor is { } k ? DevelopBinned(raw, k) : null;
         var image = binned?.Image ?? RawSourceGeometry.Develop(raw, edge <= 600 ? DemosaicMethod.Bilinear : DemosaicMethod.Ahd);
@@ -237,7 +257,7 @@ internal static partial class RawSourceLoader
         }
         else
             Highlight.ReconstructWith(image, transform.Wb, HighlightClip, white);
-        var tables = ProfileTables.Create(raw.Color.Profile, CameraColor.IlluminantWeight(raw.Color, xy));
+        var tables = ProfileTables.Create(raw.Color.Profile, CameraColor.IlluminantWeight(raw.Color, xy), sdr: profile is not null);
         var hueSat = look?.HueSat is { } hsv ? HueSat.Create(hsv) : null;
         var gain = MathF.Pow(2, (float)transform.BaselineExposure);
         ApplyColour(image, transform.Wb, matrix, gain, tables, hueSat);
@@ -245,8 +265,8 @@ internal static partial class RawSourceLoader
             image = Resample.Fit(image, edge, edge, ResampleFilter.Box);
         image = image.Oriented(raw.Orientation);
         CameraLocalTone.Apply(image, raw, rawOptions.CameraLocalTone, geometry);
-        var tone = look?.Tone ?? DngTone(raw.Color.Profile.ToneCurve);
-        return new RawSceneData(image, tone, whiteBalance, geometry);
+        var tone = profile is null ? look?.Tone ?? DngTone(raw.Color.Profile.ToneCurve) : null;
+        return new RawSceneData(image, tone, whiteBalance, geometry, profile?.ToneCurve);
     }
 
     /// <summary>

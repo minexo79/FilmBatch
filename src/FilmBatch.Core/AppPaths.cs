@@ -28,6 +28,7 @@ public static class AppPaths
     public static string Presets => Path.Combine(Root, "presets");
     public static string Logs => Path.Combine(Root, "logs");
     public static string UserLuts => Path.Combine(Root, "user-luts");
+    public static string UserCameraProfiles => Path.Combine(Root, "user-camera-profiles");
     public static string Textures => Path.Combine(Root, "textures");
 
     public static string ProjectFolder(string photoFolder) => Path.Combine(photoFolder, ".filmbatch");

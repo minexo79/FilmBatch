@@ -205,7 +205,7 @@ public sealed class PhotoAnalysisTests
     {
         var settings = ModuleCatalog.Defaults
             .With("raw.enabled", true).With("basic.temperature", 40.0).With("basic.tint", -20.0);
-        var raw = ModuleParams.From(SceneSource(4, 4, .2f, .2f, .2f, NeutralModel()), settings);
+        var raw = ModuleParams.From(SceneSource(4, 4, .2f, .2f, .2f, NeutralModel()), settings, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(0, raw.Temperature);
         Assert.Equal(0, raw.Tint);
         Assert.True(ModuleParams.UsesRawWhiteBalance(SceneSource(4, 4, .2f, .2f, .2f, NeutralModel()), settings));
@@ -218,7 +218,7 @@ public sealed class PhotoAnalysisTests
             (Sdr(4, 4, 30000, 30000, 30000), settings),
         })
         {
-            var p = ModuleParams.From(source, s);
+            var p = ModuleParams.From(source, s, cancellationToken: TestContext.Current.CancellationToken);
             Assert.Equal(40, p.Temperature);
             Assert.Equal(-20, p.Tint);
             Assert.False(ModuleParams.UsesRawWhiteBalance(source, s));
@@ -235,14 +235,14 @@ public sealed class PhotoAnalysisTests
         Assert.True(defaults.Bool("raw.enabled"));
         Assert.NotEqual(new RawLoadOptions(), RawLoadOptions.FromSettings(defaults));
         var scene = SceneSource(4, 4, .2f, .2f, .2f, NeutralModel());
-        Assert.True(ModuleParams.From(scene, defaults).RawProcessingOn);
+        Assert.True(ModuleParams.From(scene, defaults, cancellationToken: TestContext.Current.CancellationToken).RawProcessingOn);
         Assert.True(ModuleParams.UsesRawWhiteBalance(scene, defaults));
 
         // SDR sources: the default-on value never turns RAW processing or RAW WB on,
         // so the relative basic temperature/tint still applies and pixels match RAW off.
         var sdr = Sdr(8, 8, 30000, 20000, 12000);
         var edited = defaults.With("basic.exposure", 0.5).With("basic.temperature", 30.0);
-        var p = ModuleParams.From(sdr, edited);
+        var p = ModuleParams.From(sdr, edited, cancellationToken: TestContext.Current.CancellationToken);
         Assert.False(p.RawProcessingOn);
         Assert.False(p.RawMaskOn);
         Assert.Equal(30, p.Temperature);
@@ -368,8 +368,8 @@ public sealed class PhotoAnalysisTests
     public void SolveReturnsNullWithoutWhiteBalanceModel()
     {
         var source = Sdr(8, 8, 28000, 20000, 12000);
-        Assert.Null(PhotoAnalysis.SolveWhiteBalance(source, ModuleCatalog.Defaults, new PhotoRegion(0, 0, 1, 1)));
-        Assert.Empty(PhotoAnalysis.AutomaticWhiteBalance(source, ModuleCatalog.Defaults));
+        Assert.Null(PhotoAnalysis.SolveWhiteBalance(source, ModuleCatalog.Defaults, new PhotoRegion(0, 0, 1, 1), null, TestContext.Current.CancellationToken));
+        Assert.Empty(PhotoAnalysis.AutomaticWhiteBalance(source, ModuleCatalog.Defaults, TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -385,7 +385,7 @@ public sealed class PhotoAnalysisTests
         Assert.NotNull(inverse);
         var rec2020 = inverse.Value.Apply(0.5, 0.5, 0.5);
         var source = SceneSource(8, 8, (float)rec2020.X, (float)rec2020.Y, (float)rec2020.Z, wb);
-        var suggestion = PhotoAnalysis.SolveWhiteBalance(source, ModuleCatalog.Defaults, new PhotoRegion(0, 0, 1, 1));
+        var suggestion = PhotoAnalysis.SolveWhiteBalance(source, ModuleCatalog.Defaults, new PhotoRegion(0, 0, 1, 1), null, TestContext.Current.CancellationToken);
         Assert.NotNull(suggestion);
         Assert.InRange(suggestion.Temperature, 2900, 3500);
         Assert.InRange(suggestion.Tint, -30, 30);
@@ -418,7 +418,7 @@ public sealed class PhotoAnalysisTests
         var pre = workingInverse.Value.Apply(reference.Red, reference.Green, reference.Blue);
         var scene2020 = toRec2020.Apply(pre.X, pre.Y, pre.Z);
         var source = SceneSource(8, 8, (float)scene2020.X, (float)scene2020.Y, (float)scene2020.Z, wb);
-        var suggestion = PhotoAnalysis.SolveWhiteBalance(source, ModuleCatalog.Defaults, new PhotoRegion(0, 0, 1, 1), reference);
+        var suggestion = PhotoAnalysis.SolveWhiteBalance(source, ModuleCatalog.Defaults, new PhotoRegion(0, 0, 1, 1), reference, TestContext.Current.CancellationToken);
         Assert.NotNull(suggestion);
         Assert.InRange(suggestion.Temperature, 4100, 4900);
     }
@@ -430,7 +430,7 @@ public sealed class PhotoAnalysisTests
         // Extremely blue scene content: no in-bounds candidate can neutralize it,
         // so the fit must stop at the search edge and say so.
         var source = SceneSource(8, 8, 0.05f, 0.1f, 1.5f, wb);
-        var suggestion = PhotoAnalysis.SolveWhiteBalance(source, ModuleCatalog.Defaults, new PhotoRegion(0, 0, 1, 1));
+        var suggestion = PhotoAnalysis.SolveWhiteBalance(source, ModuleCatalog.Defaults, new PhotoRegion(0, 0, 1, 1), null, TestContext.Current.CancellationToken);
         if (suggestion is null) return; // Honest low-confidence refusal is also acceptable.
         Assert.InRange(suggestion.Temperature, 2500, 9900);
         Assert.InRange(suggestion.Tint, -150, 150);
@@ -444,13 +444,13 @@ public sealed class PhotoAnalysisTests
         var wb = NeutralModel();
         // Single-channel content carries no chromaticity direction to fit.
         var source = SceneSource(8, 8, 0.6f, 0.001f, 0.001f, wb);
-        Assert.Null(PhotoAnalysis.SolveWhiteBalance(source, ModuleCatalog.Defaults, new PhotoRegion(0, 0, 1, 1)));
+        Assert.Null(PhotoAnalysis.SolveWhiteBalance(source, ModuleCatalog.Defaults, new PhotoRegion(0, 0, 1, 1), null, TestContext.Current.CancellationToken));
     }
     [Fact]
     public void ManualNeutralPatchCanKeepTheAsShotWhiteBalance()
     {
         var source = SceneSource(8, 8, .18f, .18f, .18f, NeutralModel());
-        var suggestion = PhotoAnalysis.SolveWhiteBalance(source, ModuleCatalog.Defaults, new(0, 0, 1, 1));
+        var suggestion = PhotoAnalysis.SolveWhiteBalance(source, ModuleCatalog.Defaults, new(0, 0, 1, 1), null, TestContext.Current.CancellationToken);
         Assert.NotNull(suggestion);
         Assert.InRange(suggestion.Temperature, 6400, 6600);
         Assert.InRange(suggestion.Residual, 0, .01);
@@ -479,7 +479,7 @@ public sealed class PhotoAnalysisTests
         // Target comes from the actual CPU linear-stage consumers, not the sampler's mirror.
         var target = CpuLinearReference(settings.With("raw.wb_mode", "custom")
             .With("raw.temperature", 4500.0).With("raw.tint", 20.0));
-        var proposal = PhotoAnalysis.SolveWhiteBalance(source, settings, region, target);
+        var proposal = PhotoAnalysis.SolveWhiteBalance(source, settings, region, target, TestContext.Current.CancellationToken);
         Assert.NotNull(proposal);
         var actual = PhotoAnalysis.CaptureReference(source, settings.With("raw.wb_mode", "custom")
             .With("raw.temperature", proposal.Temperature).With("raw.tint", proposal.Tint), region)!.Value;
@@ -536,7 +536,7 @@ public sealed class PhotoAnalysisTests
         var settings = ModuleCatalog.Defaults.With("raw.enabled", true).With("raw.wb_mode", "custom")
             .With("raw.temperature", 2500.0).With("raw.tint", 150.0)
             .With("raw.mask_enabled", true).With("raw.mask_name", "subject").With("raw.mask_temperature", 100.0);
-        var p = ModuleParams.From(source, settings);
+        var p = ModuleParams.From(source, settings, cancellationToken: TestContext.Current.CancellationToken);
         var pixels = CpuPipeline.DecodeLinear(source);
         var matrix = RawFinishParams.WorkingWhiteBalance(p.RawWhiteBalanceMatrix!.Value);
         (pixels[0], pixels[1], pixels[2]) = matrix.ApplyF32(pixels[0], pixels[1], pixels[2]);
@@ -567,7 +567,7 @@ public sealed class PhotoAnalysisTests
     public void AutomaticUniformCastDoesNotClaimAnIlluminant()
     {
         var source = SceneSource(12, 12, .207f, .18f, .1494f, NeutralModel());
-        Assert.All(PhotoAnalysis.AutomaticWhiteBalance(source, ModuleCatalog.Defaults),
+        Assert.All(PhotoAnalysis.AutomaticWhiteBalance(source, ModuleCatalog.Defaults, TestContext.Current.CancellationToken),
             candidate => Assert.InRange(candidate.Confidence, 0, .45));
     }
 
@@ -596,7 +596,7 @@ public sealed class PhotoAnalysisTests
         var rgba = new ushort[12 * 6 * 4];
         for (var i = 3; i < rgba.Length; i += 4) rgba[i] = 65535;
         var source = new SourceImage(12, 6, rgba) { Scene = scene, RawInfo = raw.Info() };
-        var candidates = PhotoAnalysis.AutomaticWhiteBalance(source, ModuleCatalog.Defaults);
+        var candidates = PhotoAnalysis.AutomaticWhiteBalance(source, ModuleCatalog.Defaults, TestContext.Current.CancellationToken);
         Assert.Equal(3, candidates.Count);
         for (var i = 0; i < candidates.Count; i++)
             for (var j = i + 1; j < candidates.Count; j++)
@@ -623,7 +623,7 @@ public sealed class PhotoAnalysisTests
         var source = SceneSource(12, 12, 0.5f, 0.5f, 0.5f, wb);
         // Perfectly neutral tiles have no chromaticity error to fit; the solver
         // must not invent a confident answer from nothing.
-        var candidates = PhotoAnalysis.AutomaticWhiteBalance(source, ModuleCatalog.Defaults);
+        var candidates = PhotoAnalysis.AutomaticWhiteBalance(source, ModuleCatalog.Defaults, TestContext.Current.CancellationToken);
         foreach (var c in candidates)
             Assert.True(c.Confidence < 0.9);
     }

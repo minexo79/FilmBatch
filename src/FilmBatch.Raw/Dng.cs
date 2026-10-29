@@ -315,6 +315,7 @@ internal static class Dng
     {
         double[]? Get(ushort tag) => raw.F64s(tag) ?? ifd0.F64s(tag);
         ushort GetI(ushort tag) => raw.U16(tag) ?? ifd0.U16(tag) ?? 0;
+        string? GetText(ushort tag) => raw.String(tag) ?? ifd0.String(tag);
         var asShotXy = Get(Tags.AsShotWhiteXy);
         double baseExp = Get(Tags.BaselineExposure)?.FirstOrDefault() is { } be && double.IsFinite(be) ? be : 0.0;
         double baseOff = Get(Tags.BaselineExposureOffset)?.FirstOrDefault() is { } bo && double.IsFinite(bo) ? bo : 0.0;
@@ -330,6 +331,10 @@ internal static class Dng
             AsShotWhiteXy = asShotXy is { Length: 2 } && asShotXy[0] > 0.0 && asShotXy[1] > 0.0
                 ? new Xy(asShotXy[0], asShotXy[1]) : null,
             BaselineExposure = baseExp + baseOff,
+            ImageBaselineExposure = baseExp,
+            ProfileBaselineExposureOffset = baseOff,
+            CameraCalibrationSignature = GetText(Tags.CameraCalibrationSignature),
+            ProfileCalibrationSignature = GetText(Tags.ProfileCalibrationSignature),
             BaselineSharpness = sharp is { } s && double.IsFinite(s) && s > 0.0 && s <= 16.0 ? s : null,
             Profile = ProfileLook(ifd0, raw, order),
             KelvinPresets = null,

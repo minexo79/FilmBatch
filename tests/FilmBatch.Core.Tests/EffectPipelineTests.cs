@@ -1010,8 +1010,8 @@ public sealed class EffectPipelineTests
             var ct = TestContext.Current.CancellationToken;
             ModuleParams Params()
             {
-                var q = ModuleParams.From(src, FilmOnly(strength: 90));
-                q.FilmLut = lut;
+                var q = ModuleParams.From(src, FilmOnly(strength: 90), cancellationToken: ct);
+                q.FilmAsset = FilmLookAsset.FromLut(lut);
                 q.FilmLook = FilmLookUniforms.From(q);
                 return q;
             }
@@ -1216,10 +1216,10 @@ public sealed class EffectPipelineTests
     public void Crop_ModuleParams_ExposeOutputSize()
     {
         var src = Flat(80, 40, 40000);
-        var p = ModuleParams.From(src, ModuleCatalog.Defaults.With("crop.enabled", true).With("crop.rect_w", 0.5));
+        var p = ModuleParams.From(src, ModuleCatalog.Defaults.With("crop.enabled", true).With("crop.rect_w", 0.5), cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(p.Crop.On);
         Assert.Equal((40, 40), (p.OutWidth, p.OutHeight));
-        var off = ModuleParams.From(src, ModuleCatalog.Defaults);
+        var off = ModuleParams.From(src, ModuleCatalog.Defaults, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal((80, 40), (off.OutWidth, off.OutHeight));
     }
 }

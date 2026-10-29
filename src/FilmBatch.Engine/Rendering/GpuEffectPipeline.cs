@@ -40,6 +40,7 @@ internal sealed class GpuEffectPipeline : IDisposable
     private int _uniformIndex;
     private ulong _pendingBlurSamples;
     private readonly RawDisplayGpu _rawDisplay;
+    private ColorTransformKernel? _colorTransform;
     private readonly ComputeKernel _rawWhiteBalance, _rawSemantic;
     private GpuTexture? _maskTexture;
     private RawMaskAlpha? _maskAlpha;
@@ -148,8 +149,27 @@ internal sealed class GpuEffectPipeline : IDisposable
             && (source.ForegroundMask is not { } mask || (uint)mask.Width <= limit && (uint)mask.Height <= limit)
             && (p?.DoubleAsset is null || Fits(p.DoubleAsset.Image))
             && (p?.LeakAsset is null || Fits(p.LeakAsset.Image))
-            && (p?.DirtAsset is null || Fits(p.DirtAsset.Image));
+            && (p?.DirtAsset is null || Fits(p.DirtAsset.Image))
+            && (ActiveTransform(p) is not { } asset || ColorTransformKernel.Fits(asset.Transform, StorageLimit()))
+            && FitsProfileTone(source);
     }
+
+    private ulong StorageLimit()
+    {
+        var binding = _gpu.AdapterInfo.MaxStorageBufferBindingSize;
+        var buffer = _gpu.AdapterInfo.MaxBufferSize;
+        return binding == 0 ? buffer : buffer == 0 ? binding : Math.Min(binding, buffer);
+    }
+
+    private bool FitsProfileTone(SourceImage source)
+    {
+        var bytes = RawDisplayGpu.ProfileToneBytes(source.Scene?.ProfileTone);
+        var limit = StorageLimit();
+        return limit == 0 || bytes <= limit;
+    }
+
+    private static ColorTransformAsset? ActiveTransform(ModuleParams? p) =>
+        p is { FilmOn: true, FilmStrength: > 0 } ? p.FilmAsset?.Transform : null;
 
     /// <summary>算圖結果（工作紋理）的尺寸：裁切後的畫框；沒有參數時同來源。</summary>
     private static (uint Width, uint Height) OutputSize(SourceImage source, ModuleParams? p) =>
@@ -164,7 +184,7 @@ internal sealed class GpuEffectPipeline : IDisposable
     /// 來源常駐位元組（整張線性來源＋RAW 語意遮罩＋去背暫存＋外部素材）：分塊只縮小工作區，
     ///    來源一律整張保留，不因分塊而裁切或重算。
     /// </summary>
-    private static ulong ResidentBytes(SourceImage source, ModuleParams? p)
+    private ulong ResidentBytes(SourceImage source, ModuleParams? p)
     {
         var bytes = CachedSource.BytesFor(source.Width, source.Height);
         if (p?.RawMaskOn == true) bytes += (ulong)source.Width * (ulong)source.Height * 4;
@@ -173,6 +193,10 @@ internal sealed class GpuEffectPipeline : IDisposable
         if (p?.DoubleAsset is { } doubleAsset) bytes += AssetBytes(doubleAsset);
         if (p?.LeakAsset is { } leakAsset) bytes += AssetBytes(leakAsset);
         if (p?.DirtAsset is { } dirtAsset) bytes += AssetBytes(dirtAsset);
+        bytes += _colorTransform?.ResidentBytes ?? 0;
+        if (ActiveTransform(p) is { } asset && _colorTransform?.CurrentKey != asset.Key)
+            bytes += ColorTransformKernel.RequiredBytes(asset.Transform);
+        bytes += Math.Max(_rawDisplay.ProfileResidentBytes, RawDisplayGpu.ProfileToneBytes(source.Scene?.ProfileTone));
         return bytes;
     }
 
@@ -191,6 +215,8 @@ internal sealed class GpuEffectPipeline : IDisposable
         if (frame.DoubleAsset is not null && !Fits(frame.DoubleAsset.Image)) return 0;
         if (frame.LeakAsset is not null && !Fits(frame.LeakAsset.Image)) return 0;
         if (frame.DirtAsset is not null && !Fits(frame.DirtAsset.Image)) return 0;
+        if (ActiveTransform(frame) is { } asset && !ColorTransformKernel.Fits(asset.Transform, StorageLimit())) return 0;
+        if (!FitsProfileTone(source)) return 0;
         var resident = ResidentBytes(source, frame);
         if (resident >= _budget) return 0;
         plan[0] = (view, default);
@@ -245,6 +271,7 @@ internal sealed class GpuEffectPipeline : IDisposable
     {
         ClearSources();
         _rawDisplay.ReleaseWorking();
+        _colorTransform?.Dispose(); _colorTransform = null;
         _maskTexture?.Dispose(); _maskTexture = null; _maskAlpha = null;
         foreach (var texture in _work) texture?.Dispose();
         Array.Clear(_work);
@@ -277,9 +304,24 @@ internal sealed class GpuEffectPipeline : IDisposable
         // 整個算圖共用一份（模糊分批 Flush 會重用一般 uniform 池，不能放在池裡）
         _view ??= _gpu.CreateBuffer(16, GpuBufferUsage.Uniform | GpuBufferUsage.CopyDst, "frame view");
         _gpu.WriteBuffer(_view, new ViewUniforms(p.FrameWidth, p.FrameHeight, p.View.X, p.View.Y));
-        using var commands = _gpu.BeginCommands();
-        var current = Process(commands, input, second, leak, dirt, mask, source, p, token);
-        Finish(commands, current, destination, token);
+        var transform = ActiveTransform(p);
+        var completed = false;
+        try
+        {
+            using var commands = _gpu.BeginCommands();
+            var current = Process(commands, input, second, leak, dirt, mask, source, p, token);
+            Finish(commands, current, destination, token);
+            completed = true;
+        }
+        finally
+        {
+            if (transform is not null && _colorTransform is not null && !_gpu.IsLost)
+            {
+                // On an abandoned command list a previous Flush may already have submitted work.
+                if (!completed) _gpu.WaitIdle();
+                _colorTransform.ReleaseCompleted();
+            }
+        }
         TrimSources();
     }
 
@@ -342,6 +384,26 @@ internal sealed class GpuEffectPipeline : IDisposable
             var uniform = Uniform(values);
             if (extra is null) Dispatch(commands, kernel, [current, target, uniform]);
             else Dispatch(commands, kernel, [current, extra, target, uniform]);
+            return target;
+        }
+        GpuTexture ApplyTransform(ColorTransformAsset asset)
+        {
+            token.ThrowIfCancellationRequested();
+            var target = Next(current);
+            _colorTransform ??= new ColorTransformKernel(_gpu, _shaders);
+            _colorTransform.Prepare(asset.Key, asset.Transform, StorageLimit());
+            var to = RgbEncodingInfo.SrgbToProPhoto;
+            var from = RgbEncodingInfo.ProPhotoToSrgb;
+            var values = new ColorTransformUniforms
+            {
+                Mix = new Vector4(p.FilmStrength / 100, p.FilmWarmth / 100, p.FilmFade / 100, (float)asset.Options.Stage),
+                Domain = new Vector4((float)asset.Options.Input, (float)asset.Options.Output, 0, 0),
+                To0 = new Vector4(to[0], to[1], to[2], 0), To1 = new Vector4(to[3], to[4], to[5], 0),
+                To2 = new Vector4(to[6], to[7], to[8], 0),
+                From0 = new Vector4(from[0], from[1], from[2], 0), From1 = new Vector4(from[3], from[4], from[5], 0),
+                From2 = new Vector4(from[6], from[7], from[8], 0),
+            };
+            _colorTransform.Encode(commands, current, target, Uniform(values), token);
             return target;
         }
         GpuTexture Sharpen(float radiusScale, float amount, GpuTexture? reserve = null)
@@ -428,8 +490,10 @@ internal sealed class GpuEffectPipeline : IDisposable
                     aspect, shortSide, p.LeakBlend, p.LeakRed / 100, p.LeakYellow / 100,
                     p.LeakBlue / 100, p.LeakWhite / 100, 0))
                 : Apply(_texture, OverlayUniforms(p, leak, true), leak);
-        if (p.FilmOn && p.FilmLut is not null && p.FilmStrength > 0)
-            current = Apply(_look, p.FilmLook, LutTexture(p.FilmLut));
+        if (p.FilmOn && p.FilmAsset?.Lut is { } filmLut && p.FilmStrength > 0)
+            current = Apply(_look, p.FilmLook, LutTexture(filmLut));
+        else if (ActiveTransform(p) is { Options.Stage: ColorTransformStage.WorkingLinear } working)
+            current = ApplyTransform(working);
         if (p.HslOn)
             current = Apply(_hsl, p.Hsl);
         if (p.PlateOn && p.PlateStrength > 0)
@@ -441,9 +505,12 @@ internal sealed class GpuEffectPipeline : IDisposable
             current = Apply(_highlightRolloff, HighlightRolloff.Uniforms(p.HighlightRolloffSlope));
         var display = Next(current);
         var proPhoto = p.OutputEncoding == RgbEncoding.ProPhoto;
-        if (source.Scene is { } scene) _rawDisplay.Dispatch(commands, current, display, scene.Tone, proPhoto);
-        else Dispatch(commands, _display, [current, display, Uniform(new DisplayUniforms(proPhoto ? 1u : 0u, 0, 0, 0))]);
+        var displayTransform = ActiveTransform(p) is { Options.Stage: ColorTransformStage.DisplayEncoded };
+        var extended = proPhoto || displayTransform;
+        if (source.Scene is { } scene) _rawDisplay.Dispatch(commands, current, display, scene.Tone, extended, scene.ProfileTone);
+        else Dispatch(commands, _display, [current, display, Uniform(new DisplayUniforms(extended ? 1u : 0u, 0, 0, 0))]);
         current = display;
+        if (displayTransform) current = ApplyTransform(p.FilmAsset!.Transform!);
         if (p.BasicOn)
         {
             var basis = p.Structure == 0 ? current : Blur(commands, current, Math.Max(1, (int)MathF.Round(shortSide * .012f)), token: token);
@@ -776,7 +843,7 @@ internal sealed class GpuEffectPipeline : IDisposable
 
     private void TrimSources()
     {
-        var bytes = WorkspaceBytes(_width, _height);
+        var bytes = WorkspaceBytes(_width, _height) + (_colorTransform?.ResidentBytes ?? 0) + _rawDisplay.ProfileResidentBytes;
         foreach (var source in _sources) bytes += source.Bytes;
         while (_sources.Count > 0 && (_sources.Count > 6 || bytes > _budget))
         {
@@ -818,6 +885,7 @@ internal sealed class GpuEffectPipeline : IDisposable
     public void Dispose()
     {
         _rawDisplay.Dispose();
+        _colorTransform?.Dispose(); _colorTransform = null;
         _maskTexture?.Dispose(); _maskAlpha = null;
         ClearSources();
         foreach (var texture in _work) texture?.Dispose();

@@ -17,9 +17,9 @@ internal struct FilmLookUniforms
     {
         var result = new FilmLookUniforms
         {
-            Mix = new(p.FilmStrength / 100, p.FilmWarmth / 100, p.FilmFade / 100, p.FilmLut?.Size ?? 0),
+            Mix = new(p.FilmStrength / 100, p.FilmWarmth / 100, p.FilmFade / 100, p.FilmAsset?.Lut?.Size ?? 0),
         };
-        if (p.FilmLut?.ColorSpace != FilmLutColorSpace.ProPhoto) return result;
+        if (p.FilmAsset?.Lut?.ColorSpace != FilmLutColorSpace.ProPhoto) return result;
         var to = RgbEncodingInfo.SrgbToProPhoto;
         var from = RgbEncodingInfo.ProPhotoToSrgb;
         result.To0 = new(to[0], to[1], to[2], 1);
