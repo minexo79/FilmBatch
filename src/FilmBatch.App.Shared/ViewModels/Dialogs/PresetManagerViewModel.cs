@@ -18,12 +18,23 @@ public sealed partial class PresetRowViewModel(Preset preset, int users) : Obser
     [ObservableProperty]
     private string _category = preset.Category;
 
-    [ObservableProperty]
     private string _colorLabel = preset.ColorLabel;
 
-    public Avalonia.Media.IBrush ColorBrush => PresetItemViewModel.BrushOf(ColorLabel);
+    /// <summary>
+    /// 色彩標籤。下拉選單在列被回收或標籤不在選項內時會回寫 null，
+    /// 若照單全收會把預設存成無效色（整個預設庫變灰），所以忽略 null。
+    /// </summary>
+    public string ColorLabel
+    {
+        get => _colorLabel;
+        set
+        {
+            if (value is null || !SetProperty(ref _colorLabel, value)) return;
+            OnPropertyChanged(nameof(ColorBrush));
+        }
+    }
 
-    partial void OnColorLabelChanged(string value) => OnPropertyChanged(nameof(ColorBrush));
+    public Avalonia.Media.IBrush ColorBrush => PresetItemViewModel.BrushOf(ColorLabel);
 
     public bool IsDirty => Name != Preset.Name || Category != Preset.Category || ColorLabel != Preset.ColorLabel;
 
