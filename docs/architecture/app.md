@@ -7,7 +7,7 @@
 本節 `ViewModels/`、`Controls/`、非視窗 `Views/`、`Localization/` 及共用 `Themes/` 均位於 `src/FilmBatch.App.Shared/`，仍使用原本 `FilmBatch.App` namespace；桌面 App 不再編譯另一份相同實作。資源 URI 的 assembly 為 `avares://FilmBatch.App.Shared/`。桌面專用 `MainWindow`、Dock、對話框視窗及 Gallery 留在 `FilmBatch.App`。
 
 行動版由 `MobileEditorView` 組合相同的 `MainWindowViewModel` 與各編輯 View，不複製參數、RAW、底片 LUT、復原或匯出演算法。`Suspend()` 取消入場、預覽、背景縮圖、分析與匯出，結束觸控互動並保存有效編輯；`Resume()` 保留專案、選取與復原，只恢復先前待處理的工作。iOS 的照片運算明確使用 CPU，不將 Avalonia 的 Metal 繪圖稱為攝影 GPU 運算。操作與建置見 [iOS 行動版](../release.md#ios-行動版)。
-行動工作區的暫時導覽／面板／照片列／多選模式由 `MobileShellViewModel` 擁有；照片、選取目標、編輯與復原仍只有 `MainWindowViewModel` 一份。寬窄切換移動同一組 View，不另建 Inspector。共用 `FilmstripView.IsCompact`／`ToggleSelection` 預設 false，`PreviewView.ShowsControls` 預設 true；參數高度資源保留原桌面值，由 MobileApp 局部覆寫。鍵盤遮擋與 safe-area 在行動 host 處理，不讓桌面套用手機留白。
+行動工作區的暫時導覽／面板／照片列／多選模式由 `MobileShellViewModel` 擁有；照片、選取目標、編輯與復原仍只有 `MainWindowViewModel` 一份。寬窄切換移動同一組 View，不另建 Inspector。共用 `FilmstripView.IsCompact`／`ToggleSelection` 預設 false，`PreviewView.ShowsControls` 預設 true；參數高度資源保留原桌面值，由 MobileApp 局部覆寫。桌面縮圖格 `thumb-grid` 不設固定尺寸，照片經 `Viewbox` 等比填滿頁尾高度，檔名列固定在下方（Grid 第二列）；`.compact` 時 `thumb-scale` 不縮放、照片維持 88×64 固定。鍵盤遮擋與 safe-area 在行動 host 處理，不讓桌面套用手機留白。
 行動版快捷鍵訂閱目前所附著的 `TopLevel`，離開 visual tree 時解除；因此沒有焦點子控制項時仍可處理編輯命令，文字欄位則保留自己的輸入快捷鍵。收鍵盤動作在全寬底邊遮擋或文字欄位有焦點時顯示，浮動鍵盤不強制縮小整個視窗。按鈕在按下時執行，不先取得焦點，避免觸控放開前的鍵盤隱藏／版面更新吞掉 Click；modal 開啟時編輯器根節點不可取得焦點，收鍵盤後仍將焦點留在 modal 內。
 
 

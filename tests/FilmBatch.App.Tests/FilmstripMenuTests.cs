@@ -96,6 +96,8 @@ public sealed class FilmstripMenuTests
     {
         Dispatcher.UIThread.RunJobs();
         var list = view.FindControl<ListBox>("List")!;
+        list.ScrollIntoView(list.Items[index]!);
+        Dispatcher.UIThread.RunJobs();
         var container = (Control)list.ContainerFromIndex(index)!;
         var point = container.TranslatePoint(new Point(64, 44), window)!.Value;
         window.MouseDown(point, MouseButton.Right);

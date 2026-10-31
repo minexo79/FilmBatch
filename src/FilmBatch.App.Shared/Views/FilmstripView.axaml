@@ -72,19 +72,22 @@
       <Setter Property="MinHeight" Value="44" />
       <Setter Property="MinWidth" Value="44" />
     </Style>
-    <Style Selector="StackPanel.thumb-container">
-      <Setter Property="Spacing" Value="0" />
-    </Style>
-    <Style Selector=".compact StackPanel.thumb-container">
-      <Setter Property="Spacing" Value="2" />
+    <Style Selector=".compact Grid.thumb-container">
+      <Setter Property="RowSpacing" Value="2" />
+      <Setter Property="VerticalAlignment" Value="Top" />
     </Style>
     <Style Selector="Grid.thumb-grid">
-      <Setter Property="Width" Value="128" />
-      <Setter Property="Height" Value="88" />
       <Setter Property="MinWidth" Value="44" />
       <Setter Property="MinHeight" Value="44" />
     </Style>
-    <Style Selector=".compact Grid.thumb-grid">
+    <Style Selector="Image.thumb-image">
+      <Setter Property="Width" Value="128" />
+      <Setter Property="Height" Value="88" />
+    </Style>
+    <Style Selector=".compact Viewbox.thumb-scale">
+      <Setter Property="Stretch" Value="None" />
+    </Style>
+    <Style Selector=".compact Image.thumb-image">
       <Setter Property="Width" Value="88" />
       <Setter Property="Height" Value="64" />
     </Style>
@@ -197,10 +200,12 @@
       </ListBox.ItemsPanel>
       <ListBox.ItemTemplate>
         <DataTemplate x:DataType="vm:ThumbnailViewModel">
-          <StackPanel Classes="thumb-container">
+          <Grid Classes="thumb-container" RowDefinitions="*,Auto">
             <Border Classes="thumb" ToolTip.Tip="{Binding FileName}" AutomationProperties.Name="{Binding FileName}">
               <Grid Classes="thumb-grid">
-                <Image Source="{Binding Bitmap}" Stretch="Uniform" />
+                <Viewbox Classes="thumb-scale">
+                  <Image Classes="thumb-image" Source="{Binding Bitmap}" Stretch="Uniform" />
+                </Viewbox>
                 <TextBlock Classes="secondary small" Text="…" HorizontalAlignment="Center" VerticalAlignment="Center"
                            IsVisible="{Binding Bitmap, Converter={x:Static ObjectConverters.IsNull}}" />
                 <!-- 讀檔失敗：錯誤圖示，滑鼠停留看原因 -->
@@ -226,10 +231,10 @@
                 </StackPanel>
               </Grid>
             </Border>
-            <TextBlock Classes="thumb-filename"
+            <TextBlock Grid.Row="1" Classes="thumb-filename"
                        Text="{Binding FileName, Converter={x:Static v:FilmstripView.FileNameConverter}}"
                        TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
-          </StackPanel>
+          </Grid>
         </DataTemplate>
       </ListBox.ItemTemplate>
     </ListBox>
