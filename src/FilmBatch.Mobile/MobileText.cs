@@ -18,7 +18,8 @@ internal static class MobileText
         {
             Content = text, MinHeight = 44, MinWidth = 44,
             HorizontalContentAlignment = HorizontalAlignment.Center,
-            Padding = new Thickness(12, 8),
+            VerticalContentAlignment = VerticalAlignment.Center,
+            Padding = new Thickness(14, 10),
         };
         AutomationProperties.SetAutomationId(button, id);
         AutomationProperties.SetName(button, text);

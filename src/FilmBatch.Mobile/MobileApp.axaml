@@ -1,21 +1,140 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             x:Class="FilmBatch.Mobile.MobileApp"
-             RequestedThemeVariant="Dark">
+             xmlns:m="using:FilmBatch.Mobile"
+             xmlns:c="using:FilmBatch.App.Controls"
+             xmlns:l="using:FilmBatch.App.Localization"
+             xmlns:v="using:FilmBatch.App.Views"
+             x:Class="FilmBatch.Mobile.MobileApp" RequestedThemeVariant="Dark">
   <Application.Resources>
     <ResourceDictionary>
       <ResourceDictionary.MergedDictionaries>
         <ResourceInclude Source="avares://FilmBatch.App.Shared/Themes/Colors.axaml" />
       </ResourceDictionary.MergedDictionaries>
+      <x:Double x:Key="ControlContentThemeFontSize">17</x:Double>
+      <x:Double x:Key="FB.ParamRowHeight">88</x:Double>
+      <x:Double x:Key="FB.ParamSliderHeight">44</x:Double>
+      <x:Double x:Key="FB.ModuleHeaderHeight">52</x:Double>
+      <x:Boolean x:Key="FB.ModuleHeaderActionFocusable">True</x:Boolean>
     </ResourceDictionary>
   </Application.Resources>
   <Application.Styles>
     <FluentTheme />
     <StyleInclude Source="avares://FilmBatch.App.Shared/Themes/Controls.axaml" />
-    <Style Selector="Button"><Setter Property="MinHeight" Value="44" /></Style>
-    <Style Selector="ComboBox"><Setter Property="MinHeight" Value="44" /></Style>
-    <Style Selector="NumericUpDown"><Setter Property="MinHeight" Value="44" /></Style>
-    <Style Selector="Slider"><Setter Property="MinHeight" Value="40" /></Style>
-    <Style Selector="CheckBox"><Setter Property="MinHeight" Value="44" /></Style>
+    <Style Selector="m|MobileEditorView">
+      <Setter Property="FontSize" Value="17" />
+      <Setter Property="Foreground" Value="{DynamicResource FB.TextBrush}" />
+    </Style>
+    <Style Selector=".mobile-editor :is(Button), .mobile-editor ComboBox, .mobile-editor NumericUpDown, .mobile-editor TextBox, .mobile-editor CheckBox, .mobile-editor ToggleSwitch">
+      <Setter Property="MinHeight" Value="44" />
+    </Style>
+    <Style Selector=".mobile-editor :is(Button)">
+      <Setter Property="MinWidth" Value="44" />
+      <Setter Property="FontSize" Value="15" />
+    </Style>
+    <Style Selector=".mobile-editor TextBox, .mobile-editor ComboBox, .mobile-editor NumericUpDown">
+      <Setter Property="FontSize" Value="17" />
+    </Style>
+    <Style Selector=".mobile-editor TextBlock.small, .mobile-editor TextBlock.group-title, .mobile-editor TextBlock.field-label, TextBlock.mobile-caption">
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="Foreground" Value="{DynamicResource FB.SecondaryTextBrush}" />
+    </Style>
+    <Style Selector=".mobile-editor TextBlock.param-name">
+      <Setter Property="FontSize" Value="15" />
+    </Style>
+    <Style Selector=".mobile-editor c|ParamRow">
+      <Setter Property="Height" Value="NaN" />
+      <Setter Property="MinHeight" Value="88" />
+    </Style>
+    <Style Selector=".mobile-editor NumericUpDown.inline-value, .mobile-editor NumericUpDown.inline-value /template/ TextBox">
+      <Setter Property="Height" Value="44" />
+      <Setter Property="MinHeight" Value="44" />
+    </Style>
+    <Style Selector=".mobile-editor Grid.param-line">
+      <Setter Property="Height" Value="NaN" />
+      <Setter Property="MinHeight" Value="48" />
+    </Style>
+    <Style Selector=".mobile-editor Slider">
+      <Setter Property="MinHeight" Value="44" />
+    </Style>
+    <Style Selector=".mobile-editor c|ModuleSection /template/ ToggleButton, .mobile-editor c|ModuleSection /template/ Button">
+      <Setter Property="MinWidth" Value="44" />
+      <Setter Property="MinHeight" Value="44" />
+    </Style>
+    <Style Selector=".mobile-editor c|ModuleSection /template/ ToggleButton#PART_Title">
+      <Setter Property="FontSize" Value="16" />
+    </Style>
+    <Style Selector=".mobile-editor v|PresetLibraryView > DockPanel > Grid">
+      <Setter Property="IsVisible" Value="False" />
+    </Style>
+    <Style Selector=".mobile-editor v|CropPanelView > DockPanel > Border.panel-header">
+      <Setter Property="IsVisible" Value="False" />
+    </Style>
+    <Style Selector=".mobile-editor TreeView.presets TextBlock">
+      <Setter Property="MinHeight" Value="44" />
+    </Style>
+    <Style Selector="Button.mobile-icon, ToggleButton.mobile-icon">
+      <Setter Property="Width" Value="44" />
+      <Setter Property="Height" Value="44" />
+      <Setter Property="Padding" Value="12" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="CornerRadius" Value="8" />
+    </Style>
+    <Style Selector="Button.mobile-icon PathIcon, ToggleButton.mobile-icon PathIcon">
+      <Setter Property="Width" Value="20" />
+      <Setter Property="Height" Value="20" />
+    </Style>
+    <Style Selector="Button.mobile-text">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="10,6" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="ToggleButton.mobile-tool">
+      <Setter Property="MinHeight" Value="64" />
+      <Setter Property="Padding" Value="4,8" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0,0,0,2" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="ToggleButton.mobile-tool TextBlock">
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="TextAlignment" Value="Center" />
+    </Style>
+    <Style Selector="ToggleButton.mobile-tool PathIcon">
+      <Setter Property="Width" Value="20" />
+      <Setter Property="Height" Value="20" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="ToggleButton.mobile-tool:checked, ToggleButton.mobile-icon:checked">
+      <Setter Property="BorderBrush" Value="{DynamicResource FB.AccentBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource FB.AccentBrush}" />
+    </Style>
+    <Style Selector="ToggleButton.mobile-tool:checked /template/ ContentPresenter, ToggleButton.mobile-icon:checked /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource FB.BaseBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource FB.AccentBrush}" />
+    </Style>
+    <Style Selector="ToggleButton.split-compare">
+      <Setter Property="AutomationProperties.Name" Value="{l:Tr Mobile.CompareSplit}" />
+    </Style>
+    <Style Selector="ToggleButton.split-compare:checked">
+      <Setter Property="AutomationProperties.Name" Value="{l:Tr Mobile.CompareSplitOff}" />
+    </Style>
+    <Style Selector="TextBlock.mobile-heading">
+      <Setter Property="FontSize" Value="28" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="Border.mobile-sheet">
+      <Setter Property="Background" Value="{DynamicResource FB.PanelBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource FB.BorderBrush}" />
+      <Setter Property="CornerRadius" Value="16" />
+    </Style>
+    <Style Selector="TextBlock.mobile-sheet-title">
+      <Setter Property="FontSize" Value="20" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
   </Application.Styles>
 </Application>

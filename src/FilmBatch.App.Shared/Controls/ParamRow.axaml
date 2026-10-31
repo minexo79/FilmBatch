@@ -22,7 +22,7 @@
                    VerticalAlignment="Center" />
     <TextBlock Text="{Binding Unit}" VerticalAlignment="Center" Classes="secondary small" />
     </StackPanel>
-    <c:ParamSlider Grid.Row="1" Grid.ColumnSpan="2" Name="Slider" Height="20" MinHeight="0" VerticalAlignment="Center"
+    <c:ParamSlider Grid.Row="1" Grid.ColumnSpan="2" Name="Slider" Height="{DynamicResource FB.ParamSliderHeight}" MinHeight="0" VerticalAlignment="Center"
                    Classes.temperature="{Binding IsTemperature}"
                    Classes.tint="{Binding IsTint}"
                    TrackBrush="{Binding TrackBrush}"

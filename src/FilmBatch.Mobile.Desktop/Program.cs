@@ -19,7 +19,7 @@ try
         {
             case "--workspace": workspace = Path.GetFullPath(value); break;
             case "--width": MobileApp.DesktopWidth = Dimension(value, 360); break;
-            case "--height": MobileApp.DesktopHeight = Dimension(value, 600); break;
+            case "--height": MobileApp.DesktopHeight = Dimension(value, 320); break;
             default: throw new ArgumentException("Unknown option: " + option);
         }
     }

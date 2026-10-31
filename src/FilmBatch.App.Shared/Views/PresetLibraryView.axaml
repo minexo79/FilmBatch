@@ -9,7 +9,7 @@
     <!-- 標題列：面板名稱｜＋ 以目前照片建立預設 -->
     <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="16,14,10,6">
       <TextBlock Classes="panel-title" Text="{l:Tr Panel.Presets}" VerticalAlignment="Center" />
-      <Button Grid.Column="1" Name="CreateButton" Classes="tool" ToolTip.Tip="{l:Tr Cmd.CreatePreset}">
+      <Button Grid.Column="1" Name="CreateButton" Classes="tool" ToolTip.Tip="{l:Tr Cmd.CreatePreset}" AutomationProperties.Name="{l:Tr Cmd.CreatePreset}">
         <PathIcon Data="{StaticResource Icon.Plus}" />
       </Button>
     </Grid>

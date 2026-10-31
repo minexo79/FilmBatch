@@ -34,7 +34,7 @@
             <ComboBox Classes="flat" HorizontalAlignment="Stretch" ItemsSource="{Binding Aspects}" SelectedItem="{Binding SelectedAspect}"
                       DisplayMemberBinding="{Binding Label, x:DataType=t:CropAspectOption}" />
             <ToggleButton Grid.Column="1" Classes="tool" Margin="8,0,0,0" IsChecked="{Binding Portrait}"
-                          IsEnabled="{Binding CanSwapOrientation}" ToolTip.Tip="{l:Tr Tool.Crop.SwapOrientation}">
+                          IsEnabled="{Binding CanSwapOrientation}" ToolTip.Tip="{l:Tr Tool.Crop.SwapOrientation}" AutomationProperties.Name="{l:Tr Tool.Crop.SwapOrientation}">
               <PathIcon Data="{StaticResource Icon.Orientation}" />
             </ToggleButton>
           </Grid>
@@ -51,16 +51,16 @@
         <StackPanel Classes="field">
           <TextBlock Classes="field-label" Text="{l:Tr Tool.Crop.Orientation}" />
           <StackPanel Orientation="Horizontal" Spacing="4">
-            <Button Classes="tool" Command="{Binding RotateLeftCommand}" ToolTip.Tip="{l:Tr Tool.Crop.RotateLeft}">
+            <Button Classes="tool" Command="{Binding RotateLeftCommand}" ToolTip.Tip="{l:Tr Tool.Crop.RotateLeft}" AutomationProperties.Name="{l:Tr Tool.Crop.RotateLeft}">
               <PathIcon Data="{StaticResource Icon.RotateLeft}" />
             </Button>
-            <Button Classes="tool" Command="{Binding RotateRightCommand}" ToolTip.Tip="{l:Tr Tool.Crop.RotateRight}">
+            <Button Classes="tool" Command="{Binding RotateRightCommand}" ToolTip.Tip="{l:Tr Tool.Crop.RotateRight}" AutomationProperties.Name="{l:Tr Tool.Crop.RotateRight}">
               <PathIcon Data="{StaticResource Icon.RotateRight}" />
             </Button>
-            <Button Classes="tool" Command="{Binding FlipHorizontalCommand}" ToolTip.Tip="{l:Tr Tool.Crop.FlipH}">
+            <Button Classes="tool" Command="{Binding FlipHorizontalCommand}" ToolTip.Tip="{l:Tr Tool.Crop.FlipH}" AutomationProperties.Name="{l:Tr Tool.Crop.FlipH}">
               <PathIcon Data="{StaticResource Icon.FlipHorizontal}" />
             </Button>
-            <Button Classes="tool" Command="{Binding FlipVerticalCommand}" ToolTip.Tip="{l:Tr Tool.Crop.FlipV}">
+            <Button Classes="tool" Command="{Binding FlipVerticalCommand}" ToolTip.Tip="{l:Tr Tool.Crop.FlipV}" AutomationProperties.Name="{l:Tr Tool.Crop.FlipV}">
               <PathIcon Data="{StaticResource Icon.FlipVertical}" />
             </Button>
           </StackPanel>

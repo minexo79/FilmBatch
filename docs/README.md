@@ -13,6 +13,7 @@
 | 評估 macOS 27 Apple RAW 9／神經降噪 | [主張查證與採用評估](research/apple-raw9-survey.md) | [隔離可行性 Plans](superpowers/plans/2026-10-27-apple-raw9-feasibility.md)；推薦研究、尚未加入產品，本機僅驗 RAW 8 邊界 |
 | 排查 GPU 精度或效能 | [GPU 與 Shader](architecture/gpu.md) | [ADR 0003](adr/0003-gpu-stack-decision.md)、[Shader 驗證](testing.md#shader-驗證) |
 | 排查介面、裁切、切換照片或大量載入 | [介面層](architecture/app.md) | [生命週期回歸](testing.md#編輯生命週期回歸)、[載入回歸](testing.md#大量照片載入與即時預覽回歸) |
+| 調整 iPhone／iPad 操作與自適應版面 | [行動版操作與所有權](release.md#操作與資料所有權) | [Mobile 回歸](testing.md#mobile-ui-與輸入回歸)、[八產品 Survey](research/mobile-ui-survey.md)、[設計／驗收記錄](superpowers/plans/2026-10-30-mobile-editor-redesign.md) |
 | 調整底片色彩或新增 LUT | [底片風格](film-looks.md) | [LUT 轉換工具](../tools/film-luts/README.md)、[授權聲明](../THIRD-PARTY-NOTICES.txt) |
 | 評估 Sony Creative Look 移植 | [Sony A7M5 Survey 與效果實驗](research/sony-creative-looks-survey.md) | 目前 NO-GO：資料域、第三方資料權利與原版驗收前提尚未通過；未加入產品 |
 | 評估保留原曲線的通用色彩轉換 | [可組合色彩轉換研究](research/composable-color-transforms.md) | [CT-2 實作計畫](superpowers/plans/2026-10-28-composable-color-transforms.md)；本工作區已實作有界 CLF 子引擎，跨平台與實拍驗收未完成，不等於已發佈支援 |

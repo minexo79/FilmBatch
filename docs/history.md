@@ -548,6 +548,18 @@ Apple M3／Metal 使用隔離合成 Bayer DNG 檢查 CPU 裁切與全圖像素�
 隔離來源封裝於 `dist/osx-arm64-icc.QWFLQZ9g/`，未覆寫舊版；複製後通過 `codesign --verify --deep --strict`，交付 app 的原生 `--smoke` 為 `SMOKE PASS`。最低 macOS 14.0，本機 ad-hoc 簽章、未公證。冒煙記錄及截圖位於忽略的 `artifacts/verification/icc-native.fJ50V0iu/`。macOS 上直接呼叫 Apple ImageIO 的測試不代替 iOS 實機驗證；Windows／iOS 原生與真實相機相容性仍未驗證。
 
 
+## Mobile UI 工作區改版與平台阻擋（2026-10-31）
+
+依八個產品的官方文件及 Apple HIG 完成 [Survey](research/mobile-ui-survey.md)，再依 [設計／驗收記錄](superpowers/plans/2026-10-30-mobile-editor-redesign.md) 實作照片優先、五工具入口、可收合照片列、觸控多選與同一組平板側欄。仍只有一份 Main 編輯狀態；不改 Core／Engine／RAW／shader。桌面資源保留原尺寸，Mobile 使用局部覆寫。關閉／Escape 清除取樣狀態，裁切取消不寫入照片；modal 收鍵盤動作不再隨底層編輯器停用。
+
+原生截圖揭露固定照片資訊把短手機參數區壓成零；恢復整個 Inspector 捲動，並讓四個照片工具滑桿使用共用高度資源。驗證不只量測控制項大小：數值及整個滑桿都必須落在可視區。最後又修正收鍵盤動作在 pointer release 前隱藏的焦點競態，並在 Mobile 隱藏重複裁切標題；桌面樣式不變。最終本機 Release App suite 為 448 passed／0 failed／0 skipped；Mac MobileApp 原生尺寸／工具／比較／modal／語言／暫停恢復 smoke 有通過證據，主要操作與受檢數值／滑桿為 44 點。Mac 高度受螢幕限制，不把請求的平板尺寸當 iPad 實測。
+
+經實際 Mobile 匯出動作各產生兩張 PNG16／JPEG；獨立 `sips` 讀回皆為 128×85、sRGB，PNG 為 16-bit；另檢查 PNG CRC／ICC，六張合成來源 SHA-256 不變。真正桌面 `--smoke` 在 Apple M3／Metal 通過，另啟動原生 GalleryWindow 並留圖。證據在忽略的 `artifacts/verification/mobile-ui.glucns/verified-native/`、`verified-desktop-smoke.txt`、`verified-gallery/`。
+
+使用者在得知 SDK `27.1.10018` 要求 Xcode `27.1`、主機實為 `27.2` 後，選擇只於隔離來源副本的命令列使用 `-p:ValidateXcodeVersion=false`。真正 iOS Release simulator app 建置成功，0 warnings／errors，535 個正式／副本來源雜湊相符，產品未連入探針或 HID 橋接。兩個專用 Simulator 已完成匯入／取消、Projects、批次編輯／復原、比較／縮放、軟鍵盤／modal Tab／Escape、背景／重開及資料夾選取取消；iPad 真正 OS resize 至 396×579 後保留兩張目標及 Undo／Redo，窄裁切捲動另確認不會誤改 Straighten。最終 PNG16／JPEG 均為 640×426、sRGB，PNG 像素 RMSE 0，Files 全部完成副本與輸出逐一相符、來源 TIFF 不變。完整原生批次與 AX driver 修正後的單項重驗分列於[驗收記錄](superpowers/plans/2026-10-30-mobile-editor-redesign.md#7-2026-10-31-執行結果與驗證邊界)，不改寫原有失敗。CoreSimulator 1174.21 的舊 Indigo ACK 未證明鍵值送達，改以外部 DTUHID driver 與獨立 UIKit consumer 校準後驗證實際 app；未因此加入產品轉接。較大文字另在 Mac 同一 View 做壓力檢查，不宣稱 iOS Dynamic Type。隔離 Simulator 功能實驗完成不解除工具鏈不相容或實機驗收邊界；未更改全機 Xcode／workload、產品版本檢查設定或既有 IPA 的驗收狀態，未 commit／push。
+
+最後的裝置版本核對發現 iPhone 仍是前一次編譯，來源差異僅 `MobileApp.axaml`。重新安裝最終封存 app，為隔離 driver 加入每個情境的執行檔雜湊前置檢查，再完整重跑手機原生情境與繁中檢查；先前手機通過仍保留為歷史。兩裝置最後均核對已安裝執行檔、還原專用鍵盤偏好並重啟真正 FilmBatch；自建輸入服務與控制／runner app 已移除，driver 與產品來源封存後移除活動中的建置 scaffolds。
+
 ## 如何新增歷史列
 
 只記對未來修改有用的決定：真實 commit／日期、可核對的理由或重現、被拒絕方案、目前契約／檢查、後續取代。沒有當時證據時明寫「只確認提交意圖」；數值必須保留平台、輸入與來源版本，不把舊測試 totals 複製成新版本的驗收結果。

@@ -3,9 +3,13 @@ using Avalonia.Data;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
+using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
+using Avalonia.Threading;
+using Avalonia.VisualTree;
 using FilmBatch.App.Controls;
 using FilmBatch.Core.Film;
 using FilmBatch.Raw.Color;
@@ -248,6 +252,71 @@ internal sealed class MobileDialogService(Func<TopLevel?> topLevel, Border overl
         return result == 0 ? list.SelectedItem as MobileProject : null;
     }
 
+    internal async Task ShowPhotoFiltersAsync(FilmstripViewModel vm)
+    {
+        vm.RefreshPresetOptions();
+        var body = new StackPanel { Spacing = 12, DataContext = vm };
+
+        body.Children.Add(MobileText.Label(Loc.Get("Mobile.FilterMode")));
+        var filterBox = new ComboBox
+        {
+            ItemsSource = vm.FilterOptions,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            MinHeight = 44,
+            DisplayMemberBinding = CompiledBinding.Create((OptionBase opt) => opt.Label),
+        };
+        MobileText.Bind(filterBox, SelectingItemsControl.SelectedItemProperty, (FilmstripViewModel m) => m.SelectedFilterOption);
+        body.Children.Add(filterBox);
+
+        var presetLabel = MobileText.Label(Loc.Get("Common.ChoosePreset"));
+        var presetBox = new ComboBox
+        {
+            ItemsSource = vm.PresetOptions,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            MinHeight = 44,
+            PlaceholderText = Loc.Get("Common.ChoosePreset"),
+            DisplayMemberBinding = CompiledBinding.Create((PresetItemViewModel p) => p.Name),
+        };
+        MobileText.Bind(presetBox, SelectingItemsControl.SelectedItemProperty, (FilmstripViewModel m) => m.FilterPreset);
+
+        void UpdatePresetVisibility()
+        {
+            var selected = filterBox.SelectedItem as Option<FilmstripFilter>;
+            var isByPreset = (selected?.Value ?? vm.Filter) == FilmstripFilter.ByPreset;
+            presetLabel.IsVisible = isByPreset;
+            presetBox.IsVisible = isByPreset;
+        }
+        UpdatePresetVisibility();
+        filterBox.SelectionChanged += (_, _) => UpdatePresetVisibility();
+
+        body.Children.Add(presetLabel);
+        body.Children.Add(presetBox);
+
+        body.Children.Add(MobileText.Label(Loc.Get("Mobile.FileKind")));
+        var kindBox = new ComboBox
+        {
+            ItemsSource = vm.FileKindOptions,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            MinHeight = 44,
+            DisplayMemberBinding = CompiledBinding.Create((OptionBase opt) => opt.Label),
+        };
+        MobileText.Bind(kindBox, SelectingItemsControl.SelectedItemProperty, (FilmstripViewModel m) => m.SelectedFileKindOption);
+        body.Children.Add(kindBox);
+
+        body.Children.Add(MobileText.Label(Loc.Get("Inspector.Rating")));
+        var ratingBox = new ComboBox
+        {
+            ItemsSource = vm.RatingOptions,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            MinHeight = 44,
+            DisplayMemberBinding = CompiledBinding.Create((OptionBase opt) => opt.Label),
+        };
+        MobileText.Bind(ratingBox, SelectingItemsControl.SelectedItemProperty, (FilmstripViewModel m) => m.SelectedRatingOption);
+        body.Children.Add(ratingBox);
+
+        await ShowAsync(Loc.Get("Mobile.Filters"), body, [Loc.Get("Dialog.Close")]);
+    }
+
     private async Task<int> ShowAsync(string title, Control body, IReadOnlyList<string> choices, CancellationToken cancellationToken = default)
     {
         // A confirmation may be opened by a command inside a manager sheet. Preserve that sheet.
@@ -255,43 +324,193 @@ internal sealed class MobileDialogService(Func<TopLevel?> topLevel, Border overl
         var previousVisible = overlay.IsVisible;
         var previousCancel = _cancelModal;
         var generation = _generation;
+
+        var top = topLevel();
+        var priorFocus = top?.FocusManager?.GetFocusedElement();
+
         var completion = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
         using var registration = cancellationToken.Register(() => completion.TrySetResult(-1));
-        var card = new DockPanel { Margin = new Thickness(16), MaxWidth = 620, MaxHeight = 720,
-            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+
+        var card = new DockPanel
+        {
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch,
+        };
+
         var heading = MobileText.Label(title);
-        heading.FontSize = 20;
-        heading.Margin = new Thickness(16);
+        heading.Margin = new Thickness(16, 16, 16, 10);
+        heading.Classes.Add("mobile-sheet-title");
         DockPanel.SetDock(heading, Dock.Top);
         card.Children.Add(heading);
-        var actions = new WrapPanel { Margin = new Thickness(12), HorizontalAlignment = HorizontalAlignment.Right };
+
+        var actions = new WrapPanel
+        {
+            Margin = new Thickness(12, 8, 12, 12),
+            HorizontalAlignment = HorizontalAlignment.Right,
+        };
+
+        var actionButtons = new List<Button>(choices.Count);
         for (var i = 0; i < choices.Count; i++)
         {
             var index = i;
             var button = MobileText.Button(choices[i], "Mobile.ModalChoice" + i);
             button.Margin = new Thickness(4);
+            if (i == 0 && choices.Count > 1)
+            {
+                button.Classes.Add("accent");
+            }
+            else if (i > 0)
+            {
+                button.Classes.Add("outline");
+            }
             button.Click += (_, _) => completion.TrySetResult(index);
             actions.Children.Add(button);
+            actionButtons.Add(button);
         }
         DockPanel.SetDock(actions, Dock.Bottom);
         card.Children.Add(actions);
-        card.Children.Add(new ScrollViewer { Content = body, Margin = new Thickness(16, 0, 16, 8),
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled });
-        var backdrop = new Border { Child = card, CornerRadius = new CornerRadius(12), Background = new SolidColorBrush(Color.Parse("#242428")),
-            HorizontalAlignment = HorizontalAlignment.Stretch, VerticalAlignment = VerticalAlignment.Stretch, MaxWidth = 660,
-            Margin = new Thickness(12) };
+
+        var scrollViewer = new ScrollViewer
+        {
+            Content = body,
+            Margin = new Thickness(16, 0, 16, 8),
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+        };
+        card.Children.Add(scrollViewer);
+
+        var backdrop = new Border
+        {
+            Child = card,
+            BorderThickness = new Thickness(1),
+        };
+        backdrop.Classes.Add("mobile-sheet");
+
+        KeyboardNavigation.SetTabNavigation(backdrop, KeyboardNavigationMode.Cycle);
+        KeyboardNavigation.SetTabNavigation(card, KeyboardNavigationMode.Cycle);
+
+        void UpdateLayout()
+        {
+            var availWidth = overlay.Bounds.Width;
+            var availHeight = overlay.Bounds.Height;
+            if (availWidth <= 0 || availHeight <= 0)
+            {
+                var rootBounds = top?.Bounds ?? default;
+                if (availWidth <= 0) availWidth = rootBounds.Width;
+                if (availHeight <= 0) availHeight = rootBounds.Height;
+            }
+
+            var isNarrow = availWidth is > 0 and < 660;
+            if (isNarrow)
+            {
+                backdrop.HorizontalAlignment = HorizontalAlignment.Stretch;
+                backdrop.VerticalAlignment = VerticalAlignment.Bottom;
+                backdrop.MaxWidth = double.PositiveInfinity;
+                backdrop.Margin = new Thickness(8, 0, 8, 8);
+                backdrop.CornerRadius = new CornerRadius(16, 16, 12, 12);
+                if (availHeight > 0)
+                {
+                    backdrop.MaxHeight = Math.Max(160, availHeight - 16);
+                }
+            }
+            else
+            {
+                backdrop.HorizontalAlignment = HorizontalAlignment.Center;
+                backdrop.VerticalAlignment = VerticalAlignment.Center;
+                backdrop.MaxWidth = 660;
+                backdrop.Margin = new Thickness(16);
+                backdrop.CornerRadius = new CornerRadius(16);
+                if (availHeight > 0)
+                {
+                    backdrop.MaxHeight = Math.Max(160, availHeight - 32);
+                }
+            }
+        }
+
+        UpdateLayout();
+        EventHandler<SizeChangedEventArgs> onResize = (_, _) => UpdateLayout();
+        overlay.SizeChanged += onResize;
+
+        backdrop.AddHandler(InputElement.KeyDownEvent, (sender, e) =>
+        {
+            if (e.Key == Key.Escape)
+            {
+                e.Handled = true;
+                completion.TrySetResult(-1);
+                return;
+            }
+
+            if (e.Key == Key.Tab)
+            {
+                var currentFocus = top?.FocusManager?.GetFocusedElement() as Visual;
+                if (currentFocus is null || !backdrop.IsVisualAncestorOf(currentFocus))
+                {
+                    var target = FindUsefulInput(body) ?? actionButtons.FirstOrDefault() as Control ?? backdrop;
+                    target?.Focus(NavigationMethod.Tab);
+                    e.Handled = true;
+                }
+            }
+        }, RoutingStrategies.Tunnel);
+
         overlay.Child = backdrop;
         overlay.IsVisible = true;
         _cancelModal = () => completion.TrySetResult(-1);
-        try { return await completion.Task; }
+
+        void SetInitialFocus()
+        {
+            if (generation != _generation || completion.Task.IsCompleted) return;
+            var target = FindUsefulInput(body) ?? actionButtons.FirstOrDefault() as Control ?? backdrop;
+            target?.Focus(NavigationMethod.Tab);
+        }
+
+        backdrop.Loaded += (_, _) => SetInitialFocus();
+        Dispatcher.UIThread.Post(SetInitialFocus, DispatcherPriority.Loaded);
+
+        try
+        {
+            return await completion.Task;
+        }
         finally
         {
+            overlay.SizeChanged -= onResize;
+
             var cancelled = generation != _generation;
             overlay.Child = cancelled ? null : previousChild;
             overlay.IsVisible = !cancelled && previousVisible;
             _cancelModal = previousCancel;
             if (cancelled) previousCancel?.Invoke();
+
+            if (priorFocus is Visual focusedVisual && focusedVisual.IsAttachedToVisualTree() && (priorFocus is not Control controlFocus || (controlFocus.IsEffectivelyVisible && controlFocus.IsEffectivelyEnabled)))
+            {
+                priorFocus.Focus(NavigationMethod.Unspecified);
+            }
+            else if (priorFocus is not null)
+            {
+                Dispatcher.UIThread.Post(() =>
+                {
+                    if (priorFocus is Visual restoredVisual && restoredVisual.IsAttachedToVisualTree() && (priorFocus is not Control c || (c.IsEffectivelyVisible && c.IsEffectivelyEnabled)))
+                    {
+                        priorFocus.Focus(NavigationMethod.Unspecified);
+                    }
+                }, DispatcherPriority.Input);
+            }
         }
+    }
+
+    private static Control? FindUsefulInput(Control root)
+    {
+        if (root is TextBox tb && tb.IsEffectivelyVisible && tb.IsEffectivelyEnabled && tb.Focusable)
+            return tb;
+        var textBox = root.GetVisualDescendants()
+            .OfType<TextBox>()
+            .FirstOrDefault(c => c.IsEffectivelyVisible && c.IsEffectivelyEnabled && c.Focusable);
+        if (textBox is not null) return textBox;
+
+        if (root is ListBox lb && lb.IsEffectivelyVisible && lb.IsEffectivelyEnabled && lb.Focusable)
+            return lb;
+        return root.GetVisualDescendants()
+            .OfType<ListBox>()
+            .FirstOrDefault(c => c.IsEffectivelyVisible && c.IsEffectivelyEnabled && c.Focusable);
     }
 
     private static CheckBox Check<TSource>(string label, Expression<Func<TSource, bool>> expression)

@@ -43,6 +43,8 @@ public partial class PresetLibraryView : UserControl
 
     private void OnPressed(object? sender, PointerPressedEventArgs e)
     {
+        // Touch movement belongs to the tree's scroll gesture, not preset drag-and-drop.
+        if (e.Pointer.Type == PointerType.Touch) return;
         var item = ItemAt(e.Source);
         var props = e.GetCurrentPoint(Tree).Properties;
         // 右鍵也選取該項目，讓右鍵選單作用於它

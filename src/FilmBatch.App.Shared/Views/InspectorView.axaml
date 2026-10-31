@@ -333,25 +333,25 @@
                       <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto" Height="{StaticResource FB.ParamRowHeight}" VerticalAlignment="Center">
                         <TextBlock Classes="param-name" Text="{l:Tr PhotoTools.SkinTemperature}" />
                         <TextBlock Grid.Column="1" Classes="numeric" VerticalAlignment="Center" Text="{Binding SkinTemperature, StringFormat='{}{0:0}'}" />
-                        <c:ParamSlider Grid.Row="1" Grid.ColumnSpan="2" Classes="temperature" Height="20" MinHeight="0" Minimum="-100" Maximum="100"
+                        <c:ParamSlider Grid.Row="1" Grid.ColumnSpan="2" Classes="temperature" Height="{DynamicResource FB.ParamSliderHeight}" MinHeight="0" Minimum="-100" Maximum="100"
                                        AutomationProperties.AutomationId="PhotoTools.SkinTemperature" Value="{Binding SkinTemperature}" />
                       </Grid>
                       <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto" Height="{StaticResource FB.ParamRowHeight}" VerticalAlignment="Center">
                         <TextBlock Classes="param-name" Text="{l:Tr PhotoTools.SkinTint}" />
                         <TextBlock Grid.Column="1" Classes="numeric" VerticalAlignment="Center" Text="{Binding SkinTint, StringFormat='{}{0:0}'}" />
-                        <c:ParamSlider Grid.Row="1" Grid.ColumnSpan="2" Classes="tint" Height="20" MinHeight="0" Minimum="-100" Maximum="100"
+                        <c:ParamSlider Grid.Row="1" Grid.ColumnSpan="2" Classes="tint" Height="{DynamicResource FB.ParamSliderHeight}" MinHeight="0" Minimum="-100" Maximum="100"
                                        AutomationProperties.AutomationId="PhotoTools.SkinTint" Value="{Binding SkinTint}" />
                       </Grid>
                       <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto" Height="{StaticResource FB.ParamRowHeight}" VerticalAlignment="Center">
                         <TextBlock Classes="param-name" Text="{l:Tr PhotoTools.SkinStrength}" />
                         <TextBlock Grid.Column="1" Classes="numeric" VerticalAlignment="Center" Text="{Binding SkinStrength, StringFormat='{}{0:0}'}" />
-                        <c:ParamSlider Grid.Row="1" Grid.ColumnSpan="2" Height="20" MinHeight="0" Minimum="0" Maximum="100"
+                        <c:ParamSlider Grid.Row="1" Grid.ColumnSpan="2" Height="{DynamicResource FB.ParamSliderHeight}" MinHeight="0" Minimum="0" Maximum="100"
                                        AutomationProperties.AutomationId="PhotoTools.SkinStrength" Value="{Binding SkinStrength}" />
                       </Grid>
                       <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto" Height="{StaticResource FB.ParamRowHeight}" VerticalAlignment="Center">
                         <TextBlock Classes="param-name" Text="{l:Tr PhotoTools.SkinFeather}" />
                         <TextBlock Grid.Column="1" Classes="numeric" VerticalAlignment="Center" Text="{Binding SkinFeather, StringFormat='{}{0:0}'}" />
-                        <c:ParamSlider Grid.Row="1" Grid.ColumnSpan="2" Height="20" MinHeight="0" Minimum="0" Maximum="100"
+                        <c:ParamSlider Grid.Row="1" Grid.ColumnSpan="2" Height="{DynamicResource FB.ParamSliderHeight}" MinHeight="0" Minimum="0" Maximum="100"
                                        AutomationProperties.AutomationId="PhotoTools.SkinFeather" Value="{Binding SkinFeather}" />
                       </Grid>
                     </StackPanel>

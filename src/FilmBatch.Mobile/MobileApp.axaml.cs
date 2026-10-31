@@ -35,7 +35,7 @@ public sealed partial class MobileApp : Application
         {
             var window = new Window
             {
-                Title = "FilmBatch Mobile", Content = view, MinWidth = 360, MinHeight = 600,
+                Title = "FilmBatch Mobile", Content = view, MinWidth = 360, MinHeight = 320,
                 Width = DesktopWidth, Height = DesktopHeight, DataContext = view.Main,
             };
             window.Closing += (_, _) => view.Main.SaveProject();

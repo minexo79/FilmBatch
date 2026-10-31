@@ -836,4 +836,35 @@ Clear overrides: use the new preset entirely.</value></data>
   <data name="Curves.Edit" xml:space="preserve"><value>Adjust Tone Curves</value></data>
   <data name="Curves.Hint" xml:space="preserve"><value>Click to add a point; drag to adjust. Double-click an interior point or drag it beyond the top/bottom edge to remove it.</value></data>
   <data name="Param.RandomSeed" xml:space="preserve"><value>Random seed</value></data>
+  <data name="Mobile.Projects" xml:space="preserve"><value>Open project</value></data>
+  <data name="Mobile.Import" xml:space="preserve"><value>Import photos</value></data>
+  <data name="Mobile.ImportFiles" xml:space="preserve"><value>Import from Files</value></data>
+  <data name="Mobile.ImportPhotos" xml:space="preserve"><value>Import from Photos</value></data>
+  <data name="Mobile.More" xml:space="preserve"><value>More actions</value></data>
+  <data name="Mobile.Welcome.Title" xml:space="preserve"><value>Your film look. Across the whole roll.</value></data>
+  <data name="Mobile.Welcome.Body" xml:space="preserve"><value>Import photos or RAW, choose a preset, refine, then export together. Edits are saved automatically in this app's projects.</value></data>
+  <data name="Mobile.KeepOriginals" xml:space="preserve"><value>We import copies. Your original photographs stay unchanged.</value></data>
+  <data name="Mobile.Tool.Presets" xml:space="preserve"><value>Presets</value></data>
+  <data name="Mobile.Tool.Adjust" xml:space="preserve"><value>Adjust</value></data>
+  <data name="Mobile.Tool.Effects" xml:space="preserve"><value>Effects</value></data>
+  <data name="Mobile.CloseTools" xml:space="preserve"><value>Close</value></data>
+  <data name="Mobile.CompareOriginal" xml:space="preserve"><value>Show original; tap again to return to your edit</value></data>
+  <data name="Mobile.Original" xml:space="preserve"><value>Original</value></data>
+  <data name="Mobile.CompareSplit" xml:space="preserve"><value>Show split comparison</value></data>
+  <data name="Mobile.CompareSplitOff" xml:space="preserve"><value>Hide split comparison</value></data>
+  <data name="Mobile.Zoom100" xml:space="preserve"><value>View at 100%</value></data>
+  <data name="Mobile.Select" xml:space="preserve"><value>Select</value></data>
+  <data name="Mobile.SelectionDone" xml:space="preserve"><value>Done</value></data>
+  <data name="Mobile.Copy" xml:space="preserve"><value>Copy</value></data>
+  <data name="Mobile.Paste" xml:space="preserve"><value>Paste</value></data>
+  <data name="Mobile.PasteOptions" xml:space="preserve"><value>Paste options</value></data>
+  <data name="Mobile.Filters" xml:space="preserve"><value>Filter photos</value></data>
+  <data name="Mobile.Export.Create" xml:space="preserve"><value>Create exports</value></data>
+  <data name="Mobile.Export.CopyFiles" xml:space="preserve"><value>Copy all outputs to Files</value></data>
+  <data name="Mobile.Export.Location" xml:space="preserve"><value>Create files in this app's Exports first. Copy to Files saves all completed exports from every project into a new folder. Originals stay unchanged.</value></data>
+  <data name="Mobile.DismissKeyboard" xml:space="preserve"><value>Dismiss keyboard</value></data>
+  <data name="Mobile.ProjectSaved" xml:space="preserve"><value>Project saved.</value></data>
+  <data name="Mobile.FilterMode" xml:space="preserve"><value>Filter</value></data>
+  <data name="Mobile.FileKind" xml:space="preserve"><value>File kind</value></data>
+  <data name="Mobile.SaveProject" xml:space="preserve"><value>Save project</value></data>
 </root>

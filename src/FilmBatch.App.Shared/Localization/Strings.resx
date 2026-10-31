@@ -641,4 +641,35 @@ R {1:P2}　G {2:P2}　B {3:P2}　亮度 {4:P2}</value></data>
   <data name="Curves.Hint" xml:space="preserve"><value>點選新增控制點，拖曳調整；雙擊中間點或拖出上下邊界可刪除。</value></data>
   <data name="Param.RandomSeed" xml:space="preserve"><value>隨機產生種子</value></data>
   <data name="Param.light_leak.white" xml:space="preserve"><value>白</value></data>
+  <data name="Mobile.Projects" xml:space="preserve"><value>開啟專案</value></data>
+  <data name="Mobile.Import" xml:space="preserve"><value>匯入照片</value></data>
+  <data name="Mobile.ImportFiles" xml:space="preserve"><value>從 Files 匯入</value></data>
+  <data name="Mobile.ImportPhotos" xml:space="preserve"><value>從照片圖庫匯入</value></data>
+  <data name="Mobile.More" xml:space="preserve"><value>更多動作</value></data>
+  <data name="Mobile.Welcome.Title" xml:space="preserve"><value>為一整組照片，調出你的底片風格。</value></data>
+  <data name="Mobile.Welcome.Body" xml:space="preserve"><value>匯入照片或 RAW，選擇預設、微調，再一次輸出。編輯會自動保存在此 App 的專案。</value></data>
+  <data name="Mobile.KeepOriginals" xml:space="preserve"><value>匯入的是副本，原始照片不會被修改。</value></data>
+  <data name="Mobile.Tool.Presets" xml:space="preserve"><value>預設</value></data>
+  <data name="Mobile.Tool.Adjust" xml:space="preserve"><value>調整</value></data>
+  <data name="Mobile.Tool.Effects" xml:space="preserve"><value>效果</value></data>
+  <data name="Mobile.CloseTools" xml:space="preserve"><value>收合</value></data>
+  <data name="Mobile.CompareOriginal" xml:space="preserve"><value>顯示原圖，再點一次回到編輯後照片</value></data>
+  <data name="Mobile.Original" xml:space="preserve"><value>原圖</value></data>
+  <data name="Mobile.CompareSplit" xml:space="preserve"><value>顯示原圖分割比較</value></data>
+  <data name="Mobile.CompareSplitOff" xml:space="preserve"><value>關閉原圖分割比較</value></data>
+  <data name="Mobile.Zoom100" xml:space="preserve"><value>以 100% 檢視</value></data>
+  <data name="Mobile.Select" xml:space="preserve"><value>選取</value></data>
+  <data name="Mobile.SelectionDone" xml:space="preserve"><value>完成選取</value></data>
+  <data name="Mobile.Copy" xml:space="preserve"><value>複製</value></data>
+  <data name="Mobile.Paste" xml:space="preserve"><value>貼上</value></data>
+  <data name="Mobile.PasteOptions" xml:space="preserve"><value>選擇性貼上</value></data>
+  <data name="Mobile.Filters" xml:space="preserve"><value>篩選照片</value></data>
+  <data name="Mobile.Export.Create" xml:space="preserve"><value>建立輸出</value></data>
+  <data name="Mobile.Export.CopyFiles" xml:space="preserve"><value>複製所有輸出至 Files</value></data>
+  <data name="Mobile.Export.Location" xml:space="preserve"><value>先建立輸出至此 App 的 Exports。「複製至 Files」會將所有專案的已完成輸出另存至新資料夾；原始照片不會被修改。</value></data>
+  <data name="Mobile.DismissKeyboard" xml:space="preserve"><value>收起鍵盤</value></data>
+  <data name="Mobile.ProjectSaved" xml:space="preserve"><value>專案已儲存。</value></data>
+  <data name="Mobile.FilterMode" xml:space="preserve"><value>篩選方式</value></data>
+  <data name="Mobile.FileKind" xml:space="preserve"><value>檔案類型</value></data>
+  <data name="Mobile.SaveProject" xml:space="preserve"><value>儲存專案</value></data>
 </root>

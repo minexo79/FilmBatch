@@ -32,6 +32,23 @@ dotnet test tests/FilmBatch.App.Tests/FilmBatch.App.Tests.csproj -c Release \
 涵蓋裁切取消／延後進入、跨專案與同資料夾重開、部分匯出失敗後重試、拖曳中斷與復原區間、分割線優先權（含拉直旋轉後的命中與拖曳）、面板／全螢幕狀態及共用平移。資料夾切換測試使用隔離的照片副本，並檢查新專案可繼續編輯與儲存。行動 View 另驗證自動重開及未選取時清除暫時狀態，並保留匯入、失敗與背景取消結果。
 
 Headless 不會執行 AppKit 的 Spaces 動畫。Mac 桌面驗證須觀察實際 Cocoa 全螢幕狀態並等待動畫結束後再操作下一步：[Avalonia 的原生實作](https://github.com/AvaloniaUI/Avalonia/blob/2d79ba55fae1b1e71c69f93a668080c9029e6a31/native/Avalonia.Native/src/OSX/WindowImpl.mm#L458-L546)也會同步回報要求狀態，因此 `WindowStateChanged` 不能當成動畫完成通知。另確認 Cancel 後畫布無裁切工具、解碼前 Esc 不會稍後重新啟用、文字欄位內 Esc 能關閉預設管理，以及切換專案前後原始照片位元組不變。實體綠色按鈕、動畫期間快速連按切換與 Windows／Linux 原生視窗操作不屬於 headless 的驗證證據。
+### Mobile UI 與輸入回歸
+
+```bash
+dotnet test tests/FilmBatch.App.Tests/FilmBatch.App.Tests.csproj -c Release -m:1 \
+  --filter 'FullyQualifiedName~MobileEditorViewTests|FullyQualifiedName~MobileDialogServiceTests|FullyQualifiedName~MobileWorkspaceTests|FullyQualifiedName~ParamSliderTests|FullyQualifiedName~PreviewInteractionTests|FullyQualifiedName~LocalizationTests'
+dotnet run --project src/FilmBatch.Mobile.Desktop -c Release -- --workspace /tmp/filmbatch-mobile-ui --width 360 --height 640
+dotnet run --project src/FilmBatch.App -c Release -- --gallery
+```
+
+`MobileEditorViewTests` 使用真正的 touch pointer 路由，檢查多選增減、完成選取後的真實目標、未選照片不變與一次 Undo／Redo。另檢查無焦點子控制項時的快捷鍵復原、Escape 不套用裁切、文字欄位／修飾鍵不誤關工具，以及取消／收合取樣後釋放畫布。收鍵盤測試檢查文字欄位取得焦點後能直接使用動作，並以真實按下／放開及平台因焦點轉移而隱藏動作的情境，確認匯出名稱不變、modal 不確認且焦點不逃出；不只直接觸發 Click。Headless 不會啟動真正的 iOS 軟鍵盤，仍須另外檢查停駐／浮動鍵盤、輸入與收鍵盤結果。
+
+原生介面仍須檢查 360×640／390×844、844×390、iPad 直橫向與窄視窗；以實際 client bounds 為準，Mac 顯示器可能限制高度。確認工具開關後預覽／側欄空間、44 點操作區、EN／繁中、原圖／分割比較、對話框內容與動作可到達。完整 App suite、桌面 smoke／gallery 必須保留，不能只跑新測試。真正 iPhone／iPad 的 safe-area、轉向、軟鍵盤、Files／Photos、輸出讀回、來源 SHA-256 與背景／重開須以 [實際 iOS app](release.md#ios-行動版) 驗證；Mac、注入的鍵盤矩形與 Headless 不代替這些平台案例。[本次 Survey](research/mobile-ui-survey.md) 與 [設計／驗收記錄](superpowers/plans/2026-10-30-mobile-editor-redesign.md) 分列。
+
+2026-10-31 已完成使用者選定的隔離 iOS 功能實驗；完整批次、AX driver 失敗與修正後重驗分列於[執行結果](superpowers/plans/2026-10-30-mobile-editor-redesign.md#7-2026-10-31-執行結果與驗證邊界)。窄視窗裁切、軟鍵盤輸入／收合、modal Tab／Escape、iPad 背景與資料夾選取取消皆有實際通過收據。Xcode 27.2 與 SDK 27.1.10018 的命令列版本檢查覆寫仍只是使用者授權的隔離實驗，不是支援宣告。外部鍵盤 driver 先以獨立 UIKit consumer 校準，再驗證 FilmBatch 的實際草稿／焦點／取消結果；HID ACK 不等於產品收到輸入，AX hittable 不等於控制項位於可視範圍。Mac 同一 Mobile View 的較大文字檢查不當成 iOS Dynamic Type 認證。
+
+原生驗證須核對 Simulator 已安裝的實際執行檔與指定建置的 SHA-256；建置來源相符不證明裝置已更新。本次手機在發現仍用前次編譯後，安裝最終 app 並重跑完整批次，且每個情境都先留存 `installed-build.json`。舊手機通過收據保留為歷史，不重新標成最終版本的結果。
+
 
 ### RAW 介面回歸
 

@@ -52,6 +52,7 @@ public sealed class ZoomWindowTests
             var before = renderer.WindowCount;
 
             main.Preview.Pan = new Vector(20, 0);
+            window.CaptureRenderedFrame()?.Dispose();
             PumpFor(300);
             Assert.Equal(before, renderer.WindowCount);
             Assert.True(main.Preview.WindowVisible);
@@ -71,6 +72,7 @@ public sealed class ZoomWindowTests
             var before = renderer.WindowCount;
 
             main.Preview.Pan = new Vector(1500, 0);
+            window.CaptureRenderedFrame()?.Dispose();
             TestEnv.PumpUntil(() => renderer.WindowCount > before && main.Preview.WindowVisible, 30000);
             Assert.Equal(before + 1, renderer.WindowCount);
             Assert.Equal(0, renderer.LastWindow!.Value.X);

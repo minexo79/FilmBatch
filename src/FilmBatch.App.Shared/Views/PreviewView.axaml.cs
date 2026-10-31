@@ -13,6 +13,12 @@ public partial class PreviewView : UserControl
 
     public bool ShowsBusySpinner { get => GetValue(ShowsBusySpinnerProperty); set => SetValue(ShowsBusySpinnerProperty, value); }
 
+    /// <summary>Shows desktop overlay actions and metadata; mobile hosts supply their own reachable chrome.</summary>
+    public static readonly StyledProperty<bool> ShowsControlsProperty =
+        AvaloniaProperty.Register<PreviewView, bool>(nameof(ShowsControls), defaultValue: true);
+
+    public bool ShowsControls { get => GetValue(ShowsControlsProperty); set => SetValue(ShowsControlsProperty, value); }
+
     public PreviewView()
     {
         InitializeComponent();

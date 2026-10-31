@@ -3,6 +3,7 @@
              xmlns:vm="using:FilmBatch.App.ViewModels"
              xmlns:d="using:FilmBatch.App.ViewModels.Dialogs"
              xmlns:l="using:FilmBatch.App.Localization"
+             xmlns:v="using:FilmBatch.App.Views"
              x:Class="FilmBatch.App.Views.FilmstripView"
              x:DataType="vm:FilmstripViewModel">
   <!-- 縮圖列（計畫書 2.4.4）：水平虛擬化；Ctrl/⌘、Shift 多選；可拖放預設到縮圖上；在空白處按兩下選擇照片資料夾 -->
@@ -55,9 +56,60 @@
       <Setter Property="Background" Value="{DynamicResource FB.ButtonHoverBrush}" />
       <Setter Property="Foreground" Value="{DynamicResource FB.TextBrush}" />
     </Style>
+    <!-- 行動版收合模式（IsCompact）：隱藏篩選列、縮減外圍與間距、將縮圖縮小為 88x64、顯示檔名標籤 -->
+    <Style Selector="Border.filmstrip-filter-bar">
+      <Setter Property="IsVisible" Value="True" />
+    </Style>
+    <Style Selector=".compact Border.filmstrip-filter-bar">
+      <Setter Property="IsVisible" Value="False" />
+    </Style>
+    <Style Selector=".compact ListBox.filmstrip">
+      <Setter Property="Padding" Value="4,2" />
+    </Style>
+    <Style Selector=".compact ListBox.filmstrip ListBoxItem">
+      <Setter Property="Margin" Value="3,2" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="MinHeight" Value="44" />
+      <Setter Property="MinWidth" Value="44" />
+    </Style>
+    <Style Selector="StackPanel.thumb-container">
+      <Setter Property="Spacing" Value="0" />
+    </Style>
+    <Style Selector=".compact StackPanel.thumb-container">
+      <Setter Property="Spacing" Value="2" />
+    </Style>
+    <Style Selector="Grid.thumb-grid">
+      <Setter Property="Width" Value="128" />
+      <Setter Property="Height" Value="88" />
+      <Setter Property="MinWidth" Value="44" />
+      <Setter Property="MinHeight" Value="44" />
+    </Style>
+    <Style Selector=".compact Grid.thumb-grid">
+      <Setter Property="Width" Value="88" />
+      <Setter Property="Height" Value="64" />
+    </Style>
+    <Style Selector="TextBlock.thumb-filename">
+      <Setter Property="IsVisible" Value="False" />
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="Foreground" Value="{DynamicResource FB.SecondaryTextBrush}" />
+      <Setter Property="TextAlignment" Value="Center" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
+      <Setter Property="MaxWidth" Value="88" />
+    </Style>
+    <Style Selector=".compact TextBlock.thumb-filename">
+      <Setter Property="IsVisible" Value="True" />
+    </Style>
+    <Style Selector=".compact Border.thumb-badge">
+      <Setter Property="Margin" Value="2" />
+      <Setter Property="Padding" Value="3,1" />
+      <Setter Property="CornerRadius" Value="4" />
+    </Style>
+    <Style Selector=".compact StackPanel.thumb-indicators">
+      <Setter Property="Margin" Value="3" />
+    </Style>
   </UserControl.Styles>
   <DockPanel Background="{DynamicResource FB.WindowBrush}">
-    <Border DockPanel.Dock="Top" Padding="12,8,12,2">
+    <Border Name="FilterBar" Classes="filmstrip-filter-bar" DockPanel.Dock="Top" Padding="12,8,12,2">
       <WrapPanel Orientation="Horizontal" ItemSpacing="8" LineSpacing="8" VerticalAlignment="Center">
         <PathIcon Data="{StaticResource Icon.Filter}" Width="12" Height="12" Foreground="{DynamicResource FB.PlaceholderBrush}" VerticalAlignment="Center" />
         <ComboBox Classes="flat" ItemsSource="{Binding FilterOptions}" SelectedItem="{Binding SelectedFilterOption}" DisplayMemberBinding="{Binding Label, x:DataType=d:OptionBase}" MinWidth="120" />
@@ -145,34 +197,39 @@
       </ListBox.ItemsPanel>
       <ListBox.ItemTemplate>
         <DataTemplate x:DataType="vm:ThumbnailViewModel">
-          <Border Classes="thumb" ToolTip.Tip="{Binding FileName}" AutomationProperties.Name="{Binding FileName}">
-            <Grid Width="128" Height="88">
-              <Image Source="{Binding Bitmap}" Stretch="Uniform" />
-              <TextBlock Classes="secondary small" Text="…" HorizontalAlignment="Center" VerticalAlignment="Center"
-                         IsVisible="{Binding Bitmap, Converter={x:Static ObjectConverters.IsNull}}" />
-              <!-- 讀檔失敗：錯誤圖示，滑鼠停留看原因 -->
-              <PathIcon Data="{StaticResource Icon.Warning}" Width="20" Height="20" Foreground="{DynamicResource FB.ErrorBrush}"
-                        IsVisible="{Binding HasError}" ToolTip.Tip="{Binding Error}" />
-              <!-- 左下：色彩標籤 + 預設名稱縮寫 -->
-              <Border HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="4" Padding="5,1" CornerRadius="8" Background="#B0141414">
-                <StackPanel Orientation="Horizontal" Spacing="4">
-                  <Border Classes="color-label" Width="6" Height="6" CornerRadius="3" Background="{Binding PresetBrush}" />
-                  <TextBlock FontSize="10" Text="{Binding PresetLabel}" Foreground="#EAEAEA" />
+          <StackPanel Classes="thumb-container">
+            <Border Classes="thumb" ToolTip.Tip="{Binding FileName}" AutomationProperties.Name="{Binding FileName}">
+              <Grid Classes="thumb-grid">
+                <Image Source="{Binding Bitmap}" Stretch="Uniform" />
+                <TextBlock Classes="secondary small" Text="…" HorizontalAlignment="Center" VerticalAlignment="Center"
+                           IsVisible="{Binding Bitmap, Converter={x:Static ObjectConverters.IsNull}}" />
+                <!-- 讀檔失敗：錯誤圖示，滑鼠停留看原因 -->
+                <PathIcon Data="{StaticResource Icon.Warning}" Width="20" Height="20" Foreground="{DynamicResource FB.ErrorBrush}"
+                          IsVisible="{Binding HasError}" ToolTip.Tip="{Binding Error}" />
+                <!-- 左下：色彩標籤 + 預設名稱縮寫 -->
+                <Border Classes="thumb-badge thumb-preset" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="4" Padding="5,1" CornerRadius="8" Background="#B0141414">
+                  <StackPanel Orientation="Horizontal" Spacing="4">
+                    <Border Classes="color-label" Width="6" Height="6" CornerRadius="3" Background="{Binding PresetBrush}" />
+                    <TextBlock FontSize="10" Text="{Binding PresetLabel}" Foreground="#EAEAEA" />
+                  </StackPanel>
+                </Border>
+                <!-- 右下：星級評分（未評分不顯示） -->
+                <Border Classes="thumb-badge thumb-rating" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="4" Padding="5,1" CornerRadius="8" Background="#B0141414"
+                        IsVisible="{Binding HasRating}">
+                  <TextBlock FontSize="10" Text="{Binding RatingStars}" Foreground="#EAEAEA" />
+                </Border>
+                <!-- 右上：● 有單張覆寫、⟳ 預設已更新 -->
+                <StackPanel Classes="thumb-indicators" Orientation="Horizontal" Spacing="3" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="5">
+                  <PathIcon Data="{StaticResource Icon.Sync}" Width="10" Height="10" Foreground="{DynamicResource FB.PresetUpdatedBrush}"
+                            IsVisible="{Binding PresetUpdated}" ToolTip.Tip="{l:Tr Tip.PresetUpdated}" />
+                  <Ellipse Classes="override-dot" Width="8" Height="8" IsVisible="{Binding HasOverrides}" ToolTip.Tip="{l:Tr Tip.HasOverrides}" />
                 </StackPanel>
-              </Border>
-              <!-- 右下：星級評分（未評分不顯示） -->
-              <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="4" Padding="5,1" CornerRadius="8" Background="#B0141414"
-                      IsVisible="{Binding HasRating}">
-                <TextBlock FontSize="10" Text="{Binding RatingStars}" Foreground="#EAEAEA" />
-              </Border>
-              <!-- 右上：● 有單張覆寫、⟳ 預設已更新 -->
-              <StackPanel Orientation="Horizontal" Spacing="3" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="5">
-                <PathIcon Data="{StaticResource Icon.Sync}" Width="10" Height="10" Foreground="{DynamicResource FB.PresetUpdatedBrush}"
-                          IsVisible="{Binding PresetUpdated}" ToolTip.Tip="{l:Tr Tip.PresetUpdated}" />
-                <Ellipse Classes="override-dot" Width="8" Height="8" IsVisible="{Binding HasOverrides}" ToolTip.Tip="{l:Tr Tip.HasOverrides}" />
-              </StackPanel>
-            </Grid>
-          </Border>
+              </Grid>
+            </Border>
+            <TextBlock Classes="thumb-filename"
+                       Text="{Binding FileName, Converter={x:Static v:FilmstripView.FileNameConverter}}"
+                       TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
+          </StackPanel>
         </DataTemplate>
       </ListBox.ItemTemplate>
     </ListBox>

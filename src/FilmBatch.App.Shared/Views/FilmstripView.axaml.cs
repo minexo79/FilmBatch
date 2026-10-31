@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Data.Converters;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
@@ -9,6 +10,27 @@ namespace FilmBatch.App.Views;
 
 public partial class FilmstripView : UserControl
 {
+    public static readonly StyledProperty<bool> IsCompactProperty =
+        AvaloniaProperty.Register<FilmstripView, bool>(nameof(IsCompact), defaultValue: false);
+
+    public bool IsCompact
+    {
+        get => GetValue(IsCompactProperty);
+        set => SetValue(IsCompactProperty, value);
+    }
+
+    public static readonly StyledProperty<bool> ToggleSelectionProperty =
+        AvaloniaProperty.Register<FilmstripView, bool>(nameof(ToggleSelection), defaultValue: false);
+
+    public bool ToggleSelection
+    {
+        get => GetValue(ToggleSelectionProperty);
+        set => SetValue(ToggleSelectionProperty, value);
+    }
+
+    public static readonly IValueConverter FileNameConverter =
+        new FuncValueConverter<string?, string?>(System.IO.Path.GetFileName);
+
     public FilmstripView()
     {
         InitializeComponent();
@@ -19,6 +41,8 @@ public partial class FilmstripView : UserControl
         List.AddHandler(ContextRequestedEvent, OnContextRequested, RoutingStrategies.Tunnel);
         // 縮圖列只能橫向捲動；把一般滑鼠滾輪的直向位移轉成橫向捲動
         List.AddHandler(PointerWheelChangedEvent, OnPointerWheelChanged, RoutingStrategies.Tunnel);
+        UpdateCompact(IsCompact);
+        UpdateSelectionMode(ToggleSelection);
     }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
@@ -33,6 +57,24 @@ public partial class FilmstripView : UserControl
         List.LayoutUpdated -= OnListLayoutUpdated;
         base.OnDetachedFromVisualTree(e);
     }
+
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == IsCompactProperty)
+        {
+            UpdateCompact(change.GetNewValue<bool>());
+        }
+        else if (change.Property == ToggleSelectionProperty)
+        {
+            UpdateSelectionMode(change.GetNewValue<bool>());
+        }
+    }
+
+    private void UpdateCompact(bool isCompact) => Classes.Set("compact", isCompact);
+
+    private void UpdateSelectionMode(bool toggleSelection) =>
+        List.SelectionMode = toggleSelection ? SelectionMode.Multiple | SelectionMode.Toggle : SelectionMode.Multiple;
 
     private void OnListLayoutUpdated(object? sender, EventArgs e) => ReportVisibleRange();
 
