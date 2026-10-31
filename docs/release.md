@@ -57,7 +57,7 @@ dotnet publish src/FilmBatch.Mobile.iOS/FilmBatch.Mobile.iOS.csproj \
   -p:IpaPackagePath="$PWD/dist/FilmBatch-ios-arm64-unsigned.ipa"
 ```
 
-輸出為 `dist/FilmBatch-ios-arm64-unsigned.ipa`。本輪產物為版本 `0.3`、build `1`，目標是 iPhone／iPad 的 `iPhoneOS`／`arm64`，最低 iOS／iPadOS `18.0`，不是 Simulator app。Release publish 已完成 Mono AOT／native link；封裝檢查確認 ZIP／CRC 正常、176 個 payload 檔案與建置輸出一致，主程式及兩個原生 framework 均為真機 ABI，沒有 Mac／Simulator 原生相依。
+輸出為 `dist/FilmBatch-ios-arm64-unsigned.ipa`。2026-10-31 從 Mobile UI 改版提交 `253b16f` 的隔離來源副本重建，535 個產品來源雜湊與已驗證版本相符。產物為版本 `0.3`、build `1`，目標是 iPhone／iPad 的 `iPhoneOS`／`arm64`，最低 iOS／iPadOS `18.0`，不是 Simulator app。Release publish 已完成 Mono AOT／native link；封裝檢查確認 ZIP／CRC 正常、187 個 payload 檔案與建置 app 一致，另有三個 `Symbols/` 符號檔與封裝中間輸出一致。主程式及兩個原生 framework 均為真機 ABI，沒有 Mac／Simulator 原生相依。
 
 **這是未簽章 IPA，不能直接安裝。** 請交由 Sideloadly／AltStore 重簽，或使用適當的 development profile 後再安裝；本輪未使用 Apple 開發者簽章身分或 provisioning profile，也未操作重簽工具。IPA 的 SHA-256 保留在同目錄的 `.ipa.sha256` 檔案，封裝檢查記錄位於忽略的 `dist/ios-device-evidence/`。實機安裝與功能、記憶體及穩定性測試尚未執行，依使用者決定留待後續進行；Simulator 的既有通過結果不代替真機驗證。
 
@@ -79,7 +79,7 @@ dotnet publish src/FilmBatch.Mobile.iOS/FilmBatch.Mobile.iOS.csproj \
 
 macOS 的相同行動 View、Apple codec 回歸及桌面 solution 測試，均不代替實際 iOS app 的 Files／Photos、編輯、輸出與背景／前景操作。iOS Dawn GPU、JPEG XL 原生解碼閉包、實機簽章／部署、iPad 效能／記憶體上限、HDR／EDR 及完整 AI 降噪的裝置驗收不在既有行動版證據涵蓋範圍；合併 AI 分支不會自動擴大這些主張。
 
-2026-10-31 的[Mobile UI 原生實測](superpowers/plans/2026-10-30-mobile-editor-redesign.md#7-2026-10-31-執行結果與驗證邊界)已完成使用者選定的隔離 Simulator 功能驗證：Files／Photos、批次編輯與復原、PNG16／JPEG 及 Files 副本、窄視窗裁切／resize、軟鍵盤／modal Escape、背景／重開與選取取消均有實際通過證據，輸出與來源另做獨立讀回。完整批次與修正 AX driver 後的單項通過分列，不冒稱一次全平台零失敗。`ValidateXcodeVersion=false` 僅施於隔離來源副本的命令列；Xcode 27.2／.NET iOS 27.1.10018 仍不受支援，不能據此宣稱正式發佈驗收、真機測試或更新既有 IPA 的驗收狀態。
+2026-10-31 的[Mobile UI 原生實測](superpowers/plans/2026-10-30-mobile-editor-redesign.md#7-2026-10-31-執行結果與驗證邊界)已完成使用者選定的隔離 Simulator 功能驗證：Files／Photos、批次編輯與復原、PNG16／JPEG 及 Files 副本、窄視窗裁切／resize、軟鍵盤／modal Escape、背景／重開與選取取消均有實際通過證據，輸出與來源另做獨立讀回。完整批次與修正 AX driver 後的單項通過分列，不冒稱一次全平台零失敗。`ValidateXcodeVersion=false` 僅施於隔離來源副本的命令列，包含後續 `ios-arm64` IPA 重建；Xcode 27.2／.NET iOS 27.1.10018 仍不受支援。新 IPA 的來源、封裝與 ABI 檢查不代表受支援工具鏈、正式發佈或實機驗收。
 
 `AppleImageCodecTests`、`AppleImagingTests`、`TiffMetadataTests` 涵蓋 Apple 後端與中繼資料回歸；Apple 原生 cases 只在 macOS 執行。檢查 PNG 實際內嵌的 ICC 時，Magick.NET 的讀取設定須使用 `PngReadDefines.PreserveiCCP=true`：預設解碼器會把辨識出的 sRGB ICC 最佳化掉，`GetColorProfile()` 回傳空值不等於檔案沒有 `iCCP`。仍須以另一個解碼器核對 profile 內容，不修改產品去迎合讀取器的預設行為。
 

@@ -560,6 +560,12 @@ Apple M3／Metal 使用隔離合成 Bayer DNG 檢查 CPU 裁切與全圖像素�
 
 最後的裝置版本核對發現 iPhone 仍是前一次編譯，來源差異僅 `MobileApp.axaml`。重新安裝最終封存 app，為隔離 driver 加入每個情境的執行檔雜湊前置檢查，再完整重跑手機原生情境與繁中檢查；先前手機通過仍保留為歷史。兩裝置最後均核對已安裝執行檔、還原專用鍵盤偏好並重啟真正 FilmBatch；自建輸入服務與控制／runner app 已移除，driver 與產品來源封存後移除活動中的建置 scaffolds。
 
+## Mobile UI 提交與真機 IPA 重建（2026-10-31）
+
+使用者另行明確要求 commit、push 與 IPA。Mobile UI 改版提交為 `253b16f`，已推送至 `origin/dev-ai-denoising` 並核對遠端完整 SHA。隨後由該精確提交的 `git archive` 隔離來源副本重建未簽章 `ios-arm64` IPA，未再修改產品程式。新的來源雜湊、完整封裝逐檔比對、ZIP／CRC、真機 ABI 與 SHA-256 證據記於忽略的 `dist/ios-device-evidence/`；產物規格及重簽方式見[發佈文件](release.md#真機-ipa-與重簽側載)。
+
+重建沿用使用者已選定的命令列隔離實驗，不更動全機工具鏈或產品版本檢查設定；Xcode 27.2／.NET iOS 27.1.10018 仍不受支援。本次未使用 Apple 開發者身分／provisioning profile、未重簽或部署至實機，不能將先前 Simulator 功能證據改稱真機通過。
+
 ## 如何新增歷史列
 
 只記對未來修改有用的決定：真實 commit／日期、可核對的理由或重現、被拒絕方案、目前契約／檢查、後續取代。沒有當時證據時明寫「只確認提交意圖」；數值必須保留平台、輸入與來源版本，不把舊測試 totals 複製成新版本的驗收結果。
