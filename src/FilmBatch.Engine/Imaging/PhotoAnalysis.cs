@@ -231,7 +231,7 @@ public static class PhotoAnalysis
         if (!p.BasicOn) return (1, 1, 1);
         var gain = Math.Pow(2, p.Exposure);
         return (gain * (1 + p.Temperature / 100.0 * .18),
-            gain * (1 + p.Tint / 100.0 * .12), gain * (1 - p.Temperature / 100.0 * .18));
+            gain * (1 - p.Tint / 100.0 * .12), gain * (1 - p.Temperature / 100.0 * .18));
     }
 
     private static SampleStatistics EvaluateSamples(SourceImage source, ModuleParams p, SamplePoint[] points,

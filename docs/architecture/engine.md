@@ -67,6 +67,7 @@ CLF 的 `WorkingLinear` 固定放在原 film 位置；`DisplayEncoded` 在顯示
 - 模組關閉或參數為零時要**完全跳過**，輸出必須與輸入逐位元相同（identity 測試會檢查）。
 - 改了 CPU 版就要改 GPU 版，反之亦然；`Gpu_MatchesCpu_*` 測試會比對兩者。
 - C# 的 uniform record（`[StructLayout(LayoutKind.Sequential)]`）欄位順序、型別、對齊必須與 WGSL 的 `struct Params` 完全一致，通常以 `_pad` 補齊到 16 位元組的倍數。
+- 色溫與色調的符號契約是「正值 = 暖、正值 = 洋紅（綠通道下降）」：`basic.*` 相對調整（`g × (1 − tint·0.12)`）、RAW 白平衡（負 = 綠、正 = 洋紅）、`raw.mask_*` 與 `skin.*` 全部同向，也與滑桿軌道的綠→洋紅漸層一致。新增或改動色調路徑時不得反轉此符號。
 - 散景的清晰區與動態模糊、縮放旋轉模糊的保護區共用同一組形狀（圓、橢圓、水平帶、垂直帶，加長寬比與角度）：算圖用 `ShapeMask.Distance`／`common/sampling.wgsl` 的 `shape_distance`，預覽範圍輪廓與拖曳用 `EffectFootprint` 的 `ShapeKeys`。三處的公式要一起改。預設（圓形、長寬比 0、角度 0）與舊版輸出相同。
 - GPU 只有 4 張工作紋理輪流使用（`Next(...)` 會避開正在讀的紋理）；新增需要多張中間結果的 pass 時要用 `reserve` 參數保護。
 - 半徑、大小類參數以**短邊比例**計算，預覽代理圖與原尺寸匯出的外觀才會一致。

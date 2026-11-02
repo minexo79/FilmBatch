@@ -21,7 +21,7 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
     // 色溫（線性光中的近似通道增益）與色調（綠↔洋紅）
     c = vec4f(
         c.r * (1.0 + p.temperature * 0.18),
-        c.g * (1.0 + p.tint * 0.12),
+        c.g * (1.0 - p.tint * 0.12),
         c.b * (1.0 - p.temperature * 0.18),
         c.a);
     textureStore(dst, id.xy, c);

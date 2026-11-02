@@ -155,6 +155,30 @@ public sealed class EffectPipelineTests
     }
 
     [Theory]
+    [InlineData(100.0, false)]
+    [InlineData(-100.0, false)]
+    [InlineData(100.0, true)]
+    [InlineData(-100.0, true)]
+    public void BasicTint_PositiveShiftsTowardMagenta(double tint, bool gpu)
+    {
+        // 色調正值是洋紅（綠通道下降），與 RAW 白平衡、語意遮罩／膚色色調和軌道漸層方向一致；
+        // 先前線性增益符號反轉，往洋紅方向拖反而變綠。
+        var source = new SourceImage(1, 1, [32768, 32768, 32768, 65535]);
+        using IPreviewRenderer? renderer = gpu ? TryCreateGpu() : new CpuFakeRenderer();
+        Assert.SkipWhen(renderer is null, "No GPU");
+        var output = renderer!.Render16(source, ModuleCatalog.Defaults.With("basic.tint", tint),
+            TestContext.Current.CancellationToken).Rgba16;
+        if (renderer is GpuSpikeRenderer device) Assert.False(device.UsingCpu);
+        if (tint > 0)
+            Assert.True(output[1] < output[0] && output[1] < output[2],
+                $"tint=+{tint} 應偏洋紅（綠下降），實得 {output[0]},{output[1]},{output[2]}");
+        else
+            Assert.True(output[1] > output[0] && output[1] > output[2],
+                $"tint={tint} 應偏綠（綠上升），實得 {output[0]},{output[1]},{output[2]}");
+        Assert.Equal((ushort)65535, output[3]);
+    }
+
+    [Theory]
     [InlineData(59.0, -100.0, false)]
     [InlineData(100.0, -100.0, false)]
     [InlineData(59.0, 100.0, false)]

@@ -255,7 +255,7 @@ public static class CpuPipeline
     {
         var gain = MathF.Pow(2, p.Exposure);
         var red = gain * (1 + p.Temperature / 100f * .18f);
-        var green = gain * (1 + p.Tint / 100f * .12f);
+        var green = gain * (1 - p.Tint / 100f * .12f);
         var blue = gain * (1 - p.Temperature / 100f * .18f);
         var mult = Vector128.Create(red, green, blue, 1f);
         Parallel.For(0, count, pixel =>
