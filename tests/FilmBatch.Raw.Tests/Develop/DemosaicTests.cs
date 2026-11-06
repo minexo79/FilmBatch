@@ -111,6 +111,29 @@ public sealed class DemosaicTests
     }
 
     [Theory]
+    [InlineData(0x3c1118c4u, 0x3e53dbc6u)]
+    [InlineData(0x3dcccccdU, 0x3eeda63cU)]
+    [InlineData(0x3e000000u, 0x3f000000u)]
+    [InlineData(0x3e4ccccdU, 0x3f15b5afU)]
+    [InlineData(0x3f000000u, 0x3f4b2ff5u)]
+    [InlineData(0x3f800000u, 0x3f800000u)]
+    [InlineData(0x40000000u, 0x3fa14518u)]
+    [InlineData(0x41000000u, 0x40000000u)]
+    [InlineData(0x7f7fffffU, 0x54cb2ff5U)]
+    public void AhdCubeRootCorrectsPlatformEstimates(uint inputBits, uint expectedBits)
+    {
+        // Each expected root was checked against the exact integer cubes of its
+        // adjacent float midpoints; the Lab branch only supplies positive values.
+        var value = BitConverter.UInt32BitsToSingle(inputBits);
+        for (var offset = -2; offset <= 2; offset++)
+        {
+            var estimate = BitConverter.UInt32BitsToSingle((uint)((long)expectedBits + offset));
+            var actual = Demosaic.CorrectAhdCubeRoot(value, estimate);
+            Assert.Equal(expectedBits, BitConverter.SingleToUInt32Bits(actual));
+        }
+    }
+
+    [Theory]
     [InlineData(-1, 5, 1)] [InlineData(-2, 5, 2)] [InlineData(5, 5, 3)] [InlineData(6, 5, 2)] [InlineData(3, 1, 0)] [InlineData(-7, 2, 1)]
     public void ReflectIndices(int i, int n, int expected) => Assert.Equal(expected, Demosaic.Reflect(i, n));
     [Fact]

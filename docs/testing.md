@@ -179,7 +179,7 @@ CPU 目標是程序相對全機邏輯核心的合作式背景目標，不是硬�
 
 ```bash
 dotnet test tests/FilmBatch.Raw.Tests/FilmBatch.Raw.Tests.csproj -c Release \
-  --filter "FullyQualifiedName~GpuAhdTests|FullyQualifiedName~GpuColourTests|FullyQualifiedName~RawGpuPolicyTests|FullyQualifiedName~RawEmbeddedThumbnailTests"
+  --filter "FullyQualifiedName~DemosaicTests|FullyQualifiedName~GpuAhdTests|FullyQualifiedName~GpuColourTests|FullyQualifiedName~RawGpuPolicyTests|FullyQualifiedName~RawEmbeddedThumbnailTests"
 dotnet test tests/FilmBatch.App.Tests/FilmBatch.App.Tests.csproj -c Release \
   --filter "FullyQualifiedName~CacheAdmissionTests|FullyQualifiedName~DecodeBudgetTests|FullyQualifiedName~OffThreadScalingTests|FullyQualifiedName~PreviewCanvasWindowTests"
 ```
@@ -194,6 +194,10 @@ GPU 像素測試先檢查硬體；沒有硬體或裝置限制使案例無法執�
 | 色彩收尾 | `abs(cpu - gpu) > 1e-3 × max(1e-2, abs(cpu))` | 少於 0.1% |
 
 額外的 `GpuAhdTests.Gpu_ahd_near_ties_do_not_amplify_math_roundoff` 使用精確 12-bit 合成馬賽克、RGGB／GBRG 與 2049×2049 尺寸，檢查 Lab 近等距不會把捨入差放大成另一組 RGB 候選；最大絕對差上限為預先固定的 `2e-6`。尺寸同時跨越 CPU 128-pixel tile、GPU 256-row band 與最後一列／行；兩案例先在舊 shader 失敗，再於修正後通過。這是特定回歸的不變量，不替代上表的既有一般容差或跨硬體畫質驗收。全尺寸與獨立立方根控制見[實測 §13](evidence/performance-local-2026-10-26.md#13-raw-ahd-捨入與方向選擇修復)。
+
+Windows x64 曾回報此案例的 RGGB 最大差 `0.0416870117`、GBRG 最大差 `0.101325989`。Windows CPU Lab 現在會修正 `MathF.Cbrt` 估計的相鄰浮點舍入；`DemosaicTests.AhdCubeRootCorrectsPlatformEstimates` 以獨立確認的結果及偏移兩個 ULP 的估計檢查此步驟，不改原 GPU 門檻。合成資料上刻意讓部分估計差一個 ULP 可放大為 AHD 選向差，但尚未確認 Windows 回報的第一個分歧就是立方根；仍需在受影響的 Windows 硬體上重跑原測試，並在失敗時比較 CPU／GPU 各階段。
+
+校正需要額外的 CPU 運算；Mac 上以 2049×2049 合成馬賽克強制執行校正，暖機後五次量測的中位數由 233.2 ms 增至 339.4 ms。正式路徑僅在 Windows 啟用校正；此單機數字不代表 Windows 或實拍 RAW 的效能。
 
 `FILMBATCH_NO_GPU_DEMOSAIC=1` 須在啟動前設定，會同時停用兩個 RAW GPU 階段；它不會停用效果算圖器。App 的 RAW GPU 政策遵守 `ForceSoftwareGpu`、指定後端及 `GpuMemoryLimitMb`，且 iOS 不啟用。直接 `ImageLoader.LoadFull`、CLI 與 `BatchExporter` 的 RAW 解碼固定走 CPU；驗證 V4 時仍須分別確認效果算圖真的使用硬體／CPU，不能只看啟動成功。
 

@@ -126,12 +126,49 @@ public static partial class Demosaic
         }
     }
 
+    // Lab passes positive normal values above .008856. Platform cbrtf may return
+    // an adjacent float; a one-ULP difference can change AHD's direction vote.
+    internal static float CorrectAhdCubeRoot(float value, float estimate)
+    {
+        if (!float.IsFinite(value)) return estimate;
+        while (true)
+        {
+            var bits = BitConverter.SingleToUInt32Bits(estimate);
+            var lower = BitConverter.UInt32BitsToSingle(bits - 1);
+            var upper = BitConverter.UInt32BitsToSingle(bits + 1);
+            var odd = (bits & 1) != 0;
+            var lowComparison = CompareCube(((double)lower + estimate) * .5, value);
+            if (lowComparison > 0 || (lowComparison == 0 && odd)) { estimate = lower; continue; }
+            var highComparison = CompareCube(((double)upper + estimate) * .5, value);
+            if (highComparison < 0 || (highComparison == 0 && odd)) { estimate = upper; continue; }
+            return estimate;
+        }
+
+        static int CompareCube(double midpoint, float x)
+        {
+            // A midpoint of adjacent normal floats has at most 25 significant
+            // bits, so its square is exact in double. If the rounded cube equals
+            // x, FMA recovers the product residual without a 75-bit integer.
+            var square = midpoint * midpoint;
+            var cube = square * midpoint;
+            if (cube < x) return -1;
+            if (cube > x) return 1;
+            return Math.Sign(Math.FusedMultiplyAdd(square, midpoint, -cube));
+        }
+    }
+
+
     private static Rgb Lab(Rgb p)
     {
         var x = (.4124f * p.R + .3576f * p.G + .1805f * p.B) / .95047f;
         var y = .2126f * p.R + .7152f * p.G + .0722f * p.B;
         var z = (.0193f * p.R + .1192f * p.G + .9505f * p.B) / 1.08883f;
-        static float F(float t) => t > .008856f ? MathF.Cbrt(t) : 7.787f * t + 16f / 116f;
+        static float F(float t)
+        {
+            if (!(t > .008856f)) return 7.787f * t + 16f / 116f;
+            var root = MathF.Cbrt(t);
+            return OperatingSystem.IsWindows() ? CorrectAhdCubeRoot(t, root) : root;
+        }
         var fx = F(x); var fy = F(y); var fz = F(z);
         return new(116f * fy - 16f, 500f * (fx - fy), 200f * (fy - fz));
     }

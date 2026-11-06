@@ -154,7 +154,7 @@ RAW 預覽擬合會先依 JPEG 的 ICC／EXIF／容器宣告決定色彩，只�
 
 內嵌 RAW 預覽 ICC 同時具有矩陣／TRC 與 A2B／D2B 標籤時交由 CMS 選擇 relative colorimetric 轉換，而非先取矩陣；桌面使用 Magick／LCMS，Apple 使用 ColorSync 浮點轉換。CMS 入場必須符合 RGB、灰階或 CMYK 的實際通道數。截斷的 ICC 不可使整個 JPEG 預覽因讀取越界失敗；無效或無法轉換的描述檔依原有規則回退，不能把該結果視為成功套用 ICC。
 
-GPU AHD 的 green／候選 RGB／Lab／同質性距離依 CPU 的 f32 運算結合順序計算；四個 pass 共用 32-byte uniform，以執行時上傳的零 `rounding_mask` 保留捨入點，不截斷位元。Lab 正值分支以乘積餘差、Newton 修正與相鄰浮點中點判定求立方根，不再用 `pow(t, fl32(1/3))`。CPU 的 `MathF.Cbrt`、CFA 插值、反射邊界、同質性整數比較／平手平均、GPU 入場與 CPU 匯出隔離不變。近等距／不完整 tile 與 band 的回歸及全尺寸實拍見[數值證據](../evidence/performance-local-2026-10-26.md#13-raw-ahd-捨入與方向選擇修復)；本機位元相同不構成跨相機／後端的普遍保證。
+GPU AHD 的 green／候選 RGB／Lab／同質性距離依 CPU 的 f32 運算結合順序計算；四個 pass 共用 32-byte uniform，以執行時上傳的零 `rounding_mask` 保留捨入點，不截斷位元。GPU 的 Lab 正值分支以乘積餘差、Newton 修正與相鄰浮點中點判定求立方根，不再用 `pow(t, fl32(1/3))`。Windows CPU 先以 `MathF.Cbrt` 取得估計，再依相鄰浮點中點的精確立方比較修正舍入，避免平台數學函式的一位誤差翻轉同質性投票；原本已正確舍入的結果不變，原本錯誤舍入者的 AHD 選向可能改變。其他平台沿用 `MathF.Cbrt`；CFA 插值、反射邊界、同質性整數比較／平手平均、GPU 入場與 CPU 匯出隔離不變。近等距／不完整 tile 與 band 的回歸及全尺寸實拍見[數值證據](../evidence/performance-local-2026-10-26.md#13-raw-ahd-捨入與方向選擇修復)；本機位元相同不構成跨相機／後端的普遍保證。
 
 沒有 OpcodeList3 且未安裝 GPU AHD 加速器時，Bayer CPU AHD 直接依預設裁切區運算，以完整感光區作反射邊界；非方形像素仍在裁切後拉伸。存在 List3、非 Bayer、過小影像或已安裝加速器時保留原本全圖與 GPU 入場路徑。內附 Sony ILCE-7RM5 相機統計 profile 僅在既有非 DNG 相機 JPEG 擬合條件成立時參與矩陣與色彩表擬合；它不是外部 DCP，也不保證模擬原廠外觀。
 
