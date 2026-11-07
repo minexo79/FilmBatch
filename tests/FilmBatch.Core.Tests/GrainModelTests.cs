@@ -64,6 +64,26 @@ public sealed class GrainModelTests
         Assert.NotEqual(first, other);
     }
 
+    [Theory]
+    [InlineData("clumps", 16000)]
+    [InlineData("clumps", 30000)]
+    [InlineData("correlated", 16000)]
+    [InlineData("correlated", 30000)]
+    [InlineData("optical", 16000)]
+    [InlineData("optical", 30000)]
+    public void GrainModel_DoesNotShiftMeanLevel(string model, int level)
+    {
+        // 顆粒只該加入雜訊，不該改變平均明度：平坦、未截斷的中間調上，殘差平均需遠小於 1%。
+        var source = Flat(640, 480, (ushort)level);
+        var off = Render(source, ModuleCatalog.Defaults);
+        var px = Render(source, Grain(model, amount: 100, size: 20));
+        double sum = 0;
+        var n = px.Length / 4;
+        for (var i = 0; i < px.Length; i += 4) sum += (px[i] - off[i]) / 65535.0;
+        var bias = sum / n;
+        Assert.True(Math.Abs(bias) < 0.002, $"{model}@{level} 平均偏移 {bias:F5}");
+    }
+
     [Fact]
     public void GrainSoftness_ProxyBlurNarrowsEdgeTransition()
     {

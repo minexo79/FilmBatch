@@ -170,8 +170,9 @@ fn optical_coverage(qx: f32, qy: f32, r0: f32, shadow: f32, rough_q: i32,
         for (var dx = -2; dx <= 2; dx++) {
             let cx = ccx + dx;
             let cy = ccy + dy;
-            // 每格圓盤密度的低頻調變（0..1024）：基準 700，粗糙度越高覆蓋越不均
-            let density = clamp(700 + clump_density(cx, cy, rough_q, seed + 1409u) - 614, 0, 1024);
+            // 每格圓盤密度的低頻調變（0..1024）：基準 700，粗糙度越高覆蓋越不均。
+            // 團聚值雜訊的實際平均為 511（非 614），+103·rough/256 補回平均，使期望密度維持 700。
+            let density = clamp(700 + clump_density(cx, cy, rough_q, seed + 1409u) - 614 + 103 * rough_q / 256, 0, 1024);
             let base = seed + bitcast<u32>(cx) * 4001u + bitcast<u32>(cy) * 7919u + 1409u;
             let count = poisson_cell_count(pcg(base), density);
             for (var j = 0; j < count; j++) {
@@ -208,11 +209,20 @@ fn grain_optical(x: f32, y: f32, r0: f32, shadow: f32, rough_q: i32, spread: f32
     let pix = pcg(seed + bitcast<u32>(i32(floor(x))) * 668265263u
         + bitcast<u32>(i32(floor(y))) * 2246822519u);
     // 布林模型期望覆蓋率：E[cover] = 1 − e^(−λ̄·E[A])，λ̄ = 平均密度 700/640 每格；
-    // E[A] = π·(E[rr²] + E[edge²])，edge = max(rr/4, 0.35) 分段近似。
+    // E[A] = π·(E[rr²] + 0.2·E[edge²])，edge = max(rr/4, 0.35) 分段近似；0.2 為 smoothstep 邊緣的精確積分。
     let g = 1.0 + 0.6 * shadow;
     let mean_r2 = r0 * r0 * g * g * (1.0 + 0.64 * spread * spread / 3.0);
-    let mean_a = 3.14159265358979 * (mean_r2 + max(mean_r2 * 0.0625, 0.1225));
-    let p_exp = 1.0 - exp(-(700.0 / 640.0) * mean_a / (cell * cell));
+    let mean_a = 3.14159265358979 * (mean_r2 + 0.2 * max(mean_r2 * 0.0625, 0.1225));
+    // 格密度起伏下 1−e^(−λA) 為凹函數：以團聚值分佈的八分位平均逐點取期望（見 CpuPipeline.GrainOptical）
+    let area_cells = mean_a / (cell * cell);
+    let rn = f32(rough_q) * (1.0 / 256.0);
+    var octiles = array<f32, 8>(0.0, 76.0, 267.0, 434.0, 590.0, 756.0, 947.0, 1024.0);
+    var p_exp = 0.0;
+    for (var q = 0; q < 8; q++) {
+        let dens = clamp(700.0 + (octiles[q] - 511.0) * rn, 0.0, 1024.0);
+        p_exp += 1.0 - exp(-area_cells * dens * (1.0 / 640.0));
+    }
+    p_exp *= 0.125;
     var luma = 0.0;
     var chroma = vec3f(0.0);
     for (var s_index = 0u; s_index < samples; s_index++) {

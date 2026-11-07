@@ -1480,6 +1480,8 @@ public static class CpuPipeline
     /// 布林期望空隙率置中（不再用全域平均）；觀測值 = 高斯光圈內的覆蓋率，
     /// 以有界 Monte Carlo（等面積極座標分層＋每像素種子抖動）估算，光圈 σ 已含像素足跡。
     /// </summary>
+    private static readonly float[] OpticalClumpOctiles = [0f, 76f, 267f, 434f, 590f, 756f, 947f, 1024f];
+
     private static (float Luma, float R, float G, float B) GrainOptical(
         float x, float y, float r0, float shadow, int roughQ, float spread,
         int samples, float cell, float sigma, uint seed)
@@ -1487,11 +1489,22 @@ public static class CpuPipeline
         var pix = SeedHash.Pcg(unchecked(seed + (uint)(int)MathF.Floor(x) * 668265263u
             + (uint)(int)MathF.Floor(y) * 2246822519u));
         // 布林模型期望空隙率：E[cover] = 1 − e^(−λ̄·π·E[A])，λ̄ = 平均密度 700/640 每格；
-        // E[A] = π·(E[rr²] + E[edge²])，edge = max(rr/4, 0.35) 分段近似。逐像素隨 shadow 置中。
+        // E[A] = π·(E[rr²] + 0.2·E[edge²])，edge = max(rr/4, 0.35) 分段近似；0.2 為 smoothstep 邊緣的精確積分
+        // ∫w·dA = π(rr² + 0.2·edge²)。逐像素隨 shadow 置中。
         var g = 1f + 0.6f * shadow;
         var meanR2 = r0 * r0 * g * g * (1f + 0.64f * spread * spread / 3f);
-        var meanA = MathF.PI * (meanR2 + MathF.Max(meanR2 * 0.0625f, 0.1225f));
-        var pExp = 1f - MathF.Exp(-(700f / 640f) * meanA / (cell * cell));
+        var meanA = MathF.PI * (meanR2 + 0.2f * MathF.Max(meanR2 * 0.0625f, 0.1225f));
+        // 格密度隨低頻團聚雜訊起伏，1−e^(−λA) 對 λ 為凹函數，不能用平均密度代入（會高估覆蓋、整體偏暗）：
+        // 以團聚值分佈的八分位平均 {0,76,267,434,590,756,947,1024} 逐點取期望。
+        var areaCells = meanA / (cell * cell);
+        var rn = roughQ * (1f / 256f);
+        var pExp = 0f;
+        for (var q = 0; q < OpticalClumpOctiles.Length; q++)
+        {
+            var dens = Math.Clamp(700f + (OpticalClumpOctiles[q] - 511f) * rn, 0f, 1024f);
+            pExp += 1f - MathF.Exp(-areaCells * dens * (1f / 640f));
+        }
+        pExp *= 1f / OpticalClumpOctiles.Length;
         float luma = 0, sr = 0, sg = 0, sb = 0;
         for (var sIndex = 0; sIndex < samples; sIndex++)
         {
@@ -1533,8 +1546,9 @@ public static class CpuPipeline
         {
             var cx = ccx + dx;
             var cy = ccy + dy;
-            // 每格圓盤密度的低頻調變（0..1024）：基準 700，粗糙度越高覆蓋越不均
-            var density = Math.Clamp(700 + ClumpDensity(cx, cy, roughQ, seed + 1409u) - 614, 0, 1024);
+            // 每格圓盤密度的低頻調變（0..1024）：基準 700，粗糙度越高覆蓋越不均。
+            // 團聚值雜訊的實際平均為 511（非 614），+103·rough/256 補回平均，使期望密度維持 700。
+            var density = Math.Clamp(700 + ClumpDensity(cx, cy, roughQ, seed + 1409u) - 614 + 103 * roughQ / 256, 0, 1024);
             var cellBase = unchecked(seed + (uint)cx * 4001u + (uint)cy * 7919u + 1409u);
             var count = PoissonCellCount(SeedHash.Pcg(cellBase), density);
             for (var j = 0; j < count; j++)
