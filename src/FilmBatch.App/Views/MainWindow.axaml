@@ -105,7 +105,7 @@
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="5">
               <TextBlock Classes="pill-label" Text="DISK" />
-              <TextBlock Classes="numeric" Classes.hot="{Binding DiskHot}" Text="{Binding DiskText}" />
+              <TextBlock Classes="numeric" Text="{Binding DiskText}" />
             </StackPanel>
           </StackPanel>
         </Border>

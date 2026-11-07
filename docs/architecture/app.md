@@ -117,7 +117,7 @@ flowchart TB
 
 直方圖的平滑只在 `Controls/HistogramView.cs` 的顯示高度上套用五格 `[1,4,6,4,1]/16` 濾波，不改 `ImageHistogram` 的原始 bins 或黑白裁切比例。每次資料更新建立新的 `StreamGeometry`，只在相同資料的重繪間快取；重新 `Open()` 舊 geometry 會累加 figures。空資料與卸載必須清掉舊圖，避免把歷史曲線當成目前統計。
 
-資源使用率沿用既有左下角 RAM 區塊：提示分列系統 RAM、FilmBatch RSS 與 AI retained pixels（神經／來源／預覽輸入），不相加。`SystemMonitor` 每秒在背景取得值型別快照，經既有 `_post` 更新 UI；監控本身不建立 shared AI processor／ORT session。提示在語言切換時立即更新，關閉原有「顯示使用率」偏好即一起隱藏。RAM 百分比與 hot 門檻不變；非 Windows 仍沿用 .NET GC 的系統記憶體觀測，程序尚未 GC 時可能顯示零，這不是 AI 像素統計或即時 OS 計數器。
+左下角資源使用率只顯示本程序：CPU＝程序 CPU 時間比、GPU＝效能計數器中本 pid 的 3D 引擎、RAM＝工作集（MB／GB）、DISK＝程序讀寫速率（MB/s）。RAM 提示：提示分列系統 RAM、FilmBatch RSS 與 AI retained pixels（神經／來源／預覽輸入），不相加。`SystemMonitor` 每秒在背景取得值型別快照，經既有 `_post` 更新 UI；監控本身不建立 shared AI processor／ORT session。提示在語言切換時立即更新，關閉原有「顯示使用率」偏好即一起隱藏。hot 門檻（≥85%）對 RAM 以程序工作集佔系統 RAM 比例判斷；非 Windows 仍沿用 .NET GC 的系統記憶體觀測，程序尚未 GC 時可能顯示零，這不是 AI 像素統計或即時 OS 計數器。
 
 ### 主題
 

@@ -29,7 +29,7 @@ public sealed partial class MainWindowViewModel
     [ObservableProperty]
     private string _renderProgressText = "";
 
-    /// <summary>顯示使用率（偏好設定，與除錯模式分開）：底列顯示 CPU／GPU／RAM／磁碟使用量。</summary>
+    /// <summary>顯示使用率（偏好設定，與除錯模式分開）：底列顯示本程序的 CPU／GPU／RAM／磁碟使用量。</summary>
     [ObservableProperty]
     private bool _showResourceUsage;
 
@@ -62,14 +62,10 @@ public sealed partial class MainWindowViewModel
     public bool CpuHot => CpuPercent >= HotPercent;
     public bool GpuHot => GpuPercent >= HotPercent;
     public bool RamHot => RamPercent >= HotPercent;
-    public bool DiskHot => DiskPercent >= HotPercent;
 
     partial void OnCpuPercentChanged(double value) => OnPropertyChanged(nameof(CpuHot));
     partial void OnGpuPercentChanged(double value) => OnPropertyChanged(nameof(GpuHot));
     partial void OnRamPercentChanged(double value) => OnPropertyChanged(nameof(RamHot));
-    partial void OnDiskPercentChanged(double value) => OnPropertyChanged(nameof(DiskHot));
-    [ObservableProperty]
-    private double _diskPercent;
 
 
     // ───────────── 底列右側共用的進度條：算圖進度優先，其次是縮圖載入 ─────────────
@@ -187,10 +183,12 @@ public sealed partial class MainWindowViewModel
         GpuPercent = s.GpuPercent ?? 0;
         GpuText = s.GpuPercent is { } gpu ? $"{gpu:F1}%" : "—";
         RamPercent = s.RamPercent;
-        RamText = $"{s.RamPercent:F1}%";
-        DiskPercent = s.DiskPercent ?? 0;
-        DiskText = s.DiskPercent is { } disk ? $"{disk:F1}%" : "—";
+        RamText = FormatBytes(s.AppBytes);
+        DiskText = s.DiskBytesPerSec is { } disk ? $"{disk / (1024.0 * 1024):F1} MB/s" : "—";
     }
+
+    private static string FormatBytes(long bytes) =>
+        bytes >= 1024L * 1024 * 1024 ? $"{Gb(bytes):F2} GB" : $"{bytes / (1024.0 * 1024):F0} MB";
 
     private static double Gb(long bytes) => bytes / (1024.0 * 1024 * 1024);
 }
