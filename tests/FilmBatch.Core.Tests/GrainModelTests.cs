@@ -48,6 +48,7 @@ public sealed class GrainModelTests
     [InlineData("clumps")]
     [InlineData("correlated")]
     [InlineData("optical")]
+    [InlineData("density")]
     public void GrainModel_RendersDeterministically_AndSeedChangesTexture(string model)
     {
         var source = Flat(160, 120);
@@ -71,6 +72,8 @@ public sealed class GrainModelTests
     [InlineData("correlated", 30000)]
     [InlineData("optical", 16000)]
     [InlineData("optical", 30000)]
+    [InlineData("density", 16000)]
+    [InlineData("density", 30000)]
     public void GrainModel_DoesNotShiftMeanLevel(string model, int level)
     {
         // 顆粒只該加入雜訊，不該改變平均明度：平坦、未截斷的中間調上，殘差平均需遠小於 1%。
@@ -82,6 +85,37 @@ public sealed class GrainModelTests
         for (var i = 0; i < px.Length; i += 4) sum += (px[i] - off[i]) / 65535.0;
         var bias = sum / n;
         Assert.True(Math.Abs(bias) < 0.002, $"{model}@{level} 平均偏移 {bias:F5}");
+    }
+
+    private static double ResidualStdR(ushort[] px, ushort[] off)
+    {
+        double sum = 0, sq = 0;
+        var n = px.Length / 4;
+        for (var i = 0; i < px.Length; i += 4)
+        {
+            double d = px[i] - off[i];
+            sum += d; sq += d * d;
+        }
+        var mean = sum / n;
+        return Math.Sqrt(Math.Max(0, sq / n - mean * mean));
+    }
+
+    [Fact]
+    public void DensityGrain_NoiseStdDependsOnDensity()
+    {
+        // 密度驅動：雜訊標準差 ∝ sqrt(p(1−0.85p))，中間調必須比深暗部更吵（三段響應都設 100 排除段權重差）。
+        double Std(ushort level)
+        {
+            var source = Flat(320, 240, level);
+            var off = Render(source, ModuleCatalog.Defaults);
+            var settings = Grain("density", amount: 100, size: 20)
+                .With("grain.shadows", 100.0).With("grain.midtones", 100.0).With("grain.highlights", 100.0);
+            return ResidualStdR(Render(source, settings), off);
+        }
+        var dark = Std(6000);
+        var mid = Std(30000);
+        Assert.True(dark > 0, "暗部仍應有顆粒");
+        Assert.True(mid > dark * 1.5, $"中間調標準差 {mid:F1} 應明顯大於暗部 {dark:F1}");
     }
 
     [Fact]
@@ -249,6 +283,7 @@ public sealed class GrainModelTests
     [InlineData("clumps")]
     [InlineData("correlated")]
     [InlineData("optical")]
+    [InlineData("density")]
     public void Gpu_MatchesCpu_OnAllGrainModels(string model)
     {
         GpuSpikeRenderer? gpu;

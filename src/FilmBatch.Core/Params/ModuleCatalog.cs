@@ -238,7 +238,7 @@ public static class ModuleCatalog
         new("grain", "顆粒", ModuleGroup.Surface, PasteCategory.Surface,
         [
             Bool(ModuleSchema.EnabledKey, "啟用"),
-            Choice("model", "模型", O("clumps", "柔邊團塊"), O("correlated", "連續相關顆粒"), O("optical", "光學圓盤")),
+            Choice("model", "模型", O("clumps", "柔邊團塊"), O("correlated", "連續相關顆粒"), O("optical", "光學圓盤"), O("density", "密度驅動")),
             Float("amount", "強度", 25, 0, 100),
             Float("size", "大小", 30, 1, 100),
             Float("roughness", "粗糙度", 50, 0, 100),

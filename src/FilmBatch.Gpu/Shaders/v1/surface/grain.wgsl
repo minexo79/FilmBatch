@@ -1,4 +1,4 @@
-// 顆粒（5.3.16）：三種可選模型（clumps／correlated／optical），全部以「已現像來源像素」為
+// 顆粒（5.3.16）：四種可選模型（clumps／correlated／optical／density），全部以「已現像來源像素」為
 // 座標與尺度的參考。輸出像素經 map_x/map_y 逆仿射映回來源參考平面，裁切、旋轉、翻轉、
 // 縮小預覽與分帶讀回都不改變底層紋理；輸出像素的參考足跡大於顆粒結構時做足跡濾波淡出，
 // 而不是把顆粒座標直接縮小。暗部／中間調／高光響應為獨立的顯示亮度帶權重（tone.x/y/z）。
@@ -12,7 +12,7 @@ struct Params {
     map_x: vec4f,   // A00, A01, B0, -
     map_y: vec4f,   // A10, A11, B1, r0
     seed: u32,
-    model: u32,     // 0 clumps, 1 correlated, 2 optical
+    model: u32,     // 0 clumps, 1 correlated, 2 optical, 3 density
     samples: u32,   // 4..32
     rough_q: u32,   // round(roughness * 256)
     tone: vec4f,    // shadows, midtones, highlights, footprint(pixel_scale)
@@ -138,6 +138,66 @@ fn grain_correlated(x: f32, y: f32, r0: f32, rough_q: i32, footprint: f32,
     let mean = (chroma.x + chroma.y + chroma.z) / 3.0;
     return Grain(clamp(luma * gain, -1.5, 1.5),
         clamp((chroma - vec3f(mean)) * gain, vec3f(-1.5), vec3f(1.5)));
+}
+
+fn unit24(h: u32) -> f32 { return f32(h >> 8u) * (1.0 / 16777216.0); }
+
+// 密度驅動模型的單通道 Z 場：每格一個高斯核脈衝（Irwin-Hall(4) 縮放為單位方差的隨機值），
+// 以 sw / sqrt(Σw²) 正規化使每個像素方差為 1，再乘足跡淡出。channel：0 luma，1..3 = R,G,B。
+fn density_field(x: f32, y: f32, cell: f32, fade: f32, channel: u32, seed: u32) -> f32 {
+    if (fade <= 0.0) { return 0.0; }
+    let ccx = i32(floor(x / cell));
+    let ccy = i32(floor(y / cell));
+    let inv2s = 1.0 / (2.0 * (0.55 * cell) * (0.55 * cell));
+    var sw = 0.0;
+    var sq = 0.0;
+    for (var dy = -1; dy <= 1; dy++) {
+        for (var dx = -1; dx <= 1; dx++) {
+            let cx = ccx + dx;
+            let cy = ccy + dy;
+            let base = seed + 17u * (channel + 1u) + bitcast<u32>(cx) * 4001u + bitcast<u32>(cy) * 7919u;
+            var h = pcg(base);
+            let px = (f32(cx) + unit24(h)) * cell;
+            h = pcg(h);
+            let py = (f32(cy) + unit24(h)) * cell;
+            let h1 = pcg(h);
+            let h2 = pcg(h1);
+            let h3 = pcg(h2);
+            let h4 = pcg(h3);
+            let z = (unit24(pcg(h1)) + unit24(pcg(h2)) + unit24(pcg(h3)) + unit24(pcg(h4)) - 2.0) * 1.7320508;
+            let ddx = x - px;
+            let ddy = y - py;
+            let w = exp(-(ddx * ddx + ddy * ddy) * inv2s);
+            sw += w * z;
+            sq += w * w;
+        }
+    }
+    return sw / sqrt(max(sq, 1e-6)) * fade;
+}
+
+// 密度驅動顆粒：已顯影顆粒數為 Poisson 播種經 Binomial(p) 稀疏化，標準差 √(p(1−pU)/n)，
+// p = 顯示亮度；取高斯極限 dev = std(p)·Z。Z 為空間相關單位方差場，亮度與 RGB 各自獨立。
+fn grain_density(x: f32, y: f32, r0: f32, lum: f32, rough_q: i32, footprint: f32, seed: u32) -> Grain {
+    let rn = f32(rough_q) * (1.0 / 256.0);
+    let n = 6.0 + 42.0 * (1.0 - rn);
+    let pp = clamp(lum, 0.02, 0.98);
+    let env = sqrt(pp * (1.0 - pp * 0.85) / n) / sqrt(0.5 * (1.0 - 0.5 * 0.85) / 24.0);
+    let cell0 = r0 * 2.2;
+    let cell_l = cell0;
+    let cell_r = cell0;
+    let cell_g = cell0 * 0.8;
+    let cell_b = cell0 * 1.6;
+    let fade_l = 1.0 - smoothstep_f(0.7, 1.8, footprint / (0.5 * cell_l));
+    let fade_r = 1.0 - smoothstep_f(0.7, 1.8, footprint / (0.5 * cell_r));
+    let fade_g = 1.0 - smoothstep_f(0.7, 1.8, footprint / (0.5 * cell_g));
+    let fade_b = 1.0 - smoothstep_f(0.7, 1.8, footprint / (0.5 * cell_b));
+    let zl = density_field(x, y, cell_l, fade_l, 0u, seed);
+    let zr = density_field(x, y, cell_r, fade_r, 1u, seed);
+    let zg = density_field(x, y, cell_g, fade_g, 2u, seed);
+    let zb = density_field(x, y, cell_b, fade_b, 3u, seed);
+    let mean = (zr + zg + zb) / 3.0;
+    return Grain(clamp(zl * env, -1.5, 1.5),
+        clamp((vec3f(zr, zg, zb) - vec3f(mean)) * env, vec3f(-1.5), vec3f(1.5)));
 }
 
 // 光學模型的每格圓盤數：真正的 Poisson(λ) 計數（λ = density/640），反函數查表累積機率質量；
@@ -271,6 +331,10 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
             g.chroma *= 0.35;
         } else if (p.model == 1u) {
             g = grain_correlated(gx, gy, p.map_y.w, rough_q, p.tone.w, p.b.w, p.a.w, p.seed);
+            g.luma *= 0.16;
+            g.chroma *= 0.16;
+        } else if (p.model == 3u) {
+            g = grain_density(gx, gy, p.map_y.w, lum, rough_q, p.tone.w, p.seed);
             g.luma *= 0.16;
             g.chroma *= 0.16;
         } else {

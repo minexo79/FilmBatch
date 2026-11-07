@@ -578,6 +578,7 @@ Clear overrides: use the new preset entirely.</value></data>
   <data name="Choice.grain.model.clumps" xml:space="preserve"><value>Soft Clumps</value></data>
   <data name="Choice.grain.model.correlated" xml:space="preserve"><value>Correlated Grain</value></data>
   <data name="Choice.grain.model.optical" xml:space="preserve"><value>Optical Disks</value></data>
+  <data name="Choice.grain.model.density" xml:space="preserve"><value>Density-driven</value></data>
   <data name="PhotoTools.Title" xml:space="preserve"><value>Photo Tools</value></data>
   <data name="PhotoTools.WbTitle" xml:space="preserve"><value>Neutral White Balance</value></data>
   <data name="PhotoTools.SkinTitle" xml:space="preserve"><value>Skin Tone</value></data>

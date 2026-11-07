@@ -1180,6 +1180,8 @@ public static class CpuPipeline
     /// <item>correlated：多尺度 Poisson 脈衝經等向徑向 Wendland 核重建的連續相關場；粗糙度控制高頻倍頻的衰減。</item>
     /// <item>optical：2D Poisson／布林圓盤的光學統計近似（獨立實作，非顯影化學模擬）；
     /// 以有界高斯光圈 Monte Carlo 估算每個輸出像素覆蓋的來源參考面積，粒徑服從以 r0 為中心的均勻分布。</item>
+    /// <item>density：密度驅動（Poisson 二項式顆粒計數的高斯極限）；雜訊標準差隨顯示亮度 p 以 sqrt(p(1−0.85p)/n) 變化，
+    /// 空間結構為單位方差的高斯加權脈衝場，粒數 n 由粗糙度決定。</item>
     /// </list>
     /// 輸出像素的來源參考足跡大於顆粒結構時做足跡濾波（次像素倍頻／圓盤淡出），
     /// 不是把顆粒座標直接縮小。暗部／中間調／高光響應為獨立的顯示亮度帶權重。
@@ -1241,6 +1243,10 @@ public static class CpuPipeline
                         var (ol, ocr, ocg, ocb) = GrainOptical(gx, gy, d.R0, shadow, d.RoughQ, spread,
                             p.GrainSamples, d.CellOpt, d.SigmaOpt, seed);
                         (luma, cr, cg, cb) = (ol * 0.35f, ocr * 0.35f, ocg * 0.35f, ocb * 0.35f);
+                        break;
+                    case 3:
+                        var (dl, dcr, dcg, dcb) = GrainDensity(gx, gy, d.R0, lum, d.RoughQ, fp, seed);
+                        (luma, cr, cg, cb) = (dl * 0.16f, dcr * 0.16f, dcg * 0.16f, dcb * 0.16f);
                         break;
                     case 1:
                         var (nl, ncr, ncg, ncb) = GrainCorrelated(gx, gy, d.R0, d.RoughQ, fp, d.CorrScale, d.CorrGain, seed);
@@ -1357,6 +1363,63 @@ public static class CpuPipeline
             if (u < cum) return n;
         }
         return 8;
+    }
+
+    /// <summary>
+    /// 密度驅動模型：已顯影顆粒數 X ~ Poisson(μp)，正規化後方差 p(1−pU)/n，故雜訊標準差隨顯示亮度 p 變化；
+    /// 取高斯極限 dev = std(p)·Z，Z 為各通道獨立的單位方差空間相關場（高斯加權的 Irwin-Hall 脈衝和）。
+    /// 常數與 grain.wgsl 的 grain_density 逐步相同。
+    /// </summary>
+    private static (float Luma, float R, float G, float B) GrainDensity(
+        float x, float y, float r0, float lum, int roughQ, float footprint, uint seed)
+    {
+        const float U = 0.85f;
+        var n = 6f + 42f * (1f - roughQ / 256f);
+        var p = Math.Clamp(lum, 0.02f, 0.98f);
+        var env = MathF.Sqrt(p * (1f - p * U) / n) / MathF.Sqrt(0.5f * (1f - 0.5f * U) / 24f);
+
+        var zl = DensityField(x, y, r0 * 2.2f * 1.0f, 0u, footprint, seed);
+        var zr = DensityField(x, y, r0 * 2.2f * 1.0f, 1u, footprint, seed);
+        var zg = DensityField(x, y, r0 * 2.2f * 0.8f, 2u, footprint, seed);
+        var zb = DensityField(x, y, r0 * 2.2f * 1.6f, 3u, footprint, seed);
+        var mean = (zr + zg + zb) / 3f;
+        return (Math.Clamp(zl * env, -1.5f, 1.5f),
+            Math.Clamp((zr - mean) * env, -1.5f, 1.5f),
+            Math.Clamp((zg - mean) * env, -1.5f, 1.5f),
+            Math.Clamp((zb - mean) * env, -1.5f, 1.5f));
+    }
+
+    private static float DensityField(float x, float y, float cell, uint channel, float footprint, uint seed)
+    {
+        var fade = 1f - SmoothStep(0.7f, 1.8f, footprint / (0.5f * cell));
+        if (fade <= 0) return 0f;
+        var ccx = (int)MathF.Floor(x / cell);
+        var ccy = (int)MathF.Floor(y / cell);
+        var sigma = 0.55f * cell;
+        float sw = 0, sq = 0;
+        for (var dy = -1; dy <= 1; dy++)
+        for (var dx = -1; dx <= 1; dx++)
+        {
+            var cx = ccx + dx;
+            var cy = ccy + dy;
+            var cellBase = unchecked(seed + 17u * (channel + 1u) + (uint)cx * 4001u + (uint)cy * 7919u);
+            var h = SeedHash.Pcg(cellBase);
+            var px = (cx + SeedHash.ToUnitFloat(h)) * cell;
+            h = SeedHash.Pcg(h);
+            var py = (cy + SeedHash.ToUnitFloat(h)) * cell;
+            var h1 = SeedHash.Pcg(h);
+            var h2 = SeedHash.Pcg(h1);
+            var h3 = SeedHash.Pcg(h2);
+            var h4 = SeedHash.Pcg(h3);
+            var z = (SeedHash.ToUnitFloat(SeedHash.Pcg(h1)) + SeedHash.ToUnitFloat(SeedHash.Pcg(h2))
+                + SeedHash.ToUnitFloat(SeedHash.Pcg(h3)) + SeedHash.ToUnitFloat(SeedHash.Pcg(h4)) - 2f) * 1.7320508f;
+            var ddx = x - px;
+            var ddy = y - py;
+            var w = MathF.Exp(-(ddx * ddx + ddy * ddy) / (2f * sigma * sigma));
+            sw += w * z;
+            sq += w * w;
+        }
+        return sw / MathF.Sqrt(MathF.Max(sq, 1e-6f)) * fade;
     }
 
     /// <summary>

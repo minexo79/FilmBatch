@@ -385,6 +385,7 @@
   <data name="Choice.grain.model.clumps" xml:space="preserve"><value>柔邊團塊</value></data>
   <data name="Choice.grain.model.correlated" xml:space="preserve"><value>連續相關顆粒</value></data>
   <data name="Choice.grain.model.optical" xml:space="preserve"><value>光學圓盤</value></data>
+  <data name="Choice.grain.model.density" xml:space="preserve"><value>密度驅動</value></data>
   <data name="PhotoTools.Title" xml:space="preserve"><value>照片工具</value></data>
   <data name="PhotoTools.WbTitle" xml:space="preserve"><value>中性白平衡</value></data>
   <data name="PhotoTools.SkinTitle" xml:space="preserve"><value>膚色調整</value></data>
