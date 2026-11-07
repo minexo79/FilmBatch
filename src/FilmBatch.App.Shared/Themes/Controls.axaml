@@ -725,7 +725,7 @@
   <!-- 模組分組（整組折疊）：外框包住標題與內容，展開或收合都保留外框；分組之間留間距 -->
   <Style Selector="Border.group-box">
     <Setter Property="BorderBrush" Value="{DynamicResource FB.BorderLightBrush}" />
-    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderThickness" Value="0" />
     <Setter Property="CornerRadius" Value="6" />
     <Setter Property="Margin" Value="12,12,12,4" />
     <Setter Property="ClipToBounds" Value="True" />
