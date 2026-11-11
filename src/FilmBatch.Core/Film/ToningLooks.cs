@@ -6,15 +6,15 @@ namespace FilmBatch.Core.Film;
 public enum ToningBand
 {
     Aqua,
-    Teal,
     Amber,
+    Rose,
     AquaAmber,
     TealAmber,
     Mono,
 }
 
 /// <summary>
-/// 內建底片：以六個基準色帶（湖藍、青綠、暖黃、湖藍→暖黃、青綠→暖黃、黑白）生成每組 3×3 共九式，
+/// 內建底片：以六個基準色帶（湖藍、暖黃、豆沙紅、湖藍→暖黃、青綠→暖黃、黑白）生成每組 3×3 共九式，
 /// 載入時烘焙成 33³ 的 sRGB <see cref="FilmLut"/>，其餘流程（四面體內插、暖色、褪色、效果比例）沿用 LUT 管線。
 /// 欄為過渡（柔和、中、強烈），列為濃淡（淡、中、濃）。
 /// </summary>
@@ -24,6 +24,7 @@ public static class ToningLooks
 
     private static readonly Vector3 AquaColor = FromHex(0x30DFF3);
     private static readonly Vector3 TealColor = FromHex(0x0187AE);
+    private static readonly Vector3 RoseColor = FromHex(0xC97F7F);
     private static readonly Vector3 AmberColor = FromHex(0xFFA500);
 
     /// <summary>過渡：色帶在亮度上的 smoothstep 半寬度（柔和 → 強烈）。</summary>
@@ -78,8 +79,8 @@ public static class ToningLooks
     private static (Vector3 Shadow, Vector3 Highlight) Ends(ToningBand band) => band switch
     {
         ToningBand.Aqua => Single(AquaColor),
-        ToningBand.Teal => Single(TealColor),
         ToningBand.Amber => Single(AmberColor),
+        ToningBand.Rose => Single(RoseColor),
         ToningBand.AquaAmber => (AquaColor, AmberColor),
         ToningBand.TealAmber => (TealColor, AmberColor),
         _ => throw new ArgumentOutOfRangeException(nameof(band)),

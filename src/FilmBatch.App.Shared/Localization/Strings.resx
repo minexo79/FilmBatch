@@ -380,7 +380,7 @@ R {1:P2}　G {2:P2}　B {3:P2}　亮度 {4:P2}</value></data>
   <data name="Param.raw.camera_profile" xml:space="preserve"><value>相機描述檔</value></data>
   <!-- 底片風格（FilmLookControl） -->
   <data name="Film.Group.aqua" xml:space="preserve"><value>湖藍</value></data>
-  <data name="Film.Group.teal" xml:space="preserve"><value>青綠</value></data>
+  <data name="Film.Group.rose" xml:space="preserve"><value>豆沙紅</value></data>
   <data name="Film.Group.amber" xml:space="preserve"><value>暖黃</value></data>
   <data name="Film.Group.aqua-amber" xml:space="preserve"><value>湖藍→暖黃</value></data>
   <data name="Film.Group.teal-amber" xml:space="preserve"><value>青綠→暖黃</value></data>

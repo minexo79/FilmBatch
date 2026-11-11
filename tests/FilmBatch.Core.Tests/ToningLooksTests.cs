@@ -64,8 +64,8 @@ public class ToningLooksTests
 
     [Theory]
     [InlineData("aqua-5", false)]   // 湖藍：藍綠 > 紅
-    [InlineData("teal-5", false)]
     [InlineData("amber-5", true)]   // 暖黃：紅 > 藍
+    [InlineData("rose-5", true)]    // 豆沙紅：紅 > 藍
     public void SingleHueGroups_TintMidtonesTowardTheirColour(string key, bool warm)
     {
         var c = Gray(Bake(key), .5f);
@@ -113,7 +113,7 @@ public class ToningLooksTests
 
     [Theory]
     [InlineData("aqua-amber")]
-    [InlineData("teal")]
+    [InlineData("rose")]
     public void TransitionColumns_AreAllDistinct(string group)
     {
         var samples = new[] { 4, 5, 6 }.Select(i => Gray(Bake($"{group}-{i}"), .35f)).ToArray();
@@ -132,6 +132,10 @@ public class ToningLooksTests
             Assert.Equal(migrated, result);
         }
         Assert.False(FilmLookLibrary.TryMigrate("aqua-5", out _));
+        Assert.False(FilmLookLibrary.TryMigrate("teal-amber-5", out _));
+        Assert.True(FilmLookLibrary.TryMigrate("teal-7", out var interim));   // 已移除的單色青綠組
+        Assert.Equal("aqua-7", interim);
+        Assert.False(FilmLookLibrary.TryMigrate("teal-0", out _));
         Assert.False(FilmLookLibrary.TryMigrate("no-such-film", out _));
     }
 }

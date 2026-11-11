@@ -563,7 +563,7 @@ Clear overrides: use the new preset entirely.</value></data>
   <data name="Param.grain.softness" xml:space="preserve"><value>Softness</value></data>
   <!-- Film look (FilmLookControl) -->
   <data name="Film.Group.aqua" xml:space="preserve"><value>Aqua</value></data>
-  <data name="Film.Group.teal" xml:space="preserve"><value>Teal</value></data>
+  <data name="Film.Group.rose" xml:space="preserve"><value>Dusty Rose</value></data>
   <data name="Film.Group.amber" xml:space="preserve"><value>Amber</value></data>
   <data name="Film.Group.aqua-amber" xml:space="preserve"><value>Aqua → Amber</value></data>
   <data name="Film.Group.teal-amber" xml:space="preserve"><value>Teal → Amber</value></data>

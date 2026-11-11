@@ -13,6 +13,8 @@ public class FilmLookTests
     [InlineData("mono-1", 100)]
     [InlineData("kodak-tri-x-400", 100)]   // 舊黑白 key 遷移為 mono-*
     [InlineData("kodak-portra-400", 50)]
+    [InlineData("rose-3", 50)]
+    [InlineData("teal-4", 50)]
     [InlineData("user-0123456789abcdef", 100)]
     [InlineData("look-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", 100)]
     public void DefaultStrength_IsFullForMonoAndCustom_HalfForColourBands(string key, double expected) =>
