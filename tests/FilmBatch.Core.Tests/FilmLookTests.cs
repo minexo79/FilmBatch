@@ -20,6 +20,10 @@ public class FilmLookTests
     }
 
     [Fact]
+    public void LegacyFilmLookKey_IsMigratedByTheSharedValidator_UsedForYamlPresets() =>
+        Assert.Equal("mono-9", SettingsJsonConverter.ValidateAndNormalize("film.look", ParamValue.Of("kodak-tri-x-400")).AsText);
+
+    [Fact]
     public void LegacyFilmLookKey_StillResolvesToABakedLut()
     {
         var lut = FilmLookLibrary.Resolve("ilford-hp5-400", TestContext.Current.CancellationToken)!.Lut!;

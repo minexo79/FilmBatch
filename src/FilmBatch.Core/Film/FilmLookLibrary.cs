@@ -27,6 +27,7 @@ public static class FilmLookLibrary
     private static readonly ConditionalWeakTable<FilmLut, FilmLookAsset> LutAssets = new();
     private static readonly ConditionalWeakTable<ColorTransformAsset, FilmLookAsset> TransformAssets = new();
     private static readonly Dictionary<string, FilmLook> ByKey;
+    private static readonly Dictionary<string, (ToningBand Band, int Row, int Column)> Specs;
 
     public static IReadOnlyList<FilmLook> All { get; }
 
@@ -53,6 +54,8 @@ public static class FilmLookLibrary
         All = [.. GroupsInOrder.SelectMany((group, g) => Enumerable.Range(1, 9)
             .Select(i => new FilmLook($"{group}-{i}", $"{GroupNames[g]} {i}", group, i)))];
         ByKey = All.ToDictionary(l => l.Key, StringComparer.Ordinal);
+        Specs = All.ToDictionary(l => l.Key,
+            l => (Bands[GroupsInOrder.ToList().IndexOf(l.Group)], (l.Index - 1) / 3, (l.Index - 1) % 3), StringComparer.Ordinal);
     }
 
     public static bool TryGet(string key, out FilmLook look) => ByKey.TryGetValue(key, out look!);
@@ -79,12 +82,8 @@ public static class FilmLookLibrary
         if (UserLutLibrary.TryGet(key, out var imported))
             return LutAssets.GetValue(imported!, static lut => FilmLookAsset.FromLut(lut));
         if (TryMigrate(key, out var migrated)) key = migrated;
-        var builtIn = !ByKey.TryGetValue(key, out var look) ? null : Luts.GetOrAdd(key, _ =>
-        {
-            var g = GroupsInOrder.ToList().IndexOf(look.Group);
-            var cell = look.Index - 1;
-            return ToningLooks.Bake(Bands[g], cell / 3, cell % 3);
-        });
+        var builtIn = !Specs.TryGetValue(key, out var spec) ? null
+            : Luts.GetOrAdd(key, _ => ToningLooks.Bake(spec.Band, spec.Row, spec.Column));
         return builtIn is null ? null : LutAssets.GetValue(builtIn, static lut => FilmLookAsset.FromLut(lut));
     }
 }

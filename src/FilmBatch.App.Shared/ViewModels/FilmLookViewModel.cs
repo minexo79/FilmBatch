@@ -74,7 +74,6 @@ public sealed partial class FilmLookViewModel : ObservableObject
         Groups = [.. FilmLookLibrary.GroupsInOrder.Append(CustomGroup).Select(g => new FilmGroupViewModel(g))];
         _selectedGroup = FilmLookLibrary.GroupsInOrder[0];
         _importColorSpace = ImportSpaces[0];
-        Looks = [];
         Imported = [];
         Tiles = [];
         LoadGroup();
@@ -83,11 +82,9 @@ public sealed partial class FilmLookViewModel : ObservableObject
 
     public FilmLookThumbnails Thumbnails { get; }
     public IReadOnlyList<FilmGroupViewModel> Groups { get; }
-    /// <summary>目前分組的內建底片（自訂分組時為空）。</summary>
-    public ObservableCollection<FilmTileViewModel> Looks { get; }
     /// <summary>使用者匯入的 LUT 與 CLF 轉換。</summary>
     public ObservableCollection<FilmTileViewModel> Imported { get; }
-    /// <summary>縮圖格實際顯示的項目：內建分組顯示 <see cref="Looks"/>，自訂分組顯示 <see cref="Imported"/>。</summary>
+    /// <summary>縮圖格實際顯示的項目：內建分組為該組的 9 式，自訂分組為 <see cref="Imported"/>。</summary>
     public ObservableCollection<FilmTileViewModel> Tiles { get; }
 
     public bool IsCustomGroup => SelectedGroup == CustomGroup;
@@ -135,7 +132,7 @@ public sealed partial class FilmLookViewModel : ObservableObject
     {
         foreach (var g in Groups) g.RefreshLabel();
         foreach (var space in ImportSpaces) space.RefreshLabel();
-        foreach (var tile in Imported) tile.RefreshLabel();
+        foreach (var tile in Tiles.Concat(Imported)) tile.RefreshLabel();
     }
 
     partial void OnSelectedGroupChanged(string value)
@@ -159,8 +156,7 @@ public sealed partial class FilmLookViewModel : ObservableObject
     {
         var resolved = Resolved();
         var look = resolved?.TryGetValue("film.look", out var v) == true ? v.AsText : FilmLookLibrary.DefaultKey;
-        foreach (var tile in Looks) tile.IsSelected = resolved is not null && tile.Key == look;
-        foreach (var tile in Imported) tile.IsSelected = resolved is not null && tile.Key == look;
+        foreach (var tile in Tiles.Concat(Imported)) tile.IsSelected = resolved is not null && tile.Key == look;
     }
 
     /// <summary>焦點或設定改變後由 Inspector 呼叫：更新選取，焦點或最終參數真的變了才讓縮圖作廢並重算。</summary>
@@ -327,14 +323,13 @@ public sealed partial class FilmLookViewModel : ObservableObject
 
     private void LoadGroup()
     {
-        foreach (var tile in Tiles.Concat(Looks).Distinct().ToList())
+        foreach (var tile in Tiles.ToList())
         {
             var bitmap = tile.Thumbnail;
             tile.Thumbnail = null;
             bitmap?.Dispose();
         }
         Tiles.Clear();
-        Looks.Clear();
         if (IsCustomGroup)
         {
             foreach (var tile in Imported) Tiles.Add(tile);
@@ -344,7 +339,6 @@ public sealed partial class FilmLookViewModel : ObservableObject
         {
             var tile = new FilmTileViewModel(look.Key, () => $"{GroupLabel(look.Group)} {look.Index}",
                 caption: look.Index.ToString());
-            Looks.Add(tile);
             Tiles.Add(tile);
         }
     }

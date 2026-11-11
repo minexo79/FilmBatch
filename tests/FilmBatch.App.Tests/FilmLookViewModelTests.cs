@@ -24,7 +24,7 @@ public class FilmLookViewModelTests
         var film = vm.FilmLook;
 
         film.SelectedGroup = "teal-amber";
-        var velvia = film.Looks.Single(t => t.Key == "teal-amber-9");
+        var velvia = film.Tiles.Single(t => t.Key == "teal-amber-9");
         film.ApplyLookCommand.Execute(velvia);
 
         foreach (var file in files)
@@ -34,7 +34,7 @@ public class FilmLookViewModelTests
             Assert.Equal("teal-amber-9", s["film.look"].AsText);
         }
         Assert.True(velvia.IsSelected);
-        Assert.All(film.Looks.Where(t => t != velvia), t => Assert.False(t.IsSelected));
+        Assert.All(film.Tiles.Where(t => t != velvia), t => Assert.False(t.IsSelected));
 
         // 一筆復原紀錄：復原一次即回到原值
         vm.UndoCommand.Execute(null);
@@ -54,7 +54,6 @@ public class FilmLookViewModelTests
             film.SelectedGroup = group;
             Assert.False(film.IsCustomGroup);
             Assert.Equal(Enumerable.Range(1, 9).Select(i => i.ToString()), film.Tiles.Select(t => t.Caption));
-            Assert.Equal(film.Looks, film.Tiles);
         }
     }
 
@@ -72,7 +71,6 @@ public class FilmLookViewModelTests
         Assert.True(film.IsCustomGroup);
         Assert.True(film.ShowCustomEmpty);
         Assert.Empty(film.Tiles);
-        Assert.Empty(film.Looks);
 
         Directory.CreateDirectory(AppPaths.Root);
         var cube = Path.Combine(AppPaths.Root, "custom-group.cube");
@@ -152,12 +150,12 @@ public class FilmLookViewModelTests
             var film = section.FilmLook!;
             // 防抖計時器 → 低優先佇列 → 實際引擎算圖 → ThumbnailReady 路由回 UI（同 PresetHoverPreviewTests 以 await 讓出 UI 執行緒）
             var deadline = DateTime.UtcNow.AddSeconds(60);
-            while (!film.Looks.All(t => t.Thumbnail is not null) && DateTime.UtcNow < deadline)
+            while (!film.Tiles.All(t => t.Thumbnail is not null) && DateTime.UtcNow < deadline)
                 await Task.Delay(10, TestContext.Current.CancellationToken);
             Assert.Contains(keys, k => k.StartsWith("film-look/look/", StringComparison.Ordinal));
             Assert.DoesNotContain(keys, k => k.StartsWith("film-look/hue/", StringComparison.Ordinal));
-            Assert.All(film.Looks, t => Assert.False(t.IsLoading));
-            Assert.True(film.Looks[0].Thumbnail!.PixelSize.Width <= FilmLookThumbnails.LongEdge);
+            Assert.All(film.Tiles, t => Assert.False(t.IsLoading));
+            Assert.True(film.Tiles[0].Thumbnail!.PixelSize.Width <= FilmLookThumbnails.LongEdge);
         }
         finally
         {
@@ -174,7 +172,7 @@ public class FilmLookViewModelTests
         {
             using var vm = TestEnv.CreateViewModel();
             await TestEnv.OpenSamplesAsync(vm).WaitAsync(TestContext.Current.CancellationToken);
-            var tile = vm.FilmLook.Looks.First();
+            var tile = vm.FilmLook.Tiles.First();
             vm.Inspector.SetValue("raw.enabled", false, null);
             TestEnv.PumpUntil(() => vm.Preview.Source is { RawOptions: var options } && options == default
                 && !vm.Preview.IsBusy && !vm.Renderer.IsBusy);
