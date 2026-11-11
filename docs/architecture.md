@@ -38,7 +38,7 @@
 | 預設（preset） | 存在預設庫的一組設定（YAML），可指定給多張照片 | `Preset` |
 | 覆寫（overrides） | 某張照片與其預設**不同**的欄位 | `PhotoEntry.Overrides` |
 | 最終參數（resolved） | 系統預設 ⊕ 預設 ⊕ 覆寫，實際拿去算圖的值 | `ProjectService.SettingsFor` |
-| 底片（look） | `film` 模組選用的一卷底片，即一個內附 3D LUT（`film.look` 存其 key） | `FilmLook`、`FilmLut` |
+| 底片（look） | `film` 模組選用的一式底片，即一個由色帶烘焙的 3D LUT（`film.look` 存其 key） | `FilmLook`、`FilmLut` |
 | 色相帶（hue band） | 獨立 `hsl` 模組的八個分色相修正區段，各有色相／飽和／明度，介面與曲線同屬「色彩」 | `HueBands` |
 | 算圖器（renderer） | 把「影像 + 設定」算成結果的物件，有 GPU 與 CPU 兩種 | `IPreviewRenderer` |
 | 世代（generation / epoch） | 遞增的編號，用來丟棄過期的算圖結果 | `PreviewService`、`RenderScheduler` |
@@ -164,7 +164,7 @@ sequenceDiagram
 
 ### 4.5 Core．底片風格（Film）
 
-36 卷內附底片 3D LUT、八色相帶與舊參數相容處理；演算法與授權見 [film-looks.md](film-looks.md)。詳見 [core.md](architecture/core.md#45-core底片風格film)。
+六個色帶 × 九式（54 式）內附底片、八色相帶與舊參數相容處理；演算法與授權見 [film-looks.md](film-looks.md)。詳見 [core.md](architecture/core.md#45-core底片風格film)。
 
 ### 4.6 Engine．算圖管線（Rendering）
 
@@ -236,12 +236,11 @@ Avalonia 12 桌面與共用行動版介面，採 MVVM（CommunityToolkit.Mvvm）
 2. 在 `IDialogService` 加方法，並在 `DialogService` 中以 `ShowDialog` 實作。
 3. ViewModel 只呼叫 `IDialogService`，測試時可以假物件替換。
 
-### 5.6 新增一卷底片
+### 5.6 調整或新增底片
 
-1. 在 `Core/Film/Looks/looks.json` 加一筆（`key`、`name`、`group`、HaldCLUT.zip 內的 `source`）；陣列順序即介面順序。
-2. 執行 `dotnet run --project tools/film-luts -- src/FilmBatch.Core/Film/Looks/looks.json src/FilmBatch.Core/Film/Looks` 產生 `<key>.fblut`（需要網路，只以 HTTP Range 抓列出的 PNG）。
-3. 執行 `FilmLookTests`（卷數有改時更新測試中的數字）。
-4. 更新 [film-looks.md](film-looks.md) 的底片表；新分組還要在資源檔加分組名稱。不需要改 CPU／GPU 程式碼。
+1. 在 `Core/Film/ToningLooks.cs` 調整色帶顏色或過渡／濃淡參數；新增分組時同步 `FilmLookLibrary.GroupsInOrder`、`Bands`、`GroupNames` 與兩份 `Film.Group.*` 字串。
+2. 執行 `ToningLooksTests`、`FilmLookTests`（式數或分組有改時更新測試中的數字）。
+3. 更新 [film-looks.md](film-looks.md) 第 2 節的表格與公式。不需要改 CPU／GPU 程式碼，LUT 管線不變。
 
 ---
 
@@ -252,7 +251,7 @@ Avalonia 12 桌面與共用行動版介面，採 MVVM（CommunityToolkit.Mvvm）
 | 三層合併、貼上、重設 | `tests/FilmBatch.Core.Tests/PhotoOperationsTests.cs`、`ProjectServiceTests.cs` |
 | 專案與預設存檔 | `PersistenceTests.cs` |
 | 效果演算法、CPU / GPU 一致性 | `EffectPipelineTests.cs`、`GpuSpikeTests.cs` |
-| 底片 LUT、底片清單、色相預設 | `FilmLutTests.cs`、`FilmLookTests.cs` |
+| 底片 LUT、底片清單、色相預設 | `FilmLutTests.cs`、`ToningLooksTests.cs`、`FilmLookTests.cs` |
 | 舊參數丟棄、film schema | `RetiredParamsTests.cs` |
 | 底片風格與獨立 HSL 算圖、色相帶、CPU / GPU 一致性、舊 key 遷移 | `EffectPipelineTests.cs`、`HslTests.cs` |
 | 底片縮圖格、HSL 文字預設／色相帶、選取與復原 | `tests/FilmBatch.App.Tests/FilmLookViewModelTests.cs`、`HslViewModelTests.cs` |
@@ -286,4 +285,4 @@ Avalonia 12 桌面與共用行動版介面，採 MVVM（CommunityToolkit.Mvvm）
 - [building.md](building.md)：建置、測試、CI 與發佈
 - [adr/0001-webgpu-binding.md](adr/0001-webgpu-binding.md)：WebGPU 綁定選型
 - [adr/0002-ai-denoise.md](adr/0002-ai-denoise.md)：本機 AI 降噪、模型身分、資料域、快取與原生執行決策
-- [film-looks.md](film-looks.md)：底片風格的 LUT 來源與授權、演算法、色相帶與新增底片流程
+- [film-looks.md](film-looks.md)：底片風格的色帶與九式、演算法、色相帶與調整底片流程

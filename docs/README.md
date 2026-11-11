@@ -14,7 +14,7 @@
 | 排查 GPU 精度或效能 | [GPU 與 Shader](architecture/gpu.md) | [ADR 0003](adr/0003-gpu-stack-decision.md)、[Shader 驗證](testing.md#shader-驗證) |
 | 排查介面、裁切、切換照片或大量載入 | [介面層](architecture/app.md) | [生命週期回歸](testing.md#編輯生命週期回歸)、[載入回歸](testing.md#大量照片載入與即時預覽回歸) |
 | 調整 iPhone／iPad 操作與自適應版面 | [行動版操作與所有權](release.md#操作與資料所有權) | [Mobile 回歸](testing.md#mobile-ui-與輸入回歸)、[八產品 Survey](research/mobile-ui-survey.md)、[設計／驗收記錄](superpowers/plans/2026-10-30-mobile-editor-redesign.md) |
-| 調整底片色彩或新增 LUT | [底片風格](film-looks.md) | [LUT 轉換工具](../tools/film-luts/README.md)、[授權聲明](../THIRD-PARTY-NOTICES.txt) |
+| 調整底片色彩或新增 LUT | [底片風格](film-looks.md) | [`ToningLooks` 定義](../src/FilmBatch.Core/Film/ToningLooks.cs) |
 | 評估 Sony Creative Look 移植 | [Sony A7M5 Survey 與效果實驗](research/sony-creative-looks-survey.md) | 目前 NO-GO：資料域、第三方資料權利與原版驗收前提尚未通過；未加入產品 |
 | 評估保留原曲線的通用色彩轉換 | [可組合色彩轉換研究](research/composable-color-transforms.md) | [CT-2 實作計畫](superpowers/plans/2026-10-28-composable-color-transforms.md)；本工作區已實作有界 CLF 子引擎，跨平台與實拍驗收未完成，不等於已發佈支援 |
 | 評估 RAW 的 `.dcp` 相機描述檔 | [DCP-1 研究與限制](research/composable-color-transforms.md#7-dcp-1raw-相機描述檔擴充) | [DCP-1 實作計畫](superpowers/plans/2026-10-28-composable-color-transforms.md#6-dcp-1--raw-相機描述檔擴充)；本工作區已實作，跨平台、實拍及授權審查未完成；Sony 上游 base 的 policy 0 不用於 ARW |

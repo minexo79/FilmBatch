@@ -34,7 +34,7 @@ FilmBatch 可為每張照片套上底片色彩與類比效果，再一次批次�
 | 功能 | 說明 |
 | --- | --- |
 | **漏光** | 可調整的漏光疊加效果，營造溫暖、意外曝光的氛圍。 |
-| **膠片感** | 底片色彩模擬，內附 36 卷底片 LUT，可調效果比例、暖色、褪色與八色相帶修正。 |
+| **膠片感** | 風格化色調底片（六個色帶 × 九式）、自訂 LUT 匯入，可調中性（效果比例）、暖色、褪色與八色相帶修正。 |
 | **顆粒** | 可重現的顆粒，提供團塊、多尺度與光學統計三種模型；可依暗部、中間調與高光調整 seed 與響應。 |
 | **AI 降噪** | 本機 AI 降噪（RAW 與一般 RGB 模型）。模型需明確下載或匯入，推論過程不連線。 |
 | **AI 去背** | macOS 上使用 Apple Vision 在本機選取主體，不上傳照片、不生成背景。 |
@@ -105,4 +105,4 @@ macOS（Apple Silicon）請改用 `osx-arm64`。
 
 FilmBatch 以 [MIT 授權](LICENSE)釋出。
 
-第三方元件與內附素材（包含依 CC BY-SA 4.0 授權的 RawTherapee Film Simulation LUT，以及移植自 [LightCraft](https://github.com/storytold/lightcraft) 的 RAW 解碼）列於 [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt)。
+第三方元件與內附素材（包含移植自 [LightCraft](https://github.com/storytold/lightcraft) 的 RAW 解碼）列於 [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt)。

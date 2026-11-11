@@ -260,7 +260,7 @@ public static class ModuleCatalog
             Int("count", "數量", 1, 1, 3),
             Seed(),
         ]),
-        // 底片風格：底片顏色模擬（RawTherapee Film Simulation Hald CLUT，docs/film-looks.md）。
+        // 底片風格：六個色帶 × 九式的風格化色調，烘焙成 3D LUT（docs/film-looks.md）。
         new("film", "底片風格", ModuleGroup.Film, PasteCategory.Color,
         [
             Bool(ModuleSchema.EnabledKey, "啟用"),

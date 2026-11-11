@@ -91,22 +91,22 @@ flowchart LR
 
 ## 4.5 Core．底片風格（Film）
 
-**職責**：底片顏色模擬的資料：36 卷內附底片（RawTherapee Film Simulation Collection 的 Hald CLUT 轉成的 3D LUT，CC BY-SA 4.0）、八色相帶定義與內建色相修正預設，以及舊參數的相容處理。演算法、來源與授權見 [film-looks.md](../film-looks.md)。
+**職責**：底片顏色模擬的資料：54 式內附底片（六個色帶 × 3×3 九式，由 `ToningLooks` 烘焙成 3D LUT）、八色相帶定義與內建色相修正預設，以及舊參數的相容處理。演算法與色帶定義見 [film-looks.md](../film-looks.md)。
 
 | 型別 / 檔案 | 說明 |
 |---|---|
 | `FilmLut` | 3D LUT 資料（`Size`、`Data`、`ColorSpace`；`FilmLutColorSpace` 為 sRGB 或 ProPhoto D50／gamma 1.8；Hald 像素順序）；`Sample` 四面體內插、`Resample` 改邊長、`FromHald`、`ToTextureRgba` 轉成 GPU 紋理排列 |
 | `FilmLutFile` | `.fblut` 二進位格式讀寫：sRGB 為 FBLUT1（magic、int32 邊長、16-bit unorm）；ProPhoto 為 FBLUT2（邊長後多一個色彩空間位元組） |
-| `FilmLookLibrary`／`FilmLookAsset` | 底片清單與互斥的 LUT／轉換資產。`Resolve(key)` 延遲讀取；未知 legacy key 回 null，啟用的 `look-` 資產失敗則拋出帶原始原因的 `ColorTransformAssetException` |
+| `ToningLooks` | 六個基準色帶（`ToningBand`）的 3×3 九式定義與 `Bake`，輸出 33³ sRGB `FilmLut`；顏色、過渡與濃淡參數都在此檔 |
+| `FilmLookLibrary`／`FilmLookAsset` | 54 式清單（`All`、`GroupsInOrder`、`DefaultKey`）與互斥的 LUT／轉換資產。`Resolve(key)` 延遲烘焙並快取；`LegacyKeys`／`TryMigrate` 把舊 36 卷 key 換成新 key；未知 key 回 null，啟用的 `look-` 資產失敗則拋出帶原始原因的 `ColorTransformAssetException` |
 | `ClfFile`／`ColorTransform` | 有界 CLF 3.0 子集 parser 與不可變 float32 節點／資料；Matrix、Range、LUT1D、LUT3D 依序執行，未知運算與超限拒絕 |
 | `ColorTransformFile`／`UserTransformLibrary` | `.fblook` 保存 16-byte 宣告與原始 CLF，`look-`＋SHA-256 定址；匯入封存、驗證後原子發布，解析以 root＋key 校驗並保持有界快取 |
 | `HueBands`／`HuePresets` | 獨立 `hsl` 模組的八色相帶 key、中心角（與 `linear/hsl.wgsl` 同值）、24 個參數 schema（`Params`、`FlatKeys`）；七個文字預設與 `Find`（判斷目前值是否為某預設，否則為「自訂」）。與曲線同屬 `ModuleGroup.Color` |
-| `Film/Looks/` | `looks.json`（36 卷清單，順序即介面順序）、36 個 33³ `.fblut`、`LICENSE.txt`（CC BY-SA 4.0 聲明），皆為嵌入資源 `FilmBatch.Looks/*` |
 | `Params/RetiredParams` | 舊 Recipe Lab 模組的 13 個 `film.*` key，以及改為偏好設定的 `raw.lens_database`；`SettingsJsonConverter` 與 `PresetFile` 讀檔時靜默丟棄 |
 | `Params/HslMigration` | JSON／YAML 讀入時把 `film.hue_*` 轉成 `hsl.hue_*`，新 key 優先；只在有舊色相欄位時繼承同層明確的 `film.enabled`，不為稀疏層新增開關。寫入不保留舊 key，未知欄位仍拒絕 |
 
 **陷阱**
 
-- `looks.json` 的 `key` 會存進專案與預設，發佈後不可改名；新增底片照 [film-looks.md](../film-looks.md#5-新增或更換底片) 的流程以 `tools/film-luts` 產生 `.fblut`，不要手改 LUT。
-- 卷數、分組與每卷都有 33³ LUT 由 `FilmLookTests` 鎖定；`film.look` 的選項由 `FilmLookLibrary.All` 產生（`RetiredParamsTests` 檢查兩者一致）。
+- 底片 key（`{分組}-{序號}`）會存進專案與預設，發佈後不可改名；調整底片照 [film-looks.md](../film-looks.md#5-調整或新增底片) 的流程改 `ToningLooks`。舊 36 卷 key 由 `LegacyKeys` 在 `SettingsJsonConverter`、`ParamDef.Coerce` 與 `Resolve` 遷移，不要刪除該對照表。
+- 式數、分組、33³ 範圍與色調方向由 `ToningLooksTests` 鎖定；`film.look` 的選項由 `FilmLookLibrary.All` 產生（`RetiredParamsTests` 檢查兩者一致）。
 - 色相帶中心角改動時，C#（`HueBands.CentersDegrees`）與 WGSL 要一起改。

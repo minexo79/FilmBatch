@@ -45,7 +45,6 @@ public sealed class AboutViewModel
                 new("CommunityToolkit.Mvvm", FormatVersion(typeof(CommunityToolkit.Mvvm.ComponentModel.ObservableObject).Assembly, false), "MIT", "https://github.com/CommunityToolkit/dotnet"),
                 new("Apple ImageIO / CoreGraphics", RuntimeInformation.OSDescription, "Apple system frameworks", "https://developer.apple.com/documentation/imageio"),
                 new(".NET Runtime", Environment.Version.ToString(), "MIT", "https://github.com/dotnet/runtime"),
-                new("RawTherapee Film Simulation Collection", "2015-09-20", "CC BY-SA 4.0", "http://rawtherapee.com/shared/HaldCLUT.zip"),
             ];
         return
     [
@@ -60,7 +59,6 @@ public sealed class AboutViewModel
         Package("YamlDotNet", "YamlDotNet", "MIT", "https://github.com/aaubry/YamlDotNet"),
         Package("System.IO.Hashing", "System.IO.Hashing", "MIT", "https://github.com/dotnet/runtime"),
         new(".NET Runtime", Environment.Version.ToString(), "MIT", "https://github.com/dotnet/runtime"),
-        new("RawTherapee Film Simulation Collection (Pat David, Pavlov Dmitry, Michael Ezra)", "2015-09-20", "CC BY-SA 4.0", "http://rawtherapee.com/shared/HaldCLUT.zip"),
     ];
     }
 

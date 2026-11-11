@@ -35,7 +35,7 @@ FilmBatch applies film colors and analog effects to every photo, then exports th
 | Feature | Description |
 | --- | --- |
 | **Light leaks** | Adjustable light-leak overlays for a warm, accidental-exposure look. |
-| **Film look** | Film color simulation with 36 bundled LUTs, adjustable strength, warmth, fade and 8-hue correction. |
+| **Film look** | Stylized toning looks (six colour bands × nine styles), custom LUT import, adjustable neutral/strength, warmth, fade and 8-hue correction. |
 | **Grain** | Reproducible grain with three models (clumped, multi-scale, optical statistics); tune seed and response per tone. |
 | **AI denoise** | Local AI noise reduction (RAW and RGB models). Models are downloaded or imported explicitly; inference never connects to the network. |
 | **AI background removal** | On-device subject selection on macOS via Apple Vision. Nothing is uploaded and no background is generated. |
@@ -97,7 +97,7 @@ Found a bug or have an idea? Please open an issue.
 - [docs/README.md](docs/README.md): documentation map (current docs, history and proposals)
 - [docs/architecture.md](docs/architecture.md): architecture and render pipeline
 - [docs/building.md](docs/building.md): build and run; see also [testing](docs/testing.md), [release](docs/release.md) and [CLI](docs/cli.md)
-- [docs/film-looks.md](docs/film-looks.md): LUT sources, licenses and how to add a film look
+- [docs/film-looks.md](docs/film-looks.md): film look bands, formulas and how to adjust them
 - [docs/history.md](docs/history.md): decision and commit history
 - [VERIFY.md](VERIFY.md): verification entry point
 - [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt): third-party components and licenses
@@ -106,4 +106,4 @@ Found a bug or have an idea? Please open an issue.
 
 FilmBatch is released under the [MIT License](LICENSE).
 
-Third-party components and bundled assets (including the RawTherapee Film Simulation LUTs under CC BY-SA 4.0 and RAW decoding derived from [LightCraft](https://github.com/storytold/lightcraft)) are listed in [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt).
+Third-party components and bundled assets (including RAW decoding derived from [LightCraft](https://github.com/storytold/lightcraft)) are listed in [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt).

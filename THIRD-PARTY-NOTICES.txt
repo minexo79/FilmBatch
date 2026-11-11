@@ -1,4 +1,4 @@
-FilmBatch 使用下列第三方元件；RAW 移植的授權全文與 RawTherapee 底片 LUT 的來源及授權聲明列於下方。
+FilmBatch 使用下列第三方元件；RAW 移植的授權全文與來源聲明列於下方。
 
 Avalonia UI 12              MIT          https://github.com/AvaloniaUI/Avalonia
 Dock.Avalonia 12            MIT          https://github.com/wieslawsoltes/Dock
@@ -20,62 +20,6 @@ Microsoft.AI.DirectML 1.15.4 (Windows only) Microsoft Software License Terms
   This is NOT covered by ONNX Runtime's MIT license. The original redistributable
   terms accompany Windows App/CLI outputs in native-onnxruntime/directml/LICENSE.txt.
   Distributed only as part of the Windows application, not as a standalone product.
-RawTherapee Film Simulation Collection（2015-09-20 版，底片 LUT） CC BY-SA 4.0 http://rawtherapee.com/shared/HaldCLUT.zip
-  原作者：Pat David、Pavlov Dmitry、Michael Ezra。授權：Creative Commons Attribution-ShareAlike 4.0
-  International（https://creativecommons.org/licenses/by-sa/4.0/）。
-  src/FilmBatch.Core/Film/Looks/*.fblut 的 36 個 LUT 衍生自該集合（421,602,289 bytes 的 HaldCLUT.zip）。
-  修改：由 Hald CLUT（8-bit sRGB PNG；多數為 level 12／144³，Kodak Ektar 100 為 level 16／256³）
-  以四面體內插重新取樣成 33³，存成 16-bit 的 FilmBatch .fblut 格式（tools/film-luts）。
-  這些 LUT 檔依 CC BY-SA 4.0 散布；詳見 src/FilmBatch.Core/Film/Looks/LICENSE.txt 與 docs/film-looks.md。
-  商標聲明：底片名稱（Kodak、Fuji、Agfa、Ilford、Lomography、Polaroid 等）為各公司商標，僅用於說明
-  LUT 意圖模擬的底片，FilmBatch 與上述商標所有者無任何關係，亦未獲其背書。
-LightCraft（RAW 解碼、相機色彩、色調及分段曲線） MIT OR Apache-2.0（FilmBatch 依 MIT 使用） https://github.com/storytold/lightcraft
-  Copyright (c) 2026 ArtCraft Team and the LightCraft contributors。src/FilmBatch.Raw 與 src/FilmBatch.Engine/Imaging/Raw
-  為釘選 commit f34c7a8a89e0d1bade0a6889185f40acecc84a9f 的 C# 移植（已修改；各檔檔頭標示上游路徑）。
-  src/FilmBatch.Engine/Imaging/Raw/Profiles/*.json 搬移自上游 assets/camera-profiles/ 與 assets/camera-tone/：
-  相機描述檔由 Harald Hoyer（ILCE-7M4）、Michael Anderson（@endthestart；NIKON Z 6II、Z 8、D5300）、
-  Yule (Brian) Wang（@peaperfish；ILCE-7RM5）與 LightCraft contributors（ILCA-99M2 樣張 @PiMinusMax、
-  ILCE-7CR 樣張 @AlexChambers、X-H2S／X-T4 樣張 Sebastian Pfluegelmeier）擬合；ILCE-7RM5 描述檔取自
-  LightCraft commit 77c0a6adfa7db6e4f79b80843c0c578e5f16dee1。sony-dro-off.json 由 LightCraft contributors
-  以 raw.pixls.us CC0 樣張擬合。
-  RAW TIFF、稀疏讀取、CR3 預覽、Mamiya strip、OpcodeList3、有損 JPEG 與 AHD 裁切的部分修正另參考
-  LightCraft commit 77c0a6adfa7db6e4f79b80843c0c578e5f16dee1；既有 RAW oracle pin 未變。
-  部分修正另移植自 v0.13.0（23e181283cb448205d865e8cd288b56afe987986）：Canon CRX coded width、
-  Fujifilm plain-radius 鏡頭插值；不是整體升版。Core/Curves/ToneCurveSet.cs 與 GPU tone_curves.wgsl 的
-  分段曲線、單調化及飽和度修正改寫自 crates/pipeline/src/finish.rs；控制點沿用 FilmBatch 的 ToneCurve。
-zune-jpeg 0.5.15（失真 JPEG 解碼） MIT OR Apache-2.0 OR Zlib（FilmBatch 依 MIT 使用） https://github.com/etemesi254/zune-image
-  Copyright (c) zune-image developers。src/FilmBatch.Raw/Codecs/Jpeg8*.cs 為其解碼器的 C# 移植（已修改）。
-rawtoaces-data v1.1.0（相機光譜靈敏度） Apache-2.0 https://github.com/AcademySoftwareFoundation/rawtoaces-data
-  Academy Software Foundation；量測者 Weta Digital、scitech 與 National Physical Laboratory 的 Jonathon Irons。
-  src/FilmBatch.Raw/Color/SpectralTable.cs 的相機矩陣與型號別名由 LightCraft contributors 以
-  tools/spectral_camera_table.py 自 commit 5cfa53707b053594b2d0d48e8019fb56e6582d6c 的資料擬合
-  （修改：每個標準光源擬合一個 3×3 矩陣，不含逐字量測值；別名取自 data/aliases.json）。
-CIE 1931 色彩配對函數 CC BY 4.0 https://creativecommons.org/licenses/by/4.0/
-  © CIE（International Commission on Illumination），隨 rawtoaces-data 發佈；只用來擬合上列相機矩陣（修改：
-  FilmBatch 不含原始資料）。
-LightLeaksUnity（程序化漏光） MIT https://github.com/danielzeller/LightLeaksUnity
-  Copyright (c) 2016 Daniel Zeller。src/FilmBatch.Engine/Rendering/CpuPipeline.cs 的 LightLeak 與
-  optical/light_leak.wgsl 的三色電漿改編自 Assets/LightLeaks/LightLeaks.shader（已修改：以種子取代動畫時間、
-  黃色轉線性光、各場重新映射並以 smoothstep 提高對比、加入色相旋轉、逐色權重與 screen/add/lighten 混合，並以既有邊緣包絡遮罩）。
-FilmBatch ProPhoto output profile（自行產生的 ICC 位元組；非第三方散布物，工具鏈需聲明） https://www.littlecms.com/
-  src/FilmBatch.Engine/Imaging/Raw/Profiles/prophoto-gamma18.icc（784 bytes，
-  SHA-256 44ef82ec4a2b2539ca31862738f2b211f10ae1438a50e121ff58a1eea9a0253d）
-  由 tools/prophoto-icc/gen.c 以 Little CMS 2.17（MIT，Copyright (c) 2023 Marti Maria Saguer；
-  Homebrew little-cms2 2.17）自數值色度產生，未複製或下載任何廠商設定檔。
-  數值定義：三原色 (0.734699,0.265301)、(0.159597,0.840403)、(0.036598,0.000105)，
-  白點 (0.3457,0.3585)（與 src/FilmBatch.Raw/Color/ColorMath.cs 的 ColorSpaces.ProPhoto 一致），
-  三通道純 gamma 1.8（ICC v4.3 display，D50 PCS）。本設定檔無嚴格 ROMM 的低亮度線性段、
-  無參考 flare；三原色與白點與 ROMM 相同。TRC 使用 para type 0，以 s15Fixed16
-  儲存 gamma 1.8000030517578125；不使用 v2 單值 curv 的低精度 gamma。
-  下方附 Little CMS 的 MIT 授權全文（LCMS 函式庫本身不隨本工具連結進應用程式）。
-Optional external AI model data (not embedded in the application)
-----------------------------------------------------------------
-Packages: darktable-ai nightly-5.7.0
-https://github.com/darktable-org/darktable-ai/releases/tag/nightly-5.7.0
-Source contract revision: f1a46e2d3feebc917a94f14705d128316fcf8114.
-FilmBatch extracts only pinned ONNX model data; it does not include the GPL
-training/export/packaging tools or the different legacy NIND model.
-
 RawNIND Linear: Creative Commons Attribution 4.0 International (CC BY 4.0).
 https://creativecommons.org/licenses/by/4.0/
 RawNIND by Benoit Brummer; Benoit Brummer and Christophe De Vleeschouwer,
