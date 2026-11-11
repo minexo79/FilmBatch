@@ -379,6 +379,16 @@ R {1:P2}　G {2:P2}　B {3:P2}　亮度 {4:P2}</value></data>
   <data name="Param.raw.camera_local_tone" xml:space="preserve"><value>相機局部色調</value></data>
   <data name="Param.raw.camera_profile" xml:space="preserve"><value>相機描述檔</value></data>
   <!-- 底片風格（FilmLookControl） -->
+  <data name="Film.Group.aqua" xml:space="preserve"><value>湖藍</value></data>
+  <data name="Film.Group.teal" xml:space="preserve"><value>青綠</value></data>
+  <data name="Film.Group.amber" xml:space="preserve"><value>暖黃</value></data>
+  <data name="Film.Group.aqua-amber" xml:space="preserve"><value>湖藍→暖黃</value></data>
+  <data name="Film.Group.teal-amber" xml:space="preserve"><value>青綠→暖黃</value></data>
+  <data name="Film.Group.mono" xml:space="preserve"><value>黑白</value></data>
+  <data name="Film.Group.custom" xml:space="preserve"><value>自訂 LUT</value></data>
+  <data name="Film.OpenFolder" xml:space="preserve"><value>開啟 LUT 資料夾</value></data>
+  <data name="Film.Refresh" xml:space="preserve"><value>重新整理</value></data>
+  <data name="Film.CustomEmpty" xml:space="preserve"><value>尚無自訂 LUT。按「匯入 LUT」，或開啟 LUT 資料夾放入檔案後重新整理。</value></data>
   <data name="Film.Look" xml:space="preserve"><value>底片</value></data>
   <data name="Film.Import" xml:space="preserve"><value>匯入 LUT</value></data>
   <data name="Film.ImportTitle" xml:space="preserve"><value>匯入 .cube、.fblut、.clf、.fblook 或 Hald PNG</value></data>
@@ -456,12 +466,6 @@ R {1:P2}　G {2:P2}　B {3:P2}　亮度 {4:P2}</value></data>
   <data name="Param.hsl.hue_magenta_h" xml:space="preserve"><value>洋紅色相</value></data>
   <data name="Param.hsl.hue_magenta_s" xml:space="preserve"><value>洋紅飽和</value></data>
   <data name="Param.hsl.hue_magenta_l" xml:space="preserve"><value>洋紅明度</value></data>
-  <data name="Film.Group.kodak" xml:space="preserve"><value>柯達</value></data>
-  <data name="Film.Group.fuji" xml:space="preserve"><value>富士</value></data>
-  <data name="Film.Group.agfa-lomo" xml:space="preserve"><value>愛克發與 Lomo</value></data>
-  <data name="Film.Group.polaroid" xml:space="preserve"><value>拍立得</value></data>
-  <data name="Film.Group.bw" xml:space="preserve"><value>黑白</value></data>
-  <data name="Film.Group.creative" xml:space="preserve"><value>創意</value></data>
   <data name="Param.raw.wb_mode" xml:space="preserve"><value>白平衡</value></data>
   <data name="Param.raw.temperature" xml:space="preserve"><value>色溫</value></data>
   <data name="Param.raw.tint" xml:space="preserve"><value>色偏</value></data>

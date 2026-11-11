@@ -562,6 +562,16 @@ Clear overrides: use the new preset entirely.</value></data>
   <data name="Param.grain.color" xml:space="preserve"><value>Color Grain</value></data>
   <data name="Param.grain.softness" xml:space="preserve"><value>Softness</value></data>
   <!-- Film look (FilmLookControl) -->
+  <data name="Film.Group.aqua" xml:space="preserve"><value>Aqua</value></data>
+  <data name="Film.Group.teal" xml:space="preserve"><value>Teal</value></data>
+  <data name="Film.Group.amber" xml:space="preserve"><value>Amber</value></data>
+  <data name="Film.Group.aqua-amber" xml:space="preserve"><value>Aqua → Amber</value></data>
+  <data name="Film.Group.teal-amber" xml:space="preserve"><value>Teal → Amber</value></data>
+  <data name="Film.Group.mono" xml:space="preserve"><value>Black &amp; White</value></data>
+  <data name="Film.Group.custom" xml:space="preserve"><value>Custom LUTs</value></data>
+  <data name="Film.OpenFolder" xml:space="preserve"><value>Open LUT folder</value></data>
+  <data name="Film.Refresh" xml:space="preserve"><value>Refresh</value></data>
+  <data name="Film.CustomEmpty" xml:space="preserve"><value>No custom LUTs yet. Use Import LUT, or open the LUT folder, add files and refresh.</value></data>
   <data name="Film.Look" xml:space="preserve"><value>Film</value></data>
   <data name="Film.Import" xml:space="preserve"><value>Import LUT</value></data>
   <data name="Film.ImportTitle" xml:space="preserve"><value>Import a cube, fblut, clf, fblook, or Hald PNG</value></data>
@@ -613,12 +623,6 @@ Clear overrides: use the new preset entirely.</value></data>
   <data name="Hsl.Preset.golden" xml:space="preserve"><value>Golden</value></data>
   <data name="Hsl.Preset.teal-orange" xml:space="preserve"><value>Teal &amp; Orange</value></data>
   <data name="Hsl.Preset.muted" xml:space="preserve"><value>Muted</value></data>
-  <data name="Film.Group.kodak" xml:space="preserve"><value>Kodak</value></data>
-  <data name="Film.Group.fuji" xml:space="preserve"><value>Fuji</value></data>
-  <data name="Film.Group.agfa-lomo" xml:space="preserve"><value>Agfa &amp; Lomo</value></data>
-  <data name="Film.Group.polaroid" xml:space="preserve"><value>Polaroid</value></data>
-  <data name="Film.Group.bw" xml:space="preserve"><value>Black &amp; White</value></data>
-  <data name="Film.Group.creative" xml:space="preserve"><value>Creative</value></data>
   <data name="Param.film.look" xml:space="preserve"><value>Film</value></data>
   <data name="Param.film.warmth" xml:space="preserve"><value>Warmth</value></data>
   <data name="Param.film.fade" xml:space="preserve"><value>Fade</value></data>

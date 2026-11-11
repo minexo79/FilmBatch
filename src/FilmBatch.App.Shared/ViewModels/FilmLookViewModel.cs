@@ -3,6 +3,7 @@ using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FilmBatch.App.Controls;
+using FilmBatch.App.Services;
 using FilmBatch.App.Localization;
 using FilmBatch.Core;
 using FilmBatch.Core.Film;
@@ -12,10 +13,12 @@ using FilmBatch.Engine.Film;
 namespace FilmBatch.App.ViewModels;
 
 /// <summary>底片縮圖格中的一格。</summary>
-public sealed partial class FilmTileViewModel(string key, Func<string> name, Func<string>? detail = null) : ObservableObject
+public sealed partial class FilmTileViewModel(string key, Func<string> name, Func<string>? detail = null, string? caption = null) : ObservableObject
 {
     public string Key { get; } = key;
     public string Name => name();
+    /// <summary>縮圖下方的短標籤：內建式為序號 1–9，自訂 LUT 為檔名。</summary>
+    public string Caption => caption ?? Name;
     /// <summary>清單上的色彩空間標記。空字串表示不另標（內建底片與既有 sRGB 匯入）。</summary>
     public string Detail => detail?.Invoke() ?? "";
     public bool HasDetail => Detail.Length > 0;
@@ -28,6 +31,7 @@ public sealed partial class FilmTileViewModel(string key, Func<string> name, Fun
     public void RefreshLabel()
     {
         OnPropertyChanged(nameof(Name));
+        OnPropertyChanged(nameof(Caption));
         OnPropertyChanged(nameof(Detail));
         OnPropertyChanged(nameof(HasDetail));
         OnPropertyChanged(nameof(AccessibleName));
@@ -53,6 +57,9 @@ public sealed partial class LutImportSpaceViewModel(FilmLutColorSpace space, str
 /// <summary>film 模組頂部：底片分組、.cube 色彩空間與底片縮圖格（docs/film-looks.md）。</summary>
 public sealed partial class FilmLookViewModel : ObservableObject
 {
+    /// <summary>分組下拉最後一項：使用者匯入的 LUT。</summary>
+    public const string CustomGroup = "custom";
+
     private readonly MainWindowViewModel _main;
     private bool _expanded;
     private string? _lastFocus;
@@ -64,19 +71,29 @@ public sealed partial class FilmLookViewModel : ObservableObject
     {
         _main = main;
         Thumbnails = new FilmLookThumbnails(main);
-        Groups = [.. FilmLookLibrary.GroupsInOrder.Select(g => new FilmGroupViewModel(g))];
+        Groups = [.. FilmLookLibrary.GroupsInOrder.Append(CustomGroup).Select(g => new FilmGroupViewModel(g))];
         _selectedGroup = FilmLookLibrary.GroupsInOrder[0];
         _importColorSpace = ImportSpaces[0];
         Looks = [];
         Imported = [];
+        Tiles = [];
         LoadGroup();
         ReloadImported();
     }
 
     public FilmLookThumbnails Thumbnails { get; }
     public IReadOnlyList<FilmGroupViewModel> Groups { get; }
+    /// <summary>目前分組的內建底片（自訂分組時為空）。</summary>
     public ObservableCollection<FilmTileViewModel> Looks { get; }
+    /// <summary>使用者匯入的 LUT 與 CLF 轉換。</summary>
     public ObservableCollection<FilmTileViewModel> Imported { get; }
+    /// <summary>縮圖格實際顯示的項目：內建分組顯示 <see cref="Looks"/>，自訂分組顯示 <see cref="Imported"/>。</summary>
+    public ObservableCollection<FilmTileViewModel> Tiles { get; }
+
+    public bool IsCustomGroup => SelectedGroup == CustomGroup;
+    public bool ShowCustomEmpty => IsCustomGroup && Imported.Count == 0;
+    public bool CanOpenLutFolder => FileReveal.IsSupported;
+    internal Action<string> OpenFolder { get; set; } = FileReveal.OpenFolder;
 
     /// <summary>.cube 匯入可選的色彩空間。預設第一項是 sRGB。</summary>
     public IReadOnlyList<LutImportSpaceViewModel> ImportSpaces { get; } =
@@ -100,6 +117,8 @@ public sealed partial class FilmLookViewModel : ObservableObject
     /// <summary>目前顯示的分組 key（<see cref="FilmLookLibrary.GroupsInOrder"/>）。</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SelectedGroupItem))]
+    [NotifyPropertyChangedFor(nameof(IsCustomGroup))]
+    [NotifyPropertyChangedFor(nameof(ShowCustomEmpty))]
     private string _selectedGroup;
 
     /// <summary>給分組下拉綁定。</summary>
@@ -174,7 +193,7 @@ public sealed partial class FilmLookViewModel : ObservableObject
             var resolved = Resolved();
             if (resolved is null) return [];
             var on = resolved.With("film.enabled", ParamValue.Of(true));
-            return [.. Looks.Concat(Imported).Select(t => ("look", t, on.With("film.look", ParamValue.Of(t.Key))))];
+            return [.. Tiles.Select(t => ("look", t, on.With("film.look", ParamValue.Of(t.Key))))];
         });
     }
 
@@ -228,6 +247,7 @@ public sealed partial class FilmLookViewModel : ObservableObject
             }
             if (!Current()) return;
             ReloadImported();
+            SelectedGroup = CustomGroup;
             ApplyLook(Imported.First(t => t.Key == key));
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }
@@ -241,13 +261,42 @@ public sealed partial class FilmLookViewModel : ObservableObject
         }
     }
 
+    [RelayCommand]
+    private void OpenLutFolder()
+    {
+        try { OpenFolder(AppPaths.UserLuts); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or PlatformNotSupportedException
+            or System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            _main.Toast.Show(Loc.Format("Toast.RevealFailed", ex.Message));
+        }
+    }
+
+    /// <summary>重新讀取 LUT 資料夾（使用者直接放入 user-*.fblut 後使用）。</summary>
+    [RelayCommand]
+    private void RefreshCustom()
+    {
+        UserLutLibrary.Reset();
+        ReloadImported();
+        Thumbnails.Invalidate();
+        RequestThumbnails();
+    }
+
     private void ReloadImported()
     {
+        foreach (var old in Imported)
+        {
+            var bitmap = old.Thumbnail;
+            old.Thumbnail = null;
+            bitmap?.Dispose();
+        }
         Imported.Clear();
         foreach (var (key, name) in UserLutLibrary.All)
             Imported.Add(new FilmTileViewModel(key, () => name, () => ImportDetail(key)));
         foreach (var item in UserTransformLibrary.List(AppPaths.UserLuts))
             Imported.Add(new FilmTileViewModel(item.Key, () => item.Name, () => TransformDetail(item.Options)));
+        if (IsCustomGroup) LoadGroup();
+        OnPropertyChanged(nameof(ShowCustomEmpty));
         RefreshSelection();
     }
 
@@ -278,16 +327,26 @@ public sealed partial class FilmLookViewModel : ObservableObject
 
     private void LoadGroup()
     {
-        var old = Looks.ToList();
-        Looks.Clear();
-        foreach (var tile in old)
+        foreach (var tile in Tiles.Concat(Looks).Distinct().ToList())
         {
             var bitmap = tile.Thumbnail;
             tile.Thumbnail = null;
             bitmap?.Dispose();
         }
+        Tiles.Clear();
+        Looks.Clear();
+        if (IsCustomGroup)
+        {
+            foreach (var tile in Imported) Tiles.Add(tile);
+            return;
+        }
         foreach (var look in FilmLookLibrary.All.Where(l => l.Group == SelectedGroup))
-            Looks.Add(new FilmTileViewModel(look.Key, () => look.Name));
+        {
+            var tile = new FilmTileViewModel(look.Key, () => $"{GroupLabel(look.Group)} {look.Index}",
+                caption: look.Index.ToString());
+            Looks.Add(tile);
+            Tiles.Add(tile);
+        }
     }
 
     private Settings? Resolved() =>

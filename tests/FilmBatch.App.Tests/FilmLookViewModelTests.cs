@@ -23,7 +23,7 @@ public class FilmLookViewModelTests
         vm.OnSelectionChanged(files, files[^1]);
         var film = vm.FilmLook;
 
-        film.SelectedGroup = "fuji";
+        film.SelectedGroup = "teal-amber";
         var velvia = film.Looks.Single(t => t.Key == "teal-amber-9");
         film.ApplyLookCommand.Execute(velvia);
 
@@ -41,6 +41,74 @@ public class FilmLookViewModelTests
         Assert.NotEqual("teal-amber-9", vm.Service!.SettingsFor(files[0])["film.look"].AsText);
     }
 
+
+    [AvaloniaFact]
+    public async Task Groups_AreSixBandsPlusCustom_WithNineNumberedTilesEach()
+    {
+        using var vm = TestEnv.CreateViewModel();
+        await TestEnv.OpenSamplesAsync(vm).WaitAsync(TestContext.Current.CancellationToken);
+        var film = vm.FilmLook;
+        Assert.Equal([.. FilmLookLibrary.GroupsInOrder, FilmLookViewModel.CustomGroup], film.Groups.Select(g => g.Key));
+        foreach (var group in FilmLookLibrary.GroupsInOrder)
+        {
+            film.SelectedGroup = group;
+            Assert.False(film.IsCustomGroup);
+            Assert.Equal(Enumerable.Range(1, 9).Select(i => i.ToString()), film.Tiles.Select(t => t.Caption));
+            Assert.Equal(film.Looks, film.Tiles);
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task CustomGroup_ShowsImportedLuts_AndEmptyHintWhenNone()
+    {
+        var dialogs = new FakeDialogs();
+        using var vm = TestEnv.CreateViewModel(dialogs);
+        await TestEnv.OpenSamplesAsync(vm).WaitAsync(TestContext.Current.CancellationToken);
+        var file = vm.Filmstrip.Items[0].FileName;
+        vm.OnSelectionChanged([file], file);
+        var film = vm.FilmLook;
+
+        film.SelectedGroup = FilmLookViewModel.CustomGroup;
+        Assert.True(film.IsCustomGroup);
+        Assert.True(film.ShowCustomEmpty);
+        Assert.Empty(film.Tiles);
+        Assert.Empty(film.Looks);
+
+        Directory.CreateDirectory(AppPaths.Root);
+        var cube = Path.Combine(AppPaths.Root, "custom-group.cube");
+        File.WriteAllText(cube, IdentityCube);
+        dialogs.PickFileAnswer = cube;
+        film.SelectedGroup = FilmLookLibrary.GroupsInOrder[0];
+        await film.ImportLutCommand.ExecuteAsync(null);
+
+        Assert.Equal(FilmLookViewModel.CustomGroup, film.SelectedGroup);
+        Assert.False(film.ShowCustomEmpty);
+        var tile = Assert.Single(film.Tiles);
+        Assert.Same(film.Imported.Single(), tile);
+        Assert.Equal("custom-group", tile.Caption);
+        Assert.True(tile.IsSelected);
+    }
+
+    [AvaloniaFact]
+    public async Task OpenLutFolder_OpensUserLutDirectory_AndRefreshPicksUpDroppedFiles()
+    {
+        using var vm = TestEnv.CreateViewModel();
+        await TestEnv.OpenSamplesAsync(vm).WaitAsync(TestContext.Current.CancellationToken);
+        var film = vm.FilmLook;
+        string? opened = null;
+        film.OpenFolder = path => opened = path;
+        film.OpenLutFolderCommand.Execute(null);
+        Assert.Equal(AppPaths.UserLuts, opened);
+
+        film.SelectedGroup = FilmLookViewModel.CustomGroup;
+        Assert.Empty(film.Tiles);
+        Directory.CreateDirectory(AppPaths.UserLuts);
+        var bytes = new MemoryStream();
+        FilmLutFile.Write(bytes, FilmLut.Identity(2));
+        File.WriteAllBytes(Path.Combine(AppPaths.UserLuts, "user-0123456789abcdef.fblut"), bytes.ToArray());
+        film.RefreshCustomCommand.Execute(null);
+        Assert.Equal("user-0123456789abcdef", Assert.Single(film.Tiles).Key);
+    }
 
     [AvaloniaFact]
     public void FilmModule_IsFilmOnly_AndHslLivesWithCurvesInInspector()

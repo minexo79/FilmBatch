@@ -7,16 +7,16 @@
   <!-- 底片顏色模擬：底片分組下拉、.cube 色彩空間、縮圖格（docs/film-looks.md）。
        色彩空間只套在 .cube；Hald PNG 維持 sRGB。縮圖以焦點照片算出，只在 film 模組展開時算。 -->
   <UserControl.DataTemplates>
-    <!-- 縮圖格內容：96×64 縮圖＋來源名稱；ProPhoto 匯入另標工作色彩空間 -->
+    <!-- 縮圖格內容：1:1 縮圖（高度跟隨寬度）＋來源名稱；ProPhoto 匯入另標工作色彩空間 -->
     <DataTemplate DataType="vm:FilmTileViewModel">
       <StackPanel Spacing="2">
-        <Border Classes="film-thumb" Height="64">
+        <Border Classes="film-thumb" Height="{Binding $self.Bounds.Width}">
           <Panel>
             <Image Source="{Binding Thumbnail}" Stretch="UniformToFill" />
             <ProgressBar Classes="film-thumb-busy" IsIndeterminate="True" IsVisible="{Binding IsLoading}" VerticalAlignment="Bottom" />
           </Panel>
         </Border>
-        <TextBlock Classes="small" Text="{Binding Name}" TextTrimming="CharacterEllipsis" HorizontalAlignment="Center" />
+        <TextBlock Classes="small" Text="{Binding Caption}" TextTrimming="CharacterEllipsis" HorizontalAlignment="Center" />
         <TextBlock Classes="secondary small" Text="{Binding Detail}" TextTrimming="CharacterEllipsis" HorizontalAlignment="Center"
                    IsVisible="{Binding HasDetail}" />
       </StackPanel>
@@ -30,32 +30,29 @@
                 DisplayMemberBinding="{Binding Label, x:DataType=vm:FilmGroupViewModel}"
                 AutomationProperties.Name="{l:Tr Film.Look}" />
     </Grid>
-    <Grid ColumnDefinitions="Auto,*">
-      <Button Classes="flat" VerticalAlignment="Center"
-              Content="{l:Tr Film.Import}"
-              Command="{Binding ImportLutCommand}"
-              AutomationProperties.Name="{l:Tr Film.Import}" />
-      <ComboBox Grid.Column="1" Classes="flat" MinWidth="150" Margin="8,0,0,0"
-                HorizontalAlignment="Stretch" VerticalAlignment="Center"
-                ItemsSource="{Binding ImportSpaces}" SelectedItem="{Binding ImportColorSpace}"
-                DisplayMemberBinding="{Binding Label, x:DataType=vm:LutImportSpaceViewModel}"
-                AutomationProperties.Name="{l:Tr Film.LutSpace}" />
-    </Grid>
-    <TextBlock Classes="secondary small" Text="{l:Tr Film.LutSpaceHint}" TextWrapping="Wrap" />
-    <ItemsControl ItemsSource="{Binding Imported}">
-      <ItemsControl.ItemsPanel>
-        <ItemsPanelTemplate><UniformGrid Columns="3" /></ItemsPanelTemplate>
-      </ItemsControl.ItemsPanel>
-      <ItemsControl.ItemTemplate>
-        <DataTemplate x:DataType="vm:FilmTileViewModel">
-          <Button Classes="film-tile" Classes.selected="{Binding IsSelected}"
-                  Command="{Binding $parent[ItemsControl].((vm:FilmLookViewModel)DataContext).ApplyLookCommand}"
-                  CommandParameter="{Binding}" Content="{Binding}" ToolTip.Tip="{Binding AccessibleName}"
-                  AutomationProperties.Name="{Binding AccessibleName}" />
-        </DataTemplate>
-      </ItemsControl.ItemTemplate>
-    </ItemsControl>
-    <ItemsControl ItemsSource="{Binding Looks}">
+    <StackPanel Spacing="6" IsVisible="{Binding IsCustomGroup}">
+      <Grid ColumnDefinitions="Auto,*">
+        <Button Classes="flat" VerticalAlignment="Center"
+                Content="{l:Tr Film.Import}"
+                Command="{Binding ImportLutCommand}"
+                AutomationProperties.Name="{l:Tr Film.Import}" />
+        <ComboBox Grid.Column="1" Classes="flat" MinWidth="150" Margin="8,0,0,0"
+                  HorizontalAlignment="Stretch" VerticalAlignment="Center"
+                  ItemsSource="{Binding ImportSpaces}" SelectedItem="{Binding ImportColorSpace}"
+                  DisplayMemberBinding="{Binding Label, x:DataType=vm:LutImportSpaceViewModel}"
+                  AutomationProperties.Name="{l:Tr Film.LutSpace}" />
+      </Grid>
+      <TextBlock Classes="secondary small" Text="{l:Tr Film.LutSpaceHint}" TextWrapping="Wrap" />
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <Button Classes="flat" Content="{l:Tr Film.OpenFolder}" Command="{Binding OpenLutFolderCommand}"
+                IsVisible="{Binding CanOpenLutFolder}" AutomationProperties.Name="{l:Tr Film.OpenFolder}" />
+        <Button Classes="flat" Content="{l:Tr Film.Refresh}" Command="{Binding RefreshCustomCommand}"
+                AutomationProperties.Name="{l:Tr Film.Refresh}" />
+      </StackPanel>
+      <TextBlock Classes="secondary small" Text="{l:Tr Film.CustomEmpty}" TextWrapping="Wrap"
+                 IsVisible="{Binding ShowCustomEmpty}" />
+    </StackPanel>
+    <ItemsControl ItemsSource="{Binding Tiles}">
       <ItemsControl.ItemsPanel>
         <ItemsPanelTemplate><UniformGrid Columns="3" /></ItemsPanelTemplate>
       </ItemsControl.ItemsPanel>
