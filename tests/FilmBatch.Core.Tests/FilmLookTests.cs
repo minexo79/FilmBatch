@@ -6,6 +6,18 @@ namespace FilmBatch.Core.Tests;
 
 public class FilmLookTests
 {
+    [Theory]
+    [InlineData("aqua-1", 50)]
+    [InlineData("teal-amber-9", 50)]
+    [InlineData("amber-5", 50)]
+    [InlineData("mono-1", 100)]
+    [InlineData("kodak-tri-x-400", 100)]   // 舊黑白 key 遷移為 mono-*
+    [InlineData("kodak-portra-400", 50)]
+    [InlineData("user-0123456789abcdef", 100)]
+    [InlineData("look-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", 100)]
+    public void DefaultStrength_IsFullForMonoAndCustom_HalfForColourBands(string key, double expected) =>
+        Assert.Equal(expected, FilmLookLibrary.DefaultStrength(key));
+
     [Fact]
     public void Resolve_UnknownKey_ReturnsNull() =>
         Assert.Null(FilmLookLibrary.Resolve("no-such-film", TestContext.Current.CancellationToken));

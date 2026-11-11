@@ -313,12 +313,28 @@ public sealed partial class FilmLookViewModel : ObservableObject
     private void ApplyLook(FilmTileViewModel? tile)
     {
         if (tile is null || _main.Service is null || _main.Selection.Count == 0) return;
-        var values = new Settings([
-            new("film.enabled", ParamValue.Of(true)),
-            new("film.look", ParamValue.Of(tile.Key)),
-        ]);
+        var service = _main.Service;
         // 成功後 Project.EntriesChanged → Inspector.Refresh → OnSettingsChanged 會更新選取與縮圖
-        _main.Service.SetValues(_main.Selection, values, Loc.Format("Film.LookApplied", tile.Name));
+        service.SetValuesEach(_main.Selection, file => LookValues(service.SettingsFor(file), tile.Key),
+            Loc.Format("Film.LookApplied", tile.Name));
+    }
+
+    /// <summary>
+    /// 切換底片寫入的值。效果比例依新底片給預設（黑白與自訂 LUT 100，其餘 50），
+    /// 但照片目前的比例既不是舊底片的預設、也不是參數預設（100）時，視為使用者自己調過，不覆寫。
+    /// </summary>
+    private static Settings LookValues(Settings resolved, string key)
+    {
+        var strength = resolved.Number("film.strength");
+        var untouched = strength == FilmLookLibrary.DefaultStrength(resolved.Text("film.look"))
+            || strength == ModuleCatalog.Param("film.strength")!.Default.AsNumber;
+        var values = new List<KeyValuePair<string, ParamValue>>
+        {
+            new("film.enabled", ParamValue.Of(true)),
+            new("film.look", ParamValue.Of(key)),
+        };
+        if (untouched) values.Add(new("film.strength", ParamValue.Of(FilmLookLibrary.DefaultStrength(key))));
+        return new Settings(values);
     }
 
     private void LoadGroup()

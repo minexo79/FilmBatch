@@ -60,6 +60,16 @@ public static class FilmLookLibrary
 
     public static bool TryGet(string key, out FilmLook look) => ByKey.TryGetValue(key, out look!);
 
+    /// <summary>
+    /// 切換到此底片時建議的效果比例：黑白與自訂 LUT（使用者匯入的 LUT、CLF）為 100，其餘色帶為 50。
+    /// 舊 key 先遷移再判斷。
+    /// </summary>
+    public static double DefaultStrength(string key)
+    {
+        if (TryMigrate(key, out var migrated)) key = migrated;
+        return TryGet(key, out var look) && look.Group != "mono" ? 50 : 100;
+    }
+
     /// <summary>舊 36 卷 key 換成新 key；新 key 或未知 key 回傳 false。</summary>
     public static bool TryMigrate(string key, out string migrated) => LegacyKeys.TryGetValue(key, out migrated!);
 

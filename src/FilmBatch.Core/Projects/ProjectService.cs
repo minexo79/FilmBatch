@@ -68,13 +68,19 @@ public sealed class ProjectService
     /// </summary>
     public bool SetValues(IReadOnlyCollection<string> fileNames, Settings values, string description, string? mergeKey = null)
     {
-        var coerced = new Settings(values.Select(kv => KeyValuePair.Create(kv.Key,
-            (ModuleCatalog.Param(kv.Key) ?? throw new ArgumentException($"未知的參數：{kv.Key}")).Coerce(kv.Value))));
-        return Apply(description, fileNames, entry => entry with
-        {
-            Overrides = PhotoOperations.Clean(entry.Overrides.Overlay(coerced), BaseFor(entry.PresetId)),
-        }, mergeKey);
+        var coerced = Coerce(values);
+        return SetValuesEach(fileNames, _ => coerced, description, mergeKey);
     }
+
+    /// <summary>每張照片各自決定要寫入的值（例如依目前設定決定預設強度）；仍是一筆命令、一次復原。</summary>
+    public bool SetValuesEach(IReadOnlyCollection<string> fileNames, Func<string, Settings> valuesFor, string description, string? mergeKey = null) =>
+        Apply(description, fileNames, entry => entry with
+        {
+            Overrides = PhotoOperations.Clean(entry.Overrides.Overlay(Coerce(valuesFor(entry.FileName))), BaseFor(entry.PresetId)),
+        }, mergeKey);
+
+    private static Settings Coerce(Settings values) => new(values.Select(kv => KeyValuePair.Create(kv.Key,
+        (ModuleCatalog.Param(kv.Key) ?? throw new ArgumentException($"未知的參數：{kv.Key}")).Coerce(kv.Value))));
 
     /// <summary>套用或移除焦點照片的去背遮罩；與其他編輯共用原子保存與復原。</summary>
     public bool SetForegroundMask(string fileName, ForegroundMask? mask) =>

@@ -43,6 +43,84 @@ public class FilmLookViewModelTests
 
 
     [AvaloniaFact]
+    public async Task ApplyLook_SetsDefaultStrength_FullForMonoAndCustom_HalfForColourBands()
+    {
+        var dialogs = new FakeDialogs();
+        using var vm = TestEnv.CreateViewModel(dialogs);
+        await TestEnv.OpenSamplesAsync(vm).WaitAsync(TestContext.Current.CancellationToken);
+        var file = vm.Filmstrip.Items[0].FileName;
+        vm.OnSelectionChanged([file], file);
+        var film = vm.FilmLook;
+        double Strength() => vm.Service!.SettingsFor(file).Number("film.strength");
+        void Apply(string group, string key)
+        {
+            film.SelectedGroup = group;
+            film.ApplyLookCommand.Execute(film.Tiles.Single(t => t.Key == key));
+        }
+
+        Apply("amber", "amber-3");
+        Assert.Equal(50, Strength());
+        Apply("mono", "mono-2");
+        Assert.Equal(100, Strength());
+        Apply("aqua", "aqua-7");
+        Assert.Equal(50, Strength());
+
+        Directory.CreateDirectory(AppPaths.Root);
+        var cube = Path.Combine(AppPaths.Root, "strength-default.cube");
+        File.WriteAllText(cube, IdentityCube);
+        dialogs.PickFileAnswer = cube;
+        await film.ImportLutCommand.ExecuteAsync(null);   // 匯入後自動套用該自訂 LUT
+        Assert.Equal(100, Strength());
+        Apply("teal-amber", "teal-amber-4");
+        Assert.Equal(50, Strength());
+    }
+
+    [AvaloniaFact]
+    public async Task ApplyLook_KeepsStrengthTheUserChanged()
+    {
+        using var vm = TestEnv.CreateViewModel();
+        await TestEnv.OpenSamplesAsync(vm).WaitAsync(TestContext.Current.CancellationToken);
+        var file = vm.Filmstrip.Items[0].FileName;
+        vm.OnSelectionChanged([file], file);
+        var film = vm.FilmLook;
+        film.SelectedGroup = "amber";
+        film.ApplyLookCommand.Execute(film.Tiles.Single(t => t.Key == "amber-5"));
+        vm.Service!.SetValue([file], "film.strength", ParamValue.Of(70.0));
+
+        film.SelectedGroup = "mono";
+        film.ApplyLookCommand.Execute(film.Tiles.Single(t => t.Key == "mono-1"));
+        Assert.Equal(70, vm.Service.SettingsFor(file).Number("film.strength"));
+        film.SelectedGroup = "aqua";
+        film.ApplyLookCommand.Execute(film.Tiles.Single(t => t.Key == "aqua-1"));
+        Assert.Equal(70, vm.Service.SettingsFor(file).Number("film.strength"));
+    }
+
+    [AvaloniaFact]
+    public async Task ApplyLook_DecidesStrengthPerPhoto_InOneUndoStep()
+    {
+        using var vm = TestEnv.CreateViewModel();
+        await TestEnv.OpenSamplesAsync(vm).WaitAsync(TestContext.Current.CancellationToken);
+        var files = vm.Filmstrip.Items.Take(2).Select(t => t.FileName).ToList();
+        vm.OnSelectionChanged([files[0]], files[0]);
+        vm.Service!.SetValue([files[0]], "film.strength", ParamValue.Of(70.0));   // 第一張自行調整過
+        vm.OnSelectionChanged(files, files[^1]);
+        var film = vm.FilmLook;
+
+        film.SelectedGroup = "mono";
+        film.ApplyLookCommand.Execute(film.Tiles.Single(t => t.Key == "mono-1"));
+        Assert.Equal(70, vm.Service.SettingsFor(files[0]).Number("film.strength"));
+        Assert.Equal(100, vm.Service.SettingsFor(files[1]).Number("film.strength"));
+        film.SelectedGroup = "aqua";
+        film.ApplyLookCommand.Execute(film.Tiles.Single(t => t.Key == "aqua-1"));
+        Assert.Equal(70, vm.Service.SettingsFor(files[0]).Number("film.strength"));
+        Assert.Equal(50, vm.Service.SettingsFor(files[1]).Number("film.strength"));
+
+        vm.UndoCommand.Execute(null);   // 一次復原回到上一個底片的結果
+        Assert.Equal("mono-1", vm.Service.SettingsFor(files[1])["film.look"].AsText);
+        Assert.Equal(100, vm.Service.SettingsFor(files[1]).Number("film.strength"));
+    }
+
+    [AvaloniaFact]
     public async Task Groups_AreSixBandsPlusCustom_WithNineNumberedTilesEach()
     {
         using var vm = TestEnv.CreateViewModel();
