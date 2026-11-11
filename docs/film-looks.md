@@ -1,13 +1,13 @@
 # 底片風格（Film Look）
 
-`film` 模組（中文「底片風格」、英文「Film Look」）沿用一個底片選擇與效果比例、暖色、褪色。內建 54 式由六個色帶在程式內烘焙成 3D LUT，使用者匯入的 LUT 沿用同一條 3D LUT 管線；本工作區另實作有界 CLF 3.0 轉換序列匯入，格式與限制見文末。八色相帶修正獨立於底片。本次變更的跨平台、實拍與發佈 gate 尚未全部完成，不能把本文件視為發佈驗收。
+`film` 模組（中文「底片風格」、英文「Film Look」）沿用一個底片選擇與效果比例、暖色、褪色。內建 36 式由六個色帶在程式內烘焙成 3D LUT，使用者匯入的 LUT 沿用同一條 3D LUT 管線；本工作區另實作有界 CLF 3.0 轉換序列匯入，格式與限制見文末。八色相帶修正獨立於底片。本次變更的跨平台、實拍與發佈 gate 尚未全部完成，不能把本文件視為發佈驗收。
 
 本模組於 2026-10 取代舊的 Recipe Lab 底片配方模組（Sony 創意風格模擬、自訂配方 `.YML`、樣張校正工具已全部移除）。2026-11 起，原先內附的 36 卷第三方 LUT 也由程式生成的色帶取代（見[第 2 節](#2-內附底片色帶與九式)與[第 7 節](#7-舊專案相容)）。
 
 ## 目錄
 
 1. [概念](#1-概念)
-2. [內附底片：色帶與九式](#2-內附底片色帶與九式)
+2. [內附底片：色帶與六式](#2-內附底片色帶與六式)
 3. [演算法](#3-演算法)
 4. [色相帶](#4-色相帶)
 5. [調整或新增底片](#5-調整或新增底片)
@@ -20,7 +20,7 @@
 
 | 概念 | FilmBatch 參數 | 範圍（預設） | 說明 |
 |---|---|---|---|
-| 底片（Film） | `film.look` | 54 式之一（`amber-5`） | 六個色帶各 3×3 九式；載入時烘焙成一個 33³ 3D LUT。使用者匯入的 LUT 另有 `user-`／`look-` key |
+| 底片（Film） | `film.look` | 36 式之一（`amber-5`） | 六個色帶各 3×2 六式；載入時烘焙成一個 33³ 3D LUT。使用者匯入的 LUT 另有 `user-`／`look-` key |
 | 效果比例（Strength，介面顯示為「中性」） | `film.strength` | 0–100（100） | 結果與原圖在線性光中混合的比例 |
 | 暖色（Warmth） | `film.warmth` | −100–100（0） | 正值偏暖（R↑ B↓），負值偏冷 |
 | 褪色（Fade） | `film.fade` | 0–100（0） | 抬起黑點、壓低白點，像褪色的相紙 |
@@ -30,10 +30,10 @@
 
 底片效果分頁（`FilmLookControl`／`FilmLookViewModel`）：
 
-- **底片**：分組下拉（湖藍／暖黃／豆沙紅／湖藍→暖黃／青綠→豆沙紅／黑白／自訂 LUT）與 3×3 的 1:1 縮圖格，縮圖下方是該底片的**過渡色帶**（把底片套在黑到白灰階上取 9 點的漸層，`FilmLookRamp`；自訂 LUT 與 CLF 也有），再下面是序號 1–9 或檔名。點縮圖即對所有選取中的照片設定 `film.enabled = true`、`film.look = key`（一筆復原紀錄）。「自訂 LUT」分組列出使用者匯入的 LUT，同樣顯示照片縮圖，並提供匯入、開啟 LUT 資料夾與重新整理。
+- **底片**：分組下拉（湖藍／暖黃／豆沙紅／湖藍→暖黃／青綠→豆沙紅／黑白／自訂 LUT）與 3×2 的 3:2 縮圖格，縮圖下方是該底片的**過渡色帶**（把底片套在黑到白灰階上取 9 點的漸層，`FilmLookRamp`；自訂 LUT 與 CLF 也有），再下面是序號 1–6 或檔名。點縮圖即對所有選取中的照片設定 `film.enabled = true`、`film.look = key`（一筆復原紀錄）。「自訂 LUT」分組列出使用者匯入的 LUT，同樣顯示照片縮圖，並提供匯入、開啟 LUT 資料夾與重新整理。
 - **中性（效果比例）、暖色、褪色**：一般參數列。中性是結果與原圖的混合比例，即保留原色的比例。
 - **切換底片時的預設比例**：點選黑白（`mono`）或自訂 LUT（使用者匯入的 LUT、CLF）時，效果比例設為 100；點選其他色帶設為 50（`FilmLookLibrary.DefaultStrength`）。每張照片各自判斷，且是同一筆復原紀錄。使用者自己調過的比例不會被覆寫：照片目前的比例若既不是舊底片的預設值、也不是參數預設值（100），就視為自己調過而保留。因此在彩色底片上手動設成 100，會被當成未調整，下次切到色帶時改回 50。
-- 縮圖以**目前焦點照片**的代理圖縮小到長邊 128 px 算圖（顯示時置中裁成 1:1），只算目前分組的 9 格（自訂分組則算匯入項目），只在 film 模組展開時計算，走共用的低優先縮圖佇列（`FilmLookThumbnails`，鍵前綴 `film-look/look/`）。
+- 縮圖以**目前焦點照片**的代理圖縮小到長邊 128 px 算圖（顯示時置中裁成 3:2），只算目前分組的 6 格（自訂分組則算匯入項目），只在 film 模組展開時計算，走共用的低優先縮圖佇列（`FilmLookThumbnails`，鍵前綴 `film-look/look/`）。
 
 基本參數 → **色彩**（曲線與 `HslControl`／`HslViewModel`）：
 
@@ -43,9 +43,9 @@
 
 ---
 
-## 2. 內附底片：色帶與九式
+## 2. 內附底片：色帶與六式
 
-內建底片不含任何第三方 LUT：六個基準色帶各自生成 3×3 共九式，共 54 式，在第一次使用時由 `Core/Film/ToningLooks.cs` 烘焙成 33³ 的 sRGB `FilmLut` 並快取（`FilmLookLibrary` 對同一 key 回傳同一個物件）。
+內建底片不含任何第三方 LUT：六個基準色帶各自生成 3×2 共六式，共 36 式，在第一次使用時由 `Core/Film/ToningLooks.cs` 烘焙成 33³ 的 sRGB `FilmLut` 並快取（`FilmLookLibrary` 對同一 key 回傳同一個物件）。
 
 | 分組 key | 名稱 | 暗部端 | 亮部端 |
 |---|---|---|---|
@@ -56,10 +56,10 @@
 | `teal-rose` | 青綠→豆沙紅 | `#0187AE` | `#C97F7F` |
 | `mono` | 黑白 | 灰階，不著色 | 灰階，不著色 |
 
-每組九式依序編號 1–9（列優先），key 為 `{分組}-{序號}`，例如 `teal-rose-6`；預設為 `amber-5`（`FilmLookLibrary.DefaultKey`）。
+每組六式依序編號 1–6（列優先：第一列為淡、第二列為濃），key 為 `{分組}-{序號}`，例如 `teal-rose-6`；預設為 `amber-5`（`FilmLookLibrary.DefaultKey`）。
 
 - **欄＝過渡**（柔和、中、強烈）：暗部端與亮部端之間的 smoothstep 半寬度為 0.5、0.28、0.08；色度包絡指數為 0.4、0.6、0.9。黑白則是對比 S 曲線量 0、0.45、0.9。
-- **列＝濃淡**（淡、中、濃）：色度加入量 0.3、0.55、0.8。黑白則是中間調 gamma 0.8、1、1.25（亮調、中、暗調）。
+- **列＝濃淡**（淡、濃）：色度加入量 0.4、0.8。黑白則是中間調 gamma 0.8、1.25（亮調、暗調）。
 
 ### 2.1 烘焙公式
 
@@ -67,6 +67,8 @@
 
 1. 彩色帶：`tint = lerp(暗部端, 亮部端, smoothstep(0.5 − w, 0.5 + w, l))`，`delta = tint − luma(tint)`（亮度中性的色度向量），`out = clamp(rgb + delta × 濃淡 × (4l(1 − l))^包絡)`。偏移加在**原色**上而不是灰階上，像疊一層該色的遮罩，把原本的顏色往色帶顏色拉，原色不會被取代；黑與白保持不變，色度偏移集中在中間調，且不改變亮度（過飽和處因夾取會略有差異）。
 2. 黑白帶：`x = l^gamma`，`out = x + 對比量 × (smoothstep(0, 1, x) − x)`，R = G = B，端點與單調性不變。
+
+**膚色保護**：彩色帶的色度偏移乘上 `1 − 0.9 × 膚色權重`。膚色權重（`ToningLooks.SkinWeight`）依 HSV 判斷：色相約 5°–45°（兩側各 25° 內漸弱）、飽和度中等（約 0.2–0.55，到 0.8 漸弱）、不太暗，灰階與其他色相為 0。因此人像的膚色幾乎不變，天空、草地等仍會被拉向色帶顏色；色帶本身偏暖時，同色相的其他物體也會一併被保護。黑白組不受影響。
 
 這些顏色與參數是 FilmBatch 自行定義的風格化色調，不模擬任何實體底片，也不宣稱接近特定底片或 SpectraFilm。
 
@@ -84,7 +86,7 @@
 
 對每個像素（輸入為線性光 `linear`）：
 
-1. **編碼**：sRGB LUT（內建 54 式與以 sRGB 匯入的表）：`display = linear_to_srgb(clamp(linear, 0, 1))`，LUT 的輸入是 sRGB 顯示編碼。
+1. **編碼**：sRGB LUT（內建 36 式與以 sRGB 匯入的表）：`display = linear_to_srgb(clamp(linear, 0, 1))`，LUT 的輸入是 sRGB 顯示編碼。
    ProPhoto LUT（以 ProPhoto 匯入的 `.cube`）：`p = clamp(srgb_to_prophoto(linear), 0, 1)`，`encoded = p^(1/1.8)`（D50、純 gamma 1.8，非 ROMM 分段曲線）。
 2. **LUT**：sRGB 為 `look = srgb_to_linear(lut.Sample(display))`；ProPhoto 為 `look = prophoto_to_srgb(lut.Sample(encoded)^1.8)`，取樣值先 decode gamma 再乘回線性 sRGB 矩陣。皆為四面體內插（見 3.3）。
 3. **暖色**：`w = warmth / 100`，在線性光中 `R × (1 + 0.12w)`、`B × (1 − 0.12w)`，G 不變。
@@ -166,7 +168,7 @@
 
 1. **改定義**：色帶顏色、過渡與濃淡的參數都在 `src/FilmBatch.Core/Film/ToningLooks.cs`；分組順序在 `FilmLookLibrary.GroupsInOrder`，分組與序號組成的 key 發佈後不可再改（存進設定）。
 2. **新增分組**：加一個 `ToningBand`、在 `ToningLooks.Ends` 給兩端顏色、把 key 加進 `GroupsInOrder` 與 `FilmLookLibrary` 的 `Bands`／`GroupNames`，並在 `Strings.resx`／`Strings.en.resx` 加 `Film.Group.{key}`。
-3. **測試**：`dotnet test tests/FilmBatch.Core.Tests --filter "FullyQualifiedName~ToningLooksTests|FullyQualifiedName~FilmLookTests"`（檢查 54 式、每組 9 式、33³ 範圍、黑白中性與單調、濃淡與過渡方向、舊 key 遷移）。分組或式數改變時要更新測試中的 54 與 6。
+3. **測試**：`dotnet test tests/FilmBatch.Core.Tests --filter "FullyQualifiedName~ToningLooksTests|FullyQualifiedName~FilmLookTests"`（檢查 36 式、每組 6 式、33³ 範圍、黑白中性與單調、濃淡與過渡方向、舊 key 遷移）。分組或式數改變時要更新測試中的 36 與 6。
 4. **更新文件**：本文件第 2 節的表格與公式。
 
 ---
@@ -181,7 +183,7 @@
 
 ## 7. 舊專案相容
 
-**開發期間的 key**：單色「青綠」（`teal-N`）與「青綠→暖黃」（`teal-amber-N`）組已移除或改名，讀入時分別換成同序號的 `aqua-N` 與 `teal-rose-N`。
+**開發期間的 key**：單色「青綠」（`teal-N`）與「青綠→暖黃」（`teal-amber-N`）組已移除或改名，讀入時分別換成 `aqua-N` 與 `teal-rose-N`；每組曾有九式、現為六式，序號 7–9 換成 4–6。
 
 **底片 key 遷移（2026-11）**：原先 36 卷第三方底片 LUT 已移除。讀入專案、設定剪貼簿 JSON 與預設時，`film.look` 的舊 key（例如 `kodak-portra-400`）由 `FilmLookLibrary.LegacyKeys` 換成最接近的新式（例如 `amber-5`；黑白底片換成 `mono-*`），算圖時 `Resolve` 也接受舊 key。對照是依色調傾向挑選，外觀會改變，需要時請重新挑選底片。寫出一律只存新 key；使用者匯入的 `user-`／`look-` key 不受影響。預設底片由 `kodak-portra-400` 變為 `amber-5`。
 
@@ -196,7 +198,7 @@
 - 保留的 `film.enabled` 與 `film.strength` 沿用原值。
 - 舊檔沒有 `film.look`，因此原本 `film.enabled = true` 的照片會改套用預設底片 **暖黃 5**（`amber-5`）（外觀會改變，需要時請重新挑選底片）。
 - 其他未知的 key 仍會被拒絕（`RetiredParamsTests` 會檢查），避免打錯字的 key 被默默忽略。
-- 內建範例預設的底片：Portra Warm + Light Leak → `amber-5`、Ektar Vivid → `amber-9`、Tri-X High Contrast → `mono-9`、Portra 800 Night（原 CineStill Night）→ `aqua-amber-5`、Dreamy Bokeh → `aqua-amber-2`。已存在於使用者預設庫的範例預設不會被覆寫，其中舊的 film 欄位一樣在讀取時丟棄。
+- 內建範例預設的底片：Portra Warm + Light Leak → `amber-5`、Ektar Vivid → `amber-6`、Tri-X High Contrast → `mono-6`、Portra 800 Night（原 CineStill Night）→ `aqua-amber-5`、Dreamy Bokeh → `aqua-amber-2`。已存在於使用者預設庫的範例預設不會被覆寫，其中舊的 film 欄位一樣在讀取時丟棄。
 
 
 ## 使用者匯入的 LUT
@@ -207,7 +209,7 @@
 - Hald CLUT PNG：寬高都是 L³。iOS 上不讀 PNG。
 - `.fblut`：直接用 `FilmLutFile` 讀取，色彩空間與邊長取決於檔案本身；放進使用者庫時 key 由內容雜湊決定，不沿用原檔名。
 
-匯入的表存在 `AppPaths.UserLuts`（`user-` 加內容雜湊），`film.look` 可存這個 key。它們不是內建 54 式，檔名只當顯示名稱，不代表廠商授權。這些項目列在分組下拉最後的「自訂 LUT」，同樣顯示照片縮圖；該分組提供「開啟 LUT 資料夾」與「重新整理」，後者重新讀取資料夾內的 `user-*.fblut`（直接放入的 `.cube`、Hald PNG、`.clf` 仍須經「匯入 LUT」轉換）。匯入成功後自動切到「自訂 LUT」並套用。
+匯入的表存在 `AppPaths.UserLuts`（`user-` 加內容雜湊），`film.look` 可存這個 key。它們不是內建 36 式，檔名只當顯示名稱，不代表廠商授權。這些項目列在分組下拉最後的「自訂 LUT」，同樣顯示照片縮圖；該分組提供「開啟 LUT 資料夾」與「重新整理」，後者重新讀取資料夾內的 `user-*.fblut`（直接放入的 `.cube`、Hald PNG、`.clf` 仍須經「匯入 LUT」轉換）。匯入成功後自動切到「自訂 LUT」並套用。
 
 ProPhoto 匯入的表在清單格中多一行色彩空間標記（`ProPhoto RGB (gamma 1.8)`），sRGB 匯入與內建底片不標。顯示名稱一律是來源檔名，色彩空間不寫進名稱檔。
 

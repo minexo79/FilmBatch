@@ -91,14 +91,14 @@ flowchart LR
 
 ## 4.5 Core．底片風格（Film）
 
-**職責**：底片顏色模擬的資料：54 式內附底片（六個色帶 × 3×3 九式，由 `ToningLooks` 烘焙成 3D LUT）、八色相帶定義與內建色相修正預設，以及舊參數的相容處理。演算法與色帶定義見 [film-looks.md](../film-looks.md)。
+**職責**：底片顏色模擬的資料：36 式內附底片（六個色帶 × 3×2 六式，由 `ToningLooks` 烘焙成 3D LUT）、八色相帶定義與內建色相修正預設，以及舊參數的相容處理。演算法與色帶定義見 [film-looks.md](../film-looks.md)。
 
 | 型別 / 檔案 | 說明 |
 |---|---|
 | `FilmLut` | 3D LUT 資料（`Size`、`Data`、`ColorSpace`；`FilmLutColorSpace` 為 sRGB 或 ProPhoto D50／gamma 1.8；Hald 像素順序）；`Sample` 四面體內插、`Resample` 改邊長、`FromHald`、`ToTextureRgba` 轉成 GPU 紋理排列 |
 | `FilmLutFile` | `.fblut` 二進位格式讀寫：sRGB 為 FBLUT1（magic、int32 邊長、16-bit unorm）；ProPhoto 為 FBLUT2（邊長後多一個色彩空間位元組） |
-| `ToningLooks` | 六個基準色帶（`ToningBand`）的 3×3 九式定義與 `Bake`，輸出 33³ sRGB `FilmLut`；顏色、過渡與濃淡參數都在此檔 |
-| `FilmLookLibrary`／`FilmLookAsset` | 54 式清單（`All`、`GroupsInOrder`、`DefaultKey`）與互斥的 LUT／轉換資產。`Resolve(key)` 延遲烘焙並快取；`LegacyKeys`／`TryMigrate` 把舊 36 卷 key 換成新 key；未知 key 回 null，啟用的 `look-` 資產失敗則拋出帶原始原因的 `ColorTransformAssetException` |
+| `ToningLooks` | 六個基準色帶（`ToningBand`）的 3×2 六式定義與 `Bake`，輸出 33³ sRGB `FilmLut`；顏色、過渡與濃淡參數都在此檔 |
+| `FilmLookLibrary`／`FilmLookAsset` | 36 式清單（`All`、`GroupsInOrder`、`DefaultKey`）與互斥的 LUT／轉換資產。`Resolve(key)` 延遲烘焙並快取；`LegacyKeys`／`TryMigrate` 把舊 36 卷 key 換成新 key；未知 key 回 null，啟用的 `look-` 資產失敗則拋出帶原始原因的 `ColorTransformAssetException` |
 | `ClfFile`／`ColorTransform` | 有界 CLF 3.0 子集 parser 與不可變 float32 節點／資料；Matrix、Range、LUT1D、LUT3D 依序執行，未知運算與超限拒絕 |
 | `ColorTransformFile`／`UserTransformLibrary` | `.fblook` 保存 16-byte 宣告與原始 CLF，`look-`＋SHA-256 定址；匯入封存、驗證後原子發布，解析以 root＋key 校驗並保持有界快取 |
 | `HueBands`／`HuePresets` | 獨立 `hsl` 模組的八色相帶 key、中心角（與 `linear/hsl.wgsl` 同值）、24 個參數 schema（`Params`、`FlatKeys`）；七個文字預設與 `Find`（判斷目前值是否為某預設，否則為「自訂」）。與曲線同屬 `ModuleGroup.Color` |

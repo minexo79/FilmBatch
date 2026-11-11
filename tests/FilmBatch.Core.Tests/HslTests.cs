@@ -111,7 +111,7 @@ public sealed class HslTests
             modules:
               film:
                 enabled: false
-                look: "amber-9"
+                look: "amber-6"
                 hue_red_s: 40
               hsl:
                 hue_red_h: 12

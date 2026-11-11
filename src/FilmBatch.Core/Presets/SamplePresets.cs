@@ -38,7 +38,7 @@ public static class SamplePresets
             Settings = WithLook([
                 ("basic.saturation", 15.0), ("basic.contrast", 10.0),
                 ("grain.enabled", true), ("grain.amount", 12.0),
-            ], "amber-9"),
+            ], "amber-6"),
         },
         new()
         {
@@ -46,7 +46,7 @@ public static class SamplePresets
             Settings = WithLook([
                 ("basic.saturation", -100.0), ("basic.contrast", 25.0),
                 ("grain.enabled", true), ("grain.amount", 40.0), ("grain.size", 40.0),
-            ], "mono-9"),
+            ], "mono-6"),
         },
         new()
         {

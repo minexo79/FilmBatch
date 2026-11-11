@@ -801,7 +801,7 @@
   </Style>
   <!-- 縮圖下方的過渡色帶 -->
   <Style Selector="Border.film-ramp">
-    <Setter Property="CornerRadius" Value="3" />
+    <Setter Property="CornerRadius" Value="4" />
   </Style>
   <Style Selector="ProgressBar.film-thumb-busy">
     <Setter Property="MinHeight" Value="2" />

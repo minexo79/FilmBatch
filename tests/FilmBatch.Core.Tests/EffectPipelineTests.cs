@@ -43,7 +43,7 @@ public sealed class EffectPipelineTests
     }
 
     /// <summary>底片單級設定：其餘全部沿用系統預設（即關閉）。</summary>
-    private static Settings FilmOnly(double strength = 100, string look = "amber-9",
+    private static Settings FilmOnly(double strength = 100, string look = "amber-6",
         double warmth = 0, double fade = 0) =>
         ModuleCatalog.Defaults
             .With("film.enabled", true)
@@ -1000,7 +1000,7 @@ public sealed class EffectPipelineTests
 
     [Theory]
     [InlineData("amber-5", 0, 0)]
-    [InlineData("teal-rose-9", 40, 30)]
+    [InlineData("teal-rose-6", 40, 30)]
     [InlineData("aqua-amber-6", -60, 0)]
     public void Gpu_MatchesCpu_OnFilmLook(string look, double warmth, double fade)
     {

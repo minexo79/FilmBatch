@@ -43,7 +43,7 @@ public sealed class GalleryViewModel : IParamHost
         OverriddenParam = new SliderParamViewModel("basic", basic.Params[4], this);
         OverriddenParam.Load(25.0, overridden: true);
         ChoiceParam = new ChoiceParamViewModel("film", film.Params.First(p => p.Key == "look"), this);
-        ChoiceParam.Load("teal-rose-9", overridden: true);
+        ChoiceParam.Load("teal-rose-6", overridden: true);
         ToggleParam = new ToggleParamViewModel("lens_distortion", ModuleCatalog.Module("lens_distortion").Params[4], this);
         ToggleParam.Load(true, overridden: false);
 

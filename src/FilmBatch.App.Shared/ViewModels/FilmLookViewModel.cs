@@ -21,7 +21,7 @@ public sealed partial class FilmTileViewModel(string key, Func<string> name, Fun
     private readonly Lazy<IBrush?> _ramp = new(() => ramp?.Invoke());
     public string Key { get; } = key;
     public string Name => name();
-    /// <summary>縮圖下方的短標籤：內建式為序號 1–9，自訂 LUT 為檔名。</summary>
+    /// <summary>縮圖下方的短標籤：內建式為序號 1–6，自訂 LUT 為檔名。</summary>
     public string Caption => caption ?? Name;
     /// <summary>縮圖下方的過渡色帶（此底片套在黑到白灰階上的結果）；第一次顯示時才計算，無法取樣時為 null。</summary>
     public IBrush? Ramp => _ramp.Value;
@@ -91,7 +91,7 @@ public sealed partial class FilmLookViewModel : ObservableObject
     public IReadOnlyList<FilmGroupViewModel> Groups { get; }
     /// <summary>使用者匯入的 LUT 與 CLF 轉換。</summary>
     public ObservableCollection<FilmTileViewModel> Imported { get; }
-    /// <summary>縮圖格實際顯示的項目：內建分組為該組的 9 式，自訂分組為 <see cref="Imported"/>。</summary>
+    /// <summary>縮圖格實際顯示的項目：內建分組為該組的 6 式，自訂分組為 <see cref="Imported"/>。</summary>
     public ObservableCollection<FilmTileViewModel> Tiles { get; }
 
     public bool IsCustomGroup => SelectedGroup == CustomGroup;

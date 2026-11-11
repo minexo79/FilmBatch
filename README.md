@@ -35,7 +35,7 @@ FilmBatch applies film colors and analog effects to every photo, then exports th
 | Feature | Description |
 | --- | --- |
 | **Light leaks** | Adjustable light-leak overlays for a warm, accidental-exposure look. |
-| **Film look** | Stylized toning looks (six colour bands × nine styles), custom LUT import, adjustable neutral/strength, warmth, fade and 8-hue correction. |
+| **Film look** | Stylized toning looks (six colour bands × six styles), custom LUT import, adjustable neutral/strength, warmth, fade and 8-hue correction. |
 | **Grain** | Reproducible grain with three models (clumped, multi-scale, optical statistics); tune seed and response per tone. |
 | **AI denoise** | Local AI noise reduction (RAW and RGB models). Models are downloaded or imported explicitly; inference never connects to the network. |
 | **AI background removal** | On-device subject selection on macOS via Apple Vision. Nothing is uploaded and no background is generated. |

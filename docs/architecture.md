@@ -164,7 +164,7 @@ sequenceDiagram
 
 ### 4.5 Core．底片風格（Film）
 
-六個色帶 × 九式（54 式）內附底片、八色相帶與舊參數相容處理；演算法與授權見 [film-looks.md](film-looks.md)。詳見 [core.md](architecture/core.md#45-core底片風格film)。
+六個色帶 × 六式（36 式）內附底片、八色相帶與舊參數相容處理；演算法與授權見 [film-looks.md](film-looks.md)。詳見 [core.md](architecture/core.md#45-core底片風格film)。
 
 ### 4.6 Engine．算圖管線（Rendering）
 
@@ -285,4 +285,4 @@ Avalonia 12 桌面與共用行動版介面，採 MVVM（CommunityToolkit.Mvvm）
 - [building.md](building.md)：建置、測試、CI 與發佈
 - [adr/0001-webgpu-binding.md](adr/0001-webgpu-binding.md)：WebGPU 綁定選型
 - [adr/0002-ai-denoise.md](adr/0002-ai-denoise.md)：本機 AI 降噪、模型身分、資料域、快取與原生執行決策
-- [film-looks.md](film-looks.md)：底片風格的色帶與九式、演算法、色相帶與調整底片流程
+- [film-looks.md](film-looks.md)：底片風格的色帶與六式、演算法、色相帶與調整底片流程

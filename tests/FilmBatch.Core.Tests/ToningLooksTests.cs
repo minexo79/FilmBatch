@@ -12,16 +12,16 @@ public class ToningLooksTests
     private static float Chroma(Vector3 c) => MathF.Max(c.X, MathF.Max(c.Y, c.Z)) - MathF.Min(c.X, MathF.Min(c.Y, c.Z));
 
     [Fact]
-    public void Library_Has54Looks_NineInEachOfSixGroups()
+    public void Library_Has36Looks_SixInEachOfSixGroups()
     {
         Assert.Equal(6, FilmLookLibrary.GroupsInOrder.Count);
-        Assert.Equal(54, FilmLookLibrary.All.Count);
-        Assert.Equal(54, FilmLookLibrary.All.Select(l => l.Key).Distinct().Count());
+        Assert.Equal(36, FilmLookLibrary.All.Count);
+        Assert.Equal(36, FilmLookLibrary.All.Select(l => l.Key).Distinct().Count());
         foreach (var group in FilmLookLibrary.GroupsInOrder)
         {
             var looks = FilmLookLibrary.All.Where(l => l.Group == group).ToArray();
-            Assert.Equal(9, looks.Length);
-            Assert.Equal(Enumerable.Range(1, 9), looks.Select(l => l.Index));
+            Assert.Equal(6, looks.Length);
+            Assert.Equal(Enumerable.Range(1, 6), looks.Select(l => l.Index));
         }
         Assert.Contains(FilmLookLibrary.DefaultKey, FilmLookLibrary.All.Select(l => l.Key));
     }
@@ -90,23 +90,51 @@ public class ToningLooksTests
     [InlineData("teal-rose")]
     public void DensityRows_IncreaseChroma(string group)
     {
-        var chroma = new[] { 1, 4, 7 }.Select(i => Chroma(Gray(Bake($"{group}-{i}"), .5f))).ToArray();
-        Assert.True(chroma[0] < chroma[1] && chroma[1] < chroma[2]);
+        var chroma = new[] { 1, 4 }.Select(i => Chroma(Gray(Bake($"{group}-{i}"), .5f))).ToArray();
+        Assert.True(chroma[0] < chroma[1]);
     }
 
     [Fact]
     public void ColourBands_PullOriginalColoursTowardTheTint_WithoutReplacingThem()
     {
         var red = new Vector3(.7f, .25f, .2f);
-        var aqua = Bake("aqua-5").Sample(red);
+        var aqua = Bake("aqua-2").Sample(red);
         Assert.True(aqua.X > aqua.Z, "original red must still dominate");
         Assert.True(aqua.Z > red.Z + .02f, "blue should be pulled up toward aqua");
         Assert.True(aqua.X < red.X - .02f, "red should be pulled down away from the tint");
         var blue = new Vector3(.2f, .3f, .7f);
-        var amber = Bake("amber-5").Sample(blue);
+        var amber = Bake("amber-2").Sample(blue);
         Assert.True(amber.Z > amber.X, "original blue must still dominate");
         Assert.True(amber.X > blue.X + .02f);
         Assert.True(MathF.Abs(Luma(aqua) - Luma(red)) < .03f);
+    }
+
+    [Theory]
+    [InlineData("aqua-4")]
+    [InlineData("amber-4")]
+    [InlineData("rose-4")]
+    [InlineData("teal-rose-4")]
+    public void SkinTones_AreBarelyTouched_WhileOtherColoursStillShift(string key)
+    {
+        var lut = Bake(key);
+        Vector3[] skins = [new(.85f, .65f, .55f), new(.72f, .5f, .42f), new(.93f, .76f, .66f), new(.55f, .36f, .28f)];
+        foreach (var skin in skins)
+        {
+            var shift = Vector3.Distance(lut.Sample(skin), skin);
+            Assert.True(shift < .05f, $"{key}: skin {skin} moved {shift}");
+        }
+        var sky = new Vector3(.3f, .5f, .8f);
+        var grass = new Vector3(.3f, .6f, .25f);
+        Assert.True(Vector3.Distance(lut.Sample(sky), sky) > .06f || Vector3.Distance(lut.Sample(grass), grass) > .06f);
+    }
+
+    [Fact]
+    public void SkinWeight_IsHighForSkinAndZeroForGrayAndOtherHues()
+    {
+        Assert.True(ToningLooks.SkinWeight(new Vector3(.85f, .65f, .55f)) > .8f);
+        Assert.Equal(0f, ToningLooks.SkinWeight(new Vector3(.5f)));
+        Assert.Equal(0f, ToningLooks.SkinWeight(new Vector3(.3f, .5f, .8f)));
+        Assert.Equal(0f, ToningLooks.SkinWeight(new Vector3(.3f, .6f, .25f)));
     }
 
     private static float Luma(Vector3 c) => .2126f * c.X + .7152f * c.Y + .0722f * c.Z;
@@ -135,8 +163,14 @@ public class ToningLooksTests
         Assert.False(FilmLookLibrary.TryMigrate("teal-rose-5", out _));
         Assert.True(FilmLookLibrary.TryMigrate("teal-amber-5", out var renamed));   // 已改名的混色組
         Assert.Equal("teal-rose-5", renamed);
-        Assert.True(FilmLookLibrary.TryMigrate("teal-7", out var interim));   // 已移除的單色青綠組
-        Assert.Equal("aqua-7", interim);
+        Assert.True(FilmLookLibrary.TryMigrate("teal-7", out var interim));   // 已移除的單色青綠組，序號 7 → 4
+        Assert.Equal("aqua-4", interim);
+        Assert.True(FilmLookLibrary.TryMigrate("rose-9", out var collapsed));   // 九式時期的序號 7–9 → 4–6
+        Assert.Equal("rose-6", collapsed);
+        Assert.True(FilmLookLibrary.TryMigrate("teal-amber-8", out var both));
+        Assert.Equal("teal-rose-5", both);
+        Assert.False(FilmLookLibrary.TryMigrate("rose-6", out _));
+        Assert.False(FilmLookLibrary.TryMigrate("nope-8", out _));
         Assert.False(FilmLookLibrary.TryMigrate("teal-0", out _));
         Assert.False(FilmLookLibrary.TryMigrate("no-such-film", out _));
     }

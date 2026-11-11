@@ -24,21 +24,21 @@ public class FilmLookViewModelTests
         var film = vm.FilmLook;
 
         film.SelectedGroup = "teal-rose";
-        var velvia = film.Tiles.Single(t => t.Key == "teal-rose-9");
+        var velvia = film.Tiles.Single(t => t.Key == "teal-rose-6");
         film.ApplyLookCommand.Execute(velvia);
 
         foreach (var file in files)
         {
             var s = vm.Service!.SettingsFor(file);
             Assert.True(s.Bool("film.enabled"));
-            Assert.Equal("teal-rose-9", s["film.look"].AsText);
+            Assert.Equal("teal-rose-6", s["film.look"].AsText);
         }
         Assert.True(velvia.IsSelected);
         Assert.All(film.Tiles.Where(t => t != velvia), t => Assert.False(t.IsSelected));
 
         // 一筆復原紀錄：復原一次即回到原值
         vm.UndoCommand.Execute(null);
-        Assert.NotEqual("teal-rose-9", vm.Service!.SettingsFor(files[0])["film.look"].AsText);
+        Assert.NotEqual("teal-rose-6", vm.Service!.SettingsFor(files[0])["film.look"].AsText);
     }
 
 
@@ -62,7 +62,7 @@ public class FilmLookViewModelTests
         Assert.Equal(50, Strength());
         Apply("mono", "mono-2");
         Assert.Equal(100, Strength());
-        Apply("aqua", "aqua-7");
+        Apply("aqua", "aqua-4");
         Assert.Equal(50, Strength());
 
         Directory.CreateDirectory(AppPaths.Root);
@@ -131,7 +131,7 @@ public class FilmLookViewModelTests
         {
             film.SelectedGroup = group;
             Assert.False(film.IsCustomGroup);
-            Assert.Equal(Enumerable.Range(1, 9).Select(i => i.ToString()), film.Tiles.Select(t => t.Caption));
+            Assert.Equal(Enumerable.Range(1, 6).Select(i => i.ToString()), film.Tiles.Select(t => t.Caption));
             Assert.All(film.Tiles, t => Assert.True(t.HasRamp));   // 縮圖下方的過渡色帶
         }
     }
