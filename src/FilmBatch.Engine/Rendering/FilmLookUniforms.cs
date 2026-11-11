@@ -13,13 +13,14 @@ internal struct FilmLookUniforms
     public Vector4 To0, To1, To2; // 線性 sRGB → ProPhoto；To0.W 為 ProPhoto 旗標
     public Vector4 From0, From1, From2; // 線性 ProPhoto → sRGB
 
-    public static FilmLookUniforms From(ModuleParams p)
+    public static FilmLookUniforms From(ModuleParams p) =>
+        Create(p.FilmStrength / 100, p.FilmWarmth / 100, p.FilmFade / 100, p.FilmAsset?.Lut);
+
+    /// <summary>以 0–1 的比例、暖色（−1–1）、褪色與 LUT（transform 資產為 null）組成參數。</summary>
+    public static FilmLookUniforms Create(float strength, float warmth, float fade, FilmLut? lut)
     {
-        var result = new FilmLookUniforms
-        {
-            Mix = new(p.FilmStrength / 100, p.FilmWarmth / 100, p.FilmFade / 100, p.FilmAsset?.Lut?.Size ?? 0),
-        };
-        if (p.FilmAsset?.Lut?.ColorSpace != FilmLutColorSpace.ProPhoto) return result;
+        var result = new FilmLookUniforms { Mix = new(strength, warmth, fade, lut?.Size ?? 0) };
+        if (lut?.ColorSpace != FilmLutColorSpace.ProPhoto) return result;
         var to = RgbEncodingInfo.SrgbToProPhoto;
         var from = RgbEncodingInfo.ProPhotoToSrgb;
         result.To0 = new(to[0], to[1], to[2], 1);

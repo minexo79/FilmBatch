@@ -56,7 +56,7 @@ flowchart TB
 | `ParamViewModel` 系列 | `ParamViewModel.Create` 依 `ParamKind` 產生對應子類別，`InspectorView.axaml` 依型別套用 `DataTemplate`，所以**新增參數不需要寫 XAML** |
 | `FilmstripViewModel` | 縮圖清單、多選、篩選、縮圖背景載入、覆寫 / 預設更新標記 |
 | `PreviewViewModel` | 預覽影像、縮放、兩個畫布共用的平移位置、分割對比、控制點、直方圖資料、右下角拍攝資訊（EXIF 跟著每次解碼的來源重讀，重開資料夾不沿用舊資訊） |
-| `FilmLookViewModel` | film 模組的底片縮圖格（`Controls/FilmLookControl.axaml`）：分組下拉為六個色帶加「自訂 LUT」，`Tiles` 是目前顯示的 9 式或匯入項目，縮圖 1:1。縮圖由 `FilmLookThumbnails` 以焦點照片算出，只在模組展開時計算，鍵前綴 `film-look/look/`，與縮圖列共用低優先佇列 |
+| `FilmLookViewModel` | film 模組的底片縮圖格（`Controls/FilmLookControl.axaml`）：分組下拉為六個色帶加「自訂 LUT」，`Tiles` 是目前顯示的 9 式或匯入項目，縮圖 1:1，下方有過渡色帶（`FilmLookRamp` 取樣）。縮圖由 `FilmLookThumbnails` 以焦點照片算出，只在模組展開時計算，鍵前綴 `film-look/look/`，與縮圖列共用低優先佇列 |
 | `HslViewModel` | 基本參數中「色彩」分組的 HSL 編輯器（`Controls/HslControl.axaml`），與 `curves` 同組；七個文字預設、八個色相帶與每帶三滑桿，不產生縮圖。預設以 `IParamHost.SetValues` 一次套用選取照片；載入／復原／語言切換不回寫 |
 | `Tools/PhotoToolsViewModel`／`PhotoRegionTool` | 基本參數裡、「AI 功能」下方的照片工具；裁切逆仿射區域取樣、WB／膚色提案、同專案相對參考色與 Zone 錨點。背景只求解，UI 更新及一次 `SetValues` 接受都在 UI 執行緒 |
 | `Tools/BackgroundRemovalViewModel`／`ForegroundBrushTool` | 單張 Vision 草稿、多選批次、筆刷逐筆復原／重做；控制項在基本參數的「AI 功能」內，與降噪模組、模型面板同一塊。共用桌面／行動按鈕與桌面快捷鍵路由，同步保存與生命週期隔離。AI 仍依平台停用，Mac／Headless 結果不是 iOS 原生驗收 |

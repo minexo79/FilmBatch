@@ -1,4 +1,6 @@
 using System.Collections.ObjectModel;
+using Avalonia;
+using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -13,12 +15,17 @@ using FilmBatch.Engine.Film;
 namespace FilmBatch.App.ViewModels;
 
 /// <summary>底片縮圖格中的一格。</summary>
-public sealed partial class FilmTileViewModel(string key, Func<string> name, Func<string>? detail = null, string? caption = null) : ObservableObject
+public sealed partial class FilmTileViewModel(string key, Func<string> name, Func<string>? detail = null, string? caption = null,
+    Func<IBrush?>? ramp = null) : ObservableObject
 {
+    private readonly Lazy<IBrush?> _ramp = new(() => ramp?.Invoke());
     public string Key { get; } = key;
     public string Name => name();
     /// <summary>縮圖下方的短標籤：內建式為序號 1–9，自訂 LUT 為檔名。</summary>
     public string Caption => caption ?? Name;
+    /// <summary>縮圖下方的過渡色帶（此底片套在黑到白灰階上的結果）；第一次顯示時才計算，無法取樣時為 null。</summary>
+    public IBrush? Ramp => _ramp.Value;
+    public bool HasRamp => Ramp is not null;
     /// <summary>清單上的色彩空間標記。空字串表示不另標（內建底片與既有 sRGB 匯入）。</summary>
     public string Detail => detail?.Invoke() ?? "";
     public bool HasDetail => Detail.Length > 0;
@@ -288,9 +295,9 @@ public sealed partial class FilmLookViewModel : ObservableObject
         }
         Imported.Clear();
         foreach (var (key, name) in UserLutLibrary.All)
-            Imported.Add(new FilmTileViewModel(key, () => name, () => ImportDetail(key)));
+            Imported.Add(new FilmTileViewModel(key, () => name, () => ImportDetail(key), ramp: () => RampBrush(key)));
         foreach (var item in UserTransformLibrary.List(AppPaths.UserLuts))
-            Imported.Add(new FilmTileViewModel(item.Key, () => item.Name, () => TransformDetail(item.Options)));
+            Imported.Add(new FilmTileViewModel(item.Key, () => item.Name, () => TransformDetail(item.Options), ramp: () => RampBrush(item.Key)));
         if (IsCustomGroup) LoadGroup();
         OnPropertyChanged(nameof(ShowCustomEmpty));
         RefreshSelection();
@@ -337,6 +344,31 @@ public sealed partial class FilmLookViewModel : ObservableObject
         return new Settings(values);
     }
 
+    /// <summary>此底片的過渡色帶：把底片套在黑到白灰階上，取 9 個樣本做成水平漸層；資產無法載入時不顯示色帶。</summary>
+    private static IBrush? RampBrush(string key)
+    {
+        try
+        {
+            if (FilmLookLibrary.Resolve(key) is not { } asset) return null;
+            var colors = FilmLookRamp.Sample(asset);
+            var brush = new LinearGradientBrush
+            {
+                StartPoint = new RelativePoint(0, .5, RelativeUnit.Relative),
+                EndPoint = new RelativePoint(1, .5, RelativeUnit.Relative),
+            };
+            var stops = colors.Length / 3;
+            for (var i = 0; i < stops; i++)
+                brush.GradientStops.Add(new GradientStop(Color.FromRgb(
+                    (byte)MathF.Round(colors[i * 3] * 255), (byte)MathF.Round(colors[i * 3 + 1] * 255),
+                    (byte)MathF.Round(colors[i * 3 + 2] * 255)), i / (stops - 1.0)));
+            return brush.ToImmutable();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or ColorTransformAssetException)
+        {
+            return null;
+        }
+    }
+
     private void LoadGroup()
     {
         foreach (var tile in Tiles.ToList())
@@ -354,7 +386,7 @@ public sealed partial class FilmLookViewModel : ObservableObject
         foreach (var look in FilmLookLibrary.All.Where(l => l.Group == SelectedGroup))
         {
             var tile = new FilmTileViewModel(look.Key, () => $"{GroupLabel(look.Group)} {look.Index}",
-                caption: look.Index.ToString());
+                caption: look.Index.ToString(), ramp: () => RampBrush(look.Key));
             Tiles.Add(tile);
         }
     }

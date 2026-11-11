@@ -16,6 +16,7 @@
             <ProgressBar Classes="film-thumb-busy" IsIndeterminate="True" IsVisible="{Binding IsLoading}" VerticalAlignment="Bottom" />
           </Panel>
         </Border>
+        <Border Classes="film-ramp" Height="6" Background="{Binding Ramp}" IsVisible="{Binding HasRamp}" />
         <TextBlock Classes="small" Text="{Binding Caption}" TextTrimming="CharacterEllipsis" HorizontalAlignment="Center" />
         <TextBlock Classes="secondary small" Text="{Binding Detail}" TextTrimming="CharacterEllipsis" HorizontalAlignment="Center"
                    IsVisible="{Binding HasDetail}" />

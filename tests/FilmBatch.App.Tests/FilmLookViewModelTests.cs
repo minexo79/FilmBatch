@@ -132,6 +132,7 @@ public class FilmLookViewModelTests
             film.SelectedGroup = group;
             Assert.False(film.IsCustomGroup);
             Assert.Equal(Enumerable.Range(1, 9).Select(i => i.ToString()), film.Tiles.Select(t => t.Caption));
+            Assert.All(film.Tiles, t => Assert.True(t.HasRamp));   // 縮圖下方的過渡色帶
         }
     }
 
@@ -162,6 +163,7 @@ public class FilmLookViewModelTests
         var tile = Assert.Single(film.Tiles);
         Assert.Same(film.Imported.Single(), tile);
         Assert.Equal("custom-group", tile.Caption);
+        Assert.True(tile.HasRamp);
         Assert.True(tile.IsSelected);
     }
 

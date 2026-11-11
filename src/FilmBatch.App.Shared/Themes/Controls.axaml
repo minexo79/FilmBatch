@@ -799,6 +799,10 @@
     <Setter Property="CornerRadius" Value="4" />
     <Setter Property="ClipToBounds" Value="True" />
   </Style>
+  <!-- 縮圖下方的過渡色帶 -->
+  <Style Selector="Border.film-ramp">
+    <Setter Property="CornerRadius" Value="3" />
+  </Style>
   <Style Selector="ProgressBar.film-thumb-busy">
     <Setter Property="MinHeight" Value="2" />
     <Setter Property="Height" Value="2" />
