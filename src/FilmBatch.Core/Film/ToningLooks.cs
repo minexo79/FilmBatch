@@ -33,8 +33,6 @@ public static class ToningLooks
     private static readonly float[] Density = [.4f, .8f];
     /// <summary>色度包絡指數：越小色度越往暗部與亮部延伸。</summary>
     private static readonly float[] Envelope = [.4f, .6f, .9f];
-    /// <summary>膚色保護：落在膚色範圍的顏色，色度偏移最多減少這個比例（保留一點連續性，不完全關掉）。</summary>
-    private const float SkinProtection = .9f;
     /// <summary>黑白：對比 S 曲線量（柔和 → 強烈）。</summary>
     private static readonly float[] MonoContrast = [0f, .45f, .9f];
     /// <summary>黑白：中間調 gamma（亮調、暗調）。</summary>
@@ -72,7 +70,7 @@ public static class ToningLooks
         var w = Transition[column];
         var tint = Vector3.Lerp(shadow, highlight, SmoothStep(.5f - w, .5f + w, l));
         var delta = tint - new Vector3(Luma(tint));
-        var envelope = MathF.Pow(4f * l * (1f - l), Envelope[column]) * (1f - SkinProtection * SkinWeight(rgb));
+        var envelope = MathF.Pow(4f * l * (1f - l), Envelope[column]);
         // 在原色上加入亮度中性的色度偏移（像疊一層該色的遮罩，把顏色往該色拉），不取代原本的顏色。
         return Vector3.Clamp(Vector3.Clamp(rgb, Vector3.Zero, Vector3.One) + delta * (Density[row] * envelope), Vector3.Zero, Vector3.One);
     }
@@ -89,28 +87,6 @@ public static class ToningLooks
     };
 
     private static (Vector3, Vector3) Single(Vector3 color) => (color, Vector3.Lerp(color, Vector3.One, .75f));
-
-    /// <summary>
-    /// 膚色權重 0–1：HSV 色相落在橘紅一帶（約 5°–45°，兩側各 25° 內漸弱）、飽和度中等、不太暗的顏色。
-    /// 灰階與高飽和或其他色相的顏色為 0。
-    /// </summary>
-    internal static float SkinWeight(Vector3 rgb)
-    {
-        var max = MathF.Max(rgb.X, MathF.Max(rgb.Y, rgb.Z));
-        var min = MathF.Min(rgb.X, MathF.Min(rgb.Y, rgb.Z));
-        var chroma = max - min;
-        if (chroma < 1e-4f || max < .1f) return 0f;
-        var hue = max == rgb.X ? 60f * ((rgb.Y - rgb.Z) / chroma % 6f)
-            : max == rgb.Y ? 60f * ((rgb.Z - rgb.X) / chroma + 2f)
-            : 60f * ((rgb.X - rgb.Y) / chroma + 4f);
-        if (hue < 0f) hue += 360f;
-        var distance = MathF.Abs(hue - 25f);
-        if (distance > 180f) distance = 360f - distance;
-        var saturation = chroma / max;
-        var weight = 1f - SmoothStep(20f, 45f, distance);
-        weight *= SmoothStep(.08f, .2f, saturation) * (1f - SmoothStep(.55f, .8f, saturation));
-        return weight * SmoothStep(.15f, .3f, max);
-    }
 
     private static float Luma(Vector3 c) => .2126f * c.X + .7152f * c.Y + .0722f * c.Z;
 

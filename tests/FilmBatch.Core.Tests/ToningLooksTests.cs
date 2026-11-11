@@ -109,34 +109,6 @@ public class ToningLooksTests
         Assert.True(MathF.Abs(Luma(aqua) - Luma(red)) < .03f);
     }
 
-    [Theory]
-    [InlineData("aqua-4")]
-    [InlineData("amber-4")]
-    [InlineData("rose-4")]
-    [InlineData("teal-rose-4")]
-    public void SkinTones_AreBarelyTouched_WhileOtherColoursStillShift(string key)
-    {
-        var lut = Bake(key);
-        Vector3[] skins = [new(.85f, .65f, .55f), new(.72f, .5f, .42f), new(.93f, .76f, .66f), new(.55f, .36f, .28f)];
-        foreach (var skin in skins)
-        {
-            var shift = Vector3.Distance(lut.Sample(skin), skin);
-            Assert.True(shift < .05f, $"{key}: skin {skin} moved {shift}");
-        }
-        var sky = new Vector3(.3f, .5f, .8f);
-        var grass = new Vector3(.3f, .6f, .25f);
-        Assert.True(Vector3.Distance(lut.Sample(sky), sky) > .06f || Vector3.Distance(lut.Sample(grass), grass) > .06f);
-    }
-
-    [Fact]
-    public void SkinWeight_IsHighForSkinAndZeroForGrayAndOtherHues()
-    {
-        Assert.True(ToningLooks.SkinWeight(new Vector3(.85f, .65f, .55f)) > .8f);
-        Assert.Equal(0f, ToningLooks.SkinWeight(new Vector3(.5f)));
-        Assert.Equal(0f, ToningLooks.SkinWeight(new Vector3(.3f, .5f, .8f)));
-        Assert.Equal(0f, ToningLooks.SkinWeight(new Vector3(.3f, .6f, .25f)));
-    }
-
     private static float Luma(Vector3 c) => .2126f * c.X + .7152f * c.Y + .0722f * c.Z;
 
     [Theory]
