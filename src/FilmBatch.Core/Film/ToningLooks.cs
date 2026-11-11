@@ -70,7 +70,8 @@ public static class ToningLooks
         var tint = Vector3.Lerp(shadow, highlight, SmoothStep(.5f - w, .5f + w, l));
         var delta = tint - new Vector3(Luma(tint));
         var envelope = MathF.Pow(4f * l * (1f - l), Envelope[column]);
-        return Vector3.Clamp(new Vector3(l) + delta * (Density[row] * envelope), Vector3.Zero, Vector3.One);
+        // 在原色上加入亮度中性的色度偏移（像疊一層該色的遮罩，把顏色往該色拉），不取代原本的顏色。
+        return Vector3.Clamp(Vector3.Clamp(rgb, Vector3.Zero, Vector3.One) + delta * (Density[row] * envelope), Vector3.Zero, Vector3.One);
     }
 
     /// <summary>暗部端與亮部端顏色；單色帶的亮部端淡化為近白，讓過渡欄也有差異。</summary>

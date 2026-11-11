@@ -94,6 +94,23 @@ public class ToningLooksTests
         Assert.True(chroma[0] < chroma[1] && chroma[1] < chroma[2]);
     }
 
+    [Fact]
+    public void ColourBands_PullOriginalColoursTowardTheTint_WithoutReplacingThem()
+    {
+        var red = new Vector3(.7f, .25f, .2f);
+        var aqua = Bake("aqua-5").Sample(red);
+        Assert.True(aqua.X > aqua.Z, "original red must still dominate");
+        Assert.True(aqua.Z > red.Z + .02f, "blue should be pulled up toward aqua");
+        Assert.True(aqua.X < red.X - .02f, "red should be pulled down away from the tint");
+        var blue = new Vector3(.2f, .3f, .7f);
+        var amber = Bake("amber-5").Sample(blue);
+        Assert.True(amber.Z > amber.X, "original blue must still dominate");
+        Assert.True(amber.X > blue.X + .02f);
+        Assert.True(MathF.Abs(Luma(aqua) - Luma(red)) < .03f);
+    }
+
+    private static float Luma(Vector3 c) => .2126f * c.X + .7152f * c.Y + .0722f * c.Z;
+
     [Theory]
     [InlineData("aqua-amber")]
     [InlineData("teal")]
