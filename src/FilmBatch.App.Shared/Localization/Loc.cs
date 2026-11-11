@@ -61,6 +61,8 @@ public sealed class Loc : INotifyPropertyChanged
 
     public static string ChoiceLabel(string moduleKey, string paramKey, ChoiceOption option)
     {
+        if (moduleKey == "film" && paramKey == "look" && FilmBatch.Core.Film.FilmLookLibrary.TryGet(option.Key, out var look))
+            return $"{TryGet($"Film.Group.{look.Group}") ?? look.Group} {look.Index}";
         var key = option.Key.Length == 0 ? "default" : option.Key;
         return TryGet($"Choice.{moduleKey}.{paramKey}.{key}") ?? TryGet($"Choice.{paramKey}.{key}") ?? option.Label;
     }
