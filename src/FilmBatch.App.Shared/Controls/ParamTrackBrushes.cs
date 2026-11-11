@@ -16,6 +16,15 @@ public static class ParamTrackBrushes
     public static IReadOnlyList<Color> BandColors { get; } =
         [.. new[] { "#E04848", "#F08A3C", "#E8CF3A", "#4CB050", "#3EC1C9", "#3F6FE0", "#8A55D6", "#D64FA8" }.Select(Color.Parse)];
 
+    /// <summary>漏光紅／黃／藍／白的代表色；軌道漸層與漏光色票共用。</summary>
+    public static IReadOnlyDictionary<string, Color> LeakColors { get; } = new Dictionary<string, Color>(StringComparer.Ordinal)
+    {
+        ["light_leak.red"] = Color.Parse("#E04848"),
+        ["light_leak.yellow"] = Color.Parse("#F0D58A"),
+        ["light_leak.blue"] = Color.Parse("#3F6FE0"),
+        ["light_leak.white"] = Color.Parse("#FFFFFF"),
+    };
+
     /// <summary>未上色的起點（與一般軌道同色），讓「0 = 無此顏色」一眼可辨。</summary>
     private static readonly Color Off = Color.Parse("#4A4A4A");
 
@@ -32,10 +41,10 @@ public static class ParamTrackBrushes
         ["halation.hue"] = HueWheel,
         ["halation.saturation"] = Gradient((0, Color.Parse("#F2F2F2")), (1, HsvColor.ToRgb(10, 1, 0.9))),
         // 漏光：紅／黃／藍三色電漿各自的貢獻量，色相為整體旋轉
-        ["light_leak.red"] = Gradient((0, Off), (1, Color.Parse("#E04848"))),
-        ["light_leak.yellow"] = Gradient((0, Off), (1, Color.Parse("#F0D58A"))),
-        ["light_leak.blue"] = Gradient((0, Off), (1, Color.Parse("#3F6FE0"))),
-        ["light_leak.white"] = Gradient((0, Off), (1, Color.Parse("#FFFFFF"))),
+        ["light_leak.red"] = Gradient((0, Off), (1, LeakColors["light_leak.red"])),
+        ["light_leak.yellow"] = Gradient((0, Off), (1, LeakColors["light_leak.yellow"])),
+        ["light_leak.blue"] = Gradient((0, Off), (1, LeakColors["light_leak.blue"])),
+        ["light_leak.white"] = Gradient((0, Off), (1, LeakColors["light_leak.white"])),
         ["light_leak.hue"] = HueWheel,
         // 膚色參考增益 0.25–4（預設 1 約在 20% 處）：預設點為中性灰，往右該色變強
         ["skin.ref_red"] = Gain(Color.Parse("#E04848")),

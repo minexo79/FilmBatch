@@ -54,6 +54,14 @@
           </DataTemplate>
         </ContentControl.DataTemplates>
       </ContentControl>
+      <!-- light_leak 模組的紅黃藍白色票列（UI only），同樣在一般參數位置；參數仍是四個獨立值 -->
+      <ContentControl Content="{Binding LeakColors}" IsVisible="{Binding LeakColors, Converter={x:Static ObjectConverters.IsNotNull}}">
+        <ContentControl.DataTemplates>
+          <DataTemplate x:DataType="vm:LightLeakColorsViewModel">
+            <c:LightLeakColorsControl />
+          </DataTemplate>
+        </ContentControl.DataTemplates>
+      </ContentControl>
       <ContentControl Content="{Binding Curves}" IsVisible="{Binding Curves, Converter={x:Static ObjectConverters.IsNotNull}}">
         <ContentControl.DataTemplates>
           <DataTemplate x:DataType="vm:ToneCurvesViewModel"><c:ToneCurvesControl /></DataTemplate>

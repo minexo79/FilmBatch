@@ -34,6 +34,7 @@ public sealed partial class ModuleSectionViewModel : ObservableObject
         CameraProfiles?.RefreshLabels();
         Curves?.RefreshLabels();
         Hsl?.RefreshLabels();
+        LeakColors?.RefreshLabels();
     }
 
     [ObservableProperty]
@@ -69,9 +70,13 @@ public sealed partial class ModuleSectionViewModel : ObservableObject
         // hsl 模組：24 個色相參數由色相帶編輯器（HslViewModel）顯示，沒有一般參數列。
         // film 模組：底片（look）由縮圖格選，一般參數列留其餘欄位。
         Hsl = schema.Key == "hsl" ? new HslViewModel(host, [.. _allParams.Where(IsHueParam)]) : null;
+        // light_leak 模組：紅黃藍白四個參數由色票列顯示（點選後沿用一般參數列），不在一般參數列重複。
+        LeakColors = schema.Key == "light_leak"
+            ? new LightLeakColorsViewModel(LightLeakColorsViewModel.FlatKeys.Select(k => _allParams.OfType<SliderParamViewModel>().Single(p => p.FlatKey == k)))
+            : null;
         Params = new((FilmLook is null ? _allParams : _allParams.Where(p => p.Def.Key != "look"))
             .Where(p => p.FlatKey != "raw.mask_instance" && (CameraProfiles is null || p.FlatKey != "raw.camera_profile")
-                && Curves is null && Hsl is null));
+                && Curves is null && Hsl is null && !LightLeakColorsViewModel.FlatKeys.Contains(p.FlatKey)));
     }
 
     /// <summary>原生 smoke 與面板共用的來源中繼資料入口；null 清除上一張照片資料。</summary>
@@ -149,6 +154,9 @@ public sealed partial class ModuleSectionViewModel : ObservableObject
 
     /// <summary>hsl 模組的色相帶編輯器；其他模組為 null。參數仍由 _allParams 載入、覆寫與重設。</summary>
     public HslViewModel? Hsl { get; }
+
+    /// <summary>light_leak 模組的紅黃藍白色票列；其他模組為 null。參數仍由 _allParams 載入、覆寫與重設。</summary>
+    public LightLeakColorsViewModel? LeakColors { get; }
 
     // HueBands.Params() 的順序是色相帶 × (h, s, l)，篩選後第 b*3+c 個即對應參數（與 HslViewModel 的帶索引一致）。
     private static bool IsHueParam(ParamViewModel p) => p.Def.Key.StartsWith("hue_", StringComparison.Ordinal);

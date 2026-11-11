@@ -58,6 +58,7 @@ flowchart TB
 | `PreviewViewModel` | 預覽影像、縮放、兩個畫布共用的平移位置、分割對比、控制點、直方圖資料、右下角拍攝資訊（EXIF 跟著每次解碼的來源重讀，重開資料夾不沿用舊資訊） |
 | `FilmLookViewModel` | film 模組的底片縮圖格（`Controls/FilmLookControl.axaml`）。縮圖由 `FilmLookThumbnails` 以焦點照片算出，只在模組展開時計算，鍵前綴 `film-look/look/`，與縮圖列共用低優先佇列 |
 | `HslViewModel` | 基本參數中「色彩」分組的 HSL 編輯器（`Controls/HslControl.axaml`），與 `curves` 同組；七個文字預設、八個色相帶與每帶三滑桿，不產生縮圖。預設以 `IParamHost.SetValues` 一次套用選取照片；載入／復原／語言切換不回寫 |
+| `LightLeakColorsViewModel` | 漏光的紅／黃／藍／白色票列（`Controls/LightLeakColorsControl.axaml`，底片效果分頁）。四個色票顯示各色的量，點選後以一般 `ParamRow` 編輯同一個 `light_leak.*` 參數；參數仍是四個獨立值，不改存檔、預設與算圖。色票代表色與軌道漸層共用 `ParamTrackBrushes.LeakColors` |
 | `Tools/PhotoToolsViewModel`／`PhotoRegionTool` | 基本參數裡、「AI 功能」下方的照片工具；裁切逆仿射區域取樣、WB／膚色提案、同專案相對參考色與 Zone 錨點。背景只求解，UI 更新及一次 `SetValues` 接受都在 UI 執行緒 |
 | `Tools/BackgroundRemovalViewModel`／`ForegroundBrushTool` | 單張 Vision 草稿、多選批次、筆刷逐筆復原／重做；控制項在基本參數的「AI 功能」內，與降噪模組、模型面板同一塊。共用桌面／行動按鈕與桌面快捷鍵路由，同步保存與生命週期隔離。AI 仍依平台停用，Mac／Headless 結果不是 iOS 原生驗收 |
 

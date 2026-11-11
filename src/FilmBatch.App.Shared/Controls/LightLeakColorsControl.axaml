@@ -1,0 +1,30 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:FilmBatch.App.ViewModels"
+             xmlns:c="using:FilmBatch.App.Controls"
+             xmlns:l="using:FilmBatch.App.Localization"
+             x:Class="FilmBatch.App.Controls.LightLeakColorsControl"
+             x:DataType="vm:LightLeakColorsViewModel">
+  <!-- 漏光四色色票列（UI only）：點選色票即編輯該色的參數，下方沿用一般參數列（名稱｜數值＋滑桿）。 -->
+  <StackPanel Spacing="6" Margin="0,4,0,4">
+    <TextBlock Classes="param-name" Text="{l:Tr LeakColor.Label}" />
+    <ListBox Classes="hue-bands" ItemsSource="{Binding Colors}" SelectedItem="{Binding SelectedColor}">
+      <ListBox.ItemsPanel>
+        <ItemsPanelTemplate><UniformGrid Columns="4" /></ItemsPanelTemplate>
+      </ListBox.ItemsPanel>
+      <ListBox.ItemTemplate>
+        <DataTemplate x:DataType="vm:LeakColorViewModel">
+          <StackPanel Spacing="4" Margin="8,8,8,6" HorizontalAlignment="Center" ToolTip.Tip="{Binding Label}">
+            <Ellipse Width="36" Height="36" Fill="{Binding Swatch}" />
+            <TextBlock Classes="secondary small" HorizontalAlignment="Center" Text="{Binding ValueText}" />
+          </StackPanel>
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+    <ContentControl Content="{Binding SelectedColor.Param}">
+      <ContentControl.ContentTemplate>
+        <DataTemplate><c:ParamRow /></DataTemplate>
+      </ContentControl.ContentTemplate>
+    </ContentControl>
+  </StackPanel>
+</UserControl>
