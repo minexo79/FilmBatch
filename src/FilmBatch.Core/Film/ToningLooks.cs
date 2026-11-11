@@ -9,12 +9,12 @@ public enum ToningBand
     Amber,
     Rose,
     AquaAmber,
-    TealAmber,
+    TealRose,
     Mono,
 }
 
 /// <summary>
-/// 內建底片：以六個基準色帶（湖藍、暖黃、豆沙紅、湖藍→暖黃、青綠→暖黃、黑白）生成每組 3×3 共九式，
+/// 內建底片：以六個基準色帶（湖藍、暖黃、豆沙紅、湖藍→暖黃、青綠→豆沙紅、黑白）生成每組 3×3 共九式，
 /// 載入時烘焙成 33³ 的 sRGB <see cref="FilmLut"/>，其餘流程（四面體內插、暖色、褪色、效果比例）沿用 LUT 管線。
 /// 欄為過渡（柔和、中、強烈），列為濃淡（淡、中、濃）。
 /// </summary>
@@ -82,7 +82,7 @@ public static class ToningLooks
         ToningBand.Amber => Single(AmberColor),
         ToningBand.Rose => Single(RoseColor),
         ToningBand.AquaAmber => (AquaColor, AmberColor),
-        ToningBand.TealAmber => (TealColor, AmberColor),
+        ToningBand.TealRose => (TealColor, RoseColor),
         _ => throw new ArgumentOutOfRangeException(nameof(band)),
     };
 

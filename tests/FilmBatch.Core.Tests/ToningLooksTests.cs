@@ -74,7 +74,7 @@ public class ToningLooksTests
 
     [Theory]
     [InlineData("aqua-amber-6")]
-    [InlineData("teal-amber-6")]
+    [InlineData("teal-rose-6")]
     public void SplitGroups_AreCoolInShadowsAndWarmInHighlights(string key)
     {
         var lut = Bake(key);
@@ -87,7 +87,7 @@ public class ToningLooksTests
     [Theory]
     [InlineData("aqua")]
     [InlineData("amber")]
-    [InlineData("teal-amber")]
+    [InlineData("teal-rose")]
     public void DensityRows_IncreaseChroma(string group)
     {
         var chroma = new[] { 1, 4, 7 }.Select(i => Chroma(Gray(Bake($"{group}-{i}"), .5f))).ToArray();
@@ -132,7 +132,9 @@ public class ToningLooksTests
             Assert.Equal(migrated, result);
         }
         Assert.False(FilmLookLibrary.TryMigrate("aqua-5", out _));
-        Assert.False(FilmLookLibrary.TryMigrate("teal-amber-5", out _));
+        Assert.False(FilmLookLibrary.TryMigrate("teal-rose-5", out _));
+        Assert.True(FilmLookLibrary.TryMigrate("teal-amber-5", out var renamed));   // 已改名的混色組
+        Assert.Equal("teal-rose-5", renamed);
         Assert.True(FilmLookLibrary.TryMigrate("teal-7", out var interim));   // 已移除的單色青綠組
         Assert.Equal("aqua-7", interim);
         Assert.False(FilmLookLibrary.TryMigrate("teal-0", out _));

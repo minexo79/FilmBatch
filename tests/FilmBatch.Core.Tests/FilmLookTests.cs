@@ -8,7 +8,7 @@ public class FilmLookTests
 {
     [Theory]
     [InlineData("aqua-1", 50)]
-    [InlineData("teal-amber-9", 50)]
+    [InlineData("teal-rose-9", 50)]
     [InlineData("amber-5", 50)]
     [InlineData("mono-1", 100)]
     [InlineData("kodak-tri-x-400", 100)]   // 舊黑白 key 遷移為 mono-*
@@ -30,7 +30,7 @@ public class FilmLookTests
         var settings = System.Text.Json.JsonSerializer.Deserialize<Settings>("""{"film.look":"kodak-portra-400"}""")!;
         Assert.Equal("amber-5", settings["film.look"].AsText);
         var coerced = ModuleCatalog.Param("film.look")!.Coerce(ParamValue.Of("fuji-velvia-50"));
-        Assert.Equal("teal-amber-9", coerced.AsText);
+        Assert.Equal("teal-rose-9", coerced.AsText);
     }
 
     [Fact]

@@ -566,7 +566,7 @@ Clear overrides: use the new preset entirely.</value></data>
   <data name="Film.Group.rose" xml:space="preserve"><value>Dusty Rose</value></data>
   <data name="Film.Group.amber" xml:space="preserve"><value>Amber</value></data>
   <data name="Film.Group.aqua-amber" xml:space="preserve"><value>Aqua → Amber</value></data>
-  <data name="Film.Group.teal-amber" xml:space="preserve"><value>Teal → Amber</value></data>
+  <data name="Film.Group.teal-rose" xml:space="preserve"><value>Teal → Rose</value></data>
   <data name="Film.Group.mono" xml:space="preserve"><value>Black &amp; White</value></data>
   <data name="Film.Group.custom" xml:space="preserve"><value>Custom LUTs</value></data>
   <data name="Film.OpenFolder" xml:space="preserve"><value>Open LUT folder</value></data>

@@ -1000,7 +1000,7 @@ public sealed class EffectPipelineTests
 
     [Theory]
     [InlineData("amber-5", 0, 0)]
-    [InlineData("teal-amber-9", 40, 30)]
+    [InlineData("teal-rose-9", 40, 30)]
     [InlineData("aqua-amber-6", -60, 0)]
     public void Gpu_MatchesCpu_OnFilmLook(string look, double warmth, double fade)
     {

@@ -17,11 +17,11 @@ public sealed class ColorTransformAssetException(string key, Exception inner)
 public static class FilmLookLibrary
 {
     public const string DefaultKey = "amber-5";
-    public static IReadOnlyList<string> GroupsInOrder { get; } = ["aqua", "amber", "rose", "aqua-amber", "teal-amber", "mono"];
+    public static IReadOnlyList<string> GroupsInOrder { get; } = ["aqua", "amber", "rose", "aqua-amber", "teal-rose", "mono"];
 
     private static readonly ToningBand[] Bands =
-        [ToningBand.Aqua, ToningBand.Amber, ToningBand.Rose, ToningBand.AquaAmber, ToningBand.TealAmber, ToningBand.Mono];
-    private static readonly string[] GroupNames = ["湖藍", "暖黃", "豆沙紅", "湖藍→暖黃", "青綠→暖黃", "黑白"];
+        [ToningBand.Aqua, ToningBand.Amber, ToningBand.Rose, ToningBand.AquaAmber, ToningBand.TealRose, ToningBand.Mono];
+    private static readonly string[] GroupNames = ["湖藍", "暖黃", "豆沙紅", "湖藍→暖黃", "青綠→豆沙紅", "黑白"];
 
     private static readonly ConcurrentDictionary<string, FilmLut> Luts = new(StringComparer.Ordinal);
     private static readonly ConditionalWeakTable<FilmLut, FilmLookAsset> LutAssets = new();
@@ -37,14 +37,14 @@ public static class FilmLookLibrary
         ["kodak-portra-400"] = "amber-5", ["kodak-portra-160"] = "amber-2", ["kodak-portra-400-vc"] = "amber-6",
         ["kodak-portra-800"] = "amber-8", ["kodak-ektar-100"] = "amber-9", ["kodak-kodachrome-64"] = "amber-3",
         ["kodak-ektachrome-100vs"] = "aqua-5", ["kodak-elite-chrome-200"] = "aqua-4", ["kodak-elite-color-400"] = "amber-4",
-        ["fuji-velvia-50"] = "teal-amber-9", ["fuji-provia-100f"] = "aqua-2", ["fuji-astia-100f"] = "amber-1",
+        ["fuji-velvia-50"] = "teal-rose-9", ["fuji-provia-100f"] = "aqua-2", ["fuji-astia-100f"] = "amber-1",
         ["fuji-superia-400"] = "aqua-5", ["fuji-pro-400h"] = "aqua-amber-2", ["fuji-pro-160c"] = "aqua-2",
-        ["fuji-superia-reala-100"] = "teal-amber-2", ["fuji-superia-xtra-800"] = "teal-amber-5",
-        ["agfa-vista-200"] = "amber-7", ["agfa-ultra-100"] = "teal-amber-8", ["lomo-xpro-200"] = "aqua-amber-9",
-        ["lomo-redscale-100"] = "amber-8", ["polaroid-690"] = "teal-amber-4", ["polaroid-px70"] = "aqua-amber-4",
+        ["fuji-superia-reala-100"] = "teal-rose-2", ["fuji-superia-xtra-800"] = "teal-rose-5",
+        ["agfa-vista-200"] = "amber-7", ["agfa-ultra-100"] = "teal-rose-8", ["lomo-xpro-200"] = "aqua-amber-9",
+        ["lomo-redscale-100"] = "amber-8", ["polaroid-690"] = "teal-rose-4", ["polaroid-px70"] = "aqua-amber-4",
         ["polaroid-polachrome"] = "aqua-amber-5", ["kodak-tri-x-400"] = "mono-9", ["kodak-tmax-100"] = "mono-5",
         ["ilford-hp5-400"] = "mono-8", ["ilford-delta-100"] = "mono-4", ["fuji-acros-100"] = "mono-6",
-        ["agfa-apx-100"] = "mono-2", ["creative-teal-orange"] = "teal-amber-6", ["creative-bleach-bypass"] = "mono-3",
+        ["agfa-apx-100"] = "mono-2", ["creative-teal-orange"] = "teal-rose-6", ["creative-bleach-bypass"] = "mono-3",
         ["creative-fall-colors"] = "amber-3", ["creative-soft-warming"] = "amber-1", ["creative-crisp-winter"] = "aqua-3",
         ["creative-moonlight"] = "aqua-7",
     };
@@ -71,7 +71,8 @@ public static class FilmLookLibrary
     }
 
     /// <summary>
-    /// 舊 36 卷 key 換成新 key；開發期間曾有、之後移除的單色「青綠」組（<c>teal-1</c>–<c>teal-9</c>）換成同序號的湖藍。
+    /// 舊 36 卷 key 換成新 key；開發期間曾有、之後移除或改名的組也換成新 key：單色「青綠」（<c>teal-1</c>–<c>teal-9</c>）
+    /// 換成同序號的湖藍，「青綠→暖黃」（<c>teal-amber-1</c>–<c>teal-amber-9</c>）換成同序號的青綠→豆沙紅。
     /// 新 key 或未知 key 回傳 false。
     /// </summary>
     public static bool TryMigrate(string key, out string migrated)
@@ -79,6 +80,11 @@ public static class FilmLookLibrary
         if (key.Length == 6 && key.StartsWith("teal-", StringComparison.Ordinal) && key[5] is >= '1' and <= '9')
         {
             migrated = "aqua-" + key[5];
+            return true;
+        }
+        if (key.Length == 12 && key.StartsWith("teal-amber-", StringComparison.Ordinal) && key[11] is >= '1' and <= '9')
+        {
+            migrated = "teal-rose-" + key[11];
             return true;
         }
         return LegacyKeys.TryGetValue(key, out migrated!);

@@ -383,7 +383,7 @@ R {1:P2}　G {2:P2}　B {3:P2}　亮度 {4:P2}</value></data>
   <data name="Film.Group.rose" xml:space="preserve"><value>豆沙紅</value></data>
   <data name="Film.Group.amber" xml:space="preserve"><value>暖黃</value></data>
   <data name="Film.Group.aqua-amber" xml:space="preserve"><value>湖藍→暖黃</value></data>
-  <data name="Film.Group.teal-amber" xml:space="preserve"><value>青綠→暖黃</value></data>
+  <data name="Film.Group.teal-rose" xml:space="preserve"><value>青綠→豆沙紅</value></data>
   <data name="Film.Group.mono" xml:space="preserve"><value>黑白</value></data>
   <data name="Film.Group.custom" xml:space="preserve"><value>自訂 LUT</value></data>
   <data name="Film.OpenFolder" xml:space="preserve"><value>開啟 LUT 資料夾</value></data>

@@ -23,22 +23,22 @@ public class FilmLookViewModelTests
         vm.OnSelectionChanged(files, files[^1]);
         var film = vm.FilmLook;
 
-        film.SelectedGroup = "teal-amber";
-        var velvia = film.Tiles.Single(t => t.Key == "teal-amber-9");
+        film.SelectedGroup = "teal-rose";
+        var velvia = film.Tiles.Single(t => t.Key == "teal-rose-9");
         film.ApplyLookCommand.Execute(velvia);
 
         foreach (var file in files)
         {
             var s = vm.Service!.SettingsFor(file);
             Assert.True(s.Bool("film.enabled"));
-            Assert.Equal("teal-amber-9", s["film.look"].AsText);
+            Assert.Equal("teal-rose-9", s["film.look"].AsText);
         }
         Assert.True(velvia.IsSelected);
         Assert.All(film.Tiles.Where(t => t != velvia), t => Assert.False(t.IsSelected));
 
         // 一筆復原紀錄：復原一次即回到原值
         vm.UndoCommand.Execute(null);
-        Assert.NotEqual("teal-amber-9", vm.Service!.SettingsFor(files[0])["film.look"].AsText);
+        Assert.NotEqual("teal-rose-9", vm.Service!.SettingsFor(files[0])["film.look"].AsText);
     }
 
 
@@ -71,7 +71,7 @@ public class FilmLookViewModelTests
         dialogs.PickFileAnswer = cube;
         await film.ImportLutCommand.ExecuteAsync(null);   // 匯入後自動套用該自訂 LUT
         Assert.Equal(100, Strength());
-        Apply("teal-amber", "teal-amber-4");
+        Apply("teal-rose", "teal-rose-4");
         Assert.Equal(50, Strength());
     }
 
