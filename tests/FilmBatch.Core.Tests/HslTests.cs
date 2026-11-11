@@ -111,7 +111,7 @@ public sealed class HslTests
             modules:
               film:
                 enabled: false
-                look: "kodak-ektar-100"
+                look: "amber-9"
                 hue_red_s: 40
               hsl:
                 hue_red_h: 12

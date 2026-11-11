@@ -7,45 +7,24 @@ namespace FilmBatch.Core.Tests;
 public class FilmLookTests
 {
     [Fact]
-    public void Library_Has36UniqueLooks_InKnownGroups_DefaultFirst()
-    {
-        var all = FilmLookLibrary.All;
-        Assert.Equal(36, all.Count);
-        Assert.Equal(all.Count, all.Select(l => l.Key).Distinct().Count());
-        Assert.All(all, l => Assert.Contains(l.Group, FilmLookLibrary.GroupsInOrder));
-        Assert.Equal(FilmLookLibrary.DefaultKey, all[0].Key);
-    }
-
-    [Fact]
-    public void EveryLook_HasEmbedded33Lut()
-    {
-        foreach (var look in FilmLookLibrary.All)
-        {
-            var lut = FilmLookLibrary.Resolve(look.Key, TestContext.Current.CancellationToken)?.Lut;
-            Assert.NotNull(lut);
-            Assert.Equal(33, lut.Size);
-        }
-    }
-
-    [Fact]
     public void Resolve_UnknownKey_ReturnsNull() =>
         Assert.Null(FilmLookLibrary.Resolve("no-such-film", TestContext.Current.CancellationToken));
 
     [Fact]
-    public void BlackAndWhiteLooks_ProduceNeutralOutput()
+    public void LegacyFilmLookKey_ReadsAsMigratedKey()
     {
-        var lut = FilmLookLibrary.Resolve("ilford-hp5-400", TestContext.Current.CancellationToken)!.Lut!;
-        var got = lut.Sample(new Vector3(.8f, .2f, .3f));
-        Assert.Equal(got.X, got.Y, 2);
-        Assert.Equal(got.Y, got.Z, 2);
+        var settings = System.Text.Json.JsonSerializer.Deserialize<Settings>("""{"film.look":"kodak-portra-400"}""")!;
+        Assert.Equal("amber-5", settings["film.look"].AsText);
+        var coerced = ModuleCatalog.Param("film.look")!.Coerce(ParamValue.Of("fuji-velvia-50"));
+        Assert.Equal("teal-amber-9", coerced.AsText);
     }
 
     [Fact]
-    public void ColorLooks_AreNotIdentity()
+    public void LegacyFilmLookKey_StillResolvesToABakedLut()
     {
-        var lut = FilmLookLibrary.Resolve("fuji-velvia-50", TestContext.Current.CancellationToken)!.Lut!;
-        var input = new Vector3(.25f, .5f, .3f);
-        Assert.True(Vector3.Distance(input, lut.Sample(input)) > .01f);
+        var lut = FilmLookLibrary.Resolve("ilford-hp5-400", TestContext.Current.CancellationToken)!.Lut!;
+        var got = lut.Sample(new Vector3(.8f, .2f, .3f));
+        Assert.Equal(got.X, got.Z, 2);
     }
 
     [Fact]

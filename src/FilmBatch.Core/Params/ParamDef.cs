@@ -75,6 +75,7 @@ public sealed record ParamDef
         ParamKind.Bool => ParamValue.Of(v.AsBool),
         ParamKind.Choice when IsFilmLookChoice && (UserLutLibrary.IsUserKey(v.AsText) || UserTransformLibrary.IsLookKey(v.AsText)) => ParamValue.Of(v.AsText),
         ParamKind.Choice when IsCameraProfileChoice && CameraProfileKey.IsUserKey(v.AsText) => ParamValue.Of(v.AsText),
+        ParamKind.Choice when IsFilmLookChoice && FilmLookLibrary.TryMigrate(v.AsText, out var migrated) => ParamValue.Of(migrated),
         ParamKind.Choice => Choices.Any(c => c.Key == v.AsText) ? ParamValue.Of(v.AsText) : Default,
         ParamKind.Path or ParamKind.Text => ParamValue.Of(v.AsText),
         ParamKind.Curve => ToneCurve.TryParse(v.AsText, out var curve) ? ParamValue.Of(curve.Serialize()) : Default,

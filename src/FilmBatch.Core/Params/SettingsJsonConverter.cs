@@ -59,6 +59,8 @@ public sealed class SettingsJsonConverter : JsonConverter<Settings>
             throw new InvalidDataException($"Parameter out of range: {key}");
         if (definition.Kind == ParamKind.Curve && !ToneCurve.TryParse(value.AsText, out _))
             throw new InvalidDataException($"Invalid curve: {key}");
+        // 舊版 36 卷底片 key 換成最接近的新式，讓舊專案與預設仍可讀入。
+        if (key == "film.look" && FilmLookLibrary.TryMigrate(value.AsText, out var migratedLook)) value = ParamValue.Of(migratedLook);
         // Asset choices can be supplied by the user's library, not only the static catalog.
         if (definition.Kind == ParamKind.Choice && key is not "light_leak.texture"
             && !(key == "film.look" && (UserLutLibrary.IsUserKey(value.AsText) || UserTransformLibrary.IsLookKey(value.AsText)))

@@ -264,7 +264,7 @@ public static class ModuleCatalog
         new("film", "底片風格", ModuleGroup.Film, PasteCategory.Color,
         [
             Bool(ModuleSchema.EnabledKey, "啟用"),
-            Choice("look", "底片", [.. Film.FilmLookLibrary.All.Select(l => O(l.Key, l.Name))]) with { IsFilmLookChoice = true },
+            Choice("look", "底片", [.. Film.FilmLookLibrary.All.Select(l => O(l.Key, l.Name))]) with { IsFilmLookChoice = true, Default = Film.FilmLookLibrary.DefaultKey },
             Float("strength", "效果比例", 100, 0, 100, 1, "%"),
             Float("warmth", "暖色", 0, -100, 100),
             Float("fade", "褪色", 0, 0, 100),

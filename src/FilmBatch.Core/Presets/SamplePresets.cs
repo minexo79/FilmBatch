@@ -30,7 +30,7 @@ public static class SamplePresets
                 ("light_leak.enabled", true),
                 ("tone.enabled", true), ("tone.shadow_amount", 10.0), ("tone.highlight_amount", 15.0),
                 ("grain.enabled", true),
-            ], "kodak-portra-400", 85.0),
+            ], "amber-5", 85.0),
         },
         new()
         {
@@ -38,7 +38,7 @@ public static class SamplePresets
             Settings = WithLook([
                 ("basic.saturation", 15.0), ("basic.contrast", 10.0),
                 ("grain.enabled", true), ("grain.amount", 12.0),
-            ], "kodak-ektar-100"),
+            ], "amber-9"),
         },
         new()
         {
@@ -46,7 +46,7 @@ public static class SamplePresets
             Settings = WithLook([
                 ("basic.saturation", -100.0), ("basic.contrast", 25.0),
                 ("grain.enabled", true), ("grain.amount", 40.0), ("grain.size", 40.0),
-            ], "kodak-tri-x-400"),
+            ], "mono-9"),
         },
         new()
         {
@@ -55,7 +55,7 @@ public static class SamplePresets
                 ("basic.exposure", 0.3),
                 ("halation.enabled", true), ("halation.amount", 45.0),
                 ("grain.enabled", true),
-            ], "kodak-portra-800"),
+            ], "aqua-amber-5"),
         },
         new()
         {
@@ -63,7 +63,7 @@ public static class SamplePresets
             Settings = WithLook([
                 ("basic.brightness", 10.0), ("basic.saturation", -10.0),
                 ("bokeh.enabled", true), ("bokeh.blur", 30.0),
-            ], "fuji-pro-400h"),
+            ], "aqua-amber-2"),
         },
     ];
 }

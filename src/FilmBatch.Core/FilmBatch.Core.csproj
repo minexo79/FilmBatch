@@ -6,8 +6,6 @@
   <ItemGroup>
     <PackageReference Include="System.IO.Hashing" />
     <PackageReference Include="YamlDotNet" />
-    <EmbeddedResource Include="Film\Looks\looks.json" LogicalName="FilmBatch.Looks/looks.json" />
-    <EmbeddedResource Include="Film\Looks\*.fblut" LogicalName="FilmBatch.Looks/%(Filename)%(Extension)" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="FilmBatch.Core.Tests" />

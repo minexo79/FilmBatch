@@ -43,7 +43,7 @@ public sealed class EffectPipelineTests
     }
 
     /// <summary>底片單級設定：其餘全部沿用系統預設（即關閉）。</summary>
-    private static Settings FilmOnly(double strength = 100, string look = "kodak-ektar-100",
+    private static Settings FilmOnly(double strength = 100, string look = "amber-9",
         double warmth = 0, double fade = 0) =>
         ModuleCatalog.Defaults
             .With("film.enabled", true)
@@ -359,10 +359,10 @@ public sealed class EffectPipelineTests
         var ct = TestContext.Current.CancellationToken;
         using var cpu = new CpuFakeRenderer();
         var src = new SourceImage(2, 1, [30000, 30000, 30000, 65535, 0, 0, 0, 65535]);
-        var plain = cpu.Render16(src, FilmOnly(look: "kodak-tmax-100"), ct).Rgba16;
-        var warm = cpu.Render16(src, FilmOnly(look: "kodak-tmax-100", warmth: 100), ct).Rgba16;
+        var plain = cpu.Render16(src, FilmOnly(look: "mono-5"), ct).Rgba16;
+        var warm = cpu.Render16(src, FilmOnly(look: "mono-5", warmth: 100), ct).Rgba16;
         Assert.True(warm[0] > plain[0] && warm[2] < plain[2]);
-        var faded = cpu.Render16(src, FilmOnly(look: "kodak-tmax-100", fade: 100), ct).Rgba16;
+        var faded = cpu.Render16(src, FilmOnly(look: "mono-5", fade: 100), ct).Rgba16;
         Assert.True(faded[4] > plain[4] + 3000);
     }
 
@@ -999,9 +999,9 @@ public sealed class EffectPipelineTests
     }
 
     [Theory]
-    [InlineData("kodak-portra-400", 0, 0)]
-    [InlineData("fuji-velvia-50", 40, 30)]
-    [InlineData("creative-teal-orange", -60, 0)]
+    [InlineData("amber-5", 0, 0)]
+    [InlineData("teal-amber-9", 40, 30)]
+    [InlineData("aqua-amber-6", -60, 0)]
     public void Gpu_MatchesCpu_OnFilmLook(string look, double warmth, double fade)
     {
         using var gpu = TryCreateGpu();

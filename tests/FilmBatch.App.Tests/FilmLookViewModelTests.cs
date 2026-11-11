@@ -24,21 +24,21 @@ public class FilmLookViewModelTests
         var film = vm.FilmLook;
 
         film.SelectedGroup = "fuji";
-        var velvia = film.Looks.Single(t => t.Key == "fuji-velvia-50");
+        var velvia = film.Looks.Single(t => t.Key == "teal-amber-9");
         film.ApplyLookCommand.Execute(velvia);
 
         foreach (var file in files)
         {
             var s = vm.Service!.SettingsFor(file);
             Assert.True(s.Bool("film.enabled"));
-            Assert.Equal("fuji-velvia-50", s["film.look"].AsText);
+            Assert.Equal("teal-amber-9", s["film.look"].AsText);
         }
         Assert.True(velvia.IsSelected);
         Assert.All(film.Looks.Where(t => t != velvia), t => Assert.False(t.IsSelected));
 
         // 一筆復原紀錄：復原一次即回到原值
         vm.UndoCommand.Execute(null);
-        Assert.NotEqual("fuji-velvia-50", vm.Service!.SettingsFor(files[0])["film.look"].AsText);
+        Assert.NotEqual("teal-amber-9", vm.Service!.SettingsFor(files[0])["film.look"].AsText);
     }
 
 

@@ -1,11 +1,10 @@
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
-using System.Text.Json;
 
 namespace FilmBatch.Core.Film;
 
-/// <summary>一卷內附底片：key 存進設定（film.look），Source 是 HaldCLUT.zip 內的來源路徑（工具與文件用）。</summary>
-public sealed record FilmLook(string Key, string Name, string Group, string Source);
+/// <summary>一式內附底片：key 存進設定（film.look）；Index 為組內序號 1–9（列優先：濃淡 × 過渡）。</summary>
+public sealed record FilmLook(string Key, string Name, string Group, int Index);
 
 /// <summary>啟用的使用者 transform 無法讀取或驗證；呼叫端應回報失敗，不得靜默略過。</summary>
 public sealed class ColorTransformAssetException(string key, Exception inner)
@@ -14,31 +13,52 @@ public sealed class ColorTransformAssetException(string key, Exception inner)
     public string Key { get; } = key;
 }
 
-/// <summary>內附底片清單與 LUT（嵌入資源 FilmBatch.Looks/*；LUT 第一次使用時載入並快取）。</summary>
+/// <summary>內附底片清單與 LUT（六個色帶 × 九式，載入時由 <see cref="ToningLooks"/> 烘焙並快取）。</summary>
 public static class FilmLookLibrary
 {
-    public const string DefaultKey = "kodak-portra-400";
-    public static IReadOnlyList<string> GroupsInOrder { get; } = ["kodak", "fuji", "agfa-lomo", "polaroid", "bw", "creative"];
+    public const string DefaultKey = "amber-5";
+    public static IReadOnlyList<string> GroupsInOrder { get; } = ["aqua", "teal", "amber", "aqua-amber", "teal-amber", "mono"];
 
-    private static readonly ConcurrentDictionary<string, FilmLut?> Luts = new(StringComparer.Ordinal);
+    private static readonly ToningBand[] Bands =
+        [ToningBand.Aqua, ToningBand.Teal, ToningBand.Amber, ToningBand.AquaAmber, ToningBand.TealAmber, ToningBand.Mono];
+    private static readonly string[] GroupNames = ["湖藍", "青綠", "暖黃", "湖藍→暖黃", "青綠→暖黃", "黑白"];
+
+    private static readonly ConcurrentDictionary<string, FilmLut> Luts = new(StringComparer.Ordinal);
     private static readonly ConditionalWeakTable<FilmLut, FilmLookAsset> LutAssets = new();
     private static readonly ConditionalWeakTable<ColorTransformAsset, FilmLookAsset> TransformAssets = new();
     private static readonly Dictionary<string, FilmLook> ByKey;
 
     public static IReadOnlyList<FilmLook> All { get; }
 
+    /// <summary>舊版 36 卷 RawTherapee 底片 key → 最接近的新式。讀入舊專案與預設時自動換成新 key。</summary>
+    public static IReadOnlyDictionary<string, string> LegacyKeys { get; } = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+        ["kodak-portra-400"] = "amber-5", ["kodak-portra-160"] = "amber-2", ["kodak-portra-400-vc"] = "amber-6",
+        ["kodak-portra-800"] = "amber-8", ["kodak-ektar-100"] = "amber-9", ["kodak-kodachrome-64"] = "amber-3",
+        ["kodak-ektachrome-100vs"] = "aqua-5", ["kodak-elite-chrome-200"] = "aqua-4", ["kodak-elite-color-400"] = "amber-4",
+        ["fuji-velvia-50"] = "teal-amber-9", ["fuji-provia-100f"] = "aqua-2", ["fuji-astia-100f"] = "amber-1",
+        ["fuji-superia-400"] = "teal-5", ["fuji-pro-400h"] = "aqua-amber-2", ["fuji-pro-160c"] = "teal-2",
+        ["fuji-superia-reala-100"] = "teal-amber-2", ["fuji-superia-xtra-800"] = "teal-amber-5",
+        ["agfa-vista-200"] = "amber-7", ["agfa-ultra-100"] = "teal-amber-8", ["lomo-xpro-200"] = "aqua-amber-9",
+        ["lomo-redscale-100"] = "amber-8", ["polaroid-690"] = "teal-amber-4", ["polaroid-px70"] = "aqua-amber-4",
+        ["polaroid-polachrome"] = "aqua-amber-5", ["kodak-tri-x-400"] = "mono-9", ["kodak-tmax-100"] = "mono-5",
+        ["ilford-hp5-400"] = "mono-8", ["ilford-delta-100"] = "mono-4", ["fuji-acros-100"] = "mono-6",
+        ["agfa-apx-100"] = "mono-2", ["creative-teal-orange"] = "teal-amber-6", ["creative-bleach-bypass"] = "mono-3",
+        ["creative-fall-colors"] = "amber-3", ["creative-soft-warming"] = "amber-1", ["creative-crisp-winter"] = "aqua-3",
+        ["creative-moonlight"] = "teal-7",
+    };
+
     static FilmLookLibrary()
     {
-        using var stream = Open("looks.json") ?? throw new InvalidOperationException("缺少內嵌的 looks.json。");
-        // 用 JsonDocument 手動讀（Core 為 IsTrimmable，反射式 Deserialize 會觸發 IL2026）。
-        using var doc = JsonDocument.Parse(stream);
-        All = doc.RootElement.GetProperty("looks").EnumerateArray()
-            .Select(l => new FilmLook(Str(l, "key"), Str(l, "name"), Str(l, "group"), Str(l, "source")))
-            .ToArray();
+        All = [.. GroupsInOrder.SelectMany((group, g) => Enumerable.Range(1, 9)
+            .Select(i => new FilmLook($"{group}-{i}", $"{GroupNames[g]} {i}", group, i)))];
         ByKey = All.ToDictionary(l => l.Key, StringComparer.Ordinal);
     }
 
     public static bool TryGet(string key, out FilmLook look) => ByKey.TryGetValue(key, out look!);
+
+    /// <summary>舊 36 卷 key 換成新 key；新 key 或未知 key 回傳 false。</summary>
+    public static bool TryMigrate(string key, out string migrated) => LegacyKeys.TryGetValue(key, out migrated!);
 
     /// <summary>舊／未知 key 不存在時回傳 null；新 transform 失敗時保留原因並明確回報。</summary>
     public static FilmLookAsset? Resolve(string key, CancellationToken cancellationToken = default)
@@ -58,17 +78,13 @@ public static class FilmLookLibrary
         }
         if (UserLutLibrary.TryGet(key, out var imported))
             return LutAssets.GetValue(imported!, static lut => FilmLookAsset.FromLut(lut));
-        var builtIn = !ByKey.ContainsKey(key) ? null : Luts.GetOrAdd(key, static k =>
+        if (TryMigrate(key, out var migrated)) key = migrated;
+        var builtIn = !ByKey.TryGetValue(key, out var look) ? null : Luts.GetOrAdd(key, _ =>
         {
-            using var stream = Open(k + ".fblut");
-            return stream is null ? null : FilmLutFile.Read(stream);
+            var g = GroupsInOrder.ToList().IndexOf(look.Group);
+            var cell = look.Index - 1;
+            return ToningLooks.Bake(Bands[g], cell / 3, cell % 3);
         });
         return builtIn is null ? null : LutAssets.GetValue(builtIn, static lut => FilmLookAsset.FromLut(lut));
     }
-
-    private static Stream? Open(string name) =>
-        typeof(FilmLookLibrary).Assembly.GetManifestResourceStream("FilmBatch.Looks/" + name);
-
-    private static string Str(JsonElement e, string name) =>
-        e.GetProperty(name).GetString() ?? throw new InvalidDataException($"looks.json 的 {name} 不可為 null。");
 }
